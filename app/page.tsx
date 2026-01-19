@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { jsPDF } from "jspdf"
 
 export default function Home() {
   const [scopeChange, setScopeChange] = useState("")
@@ -12,23 +13,33 @@ export default function Home() {
 
     const res = await fetch("/api/generate", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        scopeChange,
-        markup,
-      }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scopeChange, markup }),
     })
 
-  if (!res.ok) {
-  const errorText = await res.text()
-  setOutput("API Error:\n" + errorText)
-  return
-}
+    if (!res.ok) {
+      const errorText = await res.text()
+      setOutput("API Error:\n" + errorText)
+      return
+    }
 
-const data = await res.json()
-setOutput(data.text)
+    const data = await res.json()
+    setOutput(data.text)
+  }
+
+  function downloadPDF() {
+    if (!output) return
+
+    const doc = new jsPDF()
+
+    doc.setFontSize(16)
+    doc.text("CHANGE ORDER", 105, 20, { align: "center" })
+
+    doc.setFontSize(11)
+    const lines = doc.splitTextToSize(output, 170)
+    doc.text(lines, 20, 35)
+
+    doc.save("change-order.pdf")
   }
 
   return (
@@ -62,6 +73,12 @@ setOutput(data.text)
 
       <button onClick={generateChangeOrder} style={{ padding: "10px 16px" }}>
         Generate Change Order
+      </button>
+
+      <br /><br />
+
+      <button onClick={downloadPDF} style={{ padding: "10px 16px" }}>
+        Download PDF
       </button>
 
       <hr style={{ margin: "24px 0" }} />
