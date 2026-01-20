@@ -5,7 +5,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
 export async function POST() {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL as string
+    const baseUrl = "https://scopeguard-mu.vercel.app"
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
