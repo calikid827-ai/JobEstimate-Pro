@@ -34,18 +34,24 @@ Return only the formatted change order text.
 `
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4.1-mini",
       messages: [{ role: "user", content: prompt }],
     })
 
     return NextResponse.json({
       text: response.choices[0].message.content,
     })
-  } catch (error) {
-    console.error("AI generate error:", error)
-    return NextResponse.json(
-      { error: "AI generation failed" },
-      { status: 500 }
-    )
-  }
+ } catch (error: any) {
+  console.error("AI generate error:", error)
+
+  return NextResponse.json(
+    {
+      error:
+        error?.message ||
+        error?.error?.message ||
+        JSON.stringify(error),
+    },
+    { status: 500 }
+  )
+}
 }
