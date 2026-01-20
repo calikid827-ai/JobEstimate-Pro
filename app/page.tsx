@@ -1,264 +1,195 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import jsPDF from "jspdf"
+import { jsPDF } from "jspdf"
 
-type CompanyProfile = {
-  name: string
-  address: string
-  phone: string
-  email: string
-}
+const FREE_LIMIT = 3
 
 export default function Home() {
+  const [companyName, setCompanyName] = useState("")
+  const [clientName, setClientName] = useState("")
+  const [jobAddress, setJobAddress] = useState("")
   const [scopeChange, setScopeChange] = useState("")
-  const [result, setResult] = useState("")
+  const [description, setDescription] = useState("")
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+
+  const [subtotal, setSubtotal] = useState<number>(0)
+  const [markupPercent, setMarkupPercent] = useState<number>(20)
+  const [total, setTotal] = useState<number>(0)
+
+  const [usageCount, setUsageCount] = useState(0)
+  const [isPaid, setIsPaid] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  const [paid, setPaid] = useState(false)
-  const [count, setCount] = useState(0)
-
-  const [companyProfile, setCompanyProfile] = useState<CompanyProfile>({
-    name: "",
-    address: "",
-    phone: "",
-    email: "",
-  })
-
-  const FREE_LIMIT = 3
-  const remaining = Math.max(0, FREE_LIMIT - count)
-
-  /* -------------------- LOAD STATE -------------------- */
   useEffect(() => {
-    setCount(Number(localStorage.getItem("changeOrderCount") || "0"))
-    setPaid(localStorage.getItem("scopeguard_paid") === "true")
-
-    const savedProfile = localStorage.getItem("companyProfile")
-    if (savedProfile) setCompanyProfile(JSON.parse(savedProfile))
-
-    if (window.location.search.includes("paid=true")) {
-      localStorage.setItem("scopeguard_paid", "true")
-      setPaid(true)
-      window.history.replaceState({}, "", "/")
-    }
+    setUsageCount(Number(localStorage.getItem("changeOrderCount") || "0"))
+    if (localStorage.getItem("scopeguard_paid") === "true") setIsPaid(true)
   }, [])
 
-  /* -------------------- PERSIST COMPANY PROFILE -------------------- */
   useEffect(() => {
-    localStorage.setItem("companyProfile", JSON.stringify(companyProfile))
-  }, [companyProfile])
+    const calculated = subtotal + subtotal * (markupPercent / 100)
+    setTotal(Number(calculated.toFixed(2)))
+  }, [subtotal, markupPercent])
 
-  /* -------------------- GENERATE CHANGE ORDER -------------------- */
-  async function generate() {
-    if (!paid && count >= FREE_LIMIT) return
+  async function generateChangeOrder() {
+    if (!isPaid && usageCount >= FREE_LIMIT) return
 
     setLoading(true)
-    setResult("")
+    setDescription("")
 
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scopeChange,
-        companyProfile,
       }),
     })
 
-    if (!res.ok) {
-      setLoading(false)
-      setResult("Error generating change order.")
-      return
-    }
-
     const data = await res.json()
-    setResult(data.text)
 
-    if (!paid) {
-      const newCount = count + 1
+    setDescription(data.text)
+    setSubtotal(data.subtotal || 0)
+    setMarkupPercent(data.markup || 20)
+
+    if (!isPaid) {
+      const newCount = usageCount + 1
       localStorage.setItem("changeOrderCount", newCount.toString())
-      setCount(newCount)
+      setUsageCount(newCount)
     }
 
     setLoading(false)
   }
 
-  /* -------------------- STRIPE UPGRADE -------------------- */
-  async function upgrade() {
+  async function startCheckout() {
     const res = await fetch("/api/checkout", { method: "POST" })
     const data = await res.json()
-    if (data.url) window.location.href = data.url
+    window.location.href = data.url
   }
 
-  /* -------------------- PDF DOWNLOAD -------------------- */
   function downloadPDF() {
+    if (!isPaid) return alert("Upgrade required to download PDFs")
+
     const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
     let y = 20
 
-    doc.setFontSize(16)
-    doc.text(companyProfile.name || "Company Name", 20, y)
-    y += 8
+    // Letterhead
+    if (logoDataUrl) {
+      doc.addImage(logoDataUrl, "PNG", 20, y, 40, 20)
+      doc.setFontSize(14)
+      doc.text(companyName || "Company Name", 70, y + 12)
+      y += 30
+    } else {
+      doc.setFontSize(16)
+      doc.text(companyName || "Company Name", pageWidth / 2, y, { align: "center" })
+      y += 20
+    }
 
-    doc.setFontSize(10)
-    if (companyProfile.address) doc.text(companyProfile.address, 20, y)
-    y += 5
-    if (companyProfile.phone) doc.text(companyProfile.phone, 20, y)
-    y += 5
-    if (companyProfile.email) doc.text(companyProfile.email, 20, y)
-    y += 12
-
-    doc.setFontSize(12)
-    doc.text("CHANGE ORDER", 20, y)
+    // Title
+    doc.setFontSize(20)
+    doc.text("CHANGE ORDER", pageWidth / 2, y, { align: "center" })
+    y += 10
+    doc.line(20, y, pageWidth - 20, y)
     y += 10
 
-    doc.setFontSize(10)
-    const lines = doc.splitTextToSize(result, 170)
-    doc.text(lines, 20, y)
+    // Info
+    doc.setFontSize(11)
+    doc.text(`Client: ${clientName}`, 20, y)
+    y += 6
+    doc.text(`Job Address: ${jobAddress}`, 20, y)
+    y += 6
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 20, y)
+    y += 12
+
+    // Description
+    doc.setFontSize(13)
+    doc.text("Scope of Change", 20, y)
+    y += 6
+    doc.line(20, y, pageWidth - 20, y)
+    y += 8
+
+    doc.setFontSize(11)
+    doc.text(doc.splitTextToSize(description, pageWidth - 40), 20, y)
+    y += 30
+
+    // Pricing
+    doc.setFontSize(13)
+    doc.text("Pricing Summary", 20, y)
+    y += 8
+
+    doc.setFontSize(11)
+    doc.text(`Subtotal: $${subtotal.toFixed(2)}`, 20, y)
+    y += 6
+    doc.text(`Markup (${markupPercent}%): $${(total - subtotal).toFixed(2)}`, 20, y)
+    y += 6
+    doc.setFontSize(12)
+    doc.text(`Total Due: $${total.toFixed(2)}`, 20, y)
 
     doc.save("change-order.pdf")
   }
 
-  /* -------------------- UI -------------------- */
   return (
-    <main
-      style={{
-        maxWidth: 720,
-        margin: "40px auto",
-        padding: 32,
-        background: "#fff",
-        borderRadius: 14,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-        fontFamily: "system-ui",
-      }}
-    >
-      <h1 style={{ fontSize: 34, marginBottom: 6 }}>ScopeGuard</h1>
+    <div style={{ maxWidth: 640, margin: "40px auto", fontFamily: "system-ui" }}>
+      <h1>ScopeGuard</h1>
 
-      <p style={{ fontSize: 18, color: "#555", marginBottom: 24 }}>
-        Instantly generate professional construction change orders.
-      </p>
-
-      {!paid && (
-        <p style={{ marginBottom: 24 }}>
-          Free uses remaining: <strong>{remaining}</strong>
+      {!isPaid && (
+        <p style={{ color: "red" }}>
+          Free uses remaining: {Math.max(0, FREE_LIMIT - usageCount)}
         </p>
       )}
 
-      {/* ---------- COMPANY PROFILE ---------- */}
-      <h2 style={{ marginBottom: 12 }}>Company Profile</h2>
+      <input placeholder="Company Name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+      <input placeholder="Client Name" value={clientName} onChange={(e) => setClientName(e.target.value)} style={{ width: "100%", marginBottom: 6 }} />
+      <input placeholder="Job Address" value={jobAddress} onChange={(e) => setJobAddress(e.target.value)} style={{ width: "100%", marginBottom: 10 }} />
 
-      {["name", "address", "phone", "email"].map((field) => (
-        <input
-          key={field}
-          placeholder={
-            field === "name"
-              ? "Company Name"
-              : field === "address"
-              ? "Company Address"
-              : field === "phone"
-              ? "Phone Number"
-              : "Email Address"
-          }
-          value={(companyProfile as any)[field]}
-          onChange={(e) =>
-            setCompanyProfile({
-              ...companyProfile,
-              [field]: e.target.value,
-            })
-          }
-          style={{
-            width: "100%",
-            padding: 10,
-            marginBottom: 10,
-            borderRadius: 6,
-            border: "1px solid #ccc",
-          }}
-        />
-      ))}
-
-      {/* ---------- SCOPE INPUT ---------- */}
-      <h2 style={{ marginTop: 28, marginBottom: 12 }}>
-        Scope of Change
-      </h2>
+      <label>
+        Company Logo
+        <input type="file" accept="image/png, image/jpeg" onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (!file) return
+          const reader = new FileReader()
+          reader.onload = () => setLogoDataUrl(reader.result as string)
+          reader.readAsDataURL(file)
+        }} />
+      </label>
 
       <textarea
-        placeholder="Example: Client requested adding recessed lighting in living room..."
+        placeholder="Describe the scope change..."
         value={scopeChange}
         onChange={(e) => setScopeChange(e.target.value)}
-        style={{
-          width: "100%",
-          height: 140,
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid #ccc",
-          marginBottom: 16,
-        }}
+        style={{ width: "100%", height: 100, marginTop: 10 }}
       />
 
-      <button
-        onClick={generate}
-        disabled={loading || (!paid && count >= FREE_LIMIT)}
-        style={{
-          width: "100%",
-          padding: "12px 16px",
-          background: "#000",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          cursor: "pointer",
-          marginBottom: 12,
-        }}
-      >
+      <button onClick={generateChangeOrder} disabled={loading} style={{ marginTop: 10 }}>
         {loading ? "Generating..." : "Generate Change Order"}
       </button>
 
-      {!paid && count >= FREE_LIMIT && (
-        <button
-          onClick={upgrade}
-          style={{
-            width: "100%",
-            padding: "12px 16px",
-            background: "#444",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            cursor: "pointer",
-          }}
-        >
-          Upgrade for Unlimited Access
-        </button>
-      )}
-
-      {/* ---------- OUTPUT ---------- */}
-      {result && (
+      {description && (
         <>
-          <pre
-            style={{
-              marginTop: 24,
-              padding: 16,
-              background: "#f5f5f5",
-              whiteSpace: "pre-wrap",
-              borderRadius: 8,
-            }}
-          >
-            {result}
-          </pre>
+          <h3 style={{ marginTop: 20 }}>Editable Change Order</h3>
 
-          <button
-            onClick={downloadPDF}
-            style={{
-              marginTop: 16,
-              padding: "12px 16px",
-              width: "100%",
-              background: "#0066ff",
-              color: "#fff",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-            }}
-          >
-            Download PDF
-          </button>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            style={{ width: "100%", minHeight: 180, background: "#f5f5f5", padding: 12 }}
+          />
+
+          <h3>Pricing</h3>
+
+          <input type="number" value={subtotal} onChange={(e) => setSubtotal(Number(e.target.value))} />
+          <input type="number" value={markupPercent} onChange={(e) => setMarkupPercent(Number(e.target.value))} />
+
+          <p><strong>Total: ${total.toFixed(2)}</strong></p>
+
+          <button onClick={downloadPDF}>Download PDF</button>
         </>
       )}
-    </main>
+
+      {!isPaid && usageCount >= FREE_LIMIT && (
+        <button onClick={startCheckout} style={{ marginTop: 20 }}>
+          Upgrade to Unlock PDFs
+        </button>
+      )}
+    </div>
   )
 }
