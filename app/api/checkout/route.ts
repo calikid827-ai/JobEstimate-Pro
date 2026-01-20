@@ -4,27 +4,17 @@ import { NextResponse } from "next/server"
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)
 
 export async function POST() {
-  try {
-    const baseUrl = "https://scopeguard-mu.vercel.app"
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price: process.env.STRIPE_PRICE_ID as string,
+        quantity: 1,
+      },
+    ],
+    success_url: `${process.env.NEXT_PUBLIC_SITE_URL}?paid=true`,
+    cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}`,
+  })
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      line_items: [
-        {
-          price: process.env.STRIPE_PRICE_ID as string,
-          quantity: 1,
-        },
-      ],
-      success_url: `${baseUrl}/success`,
-      cancel_url: `${baseUrl}/cancel`,
-    })
-
-    return NextResponse.json({ url: session.url })
-  } catch (err) {
-    console.error("Stripe checkout error:", err)
-    return NextResponse.json(
-      { error: "Stripe checkout failed" },
-      { status: 500 }
-    )
-  }
+  return NextResponse.json({ url: session.url })
 }

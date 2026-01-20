@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "ScopeGuard",
   description: "AI-powered change order generator for contractors",
   manifest: "/manifest.json",
+}
+
+export const viewport = {
   themeColor: "#000000",
 }
 
@@ -26,12 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-      </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>
