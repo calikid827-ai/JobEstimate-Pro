@@ -1,10 +1,21 @@
-import { NextResponse } from "next/server"
+export const runtime = "nodejs"
+
 import Stripe from "stripe"
+import { NextResponse } from "next/server"
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 export async function POST() {
-  try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
+  if (!siteUrl) {
+    return NextResponse.json(
+      { error: "Missing NEXT_PUBLIC_SITE_URL" },
+      { status: 500 }
+    )
+  }
+
+  try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
@@ -13,13 +24,13 @@ export async function POST() {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}?paid=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}`,
+      success_url: `${siteUrl}/success`,
+      cancel_url: `${siteUrl}/cancel`,
     })
 
     return NextResponse.json({ url: session.url })
-  } catch (error) {
-    console.error("Stripe checkout error:", error)
+  } catch (err) {
+    console.error("Stripe checkout error:", err)
     return NextResponse.json(
       { error: "Stripe checkout failed" },
       { status: 500 }
