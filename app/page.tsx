@@ -92,19 +92,34 @@ export default function Home() {
       )}
 
       <textarea
-        placeholder="Describe the scope change..."
-        value={scopeChange}
-        onChange={(e) => setScopeChange(e.target.value)}
-        style={{ width: "100%", height: 120, marginBottom: 12 }}
-      />
+  placeholder="Describe the scope change..."
+  value={scopeChange}
+  onChange={(e) => setScopeChange(e.target.value)}
+  style={{
+    width: "100%",
+    height: 120,
+    marginBottom: 12,
+    padding: 10,
+    border: "1px solid #ccc",
+    borderRadius: 6,
+  }}
+/>
 
-      <button
-        onClick={generateChangeOrder}
-        disabled={limitReached}
-        style={{ padding: "10px 16px", marginBottom: 10 }}
-      >
-        Generate Change Order
-      </button>
+<button
+  onClick={generateChangeOrder}
+  disabled={limitReached}
+  style={{
+    padding: "10px 16px",
+    marginBottom: 10,
+    background: limitReached ? "#ccc" : "#000",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    cursor: limitReached ? "not-allowed" : "pointer",
+  }}
+>
+  Generate Change Order
+</button>
 
       {limitReached && (
         <>
