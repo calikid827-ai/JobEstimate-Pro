@@ -2,38 +2,58 @@
 
 import { useEffect, useState } from "react"
 
-const FREE_LIMIT = 3
-
 export default function Home() {
-  const [scopeChange, setScopeChange] = useState("")
-  const [output, setOutput] = useState("")
-  const [usageCount, setUsageCount] = useState(0)
-  const [isPaid, setIsPaid] = useState(false)
-  const [status, setStatus] = useState("")
+  const [companyProfile, setCompanyProfile] = useState({
+  name: "",
+  address: "",
+  phone: "",
+  email: "",
+})
+useEffect(() => {
+  const saved = localStorage.getItem("scopeguard_company")
+  if (saved) {
+    setCompanyProfile(JSON.parse(saved))
+  }
+}, [])
 
-  // Load usage + paid state
+useEffect(() => {
+  localStorage.setItem(
+    "scopeguard_company",
+    JSON.stringify(companyProfile)
+  )
+}, [companyProfile])
+  const FREE_LIMIT = 3
+
+  const [scopeChange, setScopeChange] = useState("")
+  const [result, setResult] = useState("")
+  const [count, setCount] = useState(0)
+  const [paid, setPaid] = useState(false)
+  const [status, setStatus] = useState("")
+  const [loading, setLoading] = useState(false)
+
   useEffect(() => {
-    setUsageCount(Number(localStorage.getItem("changeOrderCount") || "0"))
+    setCount(Number(localStorage.getItem("changeOrderCount") || "0"))
 
     if (localStorage.getItem("scopeguard_paid") === "true") {
-      setIsPaid(true)
+      setPaid(true)
     }
 
-    // Handle Stripe success redirect
     if (window.location.search.includes("paid=true")) {
       localStorage.setItem("scopeguard_paid", "true")
-      setIsPaid(true)
+      setPaid(true)
       window.history.replaceState({}, "", "/")
     }
   }, [])
 
-  async function generateChangeOrder() {
-    if (!isPaid && usageCount >= FREE_LIMIT) {
+  async function generate() {
+    if (!paid && count >= FREE_LIMIT) {
       setStatus("Free limit reached. Please upgrade to continue.")
       return
     }
 
-    setStatus("Generating change order...")
+    setLoading(true)
+    setStatus("Generating professional change order…")
+    setResult("")
 
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -43,121 +63,321 @@ export default function Home() {
 
     if (!res.ok) {
       setStatus("Error generating change order.")
+      setLoading(false)
       return
     }
 
     const data = await res.json()
-    setOutput(data.text)
+    setResult(data.text)
     setStatus("")
+    setLoading(false)
 
-    if (!isPaid) {
-      const next = usageCount + 1
-      localStorage.setItem("changeOrderCount", next.toString())
-      setUsageCount(next)
+    if (!paid) {
+      const newCount = count + 1
+      localStorage.setItem("changeOrderCount", newCount.toString())
+      setCount(newCount)
     }
   }
 
-  async function startCheckout() {
-    setStatus("Starting checkout...")
+  async function upgrade() {
+    setStatus("Redirecting to secure checkout…")
 
     const res = await fetch("/api/checkout", { method: "POST" })
-
     if (!res.ok) {
-      setStatus("Checkout API error")
+      setStatus("Checkout API error.")
       return
     }
 
     const data = await res.json()
-
     if (!data.url) {
-      console.error("Checkout response:", data)
-      setStatus("No checkout URL returned")
+      setStatus("No checkout URL returned.")
       return
     }
 
     window.location.href = data.url
   }
 
-  const freeRemaining = Math.max(0, FREE_LIMIT - usageCount)
-  const limitReached = !isPaid && usageCount >= FREE_LIMIT
+  function downloadPDF() {
+  const content = document.getElementById("print-area")?.innerText
+  if (!content) return
+
+  const win = window.open("", "", "height=900,width=700")
+  if (!win) return
+
+  win.document.write(`
+    <html>
+      <head>
+        <title>ScopeGuard Change Order</title>
+        <style>
+          body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont;
+            padding: 40px;
+            color: #111;
+          }
+
+          .letterhead {
+            display: flex;
+            align-items: center;
+            margin-bottom: 24px;
+          }
+
+          .logo {
+            height: 60px;
+            margin-right: 16px;
+          }
+
+          .company {
+            line-height: 1.3;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 26px;
+          }
+
+          .subtitle {
+            color: #555;
+            font-size: 14px;
+          }
+
+          hr {
+            margin: 24px 0;
+            border: none;
+            border-top: 1px solid #ddd;
+          }
+
+          pre {
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+
+          .footer {
+            margin-top: 48px;
+            font-size: 12px;
+            color: #777;
+            text-align: center;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="letterhead">
+          <img
+            src="${window.location.origin}/logo.png"
+            class="logo"
+          />
+          <div class="company">
+            <h1>ScopeGuard</h1>
+            <div class="subtitle">Professional Change Order</div>
+          </div>
+        </div>
+
+        <div class="company-details">
+          <strong>Your Company Name</strong><br/>
+          123 Main Street, City, State<br/>
+          (555) 123-4567 · info@yourcompany.com
+        </div>
+
+        <hr />
+
+        <pre>${content}</pre>
+
+        <div class="footer">
+          Generated by ScopeGuard · ${new Date().toLocaleDateString()}
+        </div>
+      </body>
+    </html>
+  `)
+
+  win.document.close()
+  win.focus()
+  win.print()
+  win.close()
+}
+
+  const remaining = Math.max(0, FREE_LIMIT - count)
+  const locked = !paid && count >= FREE_LIMIT
 
   return (
-    <main style={{ maxWidth: 600, margin: "40px auto", fontFamily: "system-ui" }}>
-      <h1>ScopeGuard</h1>
+    <main
+      style={{
+        maxWidth: 640,
+        margin: "60px auto",
+        padding: 32,
+        fontFamily: "system-ui",
+        border: "1px solid #eee",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+    >
+      <h1 style={{ fontSize: 32, marginBottom: 8 }}>ScopeGuard</h1>
+      <p style={{ fontSize: 18, color: "#555", marginBottom: 24 }}>
+        Instantly generate professional construction change orders using AI.
+      </p>
 
-      {!isPaid && (
-        <p>
-          Free uses remaining: <strong>{freeRemaining}</strong>
+      {!paid && (
+        <p style={{ marginBottom: 16 }}>
+          Free uses remaining: <strong>{remaining}</strong>
         </p>
       )}
+<h2 style={{ marginTop: 32, marginBottom: 12 }}>Company Profile</h2>
 
-      <textarea
-  placeholder="Describe the scope change..."
-  value={scopeChange}
-  onChange={(e) => setScopeChange(e.target.value)}
+<input
+  placeholder="Company Name"
+  value={companyProfile.name}
+  onChange={(e) =>
+    setCompanyProfile({ ...companyProfile, name: e.target.value })
+  }
   style={{
     width: "100%",
-    height: 120,
-    marginBottom: 12,
     padding: 10,
-    border: "1px solid #ccc",
+    marginBottom: 8,
     borderRadius: 6,
+    border: "1px solid #ccc",
   }}
 />
 
-<button
-  onClick={generateChangeOrder}
-  disabled={limitReached}
+<input
+  placeholder="Company Address"
+  value={companyProfile.address}
+  onChange={(e) =>
+    setCompanyProfile({ ...companyProfile, address: e.target.value })
+  }
   style={{
-    padding: "10px 16px",
-    marginBottom: 10,
-    background: limitReached ? "#ccc" : "#000",
-    color: "#fff",
-    border: "none",
+    width: "100%",
+    padding: 10,
+    marginBottom: 8,
     borderRadius: 6,
-    cursor: limitReached ? "not-allowed" : "pointer",
+    border: "1px solid #ccc",
   }}
->
-  Generate Change Order
-</button>
+/>
 
-      {limitReached && (
-        <>
-          <p style={{ color: "red" }}>
-            Free limit reached. Upgrade to continue.
-          </p>
+<input
+  placeholder="Phone Number"
+  value={companyProfile.phone}
+  onChange={(e) =>
+    setCompanyProfile({ ...companyProfile, phone: e.target.value })
+  }
+  style={{
+    width: "100%",
+    padding: 10,
+    marginBottom: 8,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  }}
+/>
 
+<input
+  placeholder="Email Address"
+  value={companyProfile.email}
+  onChange={(e) =>
+    setCompanyProfile({ ...companyProfile, email: e.target.value })
+  }
+  style={{
+    width: "100%",
+    padding: 10,
+    marginBottom: 24,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+  }}
+/>
+      <textarea
+        placeholder="Example: Client requested adding recessed lighting and upgrading countertops to quartz."
+        value={scopeChange}
+        onChange={(e) => setScopeChange(e.target.value)}
+        style={{
+          width: "100%",
+          height: 140,
+          padding: 12,
+          fontSize: 15,
+          border: "1px solid #ccc",
+          borderRadius: 8,
+          marginBottom: 16,
+        }}
+      />
+
+      <button
+        onClick={generate}
+        disabled={locked || loading || !scopeChange.trim()}
+        style={{
+          width: "100%",
+          padding: "12px 16px",
+          fontSize: 16,
+          background: locked ? "#ccc" : "#000",
+          color: "#fff",
+          border: "none",
+          borderRadius: 8,
+          cursor: locked ? "not-allowed" : "pointer",
+        }}
+      >
+        {loading ? "Generating…" : "Generate Professional Change Order"}
+      </button>
+
+      {locked && (
+        <div style={{ marginTop: 20 }}>
+          <p style={{ color: "red" }}>You’ve reached your free limit.</p>
           <button
-            onClick={startCheckout}
+            onClick={upgrade}
             style={{
-              padding: "12px 20px",
+              width: "100%",
+              padding: "14px",
               background: "#000",
               color: "#fff",
               border: "none",
+              borderRadius: 8,
               cursor: "pointer",
             }}
           >
-            Upgrade for Unlimited Access
+            Unlock Unlimited Change Orders
           </button>
-        </>
+        </div>
       )}
 
-      {status && (
-        <p style={{ marginTop: 12 }}>{status}</p>
+      {status && <p style={{ marginTop: 16 }}>{status}</p>}
+
+      {result && (
+        <div style={{ marginTop: 28 }}>
+          <h3>Generated Change Order</h3>
+
+          <div
+            id="print-area"
+            style={{
+              background: "#f5f5f5",
+              padding: 16,
+              borderRadius: 8,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {result}
+          </div>
+
+          <button
+            onClick={downloadPDF}
+            style={{
+              marginTop: 12,
+              padding: "10px 14px",
+              background: "#fff",
+              border: "1px solid #000",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            Download PDF
+          </button>
+        </div>
       )}
 
-      {output && (
-        <pre
-          style={{
-            marginTop: 20,
-            padding: 12,
-            background: "#f5f5f5",
-            whiteSpace: "pre-wrap",
-          }}
-        >
-          {output}
-        </pre>
-      )}
+      <p
+        style={{
+          marginTop: 40,
+          fontSize: 12,
+          color: "#888",
+          textAlign: "center",
+        }}
+      >
+        Secure payments powered by Stripe.
+      </p>
     </main>
   )
 }
