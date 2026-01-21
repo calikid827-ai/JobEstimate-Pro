@@ -123,45 +123,42 @@ async function generate() {
   setStatus("Generating professional document…")
   setResult("")
 
-  console.log("➡️ Sending request to /api/generate", {
-    scopeChange,
-    trade,
-    state,
-  })
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scopeChange,
+        trade,
+        state,
+      }),
+    })
 
-  const res = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      scopeChange,
-      trade,
-      state,
-    }),
-  })
+    if (!res.ok) {
+      throw new Error("API error")
+    }
 
-  if (!res.ok) {
+    const data = await res.json()
+
+    setResult(data.text || data.description || "")
+    if (data.pricing) setPricing(data.pricing)
+    if (!trade && data.trade) setTrade(data.trade)
+
+    if (!paid) {
+      const newCount = count + 1
+      localStorage.setItem(
+        "changeOrderCount",
+        newCount.toString()
+      )
+      setCount(newCount)
+    }
+
+    setStatus("")
+  } catch (err) {
+    console.error(err)
     setStatus("Error generating document.")
+  } finally {
     setLoading(false)
-    return
-  }
-
-  const data = await res.json()
-  console.log("✅ API response:", data)
-
-  setResult(data.text || data.description || "")
-  if (data.pricing) setPricing(data.pricing)
-  if (!trade && data.trade) setTrade(data.trade)
-
-  setLoading(false)
-  setStatus("")
-
-  if (!paid) {
-    const newCount = count + 1
-    localStorage.setItem(
-      "changeOrderCount",
-      newCount.toString()
-    )
-    setCount(newCount)
   }
 }
 
