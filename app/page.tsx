@@ -1,203 +1,226 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import jsPDF from "jspdf";
+import { useEffect, useState } from "react"
 
 export default function Home() {
-  const [scopeChange, setScopeChange] = useState("");
-  const [markup, setMarkup] = useState(20);
-  const [output, setOutput] = useState("");
-  const [paid, setPaid] = useState(false);
-  const [remaining, setRemaining] = useState<number | null>(null);
+  const FREE_LIMIT = 3
 
-  // Editable totals
-  const [labor, setLabor] = useState(0);
-  const [materials, setMaterials] = useState(0);
-  const [subs, setSubs] = useState(0);
+  // -------------------------
+  // Company profile
+  // -------------------------
+  const [companyProfile, setCompanyProfile] = useState({
+    name: "",
+    address: "",
+    phone: "",
+    email: "",
+    logo: "",
+  })
 
-  const subtotal = labor + materials + subs;
-  const total = Math.round(subtotal * (1 + markup / 100));
-
-  // Load usage / payment status
   useEffect(() => {
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then((d) => {
-        setPaid(d.paid);
-        setRemaining(d.remaining);
-      });
-  }, []);
+    const saved = localStorage.getItem("scopeguard_company")
+    if (saved) setCompanyProfile(JSON.parse(saved))
+  }, [])
 
-  // Stripe checkout
-  async function startCheckout() {
-    const res = await fetch("/api/checkout", { method: "POST" });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
-  }
+  useEffect(() => {
+    localStorage.setItem("scopeguard_company", JSON.stringify(companyProfile))
+  }, [companyProfile])
 
-  // AI generation
-  async function generateChangeOrder() {
-    if (!paid && remaining !== null && remaining <= 0) {
-      setOutput("LOCKED");
-      return;
+  // -------------------------
+  // App state
+  // -------------------------
+  const [scopeChange, setScopeChange] = useState("")
+  const [result, setResult] = useState("")
+  const [pricing, setPricing] = useState({
+    labor: 0,
+    materials: 0,
+    subs: 0,
+    markup: 20,
+    total: 0,
+  })
+
+  const [count, setCount] = useState(0)
+  const [paid, setPaid] = useState(false)
+  const [status, setStatus] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    setCount(Number(localStorage.getItem("changeOrderCount") || "0"))
+    if (localStorage.getItem("scopeguard_paid") === "true") setPaid(true)
+
+    if (window.location.search.includes("paid=true")) {
+      localStorage.setItem("scopeguard_paid", "true")
+      setPaid(true)
+      window.history.replaceState({}, "", "/")
+    }
+  }, [])
+
+  const locked = !paid && count >= FREE_LIMIT
+  const remaining = Math.max(0, FREE_LIMIT - count)
+
+  // -------------------------
+  // Generate AI change order
+  // -------------------------
+  async function generate() {
+    if (locked) {
+      setStatus("Free limit reached. Please upgrade to continue.")
+      return
     }
 
-    setOutput("Generating…");
+    setLoading(true)
+    setStatus("Generating professional change order…")
+    setResult("")
 
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scopeChange }),
-    });
+    })
 
-    const data = await res.json();
+    if (!res.ok) {
+      setStatus("Error generating change order.")
+      setLoading(false)
+      return
+    }
 
-    setLabor(data.labor || 0);
-    setMaterials(data.materials || 0);
-    setSubs(data.subs || 0);
-    setOutput(data.text || "");
+    const data = await res.json()
+    setResult(data.text)
+    if (data.pricing) setPricing(data.pricing)
+
+    setLoading(false)
+    setStatus("")
+
+    if (!paid) {
+      const newCount = count + 1
+      localStorage.setItem("changeOrderCount", newCount.toString())
+      setCount(newCount)
+    }
   }
 
-  // PDF
+  // -------------------------
+  // Stripe upgrade
+  // -------------------------
+  async function upgrade() {
+    setStatus("Redirecting to secure checkout…")
+    const res = await fetch("/api/checkout", { method: "POST" })
+    const data = await res.json()
+    if (data.url) window.location.href = data.url
+    else setStatus("Checkout error.")
+  }
+
+  // -------------------------
+  // PDF generation
+  // -------------------------
   function downloadPDF() {
-    const pdf = new jsPDF();
+    const win = window.open("", "", "width=800,height=1000")
+    if (!win) return
 
-    pdf.setFontSize(16);
-    pdf.text("Change Order", 20, 20);
+    win.document.write(`
+      <html>
+        <head>
+          <title>Change Order</title>
+          <style>
+            body { font-family: system-ui; padding: 40px; }
+            h1 { margin-bottom: 4px; }
+            .muted { color: #666; font-size: 14px; }
+            hr { margin: 24px 0; }
+            .pricing p { margin: 6px 0; }
+            .sign { margin-top: 60px; display: flex; justify-content: space-between; }
+            .line { border-top: 1px solid #000; width: 240px; margin-top: 40px; }
+          </style>
+        </head>
+        <body>
+          <h1>${companyProfile.name}</h1>
+          <div class="muted">${companyProfile.address}<br/>${companyProfile.phone} · ${companyProfile.email}</div>
 
-    pdf.setFontSize(11);
-    pdf.text(`Scope: ${scopeChange}`, 20, 40);
-    pdf.text(`Labor: $${labor}`, 20, 60);
-    pdf.text(`Materials: $${materials}`, 20, 70);
-    pdf.text(`Subcontractors: $${subs}`, 20, 80);
-    pdf.text(`Markup: ${markup}%`, 20, 95);
-    pdf.text(`Total: $${total}`, 20, 110);
+          <hr/>
 
-    pdf.save("change-order.pdf");
+          <h2>Change Order</h2>
+          <p>${result}</p>
+
+          <hr/>
+
+          <div class="pricing">
+            <p>Labor: $${pricing.labor}</p>
+            <p>Materials: $${pricing.materials}</p>
+            <p>Subcontractors: $${pricing.subs}</p>
+            <p>Markup: ${pricing.markup}%</p>
+            <strong>Total: $${pricing.total}</strong>
+          </div>
+
+          <div class="sign">
+            <div>
+              <div class="line"></div>
+              Contractor Signature
+            </div>
+            <div>
+              <div class="line"></div>
+              Client Signature
+            </div>
+          </div>
+        </body>
+      </html>
+    `)
+
+    win.document.close()
+    win.print()
+    win.close()
   }
 
+  // -------------------------
+  // UI
+  // -------------------------
   return (
-    <div
-      style={{
-        maxWidth: 760,
-        margin: "40px auto",
-        padding: 24,
-        borderRadius: 14,
-        background: "#fff",
-        fontFamily: "system-ui",
-      }}
-    >
-      <h1 style={{ fontSize: 32, marginBottom: 8 }}>ScopeGuard</h1>
-      <p style={{ fontSize: 18, color: "#555", marginBottom: 24 }}>
-        Instantly generate professional construction change orders.
-      </p>
+    <main style={{ maxWidth: 640, margin: "60px auto", padding: 32 }}>
+      <h1>ScopeGuard</h1>
+      {!paid && <p>Free uses remaining: {remaining}</p>}
 
-      {!paid && remaining !== null && (
-        <p style={{ marginBottom: 16 }}>
-          Free uses remaining: <strong>{remaining}</strong>
-        </p>
-      )}
+      <h3>Company Profile</h3>
+      {["name", "address", "phone", "email"].map((f) => (
+        <input
+          key={f}
+          placeholder={f}
+          value={(companyProfile as any)[f]}
+          onChange={(e) =>
+            setCompanyProfile({ ...companyProfile, [f]: e.target.value })
+          }
+          style={{ width: "100%", marginBottom: 8, padding: 8 }}
+        />
+      ))}
 
       <textarea
         placeholder="Describe the scope change…"
         value={scopeChange}
         onChange={(e) => setScopeChange(e.target.value)}
-        style={{
-          width: "100%",
-          height: 120,
-          padding: 12,
-          fontSize: 15,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          marginBottom: 16,
-        }}
+        style={{ width: "100%", height: 120 }}
       />
 
-      <label>
-        Markup %
-        <input
-          type="number"
-          value={markup}
-          onChange={(e) => setMarkup(+e.target.value)}
-          style={{ marginLeft: 10, width: 80 }}
-        />
-      </label>
+      <button onClick={generate} disabled={loading || locked}>
+        Generate Change Order
+      </button>
 
-      <div style={{ marginTop: 20 }}>
-        <button
-          onClick={generateChangeOrder}
-          style={{
-            padding: "12px 18px",
-            background: "#000",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            fontSize: 15,
-            cursor: "pointer",
-          }}
-        >
-          Generate Change Order
+      {locked && (
+        <button onClick={upgrade} style={{ marginTop: 12 }}>
+          Upgrade for Unlimited Access
         </button>
-      </div>
-
-      {/* LOCKED STATE */}
-      {!paid && output === "LOCKED" && (
-        <div style={{ marginTop: 20 }}>
-          <p style={{ color: "red" }}>
-            Free limit reached. Please upgrade to continue.
-          </p>
-          <button
-            onClick={startCheckout}
-            style={{
-              marginTop: 10,
-              padding: "10px 16px",
-              background: "#000",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              cursor: "pointer",
-            }}
-          >
-            Upgrade for Unlimited Access
-          </button>
-        </div>
       )}
 
-      {/* RESULTS */}
-      {output && output !== "LOCKED" && (
-        <div style={{ marginTop: 30 }}>
-          <h3>Editable Totals</h3>
+      {result && (
+        <>
+          <h3>Pricing (Editable)</h3>
+          {["labor", "materials", "subs", "markup", "total"].map((k) => (
+            <input
+              key={k}
+              type="number"
+              value={(pricing as any)[k]}
+              onChange={(e) =>
+                setPricing({ ...pricing, [k]: Number(e.target.value) })
+              }
+            />
+          ))}
 
-          <label>Labor $
-            <input type="number" value={labor} onChange={e => setLabor(+e.target.value)} />
-          </label><br />
-
-          <label>Materials $
-            <input type="number" value={materials} onChange={e => setMaterials(+e.target.value)} />
-          </label><br />
-
-          <label>Subcontractors $
-            <input type="number" value={subs} onChange={e => setSubs(+e.target.value)} />
-          </label>
-
-          <p style={{ marginTop: 12 }}>Subtotal: ${subtotal}</p>
-          <p><strong>Total: ${total}</strong></p>
-
-          <button
-            onClick={downloadPDF}
-            style={{
-              marginTop: 12,
-              padding: "10px 14px",
-              borderRadius: 6,
-              border: "1px solid #000",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Download PDF
-          </button>
-        </div>
+          <button onClick={downloadPDF}>Download PDF</button>
+        </>
       )}
-    </div>
-  );
+    </main>
+  )
 }
