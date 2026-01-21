@@ -10,27 +10,24 @@ export const dynamic = "force-dynamic"
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error("STRIPE_SECRET_KEY missing")
 }
-
 if (!process.env.STRIPE_WEBHOOK_SECRET) {
   throw new Error("STRIPE_WEBHOOK_SECRET missing")
 }
-
-if (!process.env.SUPABASE_URL) {
-  throw new Error("SUPABASE_URL missing")
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL missing")
 }
-
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("SUPABASE_SERVICE_ROLE_KEY missing")
 }
 
 // -----------------------------
-// CLIENTS (AFTER VALIDATION)
+// CLIENTS
 // -----------------------------
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 // -----------------------------
@@ -54,7 +51,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET
+      process.env.STRIPE_WEBHOOK_SECRET!
     )
   } catch (err: any) {
     console.error("❌ Webhook signature verification failed:", err.message)
@@ -64,9 +61,7 @@ export async function POST(req: Request) {
     )
   }
 
-  // -----------------------------
-  // HANDLE CHECKOUT COMPLETION
-  // -----------------------------
+  // ✅ Handle successful checkout
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session
 
@@ -74,7 +69,7 @@ export async function POST(req: Request) {
     const customerId = session.customer as string | null
 
     if (!email || !customerId) {
-      console.error("❌ Missing email or customer ID")
+      console.error("Missing email or customer ID")
       return NextResponse.json({ received: true })
     }
 
@@ -87,7 +82,7 @@ export async function POST(req: Request) {
       })
 
     if (error) {
-      console.error("❌ Supabase entitlement upsert failed:", error)
+      console.error("❌ Supabase insert failed:", error)
     } else {
       console.log("✅ Entitlement granted for:", email)
     }
