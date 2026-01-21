@@ -57,7 +57,7 @@ function clampPricing(pricing: Pricing): Pricing {
   }
 }
 
-// 🔍 Simple, reliable trade auto-detection
+// 🔍 Trade auto-detection (only if user didn't choose)
 function autoDetectTrade(scope: string): string {
   const s = scope.toLowerCase()
 
@@ -72,6 +72,27 @@ function autoDetectTrade(scope: string): string {
     return "carpentry"
 
   return "general renovation"
+}
+
+// 🧠 Estimate vs Change Order hinting (soft guidance)
+function detectDocumentIntent(scope: string): string {
+  const s = scope.toLowerCase()
+
+  if (
+    /(per original contract|additional work|change order|not included|modify|revision)/.test(
+      s
+    )
+  ) {
+    return "Likely a Change Order"
+  }
+
+  if (
+    /(new work|estimate|proposal|pricing for|quote|anticipated work)/.test(s)
+  ) {
+    return "Likely an Estimate"
+  }
+
+  return "Unclear — could be either"
 }
 
 // -----------------------------
@@ -95,8 +116,8 @@ export async function POST(req: Request) {
       )
     }
 
-    // ✅ Use auto-detect ONLY if user did not select a trade
     const trade = uiTrade || autoDetectTrade(scopeChange)
+    const intentHint = detectDocumentIntent(scopeChange)
 
     // -----------------------------
     // AI PROMPT (STRICT JSON ONLY)
@@ -108,7 +129,8 @@ Your task is to generate a professional construction document that may be either
 - A Change Order (for work modifying an existing contract), OR
 - An Estimate (for proposed or anticipated work)
 
-You must determine which label is most appropriate based on the scope.
+PRE-ANALYSIS:
+${intentHint}
 
 INPUTS:
 - Trade Type: ${trade}
@@ -155,9 +177,6 @@ Return ONLY valid JSON.
 }
 `
 
-    // -----------------------------
-    // OPENAI CALL (JSON ENFORCED)
-    // -----------------------------
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.25,
