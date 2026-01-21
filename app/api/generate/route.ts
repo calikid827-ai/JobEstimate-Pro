@@ -1,86 +1,66 @@
-export const dynamic = "force-dynamic"
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-import { NextResponse } from "next/server"
-import OpenAI from "openai"
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
 
 export async function POST(req: Request) {
+  const { scopeChange } = await req.json();
+
+  const systemPrompt = `
+You are a construction estimator.
+
+Based on the scope description, estimate:
+- labor cost
+- material cost
+- subcontractor cost (if applicable)
+
+Return JSON ONLY in this exact format:
+
+{
+  "text": "Professional change order description",
+  "labor": number,
+  "materials": number,
+  "subs": number
+}
+
+Guidelines:
+- Interior painting: $2–$4 per sq ft labor
+- Flooring: $5–$12 per sq ft
+- Electrical: $85–$125/hr
+- Plumbing: $90–$150/hr
+- If no subs needed, subs = 0
+- Round to nearest whole dollar
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4.1-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: scopeChange },
+    ],
+    temperature: 0.2,
+  });
+
+  const raw = completion.choices[0].message.content || "{}";
+
+  let parsed;
   try {
-    const { scopeChange, markup } = await req.json()
-
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    })
-
-    const prompt = `
-You are a senior residential renovation estimator in the United States.
-
-Your job is to generate a PROFESSIONAL change order with realistic pricing.
-
-Rules:
-- Use mid-range residential renovation pricing
-- Break costs into Labor, Materials, Subcontractors (only if needed)
-- Use realistic labor hours and rates
-- Assume no extreme conditions unless stated
-- Clearly state assumptions
-- Provide subtotal, markup, and total
-- Numbers must be reasonable and defensible
-- Output MUST be editable by a contractor
-
-Typical pricing guidance:
-- General labor: $65–$95/hr
-- Skilled labor: $85–$125/hr
-- Tile: $5–$10 / sq ft
-- Paint: $2–$4 / sq ft
-- Electrical/plumbing: $90–$150/hr
-
-Scope of Change:
-${scopeChange}
-
-Markup Percentage: ${markup}%
-
-Return the change order in THIS EXACT FORMAT:
-
----
-Scope of Work:
-(text)
-
-Estimated Costs:
-
-Labor:
-(list)
-
-Materials:
-(list)
-
-Subcontractors:
-(list or "None")
-
-Subtotal: $X,XXX
-Markup (${markup}%): $X,XXX
-Total Estimated Change Order: $X,XXX
-
-Assumptions:
-(list)
----
-
-Do NOT include legal disclaimers.
-Do NOT include emojis.
-`
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.4,
-    })
-
+    parsed = JSON.parse(raw);
+  } catch {
     return NextResponse.json({
-      text: response.choices[0].message.content,
-    })
-  } catch (error) {
-    console.error("AI generation error:", error)
-    return NextResponse.json(
-      { error: "AI generation failed" },
-      { status: 500 }
-    )
+      text: "Error generating estimate.",
+      labor: 0,
+      materials: 0,
+      subs: 0,
+    });
   }
+
+  return NextResponse.json({
+    text: parsed.text,
+    labor: parsed.labor || 0,
+    materials: parsed.materials || 0,
+    subs: parsed.subs || 0,
+  });
 }
