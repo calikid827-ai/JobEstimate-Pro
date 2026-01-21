@@ -152,7 +152,7 @@ Return ONLY valid JSON.
 
     const raw = completion.choices[0]?.message?.content
     if (!raw) throw new Error("Empty AI response")
-
+console.log("RAW AI RESPONSE:", raw)
     let parsed: AIResponse
     try {
       parsed = JSON.parse(raw)
