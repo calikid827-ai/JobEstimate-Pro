@@ -170,7 +170,18 @@ export default function Home() {
   // UI
   // -------------------------
   return (
-    <main style={{ maxWidth: 640, margin: "60px auto", padding: 32 }}>
+    <main
+  style={{
+    maxWidth: 640,
+    margin: "60px auto",
+    padding: 32,
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont",
+    border: "1px solid #e5e7eb",
+    borderRadius: 14,
+    background: "#ffffff",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+  }}
+>
       <h1>ScopeGuard</h1>
       {!paid && <p>Free uses remaining: {remaining}</p>}
 
