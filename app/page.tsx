@@ -377,17 +377,22 @@ async function generate() {
       />
 
       <button
-  onClick={() => alert("CLICK WORKS")}
+  type="button"
+  onClick={generate}
+  disabled={loading || !scopeChange.trim()}
   style={{
     width: "100%",
     padding: 12,
     marginTop: 12,
-    background: "red",
+    fontSize: 16,
+    background: loading ? "#555" : "#000",
     color: "#fff",
+    border: "none",
     borderRadius: 8,
+    cursor: loading ? "not-allowed" : "pointer",
   }}
 >
-  CLICK TEST
+  {loading ? "Generating…" : "Generate Change Order / Estimate"}
 </button>
 
       {locked && (
