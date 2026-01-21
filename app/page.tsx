@@ -104,56 +104,66 @@ export default function Home() {
   ])
 
   // -------------------------
-  // Generate AI document
-  // -------------------------
-  async function generate() {
-    if (!email) {
-      setStatus("Please enter the email used at checkout.")
-      return
-    }
+// Generate AI document
+// -------------------------
+async function generate() {
+  console.log("🔥 Generate button clicked")
 
-    if (locked) {
-      setStatus("Free limit reached. Please upgrade.")
-      return
-    }
-
-    setLoading(true)
-    setStatus("Generating professional document…")
-    setResult("")
-
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scopeChange,
-        trade,
-        state,
-      }),
-    })
-
-    if (!res.ok) {
-      setStatus("Error generating document.")
-      setLoading(false)
-      return
-    }
-
-    const data = await res.json()
-    setResult(data.text || data.description || "")
-    if (data.pricing) setPricing(data.pricing)
-    if (!trade && data.trade) setTrade(data.trade)
-
-    setLoading(false)
-    setStatus("")
-
-    if (!paid) {
-      const newCount = count + 1
-      localStorage.setItem(
-        "changeOrderCount",
-        newCount.toString()
-      )
-      setCount(newCount)
-    }
+  if (!email) {
+    setStatus("Please enter the email used at checkout.")
+    return
   }
+
+  if (locked) {
+    setStatus("Free limit reached. Please upgrade.")
+    return
+  }
+
+  setLoading(true)
+  setStatus("Generating professional document…")
+  setResult("")
+
+  console.log("➡️ Sending request to /api/generate", {
+    scopeChange,
+    trade,
+    state,
+  })
+
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      scopeChange,
+      trade,
+      state,
+    }),
+  })
+
+  if (!res.ok) {
+    setStatus("Error generating document.")
+    setLoading(false)
+    return
+  }
+
+  const data = await res.json()
+  console.log("✅ API response:", data)
+
+  setResult(data.text || data.description || "")
+  if (data.pricing) setPricing(data.pricing)
+  if (!trade && data.trade) setTrade(data.trade)
+
+  setLoading(false)
+  setStatus("")
+
+  if (!paid) {
+    const newCount = count + 1
+    localStorage.setItem(
+      "changeOrderCount",
+      newCount.toString()
+    )
+    setCount(newCount)
+  }
+}
 
   // -------------------------
   // Stripe upgrade
