@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { scopeChange } = await req.json()
+    const { scopeChange, trade } = await req.json()
 
     if (!scopeChange) {
       return NextResponse.json(
@@ -17,55 +17,46 @@ export async function POST(req: Request) {
     }
 
     const prompt = `
-You are a senior residential construction estimator.
+You are an expert U.S. construction estimator and project manager.
 
-STEP 1:
-Determine the PRIMARY TRADE involved in this change order.
-Choose ONE:
-Painting, Flooring, Electrical, Plumbing, Tile, Drywall, Carpentry, General Renovation
+Trade Type: ${trade || "general renovation"}
 
-STEP 2:
-Write a professional, client-facing CHANGE ORDER description.
+Use realistic U.S. renovation pricing based on the trade.
 
-STEP 3:
-Estimate realistic COST TOTALS (not line items) based on the trade:
-- Labor
-- Materials
-- Subcontractors (0 if not applicable)
+Pricing guidance:
+- Painting: labor-heavy, low materials
+- Flooring: materials + install labor
+- Electrical: high labor rate, code compliance
+- Plumbing: skilled labor + fixtures
+- Tile: labor-intensive with material waste
+- General renovation: balanced estimate
 
-Use realistic US residential pricing assumptions:
-• Painting → labor-heavy
-• Flooring → materials + labor
-• Electrical → skilled labor + permit risk
-• Plumbing → higher subs + contingency
-• Tile → high labor precision
-• General renovation → blended estimate
+Scope of Change:
+${scopeChange}
 
-STEP 4:
-Apply a standard 20% contractor markup.
-
-STEP 5:
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON in the following format:
 
 {
-  "trade": "string",
-  "description": "string",
+  "description": "Professional written change order text",
   "pricing": {
     "labor": number,
     "materials": number,
-    "subs": number,
-    "markup": 20
+    "subcontractors": number,
+    "markupPercent": number,
+    "total": number
   }
 }
 
-Scope change:
-${scopeChange}
+Rules:
+- All numbers must be realistic USD estimates
+- Do not include any text outside the JSON
+- Do not include currency symbols
 `
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.35,
+      temperature: 0.3,
     })
 
     const raw = completion.choices[0].message.content || ""
@@ -73,8 +64,8 @@ ${scopeChange}
     let parsed
     try {
       parsed = JSON.parse(raw)
-    } catch (err) {
-      console.error("Invalid JSON from AI:", raw)
+    } catch {
+      console.error("AI returned invalid JSON:", raw)
       return NextResponse.json(
         { error: "AI returned invalid JSON", raw },
         { status: 500 }
@@ -82,9 +73,14 @@ ${scopeChange}
     }
 
     return NextResponse.json({
-      trade: parsed.trade,
       text: parsed.description,
-      pricing: parsed.pricing,
+      pricing: {
+        labor: parsed.pricing.labor,
+        materials: parsed.pricing.materials,
+        subs: parsed.pricing.subcontractors,
+        markup: parsed.pricing.markupPercent,
+        total: parsed.pricing.total,
+      },
     })
   } catch (err) {
     console.error("AI generate error:", err)

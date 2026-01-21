@@ -96,7 +96,10 @@ export default function Home() {
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scopeChange }),
+      body: JSON.stringify({
+  scopeChange,
+  trade,
+}),
     })
 
     if (!res.ok) {
@@ -242,7 +245,36 @@ if (data.trade) setTrade(data.trade)
           }}
         />
       ))}
+<label style={{ display: "block", marginTop: 16 }}>
+  Trade Type
+</label>
 
+<select
+  value={trade}
+  onChange={(e) => setTrade(e.target.value)}
+  style={{
+    width: "100%",
+    padding: 10,
+    borderRadius: 6,
+    border: "1px solid #ccc",
+    marginBottom: 12,
+  }}
+>
+  <option value="">Select trade</option>
+  <option value="painting">Painting</option>
+  <option value="flooring">Flooring</option>
+  <option value="electrical">Electrical</option>
+  <option value="plumbing">Plumbing</option>
+  <option value="tile">Tile / Bathroom</option>
+  <option value="carpentry">Carpentry</option>
+  <option value="general">General Renovation</option>
+</select>
+
+{trade && (
+  <p style={{ color: "#555", marginBottom: 12 }}>
+    Detected Trade: <strong>{trade}</strong>
+  </p>
+)}
       <textarea
         placeholder="Describe the scope change…"
         value={scopeChange}
