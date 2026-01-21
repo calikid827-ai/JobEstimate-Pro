@@ -6,7 +6,7 @@ export default function Home() {
   const FREE_LIMIT = 3
 
   // -------------------------
-  // Entitlement (email-based)
+  // Email (required for entitlement)
   // -------------------------
   const [email, setEmail] = useState("")
   const [paid, setPaid] = useState(false)
@@ -17,7 +17,9 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    if (email) localStorage.setItem("scopeguard_email", email)
+    if (email) {
+      localStorage.setItem("scopeguard_email", email)
+    }
   }, [email])
 
   useEffect(() => {
@@ -29,7 +31,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       })
-
       const data = await res.json()
       setPaid(data.entitled === true)
     }
@@ -106,13 +107,18 @@ export default function Home() {
   // Generate AI document
   // -------------------------
   async function generate() {
+    if (!email) {
+      setStatus("Please enter the email used at checkout.")
+      return
+    }
+
     if (locked) {
       setStatus("Free limit reached. Please upgrade.")
       return
     }
 
     setLoading(true)
-    setStatus("Generating pricing and scope…")
+    setStatus("Generating professional document…")
     setResult("")
 
     const res = await fetch("/api/generate", {
@@ -141,7 +147,10 @@ export default function Home() {
 
     if (!paid) {
       const newCount = count + 1
-      localStorage.setItem("changeOrderCount", newCount.toString())
+      localStorage.setItem(
+        "changeOrderCount",
+        newCount.toString()
+      )
       setCount(newCount)
     }
   }
@@ -251,35 +260,81 @@ export default function Home() {
         style={{ width: "100%", padding: 8, marginBottom: 12 }}
       />
 
+      <h3>Company Profile</h3>
+      {["name", "address", "phone", "email"].map((f) => (
+        <input
+          key={f}
+          placeholder={f}
+          value={(companyProfile as any)[f]}
+          onChange={(e) =>
+            setCompanyProfile({
+              ...companyProfile,
+              [f]: e.target.value,
+            })
+          }
+          style={{ width: "100%", padding: 8, marginBottom: 8 }}
+        />
+      ))}
+
+      <label style={{ marginTop: 12, display: "block" }}>
+        Trade Type
+        <select
+          value={trade}
+          onChange={(e) => setTrade(e.target.value)}
+          style={{ width: "100%", padding: 10, marginTop: 6 }}
+        >
+          <option value="">Auto-detect</option>
+          <option value="painting">Painting</option>
+          <option value="flooring">Flooring</option>
+          <option value="electrical">Electrical</option>
+          <option value="plumbing">Plumbing</option>
+          <option value="tile">Tile / Bathroom</option>
+          <option value="carpentry">Carpentry</option>
+          <option value="general renovation">General Renovation</option>
+        </select>
+      </label>
+
+      <label style={{ marginTop: 12, display: "block" }}>
+        Job State
+        <select
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+          style={{ width: "100%", padding: 10, marginTop: 6 }}
+        >
+          <option value="">Select state</option>
+          <option value="CA">California</option>
+          <option value="TX">Texas</option>
+          <option value="FL">Florida</option>
+          <option value="NY">New York</option>
+        </select>
+      </label>
+
       <textarea
         placeholder="Describe the scope change…"
         value={scopeChange}
         onChange={(e) => setScopeChange(e.target.value)}
-        style={{ width: "100%", height: 120 }}
+        style={{ width: "100%", height: 120, marginTop: 12 }}
       />
 
       <button
         onClick={generate}
-        disabled={locked || loading || !scopeChange.trim()}
+        disabled={loading || !scopeChange.trim()}
         style={{
           width: "100%",
           padding: 12,
           marginTop: 12,
-          background: locked ? "#ccc" : "#000",
+          background: "#000",
           color: "#fff",
-          border: "none",
           borderRadius: 8,
         }}
       >
-        {loading
-          ? "Generating pricing and scope…"
-          : "Generate Change Order / Estimate"}
+        {loading ? "Generating…" : "Generate Change Order / Estimate"}
       </button>
 
       {locked && (
         <button
           onClick={upgrade}
-          style={{ width: "100%", marginTop: 12, padding: 12 }}
+          style={{ width: "100%", marginTop: 12 }}
         >
           Upgrade for Unlimited Access
         </button>
@@ -287,38 +342,13 @@ export default function Home() {
 
       {result && (
         <>
-          <h3 style={{ marginTop: 24 }}>
-            Pricing (Editable)
-          </h3>
-
-          {["labor", "materials", "subs", "markup"].map((k) => (
-            <input
-              key={k}
-              type="number"
-              value={(pricing as any)[k]}
-              onChange={(e) =>
-                setPricing({ ...pricing, [k]: Number(e.target.value) })
-              }
-              style={{ width: "100%", padding: 8, marginBottom: 8 }}
-            />
-          ))}
-
-          <p>
-            <strong>Total: ${pricing.total}</strong>
-          </p>
-
+          <h3 style={{ marginTop: 24 }}>Pricing</h3>
+          <p><strong>Total: ${pricing.total}</strong></p>
           <button onClick={downloadPDF}>Download PDF</button>
         </>
       )}
 
-      <p
-        style={{
-          marginTop: 40,
-          fontSize: 12,
-          color: "#888",
-          textAlign: "center",
-        }}
-      >
+      <p style={{ marginTop: 40, fontSize: 12, color: "#888", textAlign: "center" }}>
         Secure payments powered by Stripe.
       </p>
     </main>
