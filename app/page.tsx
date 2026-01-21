@@ -138,10 +138,11 @@ async function generate() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        scopeChange,
-        trade,
-        state,
-      }),
+  email,
+  scopeChange,
+  trade,
+  state,
+})
     })
 
     if (!res.ok) {

@@ -1,21 +1,35 @@
 import { NextResponse } from "next/server"
 import OpenAI from "openai"
+import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
 
 // -----------------------------
-// ENV VALIDATION (HARD FAIL)
+// ENV VALIDATION
 // -----------------------------
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error("OPENAI_API_KEY is missing")
-}
+if (!process.env.OPENAI_API_KEY)
+  throw new Error("OPENAI_API_KEY missing")
 
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL)
+  throw new Error("NEXT_PUBLIC_SUPABASE_URL missing")
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
+  throw new Error("SUPABASE_SERVICE_ROLE_KEY missing")
+
+// -----------------------------
+// CLIENTS
+// -----------------------------
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
 // -----------------------------
-// TYPES (UI-ALIGNED)
+// TYPES
 // -----------------------------
 type Pricing = {
   labor: number
@@ -57,7 +71,7 @@ function clampPricing(pricing: Pricing): Pricing {
   }
 }
 
-// 🔍 Trade auto-detection (only if user didn't choose)
+// 🔍 Trade auto-detection
 function autoDetectTrade(scope: string): string {
   const s = scope.toLowerCase()
 
@@ -74,12 +88,12 @@ function autoDetectTrade(scope: string): string {
   return "general renovation"
 }
 
-// 🧠 Estimate vs Change Order hinting (soft guidance)
-function detectDocumentIntent(scope: string): string {
+// 🧠 Estimate vs Change Order intent hint (soft guidance)
+function detectIntent(scope: string): string {
   const s = scope.toLowerCase()
 
   if (
-    /(per original contract|additional work|change order|not included|modify|revision)/.test(
+    /(change order|additional work|not included|modify|revision|per original contract)/.test(
       s
     )
   ) {
@@ -87,7 +101,7 @@ function detectDocumentIntent(scope: string): string {
   }
 
   if (
-    /(new work|estimate|proposal|pricing for|quote|anticipated work)/.test(s)
+    /(estimate|proposal|pricing for|quote|new work|anticipated work)/.test(s)
   ) {
     return "Likely an Estimate"
   }
@@ -102,6 +116,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
 
+    const email = body.email
     const scopeChange = body.scopeChange
     const uiTrade = typeof body.trade === "string" ? body.trade.trim() : ""
     const state =
@@ -109,25 +124,47 @@ export async function POST(req: Request) {
         ? body.state
         : "United States"
 
+    // -----------------------------
+    // BASIC VALIDATION
+    // -----------------------------
+    if (!email || typeof email !== "string") {
+      return NextResponse.json({ error: "Email required" }, { status: 401 })
+    }
+
     if (!scopeChange || typeof scopeChange !== "string") {
       return NextResponse.json(
-        { error: "Missing or invalid scopeChange" },
+        { error: "Invalid scopeChange" },
         { status: 400 }
       )
     }
 
-    const trade = uiTrade || autoDetectTrade(scopeChange)
-    const intentHint = detectDocumentIntent(scopeChange)
+    // -----------------------------
+    // ENTITLEMENT CHECK (PAID USERS ONLY)
+    // Free users are handled client-side
+    // -----------------------------
+    const { data: entitlement } = await supabase
+      .from("entitlements")
+      .select("active")
+      .eq("email", email)
+      .single()
+
+    const isPaid = entitlement?.active === true
 
     // -----------------------------
-    // AI PROMPT (STRICT JSON ONLY)
+    // TRADE + INTENT
+    // -----------------------------
+    const trade = uiTrade || autoDetectTrade(scopeChange)
+    const intentHint = detectIntent(scopeChange)
+
+    // -----------------------------
+    // AI PROMPT (UPGRADED & SAFE)
     // -----------------------------
     const prompt = `
 You are an expert U.S. construction estimator and licensed project manager.
 
 Your task is to generate a professional construction document that may be either:
-- A Change Order (for work modifying an existing contract), OR
-- An Estimate (for proposed or anticipated work)
+- A Change Order (modifying an existing contract), OR
+- An Estimate (proposed or anticipated work)
 
 PRE-ANALYSIS:
 ${intentHint}
@@ -140,25 +177,33 @@ SCOPE OF WORK:
 ${scopeChange}
 
 DOCUMENT RULES (CRITICAL):
-- If the scope modifies existing work → "Change Order"
-- If the scope proposes new work → "Estimate"
+- If modifying existing contract work → "Change Order"
+- If proposing new work → "Estimate"
 - If unclear → "Change Order / Estimate"
-- The opening sentence MUST explicitly state the document type
+- Opening sentence MUST clearly state document type
 - Use professional, contract-ready language
-- Be detailed and specific about the scope of work
-- Describe labor activities, materials, and intent clearly
-- Do NOT include disclaimers or markdown
-- Write 3–5 professional sentences describing the scope in detail
+- Describe labor activities, materials, preparation, and intent
+- Write 3–5 clear, detailed sentences
+- No disclaimers or markdown
 
 PRICING RULES:
 - Use realistic 2024–2025 U.S. contractor pricing
-- Adjust labor rates based on the job state
+- Adjust labor rates based on job state
 - Mid-market residential work
 - Totals only (no line items)
 - Round to whole dollars
 
+TRADE PRICING GUIDANCE:
+- Painting → labor-heavy, low materials
+- Flooring → materials + install labor
+- Electrical → high labor rate
+- Plumbing → skilled labor + fixtures
+- Tile → labor-intensive
+- Carpentry → balanced
+- General renovation → balanced
+
 MARKUP RULE:
-- Suggest a markup between 15–25%
+- Suggest markup between 15–25%
 
 OUTPUT FORMAT:
 Return ONLY valid JSON.
@@ -166,7 +211,7 @@ Return ONLY valid JSON.
 {
   "documentType": "Change Order | Estimate | Change Order / Estimate",
   "trade": "<confirmed trade>",
-  "description": "<professional description beginning with the document type>",
+  "description": "<professional description beginning with document type>",
   "pricing": {
     "labor": <number>,
     "materials": <number>,
@@ -177,6 +222,9 @@ Return ONLY valid JSON.
 }
 `
 
+    // -----------------------------
+    // OPENAI CALL
+    // -----------------------------
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.25,
@@ -194,7 +242,7 @@ Return ONLY valid JSON.
       !isValidPricing(parsed.pricing)
     ) {
       return NextResponse.json(
-        { error: "AI response schema invalid", parsed },
+        { error: "AI response invalid", parsed },
         { status: 500 }
       )
     }
@@ -207,10 +255,10 @@ Return ONLY valid JSON.
       text: parsed.description,
       pricing: safePricing,
     })
-  } catch (error) {
-    console.error("AI generation failed:", error)
+  } catch (err) {
+    console.error("Generate failed:", err)
     return NextResponse.json(
-      { error: "AI generation failed" },
+      { error: "Generation failed" },
       { status: 500 }
     )
   }
