@@ -401,12 +401,66 @@ async function generate() {
       )}
 
       {result && (
-        <>
-          <h3 style={{ marginTop: 24 }}>Pricing</h3>
-          <p><strong>Total: ${pricing.total}</strong></p>
-          <button onClick={downloadPDF}>Download PDF</button>
-        </>
-      )}
+  <>
+    <h3 style={{ marginTop: 24 }}>Pricing (Editable)</h3>
+
+    <label>
+      Labor
+      <input
+        type="number"
+        value={pricing.labor}
+        onChange={(e) =>
+          setPricing({ ...pricing, labor: Number(e.target.value) })
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+    </label>
+
+    <label>
+      Materials
+      <input
+        type="number"
+        value={pricing.materials}
+        onChange={(e) =>
+          setPricing({ ...pricing, materials: Number(e.target.value) })
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+    </label>
+
+    <label>
+      Subcontractors
+      <input
+        type="number"
+        value={pricing.subs}
+        onChange={(e) =>
+          setPricing({ ...pricing, subs: Number(e.target.value) })
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+    </label>
+
+    <label>
+      Markup (%)
+      <input
+        type="number"
+        value={pricing.markup}
+        onChange={(e) =>
+          setPricing({ ...pricing, markup: Number(e.target.value) })
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+    </label>
+
+    <p style={{ marginTop: 12 }}>
+      <strong>Total: ${pricing.total}</strong>
+    </p>
+
+    <button onClick={downloadPDF} style={{ marginTop: 8 }}>
+      Download PDF
+    </button>
+  </>
+)}
 
       <p style={{ marginTop: 40, fontSize: 12, color: "#888", textAlign: "center" }}>
         Secure payments powered by Stripe.
