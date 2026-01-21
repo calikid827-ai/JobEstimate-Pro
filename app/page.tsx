@@ -261,7 +261,18 @@ async function generate() {
         boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
       }}
     >
-      <h1>ScopeGuard</h1>
+     <h1 style={{ marginBottom: 4 }}>ScopeGuard</h1>
+<p
+  style={{
+    marginTop: 0,
+    marginBottom: 20,
+    fontSize: 15,
+    letterSpacing: "0.2px",
+    color: "#555",
+  }}
+>
+  Professional change orders & estimates — generated instantly.
+</p>
 
       {!paid && (
         <p>
