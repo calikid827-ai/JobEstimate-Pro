@@ -380,19 +380,18 @@ async function generate() {
       />
 
       <button
-        onClick={generate}
-        disabled={loading || !scopeChange.trim()}
-        style={{
-          width: "100%",
-          padding: 12,
-          marginTop: 12,
-          background: "#000",
-          color: "#fff",
-          borderRadius: 8,
-        }}
-      >
-        {loading ? "Generating…" : "Generate Change Order / Estimate"}
-      </button>
+  onClick={() => alert("CLICK WORKS")}
+  style={{
+    width: "100%",
+    padding: 12,
+    marginTop: 12,
+    background: "red",
+    color: "#fff",
+    borderRadius: 8,
+  }}
+>
+  CLICK TEST
+</button>
 
       {locked && (
         <button
