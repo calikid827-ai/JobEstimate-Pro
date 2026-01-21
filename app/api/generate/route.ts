@@ -106,14 +106,14 @@ DOCUMENT RULES (CRITICAL):
 - If unclear → "Change Order / Estimate"
 - The opening sentence MUST explicitly state the document type
 - Use professional, contract-ready language
-- Do NOT mention AI or assumptions
+- Do NOT include disclaimers, explanations, or markdown
 
 PRICING RULES:
 - Use realistic 2024–2025 U.S. contractor pricing
 - Adjust labor rates based on the job state
 - Mid-market residential work
 - Totals only (no line items)
-- Round all dollar values to whole numbers
+- Round to whole dollars
 
 TRADE PRICING GUIDANCE:
 - Painting → labor-heavy, low materials
@@ -144,19 +144,24 @@ Return ONLY valid JSON.
 }
 `
 
+    // -----------------------------
+    // OPENAI CALL (JSON ENFORCED)
+    // -----------------------------
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.25,
+      response_format: { type: "json_object" }, // 🔒 HARD JSON ENFORCEMENT
       messages: [{ role: "user", content: prompt }],
     })
 
     const raw = completion.choices[0]?.message?.content
     if (!raw) throw new Error("Empty AI response")
-console.log("RAW AI RESPONSE:", raw)
+
     let parsed: AIResponse
     try {
       parsed = JSON.parse(raw)
-    } catch {
+    } catch (err) {
+      console.error("Invalid JSON from AI:", raw)
       return NextResponse.json(
         { error: "AI returned invalid JSON", raw },
         { status: 500 }
@@ -167,15 +172,13 @@ console.log("RAW AI RESPONSE:", raw)
       typeof parsed.description !== "string" ||
       !isValidPricing(parsed.pricing)
     ) {
+      console.error("AI schema validation failed:", parsed)
       return NextResponse.json(
         { error: "AI response schema invalid", parsed },
         { status: 500 }
       )
     }
 
-    // -----------------------------
-    // SAFETY CLAMP
-    // -----------------------------
     const safePricing = clampPricing(parsed.pricing)
 
     // -----------------------------
