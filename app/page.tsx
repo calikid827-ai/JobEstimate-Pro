@@ -270,12 +270,23 @@ async function generate() {
       )}
 
       <input
-        type="email"
-        placeholder="Email used at checkout"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 8, marginBottom: 12 }}
-      />
+  type="email"
+  placeholder="Email used at checkout"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  style={{ width: "100%", padding: 8 }}
+/>
+
+<p
+  style={{
+    fontSize: 12,
+    color: "#666",
+    marginTop: 4,
+    marginBottom: 12,
+  }}
+>
+  Required to generate a change order or estimate.
+</p>
 
       <h3>Company Profile</h3>
       {["name", "address", "phone", "email"].map((f) => (
