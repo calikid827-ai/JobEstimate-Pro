@@ -1,26 +1,25 @@
-export const runtime = "nodejs"
-
 import Stripe from "stripe"
 import { NextResponse } from "next/server"
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+export const dynamic = "force-dynamic"
 
 export async function POST() {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-
-  if (!siteUrl) {
-    return NextResponse.json(
-      { error: "Missing NEXT_PUBLIC_SITE_URL" },
-      { status: 500 }
-    )
-  }
-
   try {
+    const secretKey = process.env.STRIPE_SECRET_KEY
+    const priceId = process.env.STRIPE_PRICE_ID
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+
+    if (!secretKey) throw new Error("STRIPE_SECRET_KEY missing")
+    if (!priceId) throw new Error("STRIPE_PRICE_ID missing")
+    if (!siteUrl) throw new Error("NEXT_PUBLIC_SITE_URL missing")
+
+    const stripe = new Stripe(secretKey)
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_ID!,
+          price: priceId,
           quantity: 1,
         },
       ],
