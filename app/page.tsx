@@ -100,6 +100,7 @@ export default function Home() {
       body: JSON.stringify({
   scopeChange,
   trade,
+  state,
 }),
     })
 
@@ -112,7 +113,7 @@ export default function Home() {
     const data = await res.json()
     setResult(data.text)
 if (data.pricing) setPricing(data.pricing)
-if (data.trade) setTrade(data.trade)
+if (!trade && data.trade) setTrade(data.trade)
 
     setLoading(false)
     setStatus("")
@@ -249,7 +250,6 @@ if (data.trade) setTrade(data.trade)
 <label style={{ display: "block", marginTop: 16 }}>
   Trade Type
 </label>
-
 <select
   value={trade}
   onChange={(e) => setTrade(e.target.value)}
@@ -261,15 +261,16 @@ if (data.trade) setTrade(data.trade)
     marginBottom: 12,
   }}
 >
-  <option value="">Select trade</option>
+  <option value="">Auto-detect trade</option>
   <option value="painting">Painting</option>
   <option value="flooring">Flooring</option>
   <option value="electrical">Electrical</option>
   <option value="plumbing">Plumbing</option>
   <option value="tile">Tile / Bathroom</option>
   <option value="carpentry">Carpentry</option>
-  <option value="general">General Renovation</option>
+  <option value="general renovation">General Renovation</option>
 </select>
+
 
 {trade && (
   <p style={{ color: "#555", marginBottom: 12 }}>
@@ -312,25 +313,7 @@ if (data.trade) setTrade(data.trade)
           marginTop: 8,
         }}
       />
-      <select
-  value={trade}
-  onChange={(e) => setTrade(e.target.value)}
-  style={{
-    width: "100%",
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 6,
-    border: "1px solid #ccc",
-  }}
->
-  <option value="">Auto-detect trade (recommended)</option>
-  <option value="painting">Painting</option>
-  <option value="flooring">Flooring</option>
-  <option value="electrical">Electrical</option>
-  <option value="plumbing">Plumbing</option>
-  <option value="tile">Tile</option>
-  <option value="general renovation">General Renovation</option>
-</select>
+     
 
       <button
         onClick={generate}
@@ -366,17 +349,6 @@ if (data.trade) setTrade(data.trade)
     <h3 style={{ marginBottom: 8 }}>Generated Change Order</h3>
     {result}
   </div>
-)}
-      {trade && (
-  <p
-    style={{
-      color: "#555",
-      marginTop: 12,
-      fontSize: 14,
-    }}
-  >
-    Detected Trade: <strong>{trade}</strong>
-  </p>
 )}
 
       {status && (

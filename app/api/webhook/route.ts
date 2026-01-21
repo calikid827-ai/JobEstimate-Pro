@@ -1,7 +1,10 @@
-import { NextResponse } from "next/server"
 import Stripe from "stripe"
+import { NextResponse } from "next/server"
 
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
 
 export async function POST(req: Request) {
   const sig = req.headers.get("stripe-signature")
@@ -13,47 +16,33 @@ export async function POST(req: Request) {
     )
   }
 
-  const body = await req.text()
-
-  const secretKey = process.env.STRIPE_SECRET_KEY
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-
-  if (!secretKey || !webhookSecret) {
-    console.error("Stripe env vars missing")
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 500 }
-    )
-  }
-
-  const stripe = new Stripe(secretKey)
-
   let event: Stripe.Event
 
   try {
+    // ⚠️ MUST be raw text
+    const body = await req.text()
+
     event = stripe.webhooks.constructEvent(
       body,
       sig,
-      webhookSecret
+      process.env.STRIPE_WEBHOOK_SECRET!
     )
   } catch (err: any) {
     console.error("❌ Webhook signature verification failed:", err.message)
     return NextResponse.json(
-      { error: "Webhook signature verification failed" },
+      { error: "Invalid signature" },
       { status: 400 }
     )
   }
 
-  // ✅ Handle events
+  // ✅ Handle event
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session
-
     console.log("✅ Payment successful:", session.id)
 
-    // 🔒 FUTURE (recommended):
-    // - Mark user as paid in DB
-    // - Attach Stripe customer ID
-    // - Persist entitlement instead of localStorage
+    // FUTURE:
+    // persist user entitlement in DB
+    // mark account as paid
   }
 
   return NextResponse.json({ received: true })
