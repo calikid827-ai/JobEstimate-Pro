@@ -26,6 +26,7 @@ type Pricing = {
 }
 
 type AIResponse = {
+  documentType: "Change Order" | "Estimate" | "Change Order / Estimate"
   trade: string
   description: string
   pricing: Pricing
@@ -86,90 +87,61 @@ export async function POST(req: Request) {
     const prompt = `
 You are an expert U.S. construction estimator and licensed project manager.
 
-Your task is to:
-1) Write a professional construction Change Order / Estimate description suitable for contractor-client use.
-2) Generate realistic cost estimates appropriate for the trade and job location
+Your task is to generate a professional construction document that may be either:
+- A Change Order (for work modifying an existing contract), OR
+- An Estimate (for proposed or anticipated work)
+
+You must determine which label is most appropriate based on the scope.
 
 INPUTS:
-- Trade Type (authoritative if provided): ${trade || "auto-detect"}
-- Job State: ${state || "United States (national average pricing)"}
+- Trade Type: ${trade}
+- Job State: ${state}
 
-SCOPE OF CHANGE:
+SCOPE OF WORK:
 ${scopeChange}
 
-────────────────────────────────────────
-CRITICAL RULES (FOLLOW STRICTLY)
-────────────────────────────────────────
-DOCUMENT INTENT:
-- The document must be suitable for use as either:
-  • A pre-construction estimate, OR
-  • A post-contract change order
-- Do NOT state whether the document is binding
-- Use neutral professional construction language
-
-TRADE DETECTION:
-- If Trade Type is provided by the user, you MUST use it
-- If Trade Type is "auto-detect":
-  - You MUST infer the correct trade from the scope
-  - Do NOT default to "general renovation" unless multiple unrelated trades are involved
-  - If the scope clearly matches one trade, you MUST select that trade
-
-KEYWORD GUIDANCE:
-- Painting → paint, repaint, walls, ceilings, trim, drywall patch, primer
-- Flooring → flooring, LVP, hardwood, tile floor, remove carpet
-- Electrical → outlets, lighting, wiring, panel, switches
-- Plumbing → plumbing, fixtures, sinks, toilets, piping
-- Tile / Bathroom → tile, shower, backsplash, waterproofing
-- Carpentry → framing, trim, doors, cabinetry
-- General renovation → only if multiple trades are involved
+DOCUMENT RULES (CRITICAL):
+- If the scope modifies existing work → "Change Order"
+- If the scope proposes new work → "Estimate"
+- If unclear → "Change Order / Estimate"
+- The opening sentence MUST explicitly state the document type
+- Use professional, contract-ready language
 
 PRICING RULES:
-- Use realistic 2024–2025 U.S. residential contractor pricing
-- Adjust LABOR rates based on Job State:
-  - High-cost states (CA, NY, WA, MA): higher labor
-  - Mid-cost states (TX, FL, CO, AZ): national average
-  - Lower-cost states: slightly reduced labor
-- Do NOT invent detailed line items
-- Return TOTALS ONLY (editable by contractor)
-- Round all dollar amounts to whole numbers
+- Use realistic 2024–2025 U.S. contractor pricing
+- Adjust labor rates based on the job state
+- Mid-market residential work
+- Totals only (no line items)
+- Round to whole dollars
 
-TRADE COST CHARACTERISTICS:
+TRADE PRICING GUIDANCE:
 - Painting → labor-heavy, low materials
 - Flooring → materials + install labor
-- Electrical → high labor, code compliance
+- Electrical → high labor rate
 - Plumbing → skilled labor + fixtures
-- Tile / Bathroom → labor-intensive, material waste
-- Carpentry → balanced labor + materials
-- General renovation → balanced estimate
+- Tile → labor-intensive with waste
+- Carpentry → balanced
+- General renovation → balanced
 
-MARKUP:
-- Suggest a reasonable contractor markup between 15%–25%
+MARKUP RULE:
+- Suggest a markup between 15–25%
 
-────────────────────────────────────────
-OUTPUT FORMAT (JSON ONLY — NO EXTRA TEXT)
-────────────────────────────────────────
-
-Return ONLY valid JSON in this exact structure:
+OUTPUT FORMAT:
+Return ONLY valid JSON.
 
 {
-  "trade": "<final detected or confirmed trade>",
-  "description": "<professional contract-ready change order description>",
+  "documentType": "Change Order | Estimate | Change Order / Estimate",
+  "trade": "<confirmed trade>",
+  "description": "<professional description beginning with the document type>",
   "pricing": {
     "labor": <number>,
     "materials": <number>,
     "subs": <number>,
-    "markup": <percentage number>,
+    "markup": <number>,
     "total": <number>
   }
 }
-
-IMPORTANT:
-- Description must read like a real construction contract
-- Do NOT include disclaimers
-- Do NOT include explanations
-- Do NOT include markdown
-- JSON must be parseable without modification
-`;
+`
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -178,20 +150,12 @@ IMPORTANT:
     })
 
     const raw = completion.choices[0]?.message?.content
+    if (!raw) throw new Error("Empty AI response")
 
-    if (!raw) {
-      throw new Error("Empty AI response")
-    }
-
-    // -----------------------------
-    // PARSE & VALIDATE JSON
-    // -----------------------------
     let parsed: AIResponse
-
     try {
       parsed = JSON.parse(raw)
-    } catch (err) {
-      console.error("AI returned invalid JSON:", raw)
+    } catch {
       return NextResponse.json(
         { error: "AI returned invalid JSON", raw },
         { status: 500 }
@@ -202,25 +166,17 @@ IMPORTANT:
       typeof parsed.description !== "string" ||
       !isValidPricing(parsed.pricing)
     ) {
-      console.error("AI schema validation failed:", parsed)
       return NextResponse.json(
         { error: "AI response schema invalid", parsed },
         { status: 500 }
       )
     }
 
-    // -----------------------------
-    // SAFETY CLAMPS
-    // -----------------------------
-    const safePricing = clampPricing(parsed.pricing)
-
-    // -----------------------------
-    // FINAL RESPONSE (UI-READY)
-    // -----------------------------
     return NextResponse.json({
+      documentType: parsed.documentType,
       trade: parsed.trade || trade,
       text: parsed.description,
-      pricing: safePricing,
+      pricing: clampPricing(parsed.pricing),
     })
   } catch (error) {
     console.error("AI generation failed:", error)
