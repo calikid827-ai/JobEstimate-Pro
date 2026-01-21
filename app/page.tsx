@@ -33,6 +33,7 @@ export default function Home() {
   const [scopeChange, setScopeChange] = useState("")
   const [result, setResult] = useState("")
   const [trade, setTrade] = useState("")
+  const [state, setState] = useState("")
   const [pricing, setPricing] = useState({
     labor: 0,
     materials: 0,
@@ -99,6 +100,7 @@ export default function Home() {
       body: JSON.stringify({
   scopeChange,
   trade,
+  state,
 }),
     })
 
@@ -275,6 +277,32 @@ if (data.trade) setTrade(data.trade)
     Detected Trade: <strong>{trade}</strong>
   </p>
 )}
+<label style={{ display: "block", marginTop: 12 }}>
+  Job State
+  <select
+    value={state}
+    onChange={(e) => setState(e.target.value)}
+    style={{
+      width: "100%",
+      padding: 10,
+      marginTop: 6,
+      borderRadius: 6,
+      border: "1px solid #ccc",
+    }}
+  >
+    <option value="">Select state</option>
+    <option value="CA">California</option>
+    <option value="TX">Texas</option>
+    <option value="FL">Florida</option>
+    <option value="NY">New York</option>
+    <option value="AZ">Arizona</option>
+    <option value="WA">Washington</option>
+    <option value="CO">Colorado</option>
+    <option value="GA">Georgia</option>
+    <option value="IL">Illinois</option>
+    <option value="NC">North Carolina</option>
+  </select>
+</label>
       <textarea
         placeholder="Describe the scope change…"
         value={scopeChange}

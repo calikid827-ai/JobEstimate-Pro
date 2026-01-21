@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { scopeChange, trade } = await req.json()
+    const { scopeChange, trade, state } = await req.json()
 
     if (!scopeChange) {
       return NextResponse.json(
@@ -17,24 +17,32 @@ export async function POST(req: Request) {
     }
 
     const prompt = `
-You are an expert U.S. construction estimator and project manager.
+You are an expert U.S. construction estimator.
+
+Job Location:
+State: ${state || "national average"}
 
 Trade Type: ${trade || "general renovation"}
 
-Use realistic U.S. renovation pricing based on the trade.
+Apply realistic labor rates by state:
 
-Pricing guidance:
+Labor rate guidance:
+- California / New York / Washington: very high labor costs
+- Texas / Arizona / Florida: moderate labor costs
+- Midwest / Southeast: lower labor costs
+
+Pricing guidance by trade:
 - Painting: labor-heavy, low materials
 - Flooring: materials + install labor
-- Electrical: high labor rate, code compliance
+- Electrical: high hourly labor, licensed work
 - Plumbing: skilled labor + fixtures
-- Tile: labor-intensive with material waste
+- Tile: labor-intensive with waste factor
 - General renovation: balanced estimate
 
 Scope of Change:
 ${scopeChange}
 
-Return ONLY valid JSON in the following format:
+Return ONLY valid JSON:
 
 {
   "description": "Professional written change order text",
@@ -48,9 +56,10 @@ Return ONLY valid JSON in the following format:
 }
 
 Rules:
-- All numbers must be realistic USD estimates
-- Do not include any text outside the JSON
+- All pricing must reflect the job state
+- Numbers must be realistic USD estimates
 - Do not include currency symbols
+- Do not include any text outside JSON
 `
 
     const completion = await openai.chat.completions.create({
