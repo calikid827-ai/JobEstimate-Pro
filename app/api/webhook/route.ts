@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(
       body,
       sig,
-      STRIPE_WEBHOOK_SECRET
+      STRIPE_WEBHOOK_SECRET!
     )
     console.log("✅ Event verified:", event.type)
   } catch (err: any) {
