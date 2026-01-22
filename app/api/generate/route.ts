@@ -300,6 +300,69 @@ if (!allowedTypes.includes(normalized.documentType)) {
   )
 }
 
+// -----------------------------
+// PRICING REALISM v2 (MARKET-ANCHORED)
+// -----------------------------
+const p = normalized.pricing
+
+// ---- Markup realism (true contractor ranges) ----
+if (p.markup < 12) p.markup = 15
+if (p.markup > 30) p.markup = 25
+
+// ---- Labor vs material ratios by trade ----
+switch (trade) {
+  case "painting":
+    // 65–80% labor typical
+    if (p.materials > p.labor * 0.5) {
+      p.materials = Math.round(p.labor * 0.35)
+    }
+    break
+
+  case "flooring":
+  case "tile":
+    // Materials often equal or exceed labor, but not wildly
+    if (p.materials < p.labor * 0.6) {
+      p.materials = Math.round(p.labor * 0.8)
+    }
+    if (p.materials > p.labor * 1.8) {
+      p.materials = Math.round(p.labor * 1.4)
+    }
+    break
+
+  case "electrical":
+  case "plumbing":
+    // Skilled labor dominant
+    if (p.materials > p.labor * 0.75) {
+      p.materials = Math.round(p.labor * 0.5)
+    }
+    break
+
+  case "carpentry":
+  case "general renovation":
+    // Balanced trades
+    if (p.materials < p.labor * 0.4) {
+      p.materials = Math.round(p.labor * 0.6)
+    }
+    break
+}
+
+// ---- Subs realism ----
+// Subs usually appear only on larger scopes
+const base = p.labor + p.materials
+if (p.subs > base * 0.5) {
+  p.subs = Math.round(base * 0.3)
+}
+
+// ---- Total sanity (protect against AI math drift) ----
+const impliedTotal =
+  p.labor + p.materials + p.subs +
+  Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
+
+// If AI total is off by more than ±20%, snap to implied
+if (Math.abs(p.total - impliedTotal) / impliedTotal > 0.2) {
+  p.total = impliedTotal
+}
+
     const safePricing = clampPricing(normalized.pricing)
 
     // Increment usage for free users only
