@@ -17,11 +17,9 @@ export async function POST() {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      customer_creation: "always", // ✅ creates Stripe customer
       line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
+        { price: priceId, quantity: 1 },
       ],
       success_url: `${siteUrl}/success`,
       cancel_url: `${siteUrl}/cancel`,
