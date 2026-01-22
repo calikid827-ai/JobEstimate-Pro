@@ -215,6 +215,25 @@ DOCUMENT RULES (CRITICAL):
 - Write 3–5 clear, detailed sentences
 - No disclaimers or markdown
 
+DOCUMENT-TYPE TONE RULES (VERY IMPORTANT):
+
+If documentType is "Change Order":
+- Reference existing contract or original scope implicitly
+- Clearly indicate work is additional, revised, or not previously included
+- Use firm, contractual language (e.g., "This Change Order covers…")
+- Assume work will be executed upon approval
+
+If documentType is "Estimate":
+- Frame work as proposed or anticipated
+- Avoid implying an existing contract
+- Use conditional language (e.g., "This Estimate outlines the proposed scope…")
+- Position pricing as preliminary but professional (no disclaimers)
+
+If documentType is "Change Order / Estimate":
+- Use neutral language that could apply in either context
+- Avoid firm contractual assumptions
+- Clearly describe scope without asserting approval status
+
 ADVANCED DESCRIPTION RULES:
 - Reference existing conditions where applicable (e.g., "existing finishes", "current layout")
 - Clarify whether work is additive, corrective, or preparatory
