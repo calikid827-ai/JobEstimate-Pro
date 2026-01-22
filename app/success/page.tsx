@@ -1,8 +1,23 @@
 "use client"
 
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 
 export default function SuccessPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    async function syncAndReturn() {
+      // Sync entitlement after successful Stripe checkout
+      await fetch("/api/entitlement")
+      // Redirect home and prevent back-button loop
+      router.replace("/")
+    }
+
+    syncAndReturn()
+  }, [router])
+
   return (
     <main
       style={{
