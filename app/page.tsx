@@ -85,6 +85,8 @@ export default function Home() {
     total: 0,
   })
 
+  const [pricingAdjusted, setPricingAdjusted] = useState(false)
+
   const [count, setCount] = useState(0)
   const [status, setStatus] = useState("")
   const [loading, setLoading] = useState(false)
@@ -132,6 +134,7 @@ async function generate() {
   setLoading(true)
   setStatus("Generating professional document…")
   setResult("")
+  setPricingAdjusted(false)
 
   try {
     const res = await fetch("/api/generate", {
@@ -226,6 +229,8 @@ async function generate() {
             <p>Markup: ${pricing.markup}%</p>
             <strong>Total: $${pricing.total}</strong>
           </div>
+
+          ${pricingAdjusted ? "<p class='muted'>Pricing adjusted after AI generation.</p>" : ""}
 
           <div class="sign">
             <div>
@@ -473,7 +478,30 @@ async function generate() {
 
       {result && (
   <>
-    <h3 style={{ marginTop: 24 }}>Pricing (Editable)</h3>
+    <h3
+  style={{
+    marginTop: 24,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  }}
+>
+  Pricing (Editable)
+
+  {pricingAdjusted && (
+    <div
+      style={{
+        padding: "4px 8px",
+        fontSize: 12,
+        borderRadius: 6,
+        background: "#edf2f7",
+        color: "#4a5568",
+      }}
+    >
+      Adjusted
+    </div>
+  )}
+</h3>
 
     <label>
       Labor
@@ -486,6 +514,7 @@ async function generate() {
       ...pricing,
       labor: val === "" ? 0 : Number(val),
     })
+    setPricingAdjusted(true)
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
@@ -494,13 +523,18 @@ async function generate() {
     <label>
       Materials
       <input
-        type="number"
-        value={pricing.materials}
-        onChange={(e) =>
-          setPricing({ ...pricing, materials: Number(e.target.value) })
-        }
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
-      />
+  type="number"
+  value={pricing.materials === 0 ? "" : pricing.materials}
+  onChange={(e) => {
+    const val = e.target.value
+    setPricing({
+      ...pricing,
+      materials: val === "" ? 0 : Number(val),
+    })
+    setPricingAdjusted(true)
+  }}
+  style={{ width: "100%", padding: 8, marginBottom: 8 }}
+/>
     </label>
 
     <label>
@@ -514,6 +548,7 @@ async function generate() {
       ...pricing,
       subs: val === "" ? 0 : Number(val),
     })
+    setPricingAdjusted(true)
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
@@ -530,6 +565,7 @@ async function generate() {
       ...pricing,
       markup: val === "" ? 0 : Number(val),
     })
+    setPricingAdjusted(true)
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
