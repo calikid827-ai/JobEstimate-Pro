@@ -363,6 +363,47 @@ if (Math.abs(p.total - impliedTotal) / impliedTotal > 0.2) {
   p.total = impliedTotal
 }
 
+// -----------------------------
+// PRICING REALISM v3 — STATE LABOR MULTIPLIER
+// -----------------------------
+
+const STATE_ABBREVIATIONS: Record<string, string> = {
+  California: "CA",
+  NewYork: "NY",
+  Texas: "TX",
+  Florida: "FL",
+  Washington: "WA",
+  Massachusetts: "MA",
+  NewJersey: "NJ",
+  Colorado: "CO",
+  Arizona: "AZ",
+}
+
+const STATE_LABOR_MULTIPLIER: Record<string, number> = {
+  CA: 1.25,
+  NY: 1.22,
+  NJ: 1.20,
+  MA: 1.18,
+  WA: 1.15,
+  CO: 1.12,
+  TX: 1.05,
+  FL: 1.03,
+  AZ: 1.02,
+}
+
+const stateKey =
+  STATE_ABBREVIATIONS[jobState.replace(/\s/g, "")] ?? jobState
+
+const stateMultiplier =
+  STATE_LABOR_MULTIPLIER[stateKey as keyof typeof STATE_LABOR_MULTIPLIER] ?? 1
+
+p.labor = Math.round(p.labor * stateMultiplier)
+
+// Recalculate total after labor adjustment
+p.total =
+  p.labor + p.materials + p.subs +
+  Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
+
     const safePricing = clampPricing(normalized.pricing)
 
     // Increment usage for free users only
