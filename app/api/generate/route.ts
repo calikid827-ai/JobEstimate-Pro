@@ -209,7 +209,7 @@ DOCUMENT RULES (CRITICAL):
 - If modifying existing contract work → "Change Order"
 - If proposing new work → "Estimate"
 - If unclear → "Change Order / Estimate"
-- Opening sentence MUST clearly state document type
+- The opening sentence must begin with “This Change Order…” or “This Estimate…” and clearly identify the nature of the work
 - Use professional, contract-ready language
 - Describe labor activities, materials, preparation, and intent
 - Write 3–5 clear, detailed sentences
@@ -221,7 +221,7 @@ If documentType is "Change Order":
 - Reference existing contract or original scope implicitly
 - Clearly indicate work is additional, revised, or not previously included
 - Use firm, contractual language (e.g., "This Change Order covers…")
-- Assume work will be executed upon approval
+- Frame the scope as authorized upon approval, without conditional or speculative language
 
 If documentType is "Estimate":
 - Frame work as proposed or anticipated
@@ -240,7 +240,8 @@ ADVANCED DESCRIPTION RULES:
 - Tie scope to client request or site conditions when possible
 - Use neutral, professional contract language (not sales copy)
 - Avoid vague phrases like "as needed" or "where required"
-- Imply scope boundaries without listing exclusions explicitly
+- Avoid generic filler phrases such as “ensure a professional finish” or “industry standards”
+- Imply scope boundaries without listing exclusions explicitlys
 
 PRICING RULES:
 - Use realistic 2024–2025 U.S. contractor pricing
