@@ -3,6 +3,7 @@ import OpenAI from "openai"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
 // -----------------------------
 // ENV VALIDATION
@@ -119,10 +120,7 @@ export async function POST(req: Request) {
     const email = body.email
     const scopeChange = body.scopeChange
     const uiTrade = typeof body.trade === "string" ? body.trade.trim() : ""
-    const state =
-      typeof body.state === "string" && body.state.trim()
-        ? body.state
-        : "United States"
+    const rawState = typeof body.state === "string" ? body.state.trim() : ""
 
     // -----------------------------
     // BASIC VALIDATION
@@ -139,8 +137,9 @@ export async function POST(req: Request) {
     }
 
     // -----------------------------
-    // ENTITLEMENT CHECK (PAID USERS ONLY)
-    // Free users are handled client-side
+    // ENTITLEMENT CHECK
+    // Paid users identified here
+    // Free users enforced client-side
     // -----------------------------
     const { data: entitlement } = await supabase
       .from("entitlements")
@@ -150,6 +149,14 @@ export async function POST(req: Request) {
 
     const isPaid = entitlement?.active === true
 
+    // Intentionally allow both paid and free users here
+    // Client handles free limits
+
+    // -----------------------------
+    // STATE NORMALIZATION
+    // -----------------------------
+    const jobState = rawState || "United States"
+
     // -----------------------------
     // TRADE + INTENT
     // -----------------------------
@@ -157,7 +164,7 @@ export async function POST(req: Request) {
     const intentHint = detectIntent(scopeChange)
 
     // -----------------------------
-    // AI PROMPT (UPGRADED & SAFE)
+    // AI PROMPT (PRODUCTION-LOCKED)
     // -----------------------------
     const prompt = `
 You are an expert U.S. construction estimator and licensed project manager.
@@ -171,7 +178,7 @@ ${intentHint}
 
 INPUTS:
 - Trade Type: ${trade}
-- Job State: ${state}
+- Job State: ${jobState}
 
 SCOPE OF WORK:
 ${scopeChange}
