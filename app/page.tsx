@@ -211,12 +211,30 @@ async function generate() {
   // Stripe upgrade
   // -------------------------
   async function upgrade() {
+  try {
     setStatus("Redirecting to secure checkout…")
-    const res = await fetch("/api/checkout", { method: "POST" })
+
+    const res = await fetch("/api/checkout", {
+      method: "POST",
+    })
+
+    if (!res.ok) {
+      throw new Error("Checkout request failed")
+    }
+
     const data = await res.json()
-    if (data.url) window.location.href = data.url
-    else setStatus("Checkout error.")
+
+    if (!data?.url) {
+      throw new Error("No checkout URL returned")
+    }
+
+    // 🔑 Force full-page navigation (bypasses React state re-renders)
+    window.location.assign(data.url)
+  } catch (err) {
+    console.error(err)
+    setStatus("Checkout error.")
   }
+}
 
   // -------------------------
   // PDF generation
