@@ -26,11 +26,14 @@ export async function POST() {
     })
 
     return NextResponse.json({ url: session.url })
-  } catch (err) {
-    console.error("Stripe checkout error:", err)
-    return NextResponse.json(
-      { error: "Stripe checkout failed" },
-      { status: 500 }
-    )
-  }
+  } catch (err: any) {
+  console.error("Stripe checkout error:", err)
+
+  return NextResponse.json(
+    {
+      error: err?.message || "Stripe checkout failed",
+      raw: err,
+    },
+    { status: 500 }
+  )
 }
