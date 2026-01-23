@@ -17,23 +17,23 @@ export async function POST() {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      customer_creation: "always",
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
       success_url: `${siteUrl}/success`,
       cancel_url: `${siteUrl}/cancel`,
     })
 
     return NextResponse.json({ url: session.url })
-  } catch (err: any) {
-  console.error("Stripe checkout error:", err)
+  } catch (err) {
+    console.error("Stripe checkout error:", err)
 
-  return NextResponse.json(
-    {
-      error: err.message,
-      type: err.type,
-      raw: err,
-    },
-    { status: 500 }
-  )
-}
+    return NextResponse.json(
+      { error: "Stripe checkout failed" },
+      { status: 500 }
+    )
+  }
 }
