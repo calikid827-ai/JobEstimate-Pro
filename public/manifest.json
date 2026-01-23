@@ -1,6 +1,6 @@
 {
-  "name": "ScopeGuard",
-  "short_name": "ScopeGuard",
+  "name": "JobEstimate Pro",
+"short_name": "JobEstimate Pro",
   "description": "AI-powered change order generator for contractors",
   "start_url": "/",
   "display": "standalone",

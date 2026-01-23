@@ -12,10 +12,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 })
 
-export const metadata: Metadata = {
-  title: "ScopeGuard",
-  description: "AI-powered change order generator for contractors",
-  manifest: "/manifest.json",
+export const metadata = {
+  title: {
+    default: "JobEstimate Pro",
+    template: "%s | JobEstimate Pro",
+  },
+  description: "Professional change orders & estimates — generated instantly.",
 }
 
 export const viewport = {
