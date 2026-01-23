@@ -6,21 +6,32 @@ export default function Home() {
   const FREE_LIMIT = 3
 
   // -------------------------
-  // Email (required for entitlement)
-  // -------------------------
-  const [email, setEmail] = useState("")
-  const [paid, setPaid] = useState(false)
+// Email (required for entitlement)
+// -------------------------
+const [email, setEmail] = useState("")
+const [paid, setPaid] = useState(false)
 
-  useEffect(() => {
-    const saved = localStorage.getItem("scopeguard_email")
-    if (saved) setEmail(saved)
-  }, [])
+const STORAGE_KEY = "jobestimatepro_email"
 
-  useEffect(() => {
-    if (email) {
-      localStorage.setItem("scopeguard_email", email)
-    }
-  }, [email])
+useEffect(() => {
+  // migrate old key once if it exists
+  const old = localStorage.getItem("scopeguard_email")
+  if (old) {
+    localStorage.setItem(STORAGE_KEY, old)
+    localStorage.removeItem("scopeguard_email")
+    setEmail(old)
+    return
+  }
+
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved) setEmail(saved)
+}, [])
+
+useEffect(() => {
+  if (email) {
+    localStorage.setItem(STORAGE_KEY, email)
+  }
+}, [email])
 
   useEffect(() => {
   if (!email) return
@@ -267,7 +278,7 @@ async function generate() {
         boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
       }}
     >
-     <h1 style={{ marginBottom: 4 }}>ScopeGuard</h1>
+     <h1 style={{ marginBottom: 4 }}>JobEstimate Pro</h1>
 <p
   style={{
     marginTop: 0,
