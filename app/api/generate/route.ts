@@ -132,6 +132,7 @@ function detectIntent(scope: string): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    const measurements = body.measurements ?? null
 
     const email = body.email
     const scopeChange = body.scopeChange
@@ -206,6 +207,23 @@ if (!isPaid && usageCount >= FREE_LIMIT) {
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
     // -----------------------------
+    const measurementSnippet =
+  measurements?.totalSqft && measurements.totalSqft > 0
+    ? `
+MEASUREMENTS (USER-PROVIDED):
+- Total area: ${measurements.totalSqft} sq ft
+- Areas:
+${(measurements.rows || [])
+  .map(
+    (r: any) =>
+      `  - ${r.label || "Area"}: ${Number(r.lengthFt || 0)}ft x ${Number(
+        r.heightFt || 0
+      )}ft x qty ${Number(r.qty || 1)}`
+  )
+  .join("\n")}
+`
+    : ""
+    
     const prompt = `
 You are an expert U.S. construction estimator and licensed project manager.
 
@@ -222,6 +240,8 @@ INPUTS:
 
 SCOPE OF WORK:
 ${scopeChange}
+
+${measurementSnippet}
 
 DOCUMENT RULES (CRITICAL):
 - If modifying existing contract work → "Change Order"
@@ -269,12 +289,22 @@ ADVANCED CONTRACT LANGUAGE ENHANCEMENTS (OPTIONAL BUT PREFERRED):
 - Where applicable, reference coordination with existing trades or finishes
 - Avoid repeating sentence structures across documents
 
+HARD STYLE RULE:
+- Do not use phrases like “ensure”, “industry standards”, “quality standards”, “compliance”, “durability”, or “aesthetic appeal”.
+- Replace them with concrete scope language (prep, masking, coatings, sequencing, protection, coordination).
+- If you accidentally use any banned phrase, rewrite that sentence using concrete scope language instead.
+
 PRICING RULES:
 - Use realistic 2024–2025 U.S. contractor pricing
 - Adjust labor rates based on job state
 - Mid-market residential work
 - Totals only (no line items)
 - Round to whole dollars
+
+MEASUREMENT USAGE RULE (STRICT):
+- If measurements are provided, reference the total square footage and (briefly) the labeled areas in the description.
+- Use the square footage to influence pricing realism (larger sqft → higher labor/materials).
+- If measurements are NOT provided, do NOT mention square footage, dimensions, or area estimates. Do not guess numbers.
 
 TRADE PRICING GUIDANCE:
 - Painting → labor-heavy, low materials
@@ -335,7 +365,7 @@ Rules:
 }
 
 // 🔒 Coerce AI pricing to numbers (prevents string math bugs)
-normalized.pricing = coercePricing(normalized.pricing)
+normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
 const allowedTypes = [
   "Change Order",

@@ -5,6 +5,28 @@ import { useEffect, useState } from "react"
 export default function Home() {
   const FREE_LIMIT = 3
 
+    // -------------------------
+  // Optional Measurements
+  // -------------------------
+  type MeasureRow = {
+    label: string
+    lengthFt: number
+    heightFt: number
+    qty: number
+  }
+
+  const [measureEnabled, setMeasureEnabled] = useState(false)
+
+  const [measureRows, setMeasureRows] = useState<MeasureRow[]>([
+    { label: "Area 1", lengthFt: 0, heightFt: 0, qty: 1 },
+  ])
+
+  const rowSqft = (r: MeasureRow) =>
+    Math.round((r.lengthFt || 0) * (r.heightFt || 0) * (r.qty || 1) * 10) / 10
+
+  const totalSqft =
+    Math.round(measureRows.reduce((sum, r) => sum + rowSqft(r), 0) * 10) / 10
+
   // -------------------------
 // Email (required for entitlement)
 // -------------------------
@@ -38,13 +60,19 @@ useEffect(() => {
 }, [email])
 
   async function checkEntitlementNow() {
-  if (!email) return
+  const e = email.trim().toLowerCase()
+  if (!e) return
 
   const res = await fetch("/api/entitlement", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    body: JSON.stringify({ email: e }),
   })
+
+  if (!res.ok) {
+    setPaid(false)
+    return
+  }
 
   const data = await res.json()
   setPaid(data?.entitled === true)
@@ -157,15 +185,22 @@ async function generate() {
 
   try {
     const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-  email,
-  scopeChange,
-  trade,
-  state,
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    email,
+    scopeChange,
+    trade,
+    state,
+    measurements: measureEnabled
+      ? {
+          rows: measureRows,
+          totalSqft,
+          units: "ft",
+        }
+      : null,
+  }),
 })
-    })
 
     if (!res.ok) {
       throw new Error("API error")
@@ -595,6 +630,157 @@ async function generate() {
         onChange={(e) => setScopeChange(e.target.value)}
         style={{ width: "100%", height: 120, marginTop: 12 }}
       />
+
+      <div
+  style={{
+    marginTop: 16,
+    padding: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    overflow: "visible",   // ✅ THIS LINE FIXES IT
+  }}
+>
+  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <input
+      type="checkbox"
+      checked={measureEnabled}
+      onChange={(e) => setMeasureEnabled(e.target.checked)}
+    />
+    <span style={{ fontWeight: 600 }}>Optional Measurements</span>
+    <span style={{ fontSize: 12, color: "#666" }}>(helps pricing + detail)</span>
+  </label>
+
+  {measureEnabled && (
+  <div
+  style={{
+    marginTop: 12,
+    overflowX: "auto",
+    overflowY: "visible",
+    padding: 4,
+  }}
+>
+      {measureRows.map((r, idx) => (
+        <div
+  key={idx}
+  style={{
+    display: "grid",
+    gridTemplateColumns:
+      "minmax(120px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) minmax(70px,0.8fr) minmax(80px,auto)",
+    gap: 10,           // ⬅️ slightly larger gap
+    alignItems: "center",
+    marginBottom: 12,
+  }}
+>
+          <input
+            value={r.label}
+            onChange={(e) => {
+              const next = [...measureRows]
+              next[idx] = { ...next[idx], label: e.target.value }
+              setMeasureRows(next)
+            }}
+            placeholder="Label (e.g., Wall A)"
+            style={{ padding: 8, outlineOffset: 2 }}
+          />
+
+          <input
+            type="number"
+            value={r.lengthFt === 0 ? "" : r.lengthFt}
+            onChange={(e) => {
+              const val = e.target.value === "" ? 0 : Number(e.target.value)
+              const next = [...measureRows]
+              next[idx] = { ...next[idx], lengthFt: val }
+              setMeasureRows(next)
+            }}
+            placeholder="Length (ft)"
+            style={{ padding: 8, outlineOffset: 2 }}
+          />
+
+          <input
+            type="number"
+            value={r.heightFt === 0 ? "" : r.heightFt}
+            onChange={(e) => {
+              const val = e.target.value === "" ? 0 : Number(e.target.value)
+              const next = [...measureRows]
+              next[idx] = { ...next[idx], heightFt: val }
+              setMeasureRows(next)
+            }}
+            placeholder="Height (ft)"
+            style={{ padding: 8, outlineOffset: 2 }}
+          />
+
+          <input
+            type="number"
+            value={r.qty}
+            min={1}
+            onChange={(e) => {
+              const val = e.target.value === "" ? 1 : Number(e.target.value)
+              const next = [...measureRows]
+              next[idx] = { ...next[idx], qty: Math.max(1, val) }
+              setMeasureRows(next)
+            }}
+            placeholder="Qty"
+            style={{ padding: 8, outlineOffset: 2 }}
+          />
+
+          <div style={{ fontSize: 13, color: "#333", textAlign: "right" }}>
+            <strong>{rowSqft(r)}</strong> sqft
+          </div>
+
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              justifyContent: "flex-end",
+            }}
+          >
+            {measureRows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = measureRows.filter((_, i) => i !== idx)
+                  setMeasureRows(next)
+                }}
+                style={{ fontSize: 12 }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() =>
+            setMeasureRows((rows) => [
+              ...rows,
+              {
+                label: `Area ${rows.length + 1}`,
+                lengthFt: 0,
+                heightFt: 0,
+                qty: 1,
+              },
+            ])
+          }
+        >
+          + Add another area
+        </button>
+
+        <div style={{ fontSize: 13 }}>
+          Total: <strong>{totalSqft}</strong> sqft
+        </div>
+      </div>
+    </div>
+  )}
+</div>
 
       <button
   type="button"
