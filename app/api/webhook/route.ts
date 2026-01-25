@@ -69,7 +69,7 @@ export async function POST(req: Request) {
   const { error } = await supabase
     .from("entitlements")
     .upsert(
-      { email, stripe_customer_id: customerId ?? null, active: true },
+      { email, stripe_customer_id: customerId ?? null, active: true, usage_count: 0 },
       { onConflict: "email" }
     )
 

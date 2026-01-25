@@ -342,14 +342,51 @@ Rules:
 `
 
     // -----------------------------
-    // OPENAI CALL
-    // -----------------------------
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.25,
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content: prompt }],
-    })
+// OPENAI CALL
+// -----------------------------
+let completion
+try {
+  completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.25,
+    response_format: { type: "json_object" },
+    messages: [{ role: "user", content: prompt }],
+  })
+} catch (err: any) {
+  // OpenAI SDK errors typically include: status, code, message
+  const status = err?.status
+  const code = err?.code
+
+  // Rate limit → return 429 to the client (so your UI shows “Too many requests…”)
+  if (status === 429 || code === "rate_limit_exceeded") {
+    const retryAfter =
+      err?.headers?.get?.("retry-after") ||
+      err?.headers?.["retry-after"] ||
+      null
+
+    return NextResponse.json(
+      {
+        error: "OpenAI rate limit exceeded",
+        retry_after: retryAfter,
+      },
+      { status: 429 }
+    )
+  }
+
+  // Auth/config issues
+  if (status === 401) {
+    return NextResponse.json(
+      { error: "OpenAI auth error (check API key)" },
+      { status: 500 }
+    )
+  }
+
+  console.error("OpenAI call failed:", err)
+  return NextResponse.json(
+    { error: "AI generation failed" },
+    { status: 500 }
+  )
+}
 
     const raw = completion.choices[0]?.message?.content
     if (!raw) throw new Error("Empty AI response")

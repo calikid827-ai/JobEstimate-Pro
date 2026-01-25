@@ -2,9 +2,20 @@ import Stripe from "stripe"
 import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const body = await req.json()
+    const email =
+      typeof body?.email === "string"
+        ? body.email.trim().toLowerCase()
+        : ""
+
+    if (!email) {
+      return NextResponse.json({ error: "Email required" }, { status: 400 })
+    }
+
     const secretKey = process.env.STRIPE_SECRET_KEY
     const priceId = process.env.STRIPE_PRICE_ID
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
@@ -17,12 +28,8 @@ export async function POST() {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      customer_email: email, // ✅ critical: locks checkout to the same email you use for entitlements
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${siteUrl}/success`,
       cancel_url: `${siteUrl}/cancel`,
     })
@@ -30,7 +37,6 @@ export async function POST() {
     return NextResponse.json({ url: session.url })
   } catch (err) {
     console.error("Stripe checkout error:", err)
-
     return NextResponse.json(
       { error: "Stripe checkout failed" },
       { status: 500 }

@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 export default function Home() {
   const FREE_LIMIT = 3
-
+  const generatingRef = useRef(false)
     // -------------------------
   // Optional Measurements
   // -------------------------
@@ -32,10 +32,11 @@ export default function Home() {
 // -------------------------
 const [email, setEmail] = useState("")
 const [paid, setPaid] = useState(false)
-
+const [remaining, setRemaining] = useState(FREE_LIMIT)
+const [showUpgrade, setShowUpgrade] = useState(false)
 const EMAIL_KEY = "jobestimatepro_email"
 const COMPANY_KEY = "jobestimatepro_company"
-const USAGE_KEY = "jobestimatepro_usage_count"
+
 
 useEffect(() => {
   // migrate old key once if it exists
@@ -71,12 +72,40 @@ useEffect(() => {
 
   if (!res.ok) {
     setPaid(false)
+    setRemaining(FREE_LIMIT)   // optional fallback
+    setShowUpgrade(false)      // optional fallback
     return
   }
 
   const data = await res.json()
-  setPaid(data?.entitled === true)
+
+  const entitled = data?.entitled === true
+  setPaid(entitled)
+
+  const used = typeof data?.usage_count === "number" ? data.usage_count : 0
+  const limit = typeof data?.free_limit === "number" ? data.free_limit : FREE_LIMIT
+
+  if (!entitled) {
+  const remainingNow = Math.max(0, limit - used)
+  setRemaining(remainingNow)
+  setShowUpgrade(remainingNow <= 0)
+} else {
+  setRemaining(FREE_LIMIT) // optional
+  setShowUpgrade(false)
 }
+}
+
+useEffect(() => {
+  const e = email.trim().toLowerCase()
+  if (!e) {
+    setPaid(false)
+    setRemaining(FREE_LIMIT)
+    setShowUpgrade(false)
+    return
+  }
+  checkEntitlementNow()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [email])
 
 
   // -------------------------
@@ -123,27 +152,17 @@ useEffect(() => {
     markup: 20,
     total: 0,
   })
-
+  
   const [pricingAdjusted, setPricingAdjusted] = useState(false)
-
-  const [count, setCount] = useState(0)
   const [status, setStatus] = useState("")
   const [loading, setLoading] = useState(false)
-
+  
+  
   useEffect(() => {
-  const old = localStorage.getItem("changeOrderCount")
-  if (old) {
-    localStorage.setItem(USAGE_KEY, old)
-    localStorage.removeItem("changeOrderCount")
-    setCount(Number(old))
-    return
-  }
+  if (paid) setShowUpgrade(false)
+}, [paid])
 
-  setCount(Number(localStorage.getItem(USAGE_KEY) || "0"))
-}, [])
 
-  const locked = !paid && count >= FREE_LIMIT
-  const remaining = Math.max(0, FREE_LIMIT - count)
 
   // -------------------------
   // Auto-calc total
@@ -166,44 +185,76 @@ useEffect(() => {
 // Generate AI document
 // -------------------------
 async function generate() {
-  console.log("🔥 Generate button clicked")
+  if (generatingRef.current) return
+  generatingRef.current = true
 
-  if (!email) {
-    setStatus("Please enter the email used at checkout.")
+  if (loading) {
+    generatingRef.current = false
     return
   }
 
-  if (locked) {
+  const e = email.trim().toLowerCase()
+  if (!e) {
+    setStatus("Please enter the email used at checkout.")
+    generatingRef.current = false
+    return
+  }
+
+  if (!scopeChange.trim()) {
+    setStatus("Please describe the scope change.")
+    generatingRef.current = false
+    return
+  }
+
+  if (!paid && remaining <= 0) {
     setStatus("Free limit reached. Please upgrade.")
+    setShowUpgrade(true)
+    generatingRef.current = false
     return
   }
 
   setLoading(true)
-  setStatus("Generating professional document…")
+  setStatus("") // prevents duplicate “Generating…” line
   setResult("")
   setPricingAdjusted(false)
 
   try {
     const res = await fetch("/api/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    email,
-    scopeChange,
-    trade,
-    state,
-    measurements: measureEnabled
-      ? {
-          rows: measureRows,
-          totalSqft,
-          units: "ft",
-        }
-      : null,
-  }),
-})
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: e,
+        scopeChange,
+        trade,
+        state,
+        measurements: measureEnabled
+          ? { rows: measureRows, totalSqft, units: "ft" }
+          : null,
+      }),
+    })
+
+    if (res.status === 403) {
+      setStatus("Free limit reached. Please upgrade.")
+      setShowUpgrade(true)
+      setRemaining(0)
+      return
+    }
+
+    if (res.status === 429) {
+      const payload = await res.json().catch(() => null)
+      const retry = payload?.retry_after
+      setStatus(
+        retry
+          ? `Too many requests. Try again later. (retry-after: ${retry}s)`
+          : "Too many requests. Please try again in a moment."
+      )
+      return
+    }
 
     if (!res.ok) {
-      throw new Error("API error")
+      const msg = await res.text().catch(() => "")
+      setStatus(`Server error (${res.status}). ${msg}`)
+      return
     }
 
     const data = await res.json()
@@ -212,33 +263,34 @@ async function generate() {
     if (data.pricing) setPricing(data.pricing)
     if (!trade && data.trade) setTrade(data.trade)
 
-    if (!paid) {
-      const newCount = count + 1
-      localStorage.setItem(
-  USAGE_KEY,
-  newCount.toString()
-)
-      setCount(newCount)
-    }
-
-    setStatus("")
+    await checkEntitlementNow()
   } catch (err) {
     console.error(err)
     setStatus("Error generating document.")
   } finally {
     setLoading(false)
+    generatingRef.current = false
   }
 }
 
   // -------------------------
-  // Stripe upgrade
-  // -------------------------
-  async function upgrade() {
+// Stripe upgrade
+// -------------------------
+async function upgrade() {
   try {
+    const e = email.trim().toLowerCase()
+
+    if (!e) {
+      setStatus("Please enter the email used at checkout.")
+      return
+    }
+
     setStatus("Redirecting to secure checkout…")
 
     const res = await fetch("/api/checkout", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: e }), // ✅ SEND EMAIL
     })
 
     if (!res.ok) {
@@ -251,7 +303,7 @@ async function generate() {
       throw new Error("No checkout URL returned")
     }
 
-    // 🔑 Force full-page navigation (bypasses React state re-renders)
+    // 🔑 Force full-page navigation
     window.location.assign(data.url)
   } catch (err) {
     console.error(err)
@@ -499,11 +551,19 @@ async function generate() {
   Professional change orders & estimates — generated instantly.
 </p>
 
-      {!paid && (
-        <p>
-          Free uses remaining: <strong>{remaining}</strong>
-        </p>
-      )}
+{!paid && (
+  <div style={{ marginBottom: 12 }}>
+    {remaining > 0 ? (
+      <p style={{ fontSize: 13, color: "#666", margin: 0 }}>
+        Free uses remaining: <strong>{remaining}</strong> / {FREE_LIMIT}
+      </p>
+    ) : (
+      <p style={{ fontSize: 13, color: "#c53030", margin: 0 }}>
+        Free uses are up. Upgrade for unlimited access.
+      </p>
+    )}
+  </div>
+)}
 
       <input
   type="email"
@@ -800,6 +860,11 @@ async function generate() {
 >
   {loading ? "Generating…" : "Generate Change Order / Estimate"}
 </button>
+{status && (
+  <p style={{ marginTop: 10, fontSize: 13, color: "#c53030" }}>
+    {status}
+  </p>
+)}
 
 {loading && (
   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
@@ -837,14 +902,15 @@ async function generate() {
   </div>
 )}
 
-      {locked && (
-        <button
-          onClick={upgrade}
-          style={{ width: "100%", marginTop: 12 }}
-        >
-          Upgrade for Unlimited Access
-        </button>
-      )}
+      {!paid && (showUpgrade || remaining <= 0) && (
+  <button
+    type="button"
+    onClick={upgrade}
+    style={{ width: "100%", marginTop: 12 }}
+  >
+    Upgrade for Unlimited Access
+  </button>
+)}
 
       {result && (
   <>

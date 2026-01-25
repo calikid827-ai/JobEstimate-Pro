@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
-// Env validation
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -12,50 +12,52 @@ if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY missi
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+const FREE_LIMIT = 3
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
-// ✅ GET /api/entitlement?email=someone@example.com
-export async function GET(req: Request) {
-  const url = new URL(req.url)
-  const emailParam = url.searchParams.get("email")
-
-  if (!emailParam) {
-    return NextResponse.json({ entitled: false }, { status: 400 })
-  }
-
-  const email = normalizeEmail(emailParam)
-
-  const { data, error } = await supabase
-    .from("entitlements")
-    .select("active")
-    .eq("email", email)
-    .maybeSingle()
-
-  if (error || !data) return NextResponse.json({ entitled: false })
-
-  return NextResponse.json({ entitled: data.active === true })
-}
-
 // ✅ POST { email: "someone@example.com" }
 export async function POST(req: Request) {
-  const body = await req.json()
-  const emailRaw = body?.email
+  try {
+    const body = await req.json()
+    const emailRaw = body?.email
 
-  if (!emailRaw || typeof emailRaw !== "string") {
-    return NextResponse.json({ entitled: false }, { status: 400 })
+    if (!emailRaw || typeof emailRaw !== "string") {
+      return NextResponse.json(
+        { entitled: false, usage_count: 0, free_limit: FREE_LIMIT },
+        { status: 400 }
+      )
+    }
+
+    const email = normalizeEmail(emailRaw)
+
+    const { data, error } = await supabase
+      .from("entitlements")
+      .select("active, usage_count")
+      .eq("email", email)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Entitlement lookup error:", error)
+      return NextResponse.json(
+        { entitled: false, usage_count: 0, free_limit: FREE_LIMIT },
+        { status: 500 }
+      )
+    }
+
+    // If no row yet, treat as not entitled + 0 used
+    const entitled = data?.active === true
+    const usage_count =
+      typeof data?.usage_count === "number" ? data.usage_count : 0
+
+    return NextResponse.json({ entitled, usage_count, free_limit: FREE_LIMIT })
+  } catch (err) {
+    console.error("Entitlement route failed:", err)
+    return NextResponse.json(
+      { entitled: false, usage_count: 0, free_limit: FREE_LIMIT },
+      { status: 500 }
+    )
   }
-
-  const email = normalizeEmail(emailRaw)
-
-  const { data, error } = await supabase
-    .from("entitlements")
-    .select("active")
-    .eq("email", email)
-    .maybeSingle()
-
-  if (error || !data) return NextResponse.json({ entitled: false })
-
-  return NextResponse.json({ entitled: data.active === true })
 }
