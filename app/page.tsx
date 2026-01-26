@@ -36,6 +36,16 @@ const [remaining, setRemaining] = useState(FREE_LIMIT)
 const [showUpgrade, setShowUpgrade] = useState(false)
 const EMAIL_KEY = "jobestimatepro_email"
 const COMPANY_KEY = "jobestimatepro_company"
+const JOB_KEY = "jobestimatepro_job"
+
+
+const [jobDetails, setJobDetails] = useState({
+  clientName: "",
+  jobName: "",
+  changeOrderNo: "",
+  jobAddress: "",
+  date: "", // optional override; blank = auto-today in PDF
+})
 
 
 useEffect(() => {
@@ -132,11 +142,16 @@ useEffect(() => {
 }, [])
 
   useEffect(() => {
-  localStorage.setItem(
-    COMPANY_KEY,
-    JSON.stringify(companyProfile)
-  )
+  localStorage.setItem(COMPANY_KEY,JSON.stringify(companyProfile))
 }, [companyProfile])
+  useEffect(() => {
+  const saved = localStorage.getItem(JOB_KEY)
+  if (saved) setJobDetails(JSON.parse(saved))
+}, [])
+
+useEffect(() => {
+  localStorage.setItem(JOB_KEY, JSON.stringify(jobDetails))
+}, [jobDetails])
 
   // -------------------------
   // App state
@@ -321,10 +336,14 @@ async function upgrade() {
     }
 
     const brandName = "JobEstimate Pro"
-    const companyName = companyProfile.name?.trim() || brandName
+    const companyName = companyProfile.name?.trim() || "Contractor"
     const companyAddress = companyProfile.address?.trim() || ""
     const companyPhone = companyProfile.phone?.trim() || ""
     const companyEmail = companyProfile.email?.trim() || ""
+    const clientName = jobDetails.clientName?.trim() || ""
+    const jobName = jobDetails.jobName?.trim() || ""
+    const jobAddress = jobDetails.jobAddress?.trim() || ""
+    const changeOrderNo = jobDetails.changeOrderNo?.trim() || ""
 
     const win = window.open("", "", "width=900,height=1100")
     if (!win) {
@@ -346,10 +365,10 @@ async function upgrade() {
     win.document.write(`
       <html>
         <head>
-          <title>${esc(brandName)} — Change Order / Estimate</title>
+          <title>${esc(brandName)} — ${esc(jobName || "Change Order / Estimate")}</title>
           <meta charset="utf-8" />
           <style>
-            @page { margin: 28mm 20mm; }
+            @page { margin: 22mm 18mm; }
             body {
               font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
               color: #111;
@@ -364,14 +383,15 @@ async function upgrade() {
               border-bottom: 2px solid #111;
             }
             .brand {
-              font-size: 18px;
-              font-weight: 800;
+              font-size: 14px;
+              font-weight: 600;
+              color: #444;
               letter-spacing: 0.2px;
             }
             .brandTag {
               margin-top: 4px;
-              font-size: 12px;
-              color: #444;
+              font-size: 11px;
+              color: #666;
             }
             .company {
               text-align: right;
@@ -449,16 +469,79 @@ async function upgrade() {
               font-size: 12px;
               color: #333;
             }
+              /* -------------------------
+   Approvals (compact + 2-up)
+   ------------------------- */
+.approvalsRow{
+  margin-top: 10px;             /* tighter */
+  padding-top: 8px;             /* tighter */
+  border-top: 1px solid #e5e5e5;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.approval{
+  flex: 1;
+  padding: 10px 12px;           /* tighter */
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.approvalTitle{
+  font-size: 12px;
+  font-weight: 700;
+  color: #111;
+  margin: 0 0 8px;              /* tighter */
+}
+
+.approvalGrid{
+  display: grid;
+  grid-template-columns: 1fr 0.7fr;  /* signature + date */
+  gap: 14px;
+  align-items: end;
+}
+
+.approvalField{
+  display: flex;
+  flex-direction: column;
+}
+
+.approvalLine{
+  border-top: 1px solid #111;
+  margin-top: 18px;             /* tighter */
+  width: 100%;
+}
+
+.approvalHint{
+  margin-top: 6px;              /* was 8 */
+  font-size: 11px;
+  color: #333;
+  white-space: nowrap;
+}
+
+.approvalNote{
+  margin-top: 6px;              /* tighter */
+  font-size: 10px;              /* slightly smaller */
+  color: #555;
+  line-height: 1.3;
+}
             .footer {
-              margin-top: 26px;
-              padding-top: 10px;
-              border-top: 1px solid #eee;
-              font-size: 11px;
-              color: #666;
-              display: flex;
-              justify-content: space-between;
-              gap: 12px;
-            }
+  margin-top: 10px;     /* was 26 */
+  padding-top: 6px;     /* was 10 */
+  border-top: 1px solid #eee;
+  font-size: 11px;
+  color: #666;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+          
           </style>
         </head>
         <body>
@@ -468,7 +551,7 @@ async function upgrade() {
               <div class="brandTag">Professional change orders & estimates — generated instantly.</div>
             </div>
             <div class="company">
-              <div style="font-weight:700; font-size:13px;">${esc(companyName)}</div>
+              <div style="font-weight:700; font-size:16px; color:#111;">${esc(companyName)}</div>
               ${companyAddress ? `<div>${esc(companyAddress)}</div>` : ""}
               ${companyPhone ? `<div>${esc(companyPhone)}</div>` : ""}
               ${companyEmail ? `<div>${esc(companyEmail)}</div>` : ""}
@@ -476,9 +559,23 @@ async function upgrade() {
           </div>
 
           <h1>Change Order / Estimate
-            ${pricingAdjusted ? `<span class="badge">Pricing adjusted</span>` : ""}
-          </h1>
-          <div class="muted">Generated by ${esc(brandName)}</div>
+  ${pricingAdjusted ? `<span class="badge">Pricing adjusted</span>` : ""}
+</h1>
+
+<div class="muted" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <div>
+    ${clientName ? `<div><strong>Client:</strong> ${esc(clientName)}</div>` : ""}
+    ${jobName ? `<div><strong>Job:</strong> ${esc(jobName)}</div>` : ""}
+    ${jobAddress ? `<div><strong>Address:</strong> ${esc(jobAddress)}</div>` : ""}
+  </div>
+
+  <div style="text-align:right;">
+    ${changeOrderNo ? `<div><strong>Change Order #:</strong> ${esc(changeOrderNo)}</div>` : ""}
+    <div><strong>Date:</strong> ${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())}</div>
+  </div>
+</div>
+
+<div class="muted" style="margin-top:6px;">Generated by ${esc(brandName)}</div>
 
           <div class="section">
             <div class="muted" style="margin-bottom:6px;">Scope / Description</div>
@@ -497,20 +594,52 @@ async function upgrade() {
             </table>
           </div>
 
-          <div class="sign">
-            <div class="sigBlock">
-              <div class="line"></div>
-              <div class="sigLabel">Contractor Signature</div>
-            </div>
-            <div class="sigBlock">
-              <div class="line"></div>
-              <div class="sigLabel">Client Signature</div>
-            </div>
-          </div>
+          <div class="approvalsRow">
+  <div class="approval">
+    <div class="approvalTitle">Contractor Approval</div>
+
+    <div class="approvalGrid">
+      <div class="approvalField">
+        <div class="approvalLine"></div>
+        <div class="approvalHint">Contractor Signature</div>
+      </div>
+
+      <div class="approvalField">
+        <div class="approvalLine"></div>
+        <div class="approvalHint">
+          Date (${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())})
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="approval">
+    <div class="approvalTitle">Customer Approval</div>
+
+    <div class="approvalGrid">
+      <div class="approvalField">
+        <div class="approvalLine"></div>
+        <div class="approvalHint">Customer Signature</div>
+      </div>
+
+      <div class="approvalField">
+        <div class="approvalLine"></div>
+        <div class="approvalHint">
+          Date (${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())})
+        </div>
+      </div>
+    </div>
+
+    <div class="approvalNote">
+      By signing above, the customer approves the scope of work and pricing described in this document.
+      Payment terms: <strong>Due upon approval.</strong>
+    </div>
+  </div>
+</div>
 
           <div class="footer">
             <div>${esc(brandName)}</div>
-            <div>${esc(new Date().toLocaleDateString())}</div>
+            <div>${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())}</div>
           </div>
         </body>
       </html>
@@ -601,6 +730,58 @@ async function upgrade() {
           style={{ width: "100%", padding: 8, marginBottom: 8 }}
         />
       ))}
+
+      <h3 style={{ marginTop: 18 }}>Job Details</h3>
+
+<input
+  placeholder="Client name"
+  value={jobDetails.clientName}
+  onChange={(e) =>
+    setJobDetails({ ...jobDetails, clientName: e.target.value })
+  }
+  style={{ width: "100%", padding: 8, marginBottom: 8 }}
+/>
+
+<input
+  placeholder="Job / Project name"
+  value={jobDetails.jobName}
+  onChange={(e) =>
+    setJobDetails({ ...jobDetails, jobName: e.target.value })
+  }
+  style={{ width: "100%", padding: 8, marginBottom: 8 }}
+/>
+
+<input
+  placeholder="Job address (optional)"
+  value={jobDetails.jobAddress}
+  onChange={(e) =>
+    setJobDetails({ ...jobDetails, jobAddress: e.target.value })
+  }
+  style={{ width: "100%", padding: 8, marginBottom: 8 }}
+/>
+
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+  <input
+    placeholder="Change Order # (optional)"
+    value={jobDetails.changeOrderNo}
+    onChange={(e) =>
+      setJobDetails({ ...jobDetails, changeOrderNo: e.target.value })
+    }
+    style={{ width: "100%", padding: 8 }}
+  />
+  <input
+    type="date"
+    value={jobDetails.date}
+    onChange={(e) =>
+      setJobDetails({ ...jobDetails, date: e.target.value })
+    }
+    style={{ width: "100%", padding: 8 }}
+  />
+</div>
+
+<p style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+  Tip: leave the date blank to auto-fill today on the PDF.
+</p>
 
       <p style={{ marginTop: 12, fontWeight: 600 }}>Trade Type</p>
 <select
