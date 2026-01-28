@@ -48,19 +48,23 @@ export default function HomePage() {
       {/* SCREENSHOT PLACEHOLDER */}
       <section style={{ marginBottom: 64 }}>
         <div
-          style={{
-            height: 360,
-            borderRadius: 12,
-            background: "#f3f3f3",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#888",
-            marginBottom: 8,
-          }}
-        >
-          App screenshot goes here
-        </div>
+  style={{
+    marginTop: 24,
+    background: "#f3f4f6",
+    borderRadius: 16,
+    padding: 16,
+  }}
+>
+  <img
+    src="/screenshot.png"
+    alt="Example of a print-ready change order generated in seconds"
+    style={{
+      width: "100%",
+      borderRadius: 12,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+    }}
+  />
+</div>
 
         <p style={{ fontSize: 13, color: "#666" }}>
           Example of a print-ready change order generated in seconds.
