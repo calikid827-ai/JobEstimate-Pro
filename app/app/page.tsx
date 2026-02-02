@@ -5,6 +5,13 @@ import { useEffect, useRef, useState } from "react"
 export default function Home() {
   const FREE_LIMIT = 3
   const generatingRef = useRef(false)
+
+  const PAINT_SCOPE_OPTIONS = [
+  { label: "Walls only", value: "walls" },
+  { label: "Walls + ceilings", value: "walls_ceilings" },
+  { label: "Full interior (walls, ceilings, trim & doors)", value: "full" },
+] as const
+
     // -------------------------
   // Optional Measurements
   // -------------------------
@@ -253,6 +260,9 @@ useEffect(() => {
   const [result, setResult] = useState("")
   const [trade, setTrade] = useState("")
   const [state, setState] = useState("")
+  const [paintScope, setPaintScope] = useState<
+  "walls" | "walls_ceilings" | "full"
+>("walls")
   const [pricing, setPricing] = useState({
     labor: 0,
     materials: 0,
@@ -353,6 +363,7 @@ async function generate() {
         scopeChange,
         trade,
         state,
+        paintScope,
         measurements: measureEnabled
           ? { rows: measureRows, totalSqft, units: "ft" }
           : null,
@@ -1169,6 +1180,28 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
   <option value="carpentry">Carpentry</option>
   <option value="general renovation">General Renovation</option>
 </select>
+
+{(trade === "painting" || trade === "") && (
+  <div style={{ marginTop: 12 }}>
+    <p style={{ marginTop: 0, fontWeight: 600 }}>Paint Scope</p>
+    <select
+      value={paintScope}
+      onChange={(e) => setPaintScope(e.target.value as any)}
+      style={{ width: "100%", padding: 10, marginTop: 6 }}
+    >
+      {PAINT_SCOPE_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+
+    <p style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+      This controls whether ceilings / trim / doors are included.
+    </p>
+  </div>
+)}
+
 
       <p style={{ marginTop: 12, fontWeight: 600 }}>Job State</p>
 <select

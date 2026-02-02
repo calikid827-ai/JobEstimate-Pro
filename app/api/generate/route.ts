@@ -197,15 +197,17 @@ function pricePaintingRooms(args: {
   scope: string
   rooms: number
   stateMultiplier: number
+  paintScope: "walls" | "walls_ceilings" | "full"
 }): Pricing {
+  const s = args.scope.toLowerCase()
   const { lengthFt, widthFt, heightFt } = parseRoomDims(args.scope)
 
-  const coatsMatch = args.scope.toLowerCase().match(/(\d)\s*coats?/)
+  const coatsMatch = s.match(/(\d)\s*coats?/)
   const coats = coatsMatch ? Math.max(1, Number(coatsMatch[1])) : 2
 
-  const includeCeilings =
-    /ceiling|ceilings/.test(args.scope.toLowerCase()) ||
-    /walls?\s*\+\s*ceilings?/.test(args.scope.toLowerCase())
+  // ✅ authoritative scope comes from dropdown
+  const includeCeilings = args.paintScope !== "walls"
+  const includeTrimDoors = args.paintScope === "full"
 
   const perimeter = 2 * (lengthFt + widthFt)
   const wallArea = perimeter * heightFt
@@ -220,15 +222,19 @@ function pricePaintingRooms(args: {
   const coverageSqftPerGallon = 325
   const paintCostPerGallon = 28
   const wasteFactor = 1.12
-  const patchingPerRoom = /patch|patching/.test(args.scope.toLowerCase()) ? 25 : 0
+  const patchingPerRoom = /patch|patching/.test(s) ? 25 : 0
   const consumablesPerRoom = 18
   const markup = 25
   const setupHoursPerRoom = 1.25
+
+  const trimDoorLaborHoursPerRoom = includeTrimDoors ? 0.75 : 0
+  const trimDoorMaterialsPerRoom = includeTrimDoors ? 12 : 0
   // -----------------------
 
   const laborHoursTotal =
     (paintSqftPerRoom * args.rooms) / sqftPerLaborHour +
-    setupHoursPerRoom * args.rooms
+    setupHoursPerRoom * args.rooms +
+    trimDoorLaborHoursPerRoom * args.rooms
 
   let labor = Math.round(laborHoursTotal * laborRate)
   labor = Math.round(labor * args.stateMultiplier)
@@ -240,19 +246,18 @@ function pricePaintingRooms(args: {
   const patchCost = args.rooms * patchingPerRoom
   const consumables = args.rooms * consumablesPerRoom
 
-  const materials = paintCost + patchCost + consumables
+  const materials =
+    paintCost + patchCost + consumables + (trimDoorMaterialsPerRoom * args.rooms)
 
   const mobilization = 2500
-const supervisionPct = args.rooms >= 50 ? 0.10 : 0.06
-const supervision = Math.round((labor + materials) * supervisionPct)
+  const supervisionPct = args.rooms >= 50 ? 0.10 : 0.06
+  const supervision = Math.round((labor + materials) * supervisionPct)
 
-// Put these into "subs" so UI math and saved math always match
-const subs = mobilization + supervision
+  const subs = mobilization + supervision
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
 
-const base = labor + materials + subs
-const total = Math.round(base * (1 + markup / 100))
-
-return { labor, materials, subs, markup, total }
+  return { labor, materials, subs, markup, total }
 }
 
 // -----------------------------
@@ -260,8 +265,16 @@ return { labor, materials, subs, markup, total }
 // -----------------------------
 export async function POST(req: Request) {
   try {
+    
     const body = await req.json()
     const measurements = body.measurements ?? null
+
+    const paintScope =
+  body.paintScope === "walls" ||
+  body.paintScope === "walls_ceilings" ||
+  body.paintScope === "full"
+    ? body.paintScope
+    : "walls"
 
     const email = body.email
     const scopeChange = body.scopeChange
@@ -333,7 +346,22 @@ if (!isPaid && usageCount >= FREE_LIMIT) {
     const trade = uiTrade || autoDetectTrade(scopeChange)
     const intentHint = detectIntent(scopeChange)
 
-    const rooms = parseRoomCount(scopeChange)
+// -----------------------------
+// Paint scope normalization (so description matches dropdown)
+// -----------------------------
+let effectiveScopeChange = scopeChange
+
+if (trade === "painting") {
+  if (paintScope === "walls_ceilings") {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls and ceilings.`
+  } else if (paintScope === "full") {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls, ceilings, trim, and doors.`
+  } else {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls only.`
+  }
+}
+
+    const rooms = parseRoomCount(effectiveScopeChange)
     const stateAbbrev = getStateAbbrev(rawState)
     const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
 
@@ -342,16 +370,16 @@ if (!isPaid && usageCount >= FREE_LIMIT) {
 // - room count exists and is "big"
 // - no measurements override is being used
 const looksLikePainting =
-  trade === "painting" || /(paint|painting|repaint|prime|primer)/i.test(scopeChange)
+  trade === "painting" || /(paint|painting|repaint|prime|primer)/i.test(effectiveScopeChange)
 
 const useBigJobPricing =
   looksLikePainting &&
   typeof rooms === "number" &&
-  rooms >= 1 &&
+  rooms >= 50 &&
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
 const bigJobPricing: Pricing | null =
-  useBigJobPricing ? pricePaintingRooms({ scope: scopeChange, rooms, stateMultiplier }) : null
+  useBigJobPricing ? pricePaintingRooms({ scope: effectiveScopeChange, rooms, stateMultiplier, paintScope }) : null
   
   const usedBigJobPricing = Boolean(bigJobPricing)
 
@@ -388,9 +416,10 @@ ${intentHint}
 INPUTS:
 - Trade Type: ${trade}
 - Job State: ${jobState}
+- Paint Scope: ${paintScope}
 
 SCOPE OF WORK:
-${scopeChange}
+${effectiveScopeChange}
 
 ${measurementSnippet}
 
@@ -555,9 +584,25 @@ try {
 // 🔒 Coerce AI pricing to numbers (prevents string math bugs)
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
-// ✅ Override pricing for large painting room jobs (hotel / multi-unit)
+// ✅ Big job safety: keep AI, but enforce deterministic minimums (50+ rooms)
 if (bigJobPricing) {
-  normalized.pricing = clampPricing(bigJobPricing)
+  const ai = normalized.pricing
+  const det = bigJobPricing
+
+  const mergedMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
+
+  const merged: Pricing = {
+    labor: Math.max(ai.labor, det.labor),
+    materials: Math.max(ai.materials, det.materials),
+    subs: Math.max(ai.subs, det.subs),
+    markup: mergedMarkup,
+    total: 0,
+  }
+
+  const base = merged.labor + merged.materials + merged.subs
+  merged.total = Math.round(base * (1 + merged.markup / 100))
+
+  normalized.pricing = clampPricing(merged)
 }
 
 const allowedTypes = [
@@ -660,7 +705,7 @@ if (!usedBigJobPricing) {
 
   normalized.pricing = clampPricing(p)
 } else {
-  // Big job pricing already includes state multiplier + total math
+  // Big job pricing safety already applied (AI merged with deterministic minimums)
   normalized.pricing = clampPricing(normalized.pricing)
 }
 
