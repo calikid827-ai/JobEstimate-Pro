@@ -146,6 +146,25 @@ function parseRoomCount(text: string): number | null {
   return null
 }
 
+function parseDoorCount(text: string): number | null {
+  const t = text.toLowerCase()
+
+  const patterns = [
+    /paint\s+(\d{1,4})\s+doors?/i,
+    /(\d{1,4})\s+doors?/i,
+    /doors?\s*[:\-]\s*(\d{1,4})/i,
+  ]
+
+  for (const p of patterns) {
+    const m = t.match(p)
+    if (m?.[1]) {
+      const n = Number(m[1])
+      if (Number.isFinite(n) && n > 0) return n
+    }
+  }
+  return null
+}
+
 function parseRoomDims(text: string) {
   // 12x12 or 12 x 12
   const m = text.toLowerCase().match(/(\d{1,3})\s*x\s*(\d{1,3})/)
@@ -260,6 +279,29 @@ function pricePaintingRooms(args: {
   return { labor, materials, subs, markup, total }
 }
 
+function pricePaintingDoors(args: {
+  doors: number
+  stateMultiplier: number
+}): Pricing {
+  const laborHoursPerDoor = 0.9
+  const laborRate = 75
+  const materialPerDoor = 18
+  const markup = 25
+
+  let labor =
+    args.doors * laborHoursPerDoor * laborRate
+
+  labor = Math.round(labor * args.stateMultiplier)
+
+  const materials = args.doors * materialPerDoor
+  const subs = 0
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  return { labor, materials, subs, markup, total }
+}
+
 // -----------------------------
 // API HANDLER
 // -----------------------------
@@ -362,6 +404,7 @@ if (trade === "painting") {
 }
 
     const rooms = parseRoomCount(effectiveScopeChange)
+    const doors = parseDoorCount(effectiveScopeChange)
     const stateAbbrev = getStateAbbrev(rawState)
     const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
 
@@ -378,8 +421,22 @@ const useBigJobPricing =
   rooms >= 50 &&
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
+  const useDoorPricing =
+  looksLikePainting &&
+  doors !== null &&
+  rooms === null && // doors-only job
+  !(measurements?.totalSqft && measurements.totalSqft > 0)
+
 const bigJobPricing: Pricing | null =
   useBigJobPricing ? pricePaintingRooms({ scope: effectiveScopeChange, rooms, stateMultiplier, paintScope }) : null
+
+  const doorPricing: Pricing | null =
+  useDoorPricing
+    ? pricePaintingDoors({
+        doors,
+        stateMultiplier,
+      })
+    : null
   
   const usedBigJobPricing = Boolean(bigJobPricing)
 
@@ -584,10 +641,10 @@ try {
 // 🔒 Coerce AI pricing to numbers (prevents string math bugs)
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
-// ✅ Big job safety: keep AI, but enforce deterministic minimums (50+ rooms)
-if (bigJobPricing) {
+// ✅ Deterministic safety pricing (rooms OR doors)
+if (bigJobPricing || doorPricing) {
   const ai = normalized.pricing
-  const det = bigJobPricing
+  const det = bigJobPricing ?? doorPricing!
 
   const mergedMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
 
