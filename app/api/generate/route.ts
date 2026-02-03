@@ -293,8 +293,8 @@ function pricePaintingDoors(args: {
 
   labor = Math.round(labor * args.stateMultiplier)
 
-  const materials = args.doors * materialPerDoor
-  const subs = 0
+  const materials = Math.round(args.doors * materialPerDoor)
+  const subs = args.doors <= 6 ? 200 : 350
 
   const base = labor + materials + subs
   const total = Math.round(base * (1 + markup / 100))
@@ -424,21 +424,18 @@ const useBigJobPricing =
   const useDoorPricing =
   looksLikePainting &&
   doors !== null &&
-  rooms === null && // doors-only job
+  doors <= 100 && // optional cap
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
 const bigJobPricing: Pricing | null =
   useBigJobPricing ? pricePaintingRooms({ scope: effectiveScopeChange, rooms, stateMultiplier, paintScope }) : null
 
   const doorPricing: Pricing | null =
-  useDoorPricing
-    ? pricePaintingDoors({
-        doors,
-        stateMultiplier,
-      })
+  useDoorPricing && doors !== null
+    ? pricePaintingDoors({ doors, stateMultiplier })
     : null
   
-  const usedBigJobPricing = Boolean(bigJobPricing)
+  const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing)
 
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
@@ -531,6 +528,35 @@ HARD STYLE RULE:
 - Replace them with concrete scope language (prep, masking, coatings, sequencing, protection, coordination).
 - If you accidentally use any banned phrase, rewrite that sentence using concrete scope language instead.
 
+ESTIMATING METHOD (STRICT):
+You must price using a human estimator workflow:
+1) Identify the primary "pricing units" for the scope (pick 1–3): sqft, linear ft, rooms, doors, fixtures, devices, days, lump sum.
+
+QUANTITY EXTRACTION (REQUIRED):
+If the scope includes an explicit quantity (e.g., "25 doors", "12 outlets", "3 toilets", "800 sqft"),
+you MUST use that quantity in pricing. Do not treat count-based scopes as lump sums.
+If a quantity is implied but not explicit, make a conservative assumption and price accordingly.
+
+PRICING UNITS (REQUIRED):
+You must choose pricing units ONLY from this list:
+- sqft
+- linear_ft
+- rooms
+- doors
+- fixtures
+- devices
+- days
+- lump_sum
+
+Pick 1–3 units max and base labor/materials on those units.
+
+2) Choose realistic production rates (labor hours per unit) for mid-market residential work.
+3) Select a labor rate appropriate to the job state (assume typical contractor rates, not handyman rates).
+4) Set a materials allowance that matches the scope (paint/primer/trim caulk; tile/setting materials; plumbing fixtures; electrical devices).
+5) Include a reasonable mobilization/overhead amount for small jobs.
+6) Apply markup 15–25%.
+7) Perform a final sanity check: total should scale with quantity (double scope ≈ meaningfully higher total).
+
 PRICING RULES:
 - Use realistic 2024–2025 U.S. contractor pricing
 - Adjust labor rates based on job state
@@ -538,22 +564,60 @@ PRICING RULES:
 - Totals only (no line items)
 - Round to whole dollars
 
+MOBILIZATION MINIMUM (SMALL JOBS):
+If the job is small (e.g., <= 6 doors, <= 6 devices, <= 2 fixtures, or <= 150 sqft),
+include a mobilization/overhead minimum in "subs" of at least $150–$350 depending on the trade/state.
+
 MEASUREMENT USAGE RULE (STRICT):
 - If measurements are provided, reference the total square footage and (briefly) the labeled areas in the description.
 - Use the square footage to influence pricing realism (larger sqft → higher labor/materials).
 - If measurements are NOT provided, do NOT mention square footage, dimensions, or area estimates. Do not guess numbers.
 
 TRADE PRICING GUIDANCE:
-- Painting → labor-heavy, low materials
-- Flooring → materials + install labor
-- Electrical → high labor rate
-- Plumbing → skilled labor + fixtures
-- Tile → labor-intensive
-- Carpentry → balanced
-- General renovation → balanced
+Use the "PRICING ANCHORS" section below to choose realistic units, production rates, and allowances per trade.
+
+PRICING ANCHORS (HUMAN-LIKE BASELINES — USE AS GUIDES, NOT LINE ITEMS):
+Painting:
+- Interior repaint labor is usually dominant; materials are low.
+- Doors: price must scale per door (count-based), not flat.
+- Rooms: price scales per room and whether ceilings/trim/doors are included.
+
+Flooring / Tile:
+- Pricing typically scales by sqft for floors and by sqft for wall tile.
+- Include demo/haulaway if implied, otherwise assume install only.
+
+Electrical:
+- Most items are priced per device/fixture (count-based), plus troubleshooting time if implied.
+- Panel work is high labor + permit/inspection coordination allowances.
+
+Plumbing:
+- Fixtures are priced per fixture (toilet, faucet, vanity, shower valve).
+- Include shutoff/drain/test time; materials vary widely based on fixture class.
+
+Carpentry:
+- Trim/baseboards scale per linear foot; door installs are per door; cabinets are lump sum or per linear run.
+
+General Renovation:
+- If scope is broad, use a realistic lump sum that reflects multiple trades and multiple days of labor.
 
 MARKUP RULE:
 - Suggest markup between 15–25%
+
+MISSING INFO POLICY:
+If key details are missing (brand level, finish level, demolition extent, access constraints),
+make conservative mid-market assumptions and reflect them in pricing.
+Do NOT ask questions. Do NOT add disclaimers.
+Choose reasonable assumptions (e.g., standard materials, normal access, occupied home protection).
+
+SCALING RULE (STRICT):
+If the scope is count-based (doors/devices/fixtures), the total must increase meaningfully with the count.
+If count increases by 50% or more, total should increase by at least 30% unless scope clearly changes in the opposite direction.
+
+SCALING SANITY CHECK (REQUIRED):
+If scope includes an explicit count N:
+- Labor must scale with N (labor should not be identical for 5 vs 25).
+- Materials must scale with N when materials are per-item (paint, devices, fixtures).
+- If you output identical totals for different explicit counts, you MUST revise your pricing until totals scale.
 
 OUTPUT FORMAT (STRICT — REQUIRED):
 Return ONLY valid JSON matching EXACTLY this schema.
@@ -646,7 +710,9 @@ if (bigJobPricing || doorPricing) {
   const ai = normalized.pricing
   const det = bigJobPricing ?? doorPricing!
 
-  const mergedMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
+  const mergedMarkupRaw = Number.isFinite(ai.markup) ? ai.markup : 20
+  const mergedMarkup = Math.min(25, Math.max(15, mergedMarkupRaw))
+
 
   const merged: Pricing = {
     labor: Math.max(ai.labor, det.labor),
@@ -684,9 +750,9 @@ if (!allowedTypes.includes(normalized.documentType)) {
 }
 
 // -----------------------------
-// PRICING REALISM (SKIP WHEN BIG-JOB PRICING IS USED)
+// PRICING REALISM (SKIP WHEN DETERMINISTIC SAFETY PRICING WAS APPLIED)
 // -----------------------------
-if (!usedBigJobPricing) {
+if (!usedDeterministicSafety) {
   // -----------------------------
   // PRICING REALISM v2 (MARKET-ANCHORED)
   // -----------------------------
