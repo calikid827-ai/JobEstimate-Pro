@@ -33,6 +33,7 @@ const supabase = createClient(
 // CONSTANTS
 // -----------------------------
 const FREE_LIMIT = 3
+const PRIMARY_MODEL = "gpt-4o" as const
 
 // -----------------------------
 // TYPES
@@ -388,32 +389,18 @@ if (!isPaid && usageCount >= FREE_LIMIT) {
     const trade = uiTrade || autoDetectTrade(scopeChange)
     const intentHint = detectIntent(scopeChange)
 
-// -----------------------------
-// Paint scope normalization (so description matches dropdown)
-// -----------------------------
+// Start with raw scope
 let effectiveScopeChange = scopeChange
 
-if (trade === "painting") {
-  if (paintScope === "walls_ceilings") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls and ceilings.`
-  } else if (paintScope === "full") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls, ceilings, trim, and doors.`
-  } else {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls only.`
-  }
-}
+// Parse quantities from the raw scope (before we append extra lines)
+const rooms = parseRoomCount(scopeChange)
+const doors = parseDoorCount(scopeChange)
 
-    const rooms = parseRoomCount(effectiveScopeChange)
-    const doors = parseDoorCount(effectiveScopeChange)
-    const stateAbbrev = getStateAbbrev(rawState)
-    const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
+const stateAbbrev = getStateAbbrev(rawState)
+const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
 
-// Use deterministic pricing only when:
-// - painting
-// - room count exists and is "big"
-// - no measurements override is being used
 const looksLikePainting =
-  trade === "painting" || /(paint|painting|repaint|prime|primer)/i.test(effectiveScopeChange)
+  trade === "painting" || /(paint|painting|repaint|prime|primer)/i.test(scopeChange)
 
 const useBigJobPricing =
   looksLikePainting &&
@@ -421,21 +408,52 @@ const useBigJobPricing =
   rooms >= 50 &&
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
-  const useDoorPricing =
+const useDoorPricing =
   looksLikePainting &&
-  doors !== null &&
-  doors <= 100 && // optional cap
+  typeof doors === "number" &&
+  doors <= 100 &&
+  rooms === null && // doors-only
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
-const bigJobPricing: Pricing | null =
-  useBigJobPricing ? pricePaintingRooms({ scope: effectiveScopeChange, rooms, stateMultiplier, paintScope }) : null
+// If doors-only job, paintScope is irrelevant
+type PaintScope = "walls" | "walls_ceilings" | "full"
+type EffectivePaintScope = PaintScope | "doors_only"
 
-  const doorPricing: Pricing | null =
-  useDoorPricing && doors !== null
-    ? pricePaintingDoors({ doors, stateMultiplier })
+const effectivePaintScope: EffectivePaintScope =
+  useDoorPricing ? "doors_only" : paintScope
+
+// Paint scope normalization (so description matches dropdown)
+if (looksLikePainting) {
+  if (effectivePaintScope === "doors_only") {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: doors only.`
+  } else if (effectivePaintScope === "walls_ceilings") {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls and ceilings.`
+  } else if (effectivePaintScope === "full") {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls, ceilings, trim, and doors.`
+  } else {
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls only.`
+  }
+}
+
+const bigJobPricing: Pricing | null =
+  useBigJobPricing && typeof rooms === "number"
+    ? pricePaintingRooms({
+        scope: effectiveScopeChange,
+        rooms,
+        stateMultiplier,
+        paintScope,
+      })
     : null
-  
-  const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing)
+
+const doorPricing: Pricing | null =
+  useDoorPricing && typeof doors === "number"
+    ? pricePaintingDoors({
+        doors,
+        stateMultiplier,
+      })
+    : null
+
+const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing)
 
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
@@ -470,7 +488,7 @@ ${intentHint}
 INPUTS:
 - Trade Type: ${trade}
 - Job State: ${jobState}
-- Paint Scope: ${paintScope}
+- Paint Scope: ${effectivePaintScope}
 
 SCOPE OF WORK:
 ${effectiveScopeChange}
@@ -648,7 +666,7 @@ Rules:
 let completion
 try {
   completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: PRIMARY_MODEL,
     temperature: 0.25,
     response_format: { type: "json_object" },
     messages: [{ role: "user", content: prompt }],
