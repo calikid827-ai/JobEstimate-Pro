@@ -270,6 +270,9 @@ const text = scopeChange.toLowerCase()
 
 const hasPaintWord = /\b(?:paint|painting|repaint|prime|primer)\b/i.test(text)
 
+const showPaintScope =
+  trade === "painting" || (trade === "" && hasPaintWord)
+
 // explicit door count only (matches server)
 const doorCount = (() => {
   const m = text.match(/\b(\d{1,4})\s+doors?\b/i)
@@ -414,6 +417,13 @@ async function generate() {
   setPricingSource("ai")
   setShowPriceGuardDetails(false)
 
+const sendPaintScope =
+  trade === "painting" || (trade === "" && hasPaintWord)
+
+const paintScopeToSend = sendPaintScope
+  ? (effectivePaintScope === "doors_only" ? "walls" : paintScope)
+  : null
+
   try {
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -423,7 +433,7 @@ async function generate() {
         scopeChange,
         trade,
         state,
-        paintScope: effectivePaintScope === "doors_only" ? "walls" : paintScope,
+        paintScope: paintScopeToSend,
         measurements: measureEnabled
           ? { rows: measureRows, totalSqft, units: "ft" }
           : null,
@@ -1377,7 +1387,7 @@ function PriceGuardBadge() {
   <option value="general renovation">General Renovation</option>
 </select>
 
-{(trade === "painting" || trade === "") && (
+{showPaintScope && (
   <div style={{ marginTop: 12 }}>
     <p style={{ marginTop: 0, fontWeight: 600 }}>
       {effectivePaintScope === "doors_only"
