@@ -65,6 +65,12 @@ export function runPaintScopeSanityTests() {
     looksLikeDoorsOnly("Paint 4 doors and trim") === true
   )
 
+    // Test 2b: doors-only with casing/frames
+  assert(
+    'doors-only: "Paint 6 doors and casing"',
+    looksLikeDoorsOnly("Paint 6 doors and casing") === true
+  )
+
   // Test 3: NOT doors-only if rooms are present (your desired behavior)
   assert(
     'NOT doors-only: "Paint 4 doors and hallway and living room"',

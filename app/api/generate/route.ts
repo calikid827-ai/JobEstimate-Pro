@@ -269,7 +269,11 @@ function pricePaintingRooms(args: {
   const materials =
     paintCost + patchCost + consumables + (trimDoorMaterialsPerRoom * args.rooms)
 
-  const mobilization = 2500
+  const mobilization =
+  args.rooms <= 2 ? 250 :
+  args.rooms <= 5 ? 450 :
+  args.rooms <= 10 ? 750 :
+  1200
   const supervisionPct = args.rooms >= 50 ? 0.10 : 0.06
   const supervision = Math.round((labor + materials) * supervisionPct)
 
@@ -283,18 +287,34 @@ function pricePaintingRooms(args: {
 function pricePaintingDoors(args: {
   doors: number
   stateMultiplier: number
+  includeDoorTrim?: boolean
+  explicitTrimRequested?: boolean
 }): Pricing {
-  const laborHoursPerDoor = 0.9
   const laborRate = 75
-  const materialPerDoor = 18
   const markup = 25
 
-  let labor =
-    args.doors * laborHoursPerDoor * laborRate
+  // Door slab baseline
+  const laborHoursPerDoor = 0.9
+  const materialPerDoor = 18
 
+  // Door casing/frames baseline (DEFAULT ON for doors-only)
+  const trimLaborHoursPerDoor = args.includeDoorTrim ? 0.35 : 0
+  const trimMaterialPerDoor = args.includeDoorTrim ? 6 : 0
+
+  // Optional bump if user explicitly mentions trim/casing/frames (small extra allowance)
+  const explicitTrimBumpLaborHrsPerDoor = args.explicitTrimRequested ? 0.15 : 0
+  const explicitTrimBumpMatPerDoor = args.explicitTrimRequested ? 2 : 0
+
+  let laborHours =
+    args.doors * (laborHoursPerDoor + trimLaborHoursPerDoor + explicitTrimBumpLaborHrsPerDoor)
+
+  let labor = Math.round(laborHours * laborRate)
   labor = Math.round(labor * args.stateMultiplier)
 
-  const materials = Math.round(args.doors * materialPerDoor)
+  const materials = Math.round(
+    args.doors * (materialPerDoor + trimMaterialPerDoor + explicitTrimBumpMatPerDoor)
+  )
+
   const subs = args.doors <= 6 ? 200 : 350
 
   const base = labor + materials + subs
@@ -381,7 +401,7 @@ if (!isPaid && usageCount >= FREE_LIMIT) {
     // -----------------------------
     // STATE NORMALIZATION
     // -----------------------------
-    const jobState = rawState || "United States"
+    const jobState = rawState || "N/A"
 
     // -----------------------------
     // TRADE + INTENT
@@ -408,11 +428,28 @@ const useBigJobPricing =
   rooms >= 50 &&
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
-const useDoorPricing =
+const roomishRe =
+  /\b(rooms?|hallway|living\s*room|family\s*room|bed(room)?|kitchen|bath(room)?|dining|office|closet|stair|entry|walls?|ceilings?)\b/i
+
+// Words that imply door-associated trim/casing/frames (allowed in doors-only)
+const doorTrimRe =
+  /\b(trim|casing|casings|door\s*frame(s)?|frames?|jambs?|door\s*trim|door\s*casing)\b/i
+
+// Doors-only intent:
+// - Painting + explicit door count
+// - No rooms/walls/ceilings / named rooms
+// - Door-trim language is allowed and still counts as doors-only
+const doorsOnlyIntent =
   looksLikePainting &&
   typeof doors === "number" &&
+  doors > 0 &&
+  !roomishRe.test(scopeChange)
+
+const mentionsDoorTrim = doorsOnlyIntent && doorTrimRe.test(scopeChange)
+
+const useDoorPricing =
+  doorsOnlyIntent &&
   doors <= 100 &&
-  rooms === null && // doors-only
   !(measurements?.totalSqft && measurements.totalSqft > 0)
 
 // If doors-only job, paintScope is irrelevant
@@ -425,7 +462,7 @@ const effectivePaintScope: EffectivePaintScope =
 // Paint scope normalization (so description matches dropdown)
 if (looksLikePainting) {
   if (effectivePaintScope === "doors_only") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: doors only.`
+    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: doors only (includes door slabs + frames/casing).`
   } else if (effectivePaintScope === "walls_ceilings") {
     effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls and ceilings.`
   } else if (effectivePaintScope === "full") {
@@ -450,11 +487,46 @@ const doorPricing: Pricing | null =
     ? pricePaintingDoors({
         doors,
         stateMultiplier,
+        includeDoorTrim: true,              // ✅ ALWAYS include casing/frames by default for doors-only
+        explicitTrimRequested: mentionsDoorTrim, // ✅ optional bump if they explicitly say trim/casing/frames
       })
     : null
 
+    const mixedPaintPricing: Pricing | null =
+  looksLikePainting &&
+  typeof rooms === "number" && rooms > 0 &&
+  typeof doors === "number" && doors > 0 &&
+  !(measurements?.totalSqft && measurements.totalSqft > 0)
+    ? (() => {
+        const roomDet = pricePaintingRooms({
+          scope: effectiveScopeChange,
+          rooms,
+          stateMultiplier,
+          paintScope,
+        })
+
+        const doorDet = pricePaintingDoors({
+          doors,
+          stateMultiplier,
+          includeDoorTrim: true,
+          explicitTrimRequested: doorTrimRe.test(scopeChange),
+        })
+
+        const labor = roomDet.labor + doorDet.labor
+        const materials = roomDet.materials + doorDet.materials
+        const subs = roomDet.subs + doorDet.subs // or Math.max(...) if you prefer
+        const markup = Math.max(roomDet.markup, doorDet.markup)
+
+        const base = labor + materials + subs
+        const total = Math.round(base * (1 + markup / 100))
+
+        return { labor, materials, subs, markup, total }
+      })()
+    : null
+
 let pricingSource: "ai" | "deterministic" | "merged" = "ai"
-const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing)
+const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing || mixedPaintPricing)
+if (usedDeterministicSafety) pricingSource = "merged"
 
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
@@ -724,11 +796,10 @@ try {
 // 🔒 Coerce AI pricing to numbers (prevents string math bugs)
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
-// ✅ Deterministic safety pricing (rooms OR doors)
-if (bigJobPricing || doorPricing) {
-  pricingSource = "merged"
+// ✅ Deterministic safety pricing (big rooms OR doors-only OR rooms+doors mixed)
+if (usedDeterministicSafety) {
   const ai = normalized.pricing
-  const det = bigJobPricing ?? doorPricing!
+  const det = bigJobPricing ?? doorPricing ?? mixedPaintPricing!
 
   const mergedMarkupRaw = Number.isFinite(ai.markup) ? ai.markup : 20
   const mergedMarkup = Math.min(25, Math.max(15, mergedMarkupRaw))

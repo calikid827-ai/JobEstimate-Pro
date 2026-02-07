@@ -99,9 +99,7 @@ const INVOICE_KEY = "jobestimatepro_invoices"
 // Saved Estimate History (localStorage)
 // -------------------------
 const HISTORY_KEY = "jobestimatepro_history_v1"
-
 type PricingSource = "ai" | "deterministic" | "merged"
-
 type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -272,31 +270,35 @@ const text = scopeChange.toLowerCase()
 
 const hasPaintWord = /\b(?:paint|painting|repaint|prime|primer)\b/i.test(text)
 
-// doors, or counted doors
-const hasDoors =
-  /\b\d+\s+doors?\b/i.test(text) || /\bdoors?\b/i.test(text)
+// explicit door count only (matches server)
+const doorCount = (() => {
+  const m = text.match(/\b(\d{1,4})\s+doors?\b/i)
+  if (!m?.[1]) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) && n > 0 ? n : null
+})()
 
-// “door frames / door casing” phrases (tie it to doors)
-const hasDoorFramesOrCasing =
-  /\bdoor\s*(?:frame|frames|casing|casings|trim|jambs?)\b/i.test(text)
+const roomCount = (() => {
+  const m = text.match(/\b(\d{1,4})\s+rooms?\b/i)
+  if (!m?.[1]) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) && n > 0 ? n : null
+})()
 
-// If user says “paint frames and casing” (no "door"), you can optionally allow it,
-// but I recommend keeping this OFF unless you want more aggressive detection:
-// const hasGenericFramesOrCasing = /\b(?:frames?|casing|casings|jambs?)\b/i.test(text)
+const isMixedPaintScope =
+  (trade === "painting" || trade === "") &&
+  hasPaintWord &&
+  doorCount !== null &&
+  roomCount !== null
 
-const hasWallsOrCeilings = /\b(?:walls?|ceilings?)\b/i.test(text)
-
-const hasRoomWords =
-  /\b(?:rooms?|hallway|hall|living\s*room|family\s*room|bed(?:room)?s?|kitchen|bath(?:room)?s?|dining(?:\s*room)?|office|garage|laundry|closet|stairs?|entry|foyer|mudroom)\b/i.test(
-    text
-  )
+const roomishRe =
+  /\b(rooms?|hallway|living\s*room|family\s*room|bed(room)?|kitchen|bath(room)?|dining|office|closet|stair|entry|walls?|ceilings?)\b/i
 
 const looksLikeDoorsOnly =
   (trade === "painting" || trade === "") &&
   hasPaintWord &&
-  (hasDoors || hasDoorFramesOrCasing) &&
-  !hasWallsOrCeilings &&
-  !hasRoomWords
+  doorCount !== null &&
+  !roomishRe.test(text)
 
 const effectivePaintScope: EffectivePaintScope =
   looksLikeDoorsOnly ? "doors_only" : paintScope
@@ -308,6 +310,24 @@ const effectivePaintScope: EffectivePaintScope =
     markup: 20,
     total: 0,
   })
+  
+  const [pricingSource, setPricingSource] = useState<PricingSource>("ai")
+  const priceGuardVerified = pricingSource === "merged"
+  const [showPriceGuardDetails, setShowPriceGuardDetails] = useState(false)
+
+  useEffect(() => {
+  function onDocClick(e: MouseEvent) {
+    const t = e.target as HTMLElement
+    if (t.closest?.("[data-priceguard]")) return
+    setShowPriceGuardDetails(false)
+  }
+
+  if (showPriceGuardDetails) {
+    document.addEventListener("mousedown", onDocClick)
+    return () => document.removeEventListener("mousedown", onDocClick)
+  }
+}, [showPriceGuardDetails])
+  
   
   const [pricingAdjusted, setPricingAdjusted] = useState(false)
   const [status, setStatus] = useState("")
@@ -391,6 +411,8 @@ async function generate() {
   setStatus("") // prevents duplicate “Generating…” line
   setResult("")
   setPricingAdjusted(false)
+  setPricingSource("ai")
+  setShowPriceGuardDetails(false)
 
   try {
     const res = await fetch("/api/generate", {
@@ -433,6 +455,7 @@ async function generate() {
     }
 
     const data = await res.json()
+    console.log("pricingSource:", data.pricingSource)
 
 const nextResult = data.text || data.description || ""
 const nextPricing = data.pricing ? data.pricing : pricing
@@ -442,7 +465,10 @@ const nextPricingSource =
 
 setResult(nextResult)
 setPricing(nextPricing)
+setPricingSource(nextPricingSource)
+setPricingAdjusted(nextPricingSource === "merged")
 if (!trade && data.trade) setTrade(data.trade)
+
 
 saveToHistory({
   id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -459,7 +485,7 @@ saveToHistory({
     markup: Number(nextPricing.markup || 0),
     total: Number(nextPricing.total || 0),
   },
-  pricingAdjusted,
+  pricingAdjusted: nextPricingSource === "merged",
   pricingSource: nextPricingSource,
 })
 
@@ -503,36 +529,40 @@ async function upgrade() {
       throw new Error("No checkout URL returned")
     }
 
-    // 🔑 Force full-page navigation
-    window.location.assign(data.url)
-  } catch (err) {
-    console.error(err)
-    setStatus("Checkout error.")
-  }
+   // 🔑 Force full-page navigation
+window.location.assign(data.url)
+} catch (err) {
+  console.error(err)
+  setStatus("Checkout error.")
+}
 }
 
-function persistHistory(next: EstimateHistoryItem[]) {
-  setHistory(next)
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-}
-
+// ✅ Save History
 function saveToHistory(item: EstimateHistoryItem) {
-  // newest first, keep last 25 (you can change this)
-  const next = [item, ...history].slice(0, 25)
-  persistHistory(next)
+  setHistory((prev) => {
+    const next = [item, ...prev].slice(0, 25)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    return next
+  })
 }
 
+// ✅ Delete single history item
 function deleteHistoryItem(id: string) {
-  const next = history.filter((h) => h.id !== id)
-  persistHistory(next)
+  setHistory((prev) => {
+    const next = prev.filter((h) => h.id !== id)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    return next
+  })
 }
 
+// ✅ Clear history
 function clearHistory() {
-  persistHistory([])
+  setHistory([])
+  localStorage.setItem(HISTORY_KEY, JSON.stringify([]))
 }
 
+// ✅ Load history item back into the form
 function loadHistoryItem(item: EstimateHistoryItem) {
-  // restore form + outputs
   setJobDetails(item.jobDetails)
   setTrade(item.trade || "")
   setState(item.state || "")
@@ -540,7 +570,14 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 
   setResult(item.result || "")
   setPricing(item.pricing)
-  setPricingAdjusted(item.pricingAdjusted)
+
+  // keep "Adjusted" correct for loaded item
+  setPricingAdjusted(Boolean(item.pricingAdjusted))
+
+  setPricingSource(item.pricingSource ?? "ai")
+
+  // optional UX: close any open PriceGuard popup
+  setShowPriceGuardDetails(false)
 
   setStatus("Loaded saved estimate from history.")
 }
@@ -1072,6 +1109,124 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
 
   setInvoices((prev) => [inv, ...prev])
   setStatus(`Invoice created: ${inv.invoiceNo}`)
+}
+
+function PriceGuardBadge() {
+  if (!result) return null // only show after generation
+
+  const label = priceGuardVerified ? "PriceGuard™ Verified" : "AI estimate"
+  const sub = priceGuardVerified
+    ? "AI + PriceGuard safeguards applied"
+    : "PriceGuard safeguards not triggered"
+
+  return (
+    <span
+      style={{ position: "relative", display: "inline-block" }}
+      data-priceguard
+    >
+      <button
+        type="button"
+        onClick={() => setShowPriceGuardDetails((v) => !v)}
+        style={{
+          border: "1px solid #e5e7eb",
+          background: priceGuardVerified ? "#ecfdf5" : "#f3f4f6",
+          color: "#111",
+          padding: "6px 10px",
+          borderRadius: 999,
+          fontSize: 12,
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+        title={sub}
+      >
+        <span aria-hidden="true">{priceGuardVerified ? "✅" : "ℹ️"}</span>
+        <span style={{ fontWeight: 800 }}>{label}</span>
+      </button>
+
+      {showPriceGuardDetails && (
+        <div
+          style={{
+            position: "absolute",
+            top: "110%",
+            right: 0,
+            width: 320,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            padding: 12,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.10)",
+            zIndex: 999,
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 13 }}>
+            PriceGuard™ Verification
+          </div>
+          <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
+            {sub}
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5 }}>
+            <div>• ✔ Quantity scaling enforced</div>
+            <div>• ✔ Minimum charges applied</div>
+            <div>• ✔ AI math normalized / clamped</div>
+
+            {state ? (
+              <div>• ✔ State labor adjusted ({state})</div>
+            ) : (
+              <div>• • State not selected (national baseline)</div>
+            )}
+
+            {effectivePaintScope === "doors_only" && (
+              <div>• ✔ Doors-only scope detected (casing included)</div>
+            )}
+
+            {isMixedPaintScope && (
+              <div>• ✔ Mixed scope resolved (rooms + doors)</div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, color: "#333" }}>
+            {effectivePaintScope === "doors_only" && (
+              <div style={{ marginTop: 6 }}>
+                ⚙️ Doors-only detected — pricing locked to door logic.
+              </div>
+            )}
+
+            {isMixedPaintScope && (
+              <div style={{ marginTop: 6 }}>
+                ⚙️ Mixed scope detected — rooms and doors priced separately.
+              </div>
+            )}
+
+            {!priceGuardVerified && (
+              <div style={{ marginTop: 6 }}>
+                ⚠️ This price came from AI-only logic. Add more detail (or select
+                state / measurements) to trigger stronger safeguards.
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowPriceGuardDetails(false)}
+            style={{
+              marginTop: 10,
+              fontSize: 12,
+              border: "1px solid #e5e7eb",
+              padding: "6px 10px",
+              borderRadius: 8,
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
+    </span>
+  )
 }
 
   // -------------------------
@@ -1741,6 +1896,7 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
       labor: val === "" ? 0 : Number(val),
     })
     setPricingAdjusted(true)
+    setPricingSource("merged")
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
@@ -1758,6 +1914,7 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
       materials: val === "" ? 0 : Number(val),
     })
     setPricingAdjusted(true)
+    setPricingSource("merged")
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
@@ -1775,6 +1932,7 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
       subs: val === "" ? 0 : Number(val),
     })
     setPricingAdjusted(true)
+    setPricingSource("merged")
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
@@ -1792,14 +1950,28 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
       markup: val === "" ? 0 : Number(val),
     })
     setPricingAdjusted(true)
+    setPricingSource("merged")
   }}
   style={{ width: "100%", padding: 8, marginBottom: 8 }}
 />
     </label>
 
-    <p style={{ marginTop: 12 }}>
-      <strong>Total: ${pricing.total}</strong>
-    </p>
+    <div
+  style={{
+    marginTop: 12,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    flexWrap: "wrap",
+  }}
+>
+  <div style={{ fontSize: 16, fontWeight: 800 }}>
+    Total: ${Number(pricing.total || 0).toLocaleString()}
+  </div>
+
+  <PriceGuardBadge />
+</div>
 
     <button onClick={downloadPDF} style={{ marginTop: 8 }}>
       Download PDF
