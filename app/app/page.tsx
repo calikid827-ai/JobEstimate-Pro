@@ -100,6 +100,8 @@ const INVOICE_KEY = "jobestimatepro_invoices"
 // -------------------------
 const HISTORY_KEY = "jobestimatepro_history_v1"
 
+type PricingSource = "ai" | "deterministic" | "merged"
+
 type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -125,6 +127,7 @@ type EstimateHistoryItem = {
     total: number
   }
   pricingAdjusted: boolean
+  pricingSource?: PricingSource
 }
 
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
@@ -434,6 +437,8 @@ async function generate() {
 const nextResult = data.text || data.description || ""
 const nextPricing = data.pricing ? data.pricing : pricing
 const nextTrade = (!trade && data.trade) ? data.trade : trade
+const nextPricingSource =
+  (data?.pricingSource as PricingSource) || "ai"
 
 setResult(nextResult)
 setPricing(nextPricing)
@@ -455,6 +460,7 @@ saveToHistory({
     total: Number(nextPricing.total || 0),
   },
   pricingAdjusted,
+  pricingSource: nextPricingSource,
 })
 
 await checkEntitlementNow()

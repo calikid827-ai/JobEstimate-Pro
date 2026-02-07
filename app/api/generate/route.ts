@@ -453,6 +453,7 @@ const doorPricing: Pricing | null =
       })
     : null
 
+let pricingSource: "ai" | "deterministic" | "merged" = "ai"
 const usedDeterministicSafety = Boolean(bigJobPricing || doorPricing)
 
     // -----------------------------
@@ -725,6 +726,7 @@ normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
 // ✅ Deterministic safety pricing (rooms OR doors)
 if (bigJobPricing || doorPricing) {
+  pricingSource = "merged"
   const ai = normalized.pricing
   const det = bigJobPricing ?? doorPricing!
 
@@ -877,6 +879,7 @@ return NextResponse.json({
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+  pricingSource,
 })
   } catch (err) {
     console.error("Generate failed:", err)
