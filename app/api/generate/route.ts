@@ -2,6 +2,15 @@ import { NextResponse } from "next/server"
 import OpenAI from "openai"
 import { createClient } from "@supabase/supabase-js"
 
+import { computeFlooringDeterministic } from "./lib/priceguard/flooringEngine"
+import { computeElectricalDeterministic } from "./lib/priceguard/electricalEngine"
+import {
+  computePlumbingDeterministic,
+  hasHeavyPlumbingSignals,
+  parsePlumbingFixtureBreakdown,
+} from "./lib/priceguard/plumbingEngine"
+import { computeBathroomPlumbingRoughInDeterministic } from "./lib/priceguard/bathroomPlumbingRoughInEngine"
+
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
@@ -535,6 +544,88 @@ function priceFlooringOnlyAnchor(args: {
   return { labor, materials, subs, markup, total }
 }
 
+function pricePlumbingFixtureSwapsAnchor(args: {
+  scope: string
+  stateMultiplier: number
+}): Pricing | null {
+  const s = args.scope.toLowerCase()
+
+  // Must be fixture-level work
+  const isFixtureWork =
+  /\b(toilet|commode|faucet|sink|vanity|shower\s*valve|mixing\s*valve|diverter|cartridge|trim\s*kit)\b/.test(s)
+
+  // Exclude high-variance plumbing
+  const isHeavyPlumbing = hasHeavyPlumbingSignals(s)
+  // Exclude remodel scopes (should be handled elsewhere)
+  const isRemodelScope =
+    /\b(remodel|renovation|gut|rebuild|demo|demolition)\b/.test(s)
+
+  if (!isFixtureWork || isHeavyPlumbing || isRemodelScope) return null
+
+  // Require explicit counts
+  const breakdown = parsePlumbingFixtureBreakdown(s)
+  if (!breakdown) return null
+
+  const laborRate = 125
+  const markup = 25
+
+  const isAddWork = /\b(add|adding|install(ing)?|new)\b/.test(s)
+  const isSwapWork = /\b(replace|replacing|swap|swapping|remove\s+and\s+replace)\b/.test(s)
+  const treatAsAdd = isAddWork && !isSwapWork
+
+  // Tunable hours per fixture
+  const hrsPerToilet = treatAsAdd ? 2.25 : 1.75
+  const hrsPerFaucet = treatAsAdd ? 1.6 : 1.1
+  const hrsPerSink = treatAsAdd ? 2.25 : 1.5
+  const hrsPerVanity = treatAsAdd ? 5.5 : 4.25
+  const hrsPerShowerValve = treatAsAdd ? 5.0 : 3.75
+
+  const troubleshootHrs =
+    /\b(leak|leaking|clog|clogged|diagnos|troubleshoot|not\s+working)\b/.test(s)
+      ? 1.5
+      : 0
+
+  const laborHrs =
+    breakdown.toilets * hrsPerToilet +
+    breakdown.faucets * hrsPerFaucet +
+    breakdown.sinks * hrsPerSink +
+    breakdown.vanities * hrsPerVanity +
+    breakdown.showerValves * hrsPerShowerValve +
+    troubleshootHrs +
+    1.25 // setup/protection/test
+
+  let labor = Math.round(laborHrs * laborRate)
+  labor = Math.round(labor * args.stateMultiplier)
+
+  // Mid-market supplies allowance per fixture (NOT the fixture itself)
+  const matPerToilet = 85
+  const matPerFaucet = 45
+  const matPerSink = 65
+  const matPerVanity = 140
+  const matPerShowerValve = 95
+
+  const materials = Math.round(
+    breakdown.toilets * matPerToilet +
+      breakdown.faucets * matPerFaucet +
+      breakdown.sinks * matPerSink +
+      breakdown.vanities * matPerVanity +
+      breakdown.showerValves * matPerShowerValve
+  )
+
+  const mobilization =
+    breakdown.total <= 2 ? 225 :
+    breakdown.total <= 6 ? 325 :
+    450
+
+  const supervision = Math.round((labor + materials) * 0.05)
+  const subs = mobilization + supervision
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  return { labor, materials, subs, markup, total }
+}
+
 const PRICEGUARD_ANCHORS: PricingAnchor[] = [
   
   // 1) Kitchen refresh (before bathroom so it doesn’t get “general renovation” collisions later)
@@ -562,28 +653,33 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
   },
 
   // 3) Flooring-only
- {
+{
   id: "flooring_only_v1",
   when: (ctx) => {
-  const s = ctx.scope.toLowerCase()
+    // ✅ Flooring trade should be handled by the flooring deterministic engine,
+    // not by this generic anchor.
+    if (ctx.trade === "flooring") return false
 
-  const isFlooring =
-    ctx.trade === "flooring" ||
-    /\b(floor|flooring|lvp|vinyl\s+plank|laminate|hardwood|carpet|tile\s+floor)\b/.test(s)
+    const s = ctx.scope.toLowerCase()
 
-  if (!isFlooring) return false
+    // Only trigger this anchor when flooring is IMPLIED inside another trade
+    // (ex: kitchen refresh mentions flooring, general renovation mentions flooring, etc.)
+    const mentionsFlooring =
+      /\b(floor|flooring|lvp|vinyl\s+plank|laminate|hardwood|carpet|tile\s+floor)\b/.test(s)
 
-  // Exclude *remodel* signals, not just the words kitchen/bath
-  const looksLikeKitchenRemodel =
-    (/\bkitchen\b/.test(s) || parseKitchenKeyword(s)) &&
-    /\b(remodel|renovation|gut|cabinets?|counter(top)?|backsplash|sink)\b/.test(s)
+    if (!mentionsFlooring) return false
 
-  const looksLikeBathRemodel =
-    (/\b(bath|bathroom)\b/.test(s) || parseBathKeyword(s)) &&
-    /\b(remodel|renovation|gut|shower|tub|vanity|tile\s+walls?|surround)\b/.test(s)
+    // Exclude *remodel* signals, not just the words kitchen/bath
+    const looksLikeKitchenRemodel =
+      (/\bkitchen\b/.test(s) || parseKitchenKeyword(s)) &&
+      /\b(remodel|renovation|gut|cabinets?|counter(top)?|backsplash|sink)\b/.test(s)
 
-  return !looksLikeKitchenRemodel && !looksLikeBathRemodel
-},
+    const looksLikeBathRemodel =
+      (/\b(bath|bathroom)\b/.test(s) || parseBathKeyword(s)) &&
+      /\b(remodel|renovation|gut|shower|tub|vanity|tile\s+walls?|surround)\b/.test(s)
+
+    return !looksLikeKitchenRemodel && !looksLikeBathRemodel
+  },
   price: (ctx) =>
     priceFlooringOnlyAnchor({
       scope: ctx.scope,
@@ -591,15 +687,56 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
       measurements: ctx.measurements,
     }),
 },
+
+// 4) Plumbing fixture swaps (strict, count-based)
+{
+  id: "plumbing_fixture_swaps_v1",
+  when: (ctx) => {
+  const s = ctx.scope.toLowerCase()
+
+  // Must mention plumbing fixtures
+  const hasFixtureWords =
+    /\b(toilet|commode|faucet|sink|vanity|shower\s*valve|mixing\s*valve|diverter|cartridge|trim\s*kit)\b/.test(s)
+  if (!hasFixtureWords) return false
+
+  // Require explicit counts
+  const breakdown = parsePlumbingFixtureBreakdown(s)
+  if (!breakdown) return false
+
+  // HARD plumbing signals (always block)
+  const heavySignals = hasHeavyPlumbingSignals(s)
+
+  // General remodel signals (non-fixture scope)
+  const remodelSignals =
+    /\b(remodel|renovation|gut|rebuild|demo|demolition|tile|backsplash|cabinets?|counter(top)?|shower\s+walls?|tub\s+surround)\b/.test(s)
+
+  // SOFT bath-build block
+  const mentionsBathWetArea =
+    /\b(shower|tub|bath|bathroom|tub\s*surround)\b/.test(s)
+
+  const bathBuildSignals =
+    /\b(tile|wall\s*tile|shower\s*walls?|tub\s*surround|surround|pan|shower\s*pan|curb|waterproof|membrane|red\s*guard|backer\s*board|cement\s*board|hardie(backer)?|durock|mud\s*bed|thinset|grout|demo|demolition|tear\s*out|gut|rebuild|rough[-\s]*in|relocat(e|ion|ing)|move\s+(drain|valve|supply)|new\s+(shower|tub)|convert|conversion)\b/.test(s)
+
+  const valveRelocation =
+    /\b(valve\s*relocation|relocat(e|ing)\s+(the\s*)?valve|move\s+(the\s*)?valve)\b/.test(s)
+
+  const softBathBuildBlock =
+    mentionsBathWetArea && (bathBuildSignals || valveRelocation)
+
+  return !heavySignals && !remodelSignals && !softBathBuildBlock
+},
+  price: (ctx) =>
+    pricePlumbingFixtureSwapsAnchor({
+      scope: ctx.scope,
+      stateMultiplier: ctx.stateMultiplier,
+    }),
+},
   
-  
-  // 4) Electrical device swaps (strict, count-based)
+  // 5) Electrical device swaps (strict, count-based)
   {
   id: "electrical_device_swaps_v1",
   when: (ctx) => {
-    if (ctx.trade === "electrical") {
-  return /\b(outlet|receptacle|switch|recessed|can\s*light|fixture|sconce|device)\b/.test(ctx.scope.toLowerCase())
-}
+    if (ctx.trade === "electrical") return false
 
     const s = ctx.scope.toLowerCase()
 
@@ -953,6 +1090,63 @@ const doors = parseDoorCount(scopeChange)
 const stateAbbrev = getStateAbbrev(rawState)
 const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
 
+// -----------------------------
+// Flooring deterministic engine (PriceGuard™)
+// -----------------------------
+const flooringDet =
+  trade === "flooring"
+    ? computeFlooringDeterministic({
+        scopeText: scopeChange,
+        stateMultiplier,
+        measurements,
+      })
+    : null
+
+// ✅ apply deterministic pricing if possible (even if not verified)
+const flooringDetPricing: Pricing | null =
+  flooringDet?.okForDeterministic
+    ? clampPricing(coercePricing(flooringDet.pricing))
+    : null
+
+  // Electrical deterministic engine (PriceGuard™)
+const electricalDet =
+  trade === "electrical"
+    ? computeElectricalDeterministic({
+        scopeText: scopeChange,
+        stateMultiplier,
+      })
+    : null
+
+const electricalDetPricing: Pricing | null =
+  electricalDet?.okForDeterministic
+    ? clampPricing(coercePricing(electricalDet.pricing))
+    : null
+
+const plumbingDet =
+  trade === "plumbing"
+    ? computePlumbingDeterministic({
+        scopeText: scopeChange,
+        stateMultiplier,
+      })
+    : null
+
+    const plumbingDetPricing: Pricing | null =
+  plumbingDet?.okForDeterministic
+    ? clampPricing(coercePricing(plumbingDet.pricing))
+    : null
+
+    // Bathroom plumbing rough-in deterministic engine (PriceGuard™)
+const bathPlumbingRoughInDet =
+  computeBathroomPlumbingRoughInDeterministic({
+    scopeText: scopeChange,
+    stateMultiplier,
+  })
+
+const bathPlumbingRoughInPricing: Pricing | null =
+  bathPlumbingRoughInDet?.okForDeterministic
+    ? clampPricing(coercePricing(bathPlumbingRoughInDet.pricing))
+    : null
+
 // Only treat as painting when the final trade is painting
 const looksLikePainting = trade === "painting"
 
@@ -1066,8 +1260,6 @@ const doorPricing: Pricing | null =
         return { labor, materials, subs, markup, total }
       })()
     : null
-
-let pricingSource: "ai" | "merged" = "ai"
 
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
@@ -1344,44 +1536,95 @@ try {
 // 🔒 Coerce AI pricing to numbers (prevents string math bugs)
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
-// ✅ Deterministic safety pricing (big rooms OR doors-only OR rooms+doors mixed OR anchor)
+// -----------------------------
+// PriceGuard™ flags (server is source of truth)
+// -----------------------------
+let pricingSource: "ai" | "deterministic" | "merged" = "ai"
+let priceGuardVerified = false // merged = Protected, not Verified
+
+let pricingFinal: Pricing = normalized.pricing
 let detSource: string | null = null
 
-const det: Pricing | null =
-  anchorPricing ?? bigJobPricing ?? doorPricing ?? mixedPaintPricing ?? null
-
-if (det) {
-  const ai = normalized.pricing
-
-  detSource =
-    anchorPricing ? `anchor:${anchorHit?.id}` :
-    bigJobPricing ? "painting_big_job" :
-    doorPricing ? "painting_doors_only" :
-    mixedPaintPricing ? "painting_rooms_plus_doors" :
-    null
-
-  const aiMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
-  const mergedMarkup = Math.min(25, Math.max(15, Math.max(aiMarkup, det.markup)))
-
-  const merged: Pricing = {
-    labor: Math.max(ai.labor, det.labor),
-    materials: Math.max(ai.materials, det.materials),
-    subs: Math.max(ai.subs, det.subs),
-    markup: mergedMarkup,
-    total: 0,
-  }
-
-  const base = merged.labor + merged.materials + merged.subs
-  merged.total = Math.round(base * (1 + merged.markup / 100))
-
-  normalized.pricing = clampPricing(merged)
-  pricingSource = "merged"
-} else {
-  // No deterministic result available → keep AI
-  pricingSource = "ai"
+// ✅ Flooring: deterministic engine should OWN pricing (not merged with AI)
+if (trade === "flooring" && flooringDetPricing) {
+  pricingFinal = flooringDetPricing
+  pricingSource = "deterministic"
+  detSource = flooringDet?.okForVerified
+    ? "flooring_engine_v1_verified"
+    : "flooring_engine_v1"
+  priceGuardVerified = !!flooringDet?.okForVerified
 }
 
-const appliedDeterministicMerge = pricingSource === "merged"
+// ✅ Electrical: deterministic engine should OWN pricing (not merged with AI)
+if (trade === "electrical" && electricalDetPricing) {
+  pricingFinal = electricalDetPricing
+  pricingSource = "deterministic"
+  detSource = electricalDet?.okForVerified
+    ? "electrical_engine_v1_verified"
+    : "electrical_engine_v1"
+  priceGuardVerified = !!electricalDet?.okForVerified
+}
+
+if (trade === "plumbing" && plumbingDetPricing) {
+  pricingFinal = plumbingDetPricing
+  pricingSource = "deterministic"
+  detSource = plumbingDet?.okForVerified
+    ? "plumbing_engine_v1_verified"
+    : "plumbing_engine_v1"
+  priceGuardVerified = !!plumbingDet?.okForVerified
+}
+
+// ✅ Bathroom plumbing rough-in: deterministic should OWN pricing (even if trade isn't "plumbing")
+if (pricingSource !== "deterministic" && bathPlumbingRoughInPricing) {
+  pricingFinal = bathPlumbingRoughInPricing
+  pricingSource = "deterministic"
+  detSource = bathPlumbingRoughInDet?.okForVerified
+    ? "bath_plumbing_rough_in_v1_verified"
+    : "bath_plumbing_rough_in_v1"
+  priceGuardVerified = !!bathPlumbingRoughInDet?.okForVerified
+}
+
+// ✅ Deterministic safety pricing (big rooms OR doors-only OR rooms+doors mixed OR anchor)
+// (Skip if a deterministic engine already applied above)
+if (pricingSource !== "deterministic") {
+  const det: Pricing | null =
+    anchorPricing ?? bigJobPricing ?? doorPricing ?? mixedPaintPricing ?? null
+
+  if (det) {
+    const ai = normalized.pricing
+
+    detSource =
+      anchorPricing ? `anchor:${anchorHit?.id}` :
+      bigJobPricing ? "painting_big_job" :
+      doorPricing ? "painting_doors_only" :
+      mixedPaintPricing ? "painting_rooms_plus_doors" :
+      null
+
+    const aiMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
+    const mergedMarkup = Math.min(25, Math.max(15, Math.max(aiMarkup, det.markup)))
+
+    const merged: Pricing = {
+      labor: Math.max(ai.labor, det.labor),
+      materials: Math.max(ai.materials, det.materials),
+      subs: Math.max(ai.subs, det.subs),
+      markup: mergedMarkup,
+      total: 0,
+    }
+
+    const base = merged.labor + merged.materials + merged.subs
+    merged.total = Math.round(base * (1 + merged.markup / 100))
+
+    pricingFinal = clampPricing(merged)
+    pricingSource = "merged"
+
+    // merged = protected, not verified
+    priceGuardVerified = false
+  } else {
+    pricingFinal = normalized.pricing
+    pricingSource = "ai"
+    priceGuardVerified = false
+  }
+}
 
 const allowedTypes = [
   "Change Order",
@@ -1404,7 +1647,9 @@ if (!allowedTypes.includes(normalized.documentType)) {
   )
 }
 
-if (!appliedDeterministicMerge) {
+const shouldRunAiRealism = pricingSource === "ai"
+
+if (shouldRunAiRealism) {
   // -----------------------------
   // PRICING REALISM v2 (MARKET-ANCHORED)
   // -----------------------------
@@ -1446,9 +1691,9 @@ if (!appliedDeterministicMerge) {
     p.labor + p.materials + p.subs +
     Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
 
-  if (Math.abs(p.total - impliedTotal) / impliedTotal > 0.2) {
-    p.total = impliedTotal
-  }
+  if (impliedTotal > 0 && Math.abs(p.total - impliedTotal) / impliedTotal > 0.2) {
+  p.total = impliedTotal
+}
 
   // ---- State labor multiplier ----
   const stateAbbrev2 = getStateAbbrev(rawState)
@@ -1460,12 +1705,12 @@ if (!appliedDeterministicMerge) {
     p.labor + p.materials + p.subs +
     Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
 
-  normalized.pricing = clampPricing(p)
+  pricingFinal = clampPricing(p)
 } else {
-  // Deterministic merge already applied — just clamp
-  normalized.pricing = clampPricing(normalized.pricing)
+  pricingFinal = clampPricing(pricingFinal)
 }
-const safePricing = normalized.pricing
+const safePricing = pricingFinal
+const priceGuardProtected = pricingSource === "merged"
 
     // Increment usage for free users only
     if (!isPaid) {
@@ -1491,9 +1736,52 @@ return NextResponse.json({
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
-  pricingSource,
-  priceGuardAnchor: anchorHit?.id ?? null,
+
+  pricingSource, // "ai" | "deterministic" | "merged"
   detSource,
+  priceGuardAnchor: anchorHit?.id ?? null,
+  priceGuardVerified,
+  priceGuardProtected,
+
+  flooring: flooringDet
+    ? {
+        okForDeterministic: flooringDet.okForDeterministic,
+        okForVerified: flooringDet.okForVerified,
+        flooringType: flooringDet.flooringType,
+        sqft: flooringDet.sqft,
+        notes: flooringDet.notes,
+      }
+    : null,
+
+   electrical: electricalDet
+    ? {
+        okForDeterministic: electricalDet.okForDeterministic,
+        okForVerified: electricalDet.okForVerified,
+        jobType: electricalDet.jobType,
+        signals: electricalDet.signals ?? null,
+        notes: electricalDet.notes,
+      }
+    : null,
+
+    plumbing: plumbingDet
+  ? {
+      okForDeterministic: plumbingDet.okForDeterministic,
+      okForVerified: plumbingDet.okForVerified,
+      jobType: plumbingDet.jobType,
+      signals: plumbingDet.signals ?? null,
+      notes: plumbingDet.notes,
+    }
+  : null,
+
+  bathPlumbingRoughIn: bathPlumbingRoughInDet?.okForDeterministic
+  ? {
+      okForDeterministic: bathPlumbingRoughInDet.okForDeterministic,
+      okForVerified: bathPlumbingRoughInDet.okForVerified,
+      jobType: bathPlumbingRoughInDet.jobType,
+      signals: bathPlumbingRoughInDet.signals,
+      notes: bathPlumbingRoughInDet.notes,
+    }
+  : null,
 })
 
   } catch (err) {

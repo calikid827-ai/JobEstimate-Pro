@@ -124,6 +124,7 @@ type EstimateHistoryItem = {
     total: number
   }
   pricingSource?: PricingSource
+  priceGuardVerified?: boolean
 }
 
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
@@ -316,6 +317,8 @@ const effectivePaintScope: EffectivePaintScope =
   const [pricingEdited, setPricingEdited] = useState(false)
   const [showPriceGuardDetails, setShowPriceGuardDetails] = useState(false)
 
+  const [priceGuardVerified, setPriceGuardVerified] = useState(false)
+
   useEffect(() => {
   function onDocClick(e: MouseEvent) {
     const t = e.target as HTMLElement
@@ -412,6 +415,7 @@ async function generate() {
   setPricingSource("ai")
   setShowPriceGuardDetails(false)
   setPricingEdited(false)
+  setPriceGuardVerified(false)
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -463,6 +467,9 @@ const paintScopeToSend = sendPaintScope
     const data = await res.json()
     console.log("pricingSource:", data.pricingSource)
 
+    const nextVerified = data?.priceGuardVerified === true
+setPriceGuardVerified(nextVerified)
+
 const nextResult = data.text || data.description || ""
 const nextPricing = data.pricing ? data.pricing : pricing
 const nextTrade = (!trade && data.trade) ? data.trade : trade
@@ -491,6 +498,7 @@ saveToHistory({
     total: Number(nextPricing.total || 0),
   },
   pricingSource: nextPricingSource,
+  priceGuardVerified: nextVerified,
 })
 
 await checkEntitlementNow()
@@ -1133,7 +1141,6 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
 }
 
 const isUserEdited = pricingEdited === true
-const priceGuardVerified = pricingSource === "merged"
 
 const pdfPriceGuardVerified = priceGuardVerified && !isUserEdited
 const pdfEdited = isUserEdited
@@ -1141,16 +1148,20 @@ const pdfEdited = isUserEdited
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
 
-  const label = priceGuardVerified
-  ? "PriceGuard™ Verified"
-  : isUserEdited
+  const label = isUserEdited
   ? "Edited"
+  : priceGuardVerified
+  ? "PriceGuard™ Verified"
+  : pricingSource === "deterministic"
+  ? "PriceGuard™ Deterministic"
   : "Estimate"
 
-const sub = priceGuardVerified
-  ? "Reviewed with pricing safeguards"
-  : isUserEdited
+const sub = isUserEdited
   ? "Pricing adjusted manually"
+  : priceGuardVerified
+  ? "Reviewed with pricing safeguards"
+  : pricingSource === "deterministic"
+  ? "Deterministic engine applied (not fully verified)"
   : "Generated from scope provided"
 
   return (
@@ -1175,9 +1186,11 @@ const sub = priceGuardVerified
         }}
         title={sub}
       >
+        
         <span aria-hidden="true">
-  {priceGuardVerified ? "✅" : isUserEdited ? "✏️" : "ℹ️"}
+  {priceGuardVerified ? "✅" : isUserEdited ? "✏️" : pricingSource === "deterministic" ? "🧠" : "ℹ️"}
 </span>
+
         <span style={{ fontWeight: 800 }}>{label}</span>
       </button>
 
@@ -1919,7 +1932,7 @@ const sub = priceGuardVerified
 >
     Pricing (Adjustable)
 
-  {priceGuardVerified && (
+  {priceGuardVerified && !isUserEdited && (
   <div
     style={{
       padding: "4px 8px",
