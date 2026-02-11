@@ -120,6 +120,35 @@ type PriceGuardReport = {
   }
 }
 
+type UiTrade =
+  | ""
+  | "painting"
+  | "drywall"
+  | "flooring"
+  | "electrical"
+  | "plumbing"
+  | "bathroom_tile"
+  | "carpentry"
+  | "general_renovation"
+
+const normalizeTrade = (t: any): UiTrade => {
+  if (t === "general renovation") return "general_renovation"
+
+  const allowed: UiTrade[] = [
+    "",
+    "painting",
+    "drywall",
+    "flooring",
+    "electrical",
+    "plumbing",
+    "bathroom_tile",
+    "carpentry",
+    "general_renovation",
+  ]
+
+  return allowed.includes(t) ? (t as UiTrade) : ""
+}
+
 type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -131,7 +160,7 @@ type EstimateHistoryItem = {
     jobAddress: string
     date: string
   }
-  trade: string
+  trade: UiTrade
   state: string
   scopeChange: string
 
@@ -245,12 +274,13 @@ useEffect(() => {
   if (old) {
     localStorage.setItem(COMPANY_KEY, old)
     localStorage.removeItem("scopeguard_company")
-    setCompanyProfile(JSON.parse(old))
+    try { setCompanyProfile(JSON.parse(old)) } catch {}
     return
   }
 
   const saved = localStorage.getItem(COMPANY_KEY)
-  if (saved) setCompanyProfile(JSON.parse(saved))
+  if (saved) { try { setCompanyProfile(JSON.parse(saved)) } catch {}
+  }
 }, [])
 
   useEffect(() => {
@@ -270,7 +300,34 @@ useEffect(() => {
   if (saved) {
     try {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) setHistory(parsed)
+      if (Array.isArray(parsed)) {
+  const cleaned: EstimateHistoryItem[] = parsed.map((x: any) => ({
+    id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
+    createdAt: Number(x?.createdAt ?? Date.now()),
+    jobDetails: {
+      clientName: String(x?.jobDetails?.clientName ?? ""),
+      jobName: String(x?.jobDetails?.jobName ?? ""),
+      changeOrderNo: String(x?.jobDetails?.changeOrderNo ?? ""),
+      jobAddress: String(x?.jobDetails?.jobAddress ?? ""),
+      date: String(x?.jobDetails?.date ?? ""),
+    },
+    trade: normalizeTrade(x?.trade), // ✅ key fix
+    state: String(x?.state ?? ""),
+    scopeChange: String(x?.scopeChange ?? ""),
+    result: String(x?.result ?? ""),
+    pricing: {
+      labor: Number(x?.pricing?.labor ?? 0),
+      materials: Number(x?.pricing?.materials ?? 0),
+      subs: Number(x?.pricing?.subs ?? 0),
+      markup: Number(x?.pricing?.markup ?? 0),
+      total: Number(x?.pricing?.total ?? 0),
+    },
+    pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
+    priceGuardVerified: Boolean(x?.priceGuardVerified),
+  }))
+
+  setHistory(cleaned)
+}
     } catch {
       // ignore bad data
     }
@@ -282,7 +339,7 @@ useEffect(() => {
   // -------------------------
   const [scopeChange, setScopeChange] = useState("")
   const [result, setResult] = useState("")
-  const [trade, setTrade] = useState("")
+  const [trade, setTrade] = useState<UiTrade>("")
   const [state, setState] = useState("")
   const [paintScope, setPaintScope] = useState<PaintScope>("walls")
   
@@ -446,6 +503,11 @@ const paintScopeToSend = sendPaintScope
   ? (effectivePaintScope === "doors_only" ? "walls" : paintScope)
   : null
 
+const tradeToSend =
+  trade === "bathroom_tile" || trade === "general_renovation"
+    ? "general renovation"
+    : trade
+
   try {
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -453,7 +515,7 @@ const paintScopeToSend = sendPaintScope
       body: JSON.stringify({
         email: e,
         scopeChange,
-        trade,
+        trade: tradeToSend,
         state,
         paintScope: paintScopeToSend,
         measurements: measureEnabled
@@ -495,21 +557,22 @@ setPriceGuard(data?.priceGuard ?? null)
 
 const nextResult = data.text || data.description || ""
 const nextPricing = data.pricing ? data.pricing : pricing
-const nextTrade = (!trade && data.trade) ? data.trade : trade
 const nextPricingSource =
   (data?.pricingSource as PricingSource) || "ai"
 
 setResult(nextResult)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
-if (!trade && data.trade) setTrade(data.trade)
+const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
 
+// only auto-set trade when user left it blank
+if (!trade && nextTrade) setTrade(nextTrade)
 
 saveToHistory({
   id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
   createdAt: Date.now(),
   jobDetails: { ...jobDetails },
-  trade: nextTrade || "",
+  trade: nextTrade,
   state: state || "",
   scopeChange: scopeChange || "",
   result: nextResult,
@@ -1481,17 +1544,18 @@ const sub =
       <p style={{ marginTop: 12, fontWeight: 600 }}>Trade Type</p>
 <select
   value={trade}
-  onChange={(e) => setTrade(e.target.value)}
+  onChange={(e) => setTrade(normalizeTrade(e.target.value))}
   style={{ width: "100%", padding: 10, marginTop: 6 }}
 >
   <option value="">Auto-detect</option>
   <option value="painting">Painting</option>
+  <option value="drywall">Drywall</option>
   <option value="flooring">Flooring</option>
   <option value="electrical">Electrical</option>
   <option value="plumbing">Plumbing</option>
-  <option value="tile">Tile / Bathroom</option>
+  <option value="bathroom_tile">Bathroom / Tile</option>
   <option value="carpentry">Carpentry</option>
-  <option value="general renovation">General Renovation</option>
+  <option value="general_renovation">General Renovation</option>
 </select>
 
 {showPaintScope && (

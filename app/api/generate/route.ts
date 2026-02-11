@@ -1254,7 +1254,16 @@ const paintScope: PaintScope | null =
 
     const email = body.email
     const scopeChange = body.scopeChange
-    const uiTrade = typeof body.trade === "string" ? body.trade.trim().toLowerCase() : ""
+    const uiTradeRaw =
+      typeof body.trade === "string" ? body.trade.trim().toLowerCase() : ""
+
+    const uiTrade =
+      uiTradeRaw === "auto-detect" ||
+      uiTradeRaw === "auto detect" ||
+      uiTradeRaw === "autodetect" ||
+      uiTradeRaw === "auto"
+        ? ""
+        : uiTradeRaw
     const rawState = typeof body.state === "string" ? body.state.trim() : ""
 
     // -----------------------------
