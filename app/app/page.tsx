@@ -467,6 +467,33 @@ const effectivePaintScope: EffectivePaintScope =
   })
 
   // -------------------------
+// Tax (optional)
+// -------------------------
+const [taxEnabled, setTaxEnabled] = useState(false)
+const [taxRate, setTaxRate] = useState<number>(7.75)
+
+// Derived tax amount
+const taxAmount = useMemo(() => {
+  if (!taxEnabled) return 0
+  const subtotal =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  const base =
+    subtotal * (1 + Number(pricing.markup || 0) / 100)
+
+  return Math.round(base * (Number(taxRate || 0) / 100))
+}, [
+  taxEnabled,
+  taxRate,
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  pricing.markup,
+])
+
+  // -------------------------
 // Deposit (optional)
 // -------------------------
 const [depositEnabled, setDepositEnabled] = useState(false)
@@ -539,25 +566,34 @@ useEffect(() => {
   if (paid) setShowUpgrade(false)
 }, [paid])
 
+  
+// -------------------------
+// Auto-calc total
+// -------------------------
+useEffect(() => {
+  const base =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
 
+  // subtotal + markup
+  let total = Math.round(base * (1 + Number(pricing.markup || 0) / 100))
 
-  // -------------------------
-  // Auto-calc total
-  // -------------------------
-  useEffect(() => {
-    const base =
-      pricing.labor + pricing.materials + pricing.subs
-    const total = Math.round(
-      base * (1 + pricing.markup / 100)
-    )
-    setPricing((p) => ({ ...p, total }))
-  }, [
-    pricing.labor,
-    pricing.materials,
-    pricing.subs,
-    pricing.markup,
-  ])
+  // add tax (use the same derived value the UI/PDF shows)
+  if (taxEnabled) {
+    total += Number(taxAmount || 0)
+  }
 
+  setPricing((p) => ({ ...p, total }))
+}, [
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  pricing.markup,
+  taxEnabled,
+  taxRate,
+  taxAmount,
+])
   // -------------------------
 // Generate AI document
 // -------------------------
@@ -1090,10 +1126,17 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             <table>
               <tr><th>Category</th><th style="text-align:right;">Amount</th></tr>
               <tr><td>Labor</td><td style="text-align:right;">$${Number(pricing.labor || 0).toLocaleString()}</td></tr>
-              <tr><td>Materials</td><td style="text-align:right;">$${Number(pricing.materials || 0).toLocaleString()}</td></tr>
-              <tr><td>Other / Mobilization</td><td style="text-align:right;">$${Number(pricing.subs || 0).toLocaleString()}</td></tr>
-              <tr><td>Markup</td><td style="text-align:right;">${Number(pricing.markup || 0)}%</td></tr>
-              <tr class="totalRow"><td>Total</td><td style="text-align:right;">$${Number(pricing.total || 0).toLocaleString()}</td></tr>
+<tr><td>Materials</td><td style="text-align:right;">$${Number(pricing.materials || 0).toLocaleString()}</td></tr>
+<tr><td>Other / Mobilization</td><td style="text-align:right;">$${Number(pricing.subs || 0).toLocaleString()}</td></tr>
+<tr><td>Markup</td><td style="text-align:right;">${Number(pricing.markup || 0)}%</td></tr>
+
+${
+  taxEnabled
+    ? `<tr><td>Sales Tax (${Number(taxRate || 0)}%)</td><td style="text-align:right;">$${Number(taxAmount || 0).toLocaleString()}</td></tr>`
+    : ""
+}
+
+<tr class="totalRow"><td>Total</td><td style="text-align:right;">$${Number(pricing.total || 0).toLocaleString()}</td></tr>
                             ${
                 depositEnabled
                   ? `<tr><td>Deposit Due Now</td><td style="text-align:right;">$${Number(depositDue || 0).toLocaleString()}</td></tr>
@@ -2471,6 +2514,53 @@ const sub =
           Remaining Balance: <strong>${Number(remainingBalance || 0).toLocaleString()}</strong>
         </div>
       </div>
+    </div>
+  )}
+</div>
+
+{/* -------------------------
+    Tax (optional)
+------------------------- */}
+<div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    background: "#fff",
+  }}
+>
+  <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <input
+      type="checkbox"
+      checked={taxEnabled}
+      onChange={(e) => setTaxEnabled(e.target.checked)}
+    />
+    <span style={{ fontWeight: 800 }}>Apply Sales Tax</span>
+  </label>
+
+  {taxEnabled && (
+    <div style={{ marginTop: 10 }}>
+      <input
+        type="number"
+        value={taxRate === 0 ? "" : taxRate}
+        onChange={(e) =>
+          setTaxRate(e.target.value === "" ? 0 : Number(e.target.value))
+        }
+        placeholder="Tax rate %"
+        style={{
+          width: "100%",
+          padding: 10,
+          borderRadius: 10,
+          border: "1px solid #ddd",
+        }}
+      />
+    </div>
+  )}
+
+  {taxEnabled && (
+    <div style={{ fontSize: 13, marginTop: 6 }}>
+      Sales Tax: <strong>${Number(taxAmount || 0).toLocaleString()}</strong>
     </div>
   )}
 </div>
