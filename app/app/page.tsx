@@ -311,7 +311,7 @@ useEffect(() => {
   email: "",
   logo: "",
   license: "",
-  paymentTerms: "Due upon approval.",
+  paymentTerms: "",
 })
 
   useEffect(() => {
@@ -1790,7 +1790,7 @@ const sub =
 
 <textarea
   placeholder="Default payment terms (optional) — shown on PDFs & invoices"
-  value={(companyProfile as any).paymentTerms || ""}
+  value={companyProfile.paymentTerms}
   onChange={(e) =>
     setCompanyProfile({
       ...companyProfile,
