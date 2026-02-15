@@ -76,6 +76,7 @@ const lastSavedEstimateIdRef = useRef<string | null>(null)
 type Invoice = {
   id: string
   createdAt: number
+  jobId?: string
   fromEstimateId: string
   invoiceNo: string
   issueDate: string
@@ -96,6 +97,17 @@ type Invoice = {
     estimateTotal: number
   }
 }
+
+type Job = {
+  id: string
+  createdAt: number
+  clientName: string
+  jobName: string
+  jobAddress: string
+  changeOrderNo?: string
+}
+
+const JOBS_KEY = "jobestimatepro_jobs_v1"
 
   // -------------------------
 // Email (required for entitlement)
@@ -167,6 +179,7 @@ const normalizeTrade = (t: any): UiTrade => {
 type EstimateHistoryItem = {
   id: string
   createdAt: number
+  jobId?: string
   documentType: "Change Order" | "Estimate" | "Change Order / Estimate"
   
   // job context snapshot
@@ -369,6 +382,7 @@ useEffect(() => {
       if (Array.isArray(parsed)) {
   const cleaned: EstimateHistoryItem[] = parsed.map((x: any) => ({
     id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
+    jobId: String(x?.jobId ?? ""),
     createdAt: Number(x?.createdAt ?? Date.now()),
     documentType:
   x?.documentType === "Change Order" ||
@@ -416,7 +430,9 @@ useEffect(() => {
     } catch {
       // ignore bad data
     }
-  }
+   }
+
+  setHistoryHydrated(true)
 }, [])
 
   // -------------------------
@@ -556,8 +572,75 @@ const remainingBalance = useMemo(() => {
   
   const [status, setStatus] = useState("")
   const [loading, setLoading] = useState(false)
-
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [activeJobId, setActiveJobId] = useState<string>("") // "" = All jobs
+
+  const [jobsHydrated, setJobsHydrated] = useState(false)
+  const [historyHydrated, setHistoryHydrated] = useState(false)
+
+  const filteredHistory = useMemo(() => {
+  if (!activeJobId) return history
+  return history.filter((h) => h.jobId === activeJobId)
+}, [history, activeJobId])
+
+const filteredInvoices = useMemo(() => {
+  if (!activeJobId) return invoices
+  return invoices.filter((inv) => inv.jobId === activeJobId)
+}, [invoices, activeJobId])
+
+// -------------------------
+// Jobs (localStorage)
+// -------------------------
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  const saved = localStorage.getItem(JOBS_KEY)
+
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved)
+      if (Array.isArray(parsed)) setJobs(parsed)
+    } catch {}
+  }
+
+  setJobsHydrated(true)
+}, [])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(JOBS_KEY, JSON.stringify(jobs))
+}, [jobs])
+
+// -------------------------
+// Backfill missing jobId AFTER jobs + history load
+// -------------------------
+useEffect(() => {
+  if (!jobsHydrated || !historyHydrated) return
+  if (jobs.length === 0) return
+
+  setHistory((prev) => {
+    let changed = false
+
+    const next = prev.map((h) => {
+      if (h.jobId) return h
+
+      const key = normalizeJobKey(h.jobDetails)
+      const found = jobs.find((j) => normalizeJobKey(j) === key)
+
+      if (!found?.id) return h
+
+      changed = true
+      return { ...h, jobId: found.id }
+    })
+
+    if (changed) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    }
+
+    return next
+  })
+}, [jobsHydrated, historyHydrated, jobs])
 
   useEffect(() => {
   if (typeof window === "undefined") return
@@ -581,6 +664,8 @@ useEffect(() => {
   useEffect(() => {
   if (paid) setShowUpgrade(false)
 }, [paid])
+
+
 
   // -------------------------
 // Auto-calc total
@@ -775,6 +860,7 @@ saveToHistory({
   id: newId,
   createdAt: Date.now(),
   jobDetails: { ...jobDetails },
+  jobId: getOrCreateJobIdFromDetails(),
   documentType: nextDocumentType,
   trade: nextTrade,
   state: state || "",
@@ -871,6 +957,72 @@ function updateHistoryItem(id: string, patch: Partial<EstimateHistoryItem>) {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
     return next
   })
+}
+
+function makeJobId() {
+  return crypto.randomUUID()
+}
+
+function normalizeJobKey(d: {
+  clientName: string
+  jobName: string
+  jobAddress: string
+}) {
+  return `${(d.clientName || "").trim().toLowerCase()}|${(d.jobName || "")
+    .trim()
+    .toLowerCase()}|${(d.jobAddress || "").trim().toLowerCase()}`
+}
+
+function getOrCreateJobIdFromDetails() {
+  const clientName = jobDetails.clientName?.trim() || "Client"
+  const jobName = jobDetails.jobName?.trim() || "Job"
+  const jobAddress = jobDetails.jobAddress?.trim() || ""
+
+  const key = normalizeJobKey({ clientName, jobName, jobAddress })
+
+  const existing = jobs.find(
+    (j) => normalizeJobKey(j) === key
+  )
+
+  if (existing) return existing.id
+
+  const newJob: Job = {
+    id: makeJobId(),
+    createdAt: Date.now(),
+    clientName,
+    jobName,
+    jobAddress,
+    changeOrderNo: jobDetails.changeOrderNo?.trim() || "",
+  }
+
+  setJobs((prev) => [newJob, ...prev])
+  return newJob.id
+}
+
+function updateJob(id: string, patch: Partial<Job>) {
+  setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...patch } : j)))
+}
+
+function deleteJob(id: string) {
+  // remove job
+  setJobs((prev) => prev.filter((j) => j.id !== id))
+
+  // remove all estimates tied to it
+  setHistory((prev) => {
+    const next = prev.filter((h) => h.jobId !== id)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    return next
+  })
+
+  // remove all invoices tied to it
+  setInvoices((prev) => {
+    const next = prev.filter((inv) => inv.jobId !== id)
+    localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+    return next
+  })
+
+  // reset active selection if needed
+  setActiveJobId((cur) => (cur === id ? "" : cur))
 }
 
 // ✅ Delete single history item
@@ -1405,7 +1557,7 @@ ${
         ${
   inv.deposit?.enabled
     ? `<div class="box">
-         <strong>Deposit Invoice:</strong><br/>
+         <strong>${inv.total === inv.deposit?.depositDue ? "Deposit Invoice:" : "Balance Invoice:"}</strong><br/>
          Estimate Total: ${money(inv.deposit.estimateTotal)}<br/>
          Deposit Due Now: ${money(inv.deposit.depositDue)}<br/>
          Remaining Balance: ${money(inv.deposit.remainingBalance)}
@@ -1477,10 +1629,59 @@ function toISODate(d: Date) {
   return `${y}-${m}-${day}`
 }
 
+// -------------------------
+// ✅ Due Date Logic (Net 7 / Net 14 / Net 30 / Due upon receipt)
+// Uses companyProfile.paymentTerms as the source of truth
+// -------------------------
+function parseNetDays(termsRaw: string): number | null {
+  const t = (termsRaw || "").toLowerCase().trim()
+
+  // common phrases that mean "due today"
+  if (
+    t.includes("due upon receipt") ||
+    t.includes("due on receipt") ||
+    t.includes("due upon approval") ||
+    t.includes("due on approval") ||
+    t === "due immediately" ||
+    t === "due now"
+  ) {
+    return 0
+  }
+
+  // match "net 7", "net7", "net 14", "net30", etc.
+  const m = t.match(/\bnet\s*(\d{1,3})\b/i)
+  if (m?.[1]) {
+    const n = Number(m[1])
+    if (Number.isFinite(n) && n >= 0 && n <= 365) return n
+  }
+
+  // match "due in 14 days", "payable in 30 days"
+  const m2 = t.match(/\b(?:due|payable)\s+in\s+(\d{1,3})\s+days?\b/i)
+  if (m2?.[1]) {
+    const n = Number(m2[1])
+    if (Number.isFinite(n) && n >= 0 && n <= 365) return n
+  }
+
+  return null
+}
+
+function computeDueDateISO(issueDate: Date, termsRaw: string): string {
+  const netDays = parseNetDays(termsRaw)
+
+  // default fallback if nothing matches
+  const daysToAdd = netDays == null ? 7 : netDays
+
+  const due = new Date(issueDate)
+  due.setDate(due.getDate() + daysToAdd)
+
+  return toISODate(due)
+}
+
 function createInvoiceFromEstimate(est: EstimateHistoryItem) {
-  const issue = new Date()
-  const due = new Date()
-  due.setDate(due.getDate() + 7)
+    const issue = new Date()
+
+  const terms = companyProfile.paymentTerms?.trim() || "Net 7"
+  const dueISO = computeDueDateISO(issue, terms)
 
   const client = est?.jobDetails?.clientName || jobDetails.clientName || "Client"
   const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
@@ -1543,10 +1744,11 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
   const inv: Invoice = {
     id: crypto.randomUUID(),
     createdAt: Date.now(),
+    jobId: est.jobId,
     fromEstimateId: est.id,
     invoiceNo: makeInvoiceNo(),
     issueDate: toISODate(issue),
-    dueDate: toISODate(due),
+    dueDate: dueISO,
     billToName: client,
     jobName: jobNm,
     jobAddress: jobAddr,
@@ -1576,6 +1778,97 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
 
   setInvoices((prev) => [inv, ...prev])
   setStatus(`Invoice created: ${inv.invoiceNo}`)
+}
+
+// ✅ Create Balance Invoice (Remaining Balance after Deposit)
+function createBalanceInvoiceFromEstimate(est: EstimateHistoryItem) {
+  const issue = new Date()
+  const due = new Date()
+  due.setDate(due.getDate() + 7)
+
+  const client = est?.jobDetails?.clientName || jobDetails.clientName || "Client"
+  const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
+  const jobAddr = est?.jobDetails?.jobAddress || jobDetails.jobAddress || ""
+
+  const labor = Number(est?.pricing?.labor || 0)
+  const materials = Number(est?.pricing?.materials || 0)
+  const subs = Number(est?.pricing?.subs || 0)
+  const markupPct = Number(est?.pricing?.markup || 0)
+
+  // --- tax snapshot (from estimate history) ---
+  const taxEnabledSnap = Boolean(est.tax?.enabled)
+  const taxRateSnap = Number(est.tax?.rate || 0)
+
+  // --- compute estimate totals (same logic as UI/PDF) ---
+  const base = labor + materials + subs
+  const markedUp = base * (1 + markupPct / 100)
+  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
+  const estimateTotal = Math.round(markedUp + taxAmt)
+
+  // --- deposit snapshot (from estimate history) ---
+  const depEnabled = Boolean(est.deposit?.enabled)
+  const depType = est.deposit?.type === "fixed" ? "fixed" : "percent"
+  const depValue = Number(est.deposit?.value || 0)
+
+  // deposit is computed from the estimate TOTAL (including tax)
+  let depDue = 0
+  if (depEnabled && estimateTotal > 0) {
+    if (depType === "percent") {
+      const pct = Math.max(0, Math.min(100, depValue))
+      depDue = Math.round(estimateTotal * (pct / 100))
+    } else {
+      depDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
+    }
+  }
+
+  const balanceDue = Math.max(0, estimateTotal - depDue)
+
+  // ✅ Guardrails (avoid creating nonsense invoices)
+  if (!depEnabled) {
+    setStatus("No deposit was set on this estimate — use Create Invoice instead.")
+    return
+  }
+  if (balanceDue <= 0) {
+    setStatus("Remaining balance is $0 — nothing to invoice.")
+    return
+  }
+
+  const lineItems: { label: string; amount: number }[] = [
+    { label: "Remaining Balance", amount: balanceDue },
+  ]
+
+  const inv: Invoice = {
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+    jobId: est.jobId,
+    fromEstimateId: est.id,
+    invoiceNo: makeInvoiceNo(),
+    issueDate: toISODate(issue),
+    dueDate: toISODate(due),
+    billToName: client,
+    jobName: jobNm,
+    jobAddress: jobAddr,
+    lineItems,
+    subtotal: balanceDue,
+    total: balanceDue,
+
+    notes: `Balance invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Deposit paid/required: $${depDue.toLocaleString()}. Remaining balance due: $${balanceDue.toLocaleString()}. Payment terms: ${
+      companyProfile.paymentTerms?.trim() || "Due upon approval."
+    }`,
+
+    // keep deposit context so PDF can optionally show it
+    deposit: {
+      enabled: true,
+      type: depType,
+      value: depValue,
+      depositDue: depDue,
+      remainingBalance: balanceDue,
+      estimateTotal,
+    },
+  }
+
+  setInvoices((prev) => [inv, ...prev])
+  setStatus(`Balance invoice created: ${inv.invoiceNo}`)
 }
 
 const isUserEdited = pricingEdited === true
@@ -2078,7 +2371,7 @@ const sub =
 {/* -------------------------
     Invoices
 ------------------------- */}
-{invoices.length > 0 && (
+{filteredInvoices.length > 0 && (
   <div
     style={{
       marginTop: 18,
@@ -2100,7 +2393,7 @@ const sub =
     </div>
 
     <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-      {invoices.map((inv) => (
+      {filteredInvoices.map((inv) => (
         <div
           key={inv.id}
           style={{
@@ -2334,7 +2627,7 @@ const sub =
 {/* -------------------------
     Saved History
 ------------------------- */}
-{history.length > 0 && (
+{filteredHistory.length > 0 && (
   <div
     style={{
       marginTop: 18,
@@ -2356,7 +2649,7 @@ const sub =
     </p>
 
     <div style={{ display: "grid", gap: 10 }}>
-      {history.map((h) => (
+      {filteredHistory.map((h) => (
         <div
           key={h.id}
           style={{
@@ -2392,6 +2685,14 @@ const sub =
               >
                 Create Invoice
               </button>
+
+              <button
+  type="button"
+  onClick={() => createBalanceInvoiceFromEstimate(h)}
+  style={{ fontSize: 12 }}
+>
+  Create Balance Invoice
+</button>
               
               <button
                 type="button"
