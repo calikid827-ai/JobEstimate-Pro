@@ -13,6 +13,8 @@ export default function Home() {
 
 // Prevent out-of-order entitlement responses from overwriting newer state
 const entitlementReqId = useRef(0)
+
+const lastSavedEstimateIdRef = useRef<string | null>(null)
   
   const PAINT_SCOPE_OPTIONS = [
   { label: "Walls only", value: "walls" },
@@ -190,6 +192,11 @@ type EstimateHistoryItem = {
   }
   pricingSource?: PricingSource
   priceGuardVerified?: boolean
+
+  tax?: {
+    enabled: boolean
+    rate: number
+  }
 
     deposit?: {
     enabled: boolean
@@ -387,6 +394,12 @@ useEffect(() => {
       markup: Number(x?.pricing?.markup ?? 0),
       total: Number(x?.pricing?.total ?? 0),
     },
+        tax: x?.tax
+      ? {
+          enabled: Boolean(x.tax.enabled),
+          rate: Number(x.tax.rate || 0),
+        }
+      : undefined,
         deposit: x?.deposit
       ? {
           enabled: Boolean(x.deposit.enabled),
@@ -475,15 +488,18 @@ const [taxRate, setTaxRate] = useState<number>(7.75)
 // Derived tax amount
 const taxAmount = useMemo(() => {
   if (!taxEnabled) return 0
-  const subtotal =
+
+  const base =
     Number(pricing.labor || 0) +
     Number(pricing.materials || 0) +
     Number(pricing.subs || 0)
 
-  const base =
-    subtotal * (1 + Number(pricing.markup || 0) / 100)
+  const markedUp = base * (1 + Number(pricing.markup || 0) / 100)
+  const total = Math.round(
+    markedUp + markedUp * (Number(taxRate || 0) / 100)
+  )
 
-  return Math.round(base * (Number(taxRate || 0) / 100))
+  return Math.max(0, total - Math.round(markedUp))
 }, [
   taxEnabled,
   taxRate,
@@ -566,8 +582,7 @@ useEffect(() => {
   if (paid) setShowUpgrade(false)
 }, [paid])
 
-  
-// -------------------------
+  // -------------------------
 // Auto-calc total
 // -------------------------
 useEffect(() => {
@@ -576,13 +591,10 @@ useEffect(() => {
     Number(pricing.materials || 0) +
     Number(pricing.subs || 0)
 
-  // subtotal + markup
-  let total = Math.round(base * (1 + Number(pricing.markup || 0) / 100))
+  const markedUp = base * (1 + Number(pricing.markup || 0) / 100)
+  const tax = taxEnabled ? markedUp * (Number(taxRate || 0) / 100) : 0
 
-  // add tax (use the same derived value the UI/PDF shows)
-  if (taxEnabled) {
-    total += Number(taxAmount || 0)
-  }
+  const total = Math.round(markedUp + tax)
 
   setPricing((p) => ({ ...p, total }))
 }, [
@@ -592,8 +604,50 @@ useEffect(() => {
   pricing.markup,
   taxEnabled,
   taxRate,
-  taxAmount,
 ])
+
+// -------------------------
+// ✅ Keep latest saved estimate in sync with UI (tax/deposit/pricing)
+// -------------------------
+
+useEffect(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return
+  if (!result) return
+  updateHistoryItem(id, {
+    tax: { enabled: taxEnabled, rate: Number(taxRate || 0) },
+  })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [taxEnabled, taxRate])
+
+useEffect(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return
+  if (!result) return
+  updateHistoryItem(id, {
+    deposit: depositEnabled
+      ? { enabled: true, type: depositType, value: Number(depositValue || 0) }
+      : undefined,
+  })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [depositEnabled, depositType, depositValue])
+
+useEffect(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return
+  if (!result) return
+  updateHistoryItem(id, {
+    pricing: {
+      labor: Number(pricing.labor || 0),
+      materials: Number(pricing.materials || 0),
+      subs: Number(pricing.subs || 0),
+      markup: Number(pricing.markup || 0),
+      total: Number(pricing.total || 0),
+    },
+  })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [pricing.labor, pricing.materials, pricing.subs, pricing.markup, pricing.total])
+
   // -------------------------
 // Generate AI document
 // -------------------------
@@ -715,8 +769,10 @@ setPricingSource(nextPricingSource)
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
 if (!trade && nextTrade) setTrade(nextTrade)
 
+const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
+
 saveToHistory({
-  id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
+  id: newId,
   createdAt: Date.now(),
   jobDetails: { ...jobDetails },
   documentType: nextDocumentType,
@@ -734,14 +790,22 @@ saveToHistory({
   pricingSource: nextPricingSource,
   priceGuardVerified: nextVerified,
 
-    deposit: depositEnabled
-  ? {
-      enabled: true,
-      type: depositType,
-      value: Number(depositValue || 0),
-    }
-  : undefined,
+  tax: {
+    enabled: taxEnabled,
+    rate: Number(taxRate || 0),
+  },
+
+  deposit: depositEnabled
+    ? {
+        enabled: true,
+        type: depositType,
+        value: Number(depositValue || 0),
+      }
+    : undefined,
 })
+
+// ✅ ADD THIS LINE RIGHT AFTER saveToHistory(...)
+lastSavedEstimateIdRef.current = newId
 
 await checkEntitlementNow()
   } catch (err) {
@@ -800,6 +864,15 @@ function saveToHistory(item: EstimateHistoryItem) {
   })
 }
 
+// ✅ Update single history item (patch fields)
+function updateHistoryItem(id: string, patch: Partial<EstimateHistoryItem>) {
+  setHistory((prev) => {
+    const next = prev.map((h) => (h.id === id ? { ...h, ...patch } : h))
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    return next
+  })
+}
+
 // ✅ Delete single history item
 function deleteHistoryItem(id: string) {
   setHistory((prev) => {
@@ -826,6 +899,15 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setResult(item.result || "")
   setPricing(item.pricing)
 
+    // restore tax settings (if present)
+  if (item.tax) {
+    setTaxEnabled(Boolean(item.tax.enabled))
+    setTaxRate(Number(item.tax.rate || 0))
+  } else {
+    setTaxEnabled(false)
+    setTaxRate(7.75)
+  }
+
     // restore deposit settings (if present)
   if (item.deposit) {
     setDepositEnabled(Boolean(item.deposit.enabled))
@@ -841,6 +923,9 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setPricingSource(src)
 
   setShowPriceGuardDetails(false)
+
+  lastSavedEstimateIdRef.current = item.id
+
   setStatus("Loaded saved estimate from history.")
 }
 
@@ -1404,17 +1489,25 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
   const labor = Number(est?.pricing?.labor || 0)
   const materials = Number(est?.pricing?.materials || 0)
   const subs = Number(est?.pricing?.subs || 0)
-  const subtotal = labor + materials + subs
-  const total = Number(est?.pricing?.total || 0)
+  const markupPct = Number(est?.pricing?.markup || 0)
 
-  // --- deposit calculation (from the estimate snapshot) ---
+  // --- tax snapshot (from estimate history) ---
+  const taxEnabledSnap = Boolean(est.tax?.enabled)
+  const taxRateSnap = Number(est.tax?.rate || 0)
+
+  // --- compute estimate totals (same logic as UI/PDF) ---
+  const base = labor + materials + subs
+  const markedUp = base * (1 + markupPct / 100)
+  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
+  const estimateTotal = Math.round(markedUp + taxAmt)
+
+  // --- deposit snapshot (from estimate history) ---
   const depEnabled = Boolean(est.deposit?.enabled)
   const depType = est.deposit?.type === "fixed" ? "fixed" : "percent"
   const depValue = Number(est.deposit?.value || 0)
 
-  const estimateTotal = Number(est?.pricing?.total || 0)
+  // deposit is computed from the estimate TOTAL (including tax)
   let depDue = 0
-
   if (depEnabled && estimateTotal > 0) {
     if (depType === "percent") {
       const pct = Math.max(0, Math.min(100, depValue))
@@ -1423,22 +1516,28 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
       depDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
     }
   }
-
   const depRemain = Math.max(0, estimateTotal - depDue)
 
   // --- build line items ---
   const lineItems: { label: string; amount: number }[] = []
 
   if (depEnabled) {
+    // Deposit invoice: customer pays ONLY deposit now
     const label =
       depType === "percent"
-        ? `Deposit (${Math.max(0, Math.min(100, depValue))}% of estimate total)`
+        ? `Deposit (${Math.max(0, Math.min(100, depValue))}% of total)`
         : `Deposit (fixed amount)`
     lineItems.push({ label, amount: depDue })
   } else {
+    // Full invoice: show full breakdown + tax line
     if (labor) lineItems.push({ label: "Labor", amount: labor })
     if (materials) lineItems.push({ label: "Materials", amount: materials })
     if (subs) lineItems.push({ label: "Other / Mobilization", amount: subs })
+
+    // If you want a visible tax line item (recommended)
+    if (taxEnabledSnap) {
+      lineItems.push({ label: `Sales Tax (${taxRateSnap}%)`, amount: taxAmt })
+    }
   }
 
   const inv: Invoice = {
@@ -1453,11 +1552,12 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
     jobAddress: jobAddr,
     lineItems,
 
-    subtotal: depEnabled ? depDue : subtotal,
-    total: depEnabled ? depDue : (total || subtotal),
+    // subtotal is what’s shown before total-due line; for deposit invoice it’s the deposit
+    subtotal: depEnabled ? depDue : Math.round(markedUp),
+    total: depEnabled ? depDue : estimateTotal,
 
     notes: depEnabled
-      ? `Deposit invoice. Remaining balance after deposit: $${Number(depRemain || 0).toLocaleString()}. Payment terms: ${
+      ? `Deposit invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Remaining balance after deposit: $${depRemain.toLocaleString()}. Payment terms: ${
           companyProfile.paymentTerms?.trim() || "Due upon approval."
         }`
       : `Payment terms: ${companyProfile.paymentTerms?.trim() || "Due upon approval."}`,
