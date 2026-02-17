@@ -574,6 +574,80 @@ function validateCrewAndSequencing(args: {
   return { ok: reasons.length === 0, reasons }
 }
 
+// -----------------------------
+// TRADE STACK (MULTI-TRADE DETECTOR)
+// -----------------------------
+type TradeStack = {
+  primaryTrade: string
+  trades: string[]
+  signals: string[]
+  isMultiTrade: boolean
+}
+
+function detectTradeStack(args: { scopeText: string; primaryTrade: string }): TradeStack {
+  const s = (args.scopeText || "").toLowerCase()
+  const primary = (args.primaryTrade || "").toLowerCase()
+
+  const trades: string[] = []
+  const signals: string[] = []
+
+  const add = (t: string, why: string) => {
+    if (!trades.includes(t)) trades.push(t)
+    if (why && !signals.includes(why)) signals.push(why)
+  }
+
+  if (primary) trades.push(primary)
+
+  const hasDemo = /\b(demo|demolition|tear\s*out|remove\s+existing|haul\s*away|dispose)\b/.test(s)
+  const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
+  const hasWaterproof = /\b(waterproof|membrane|pan|curb|cement\s*board|durock|hardie)\b/.test(s)
+  const hasPlumbing = /\b(toilet|sink|faucet|vanity|shower|tub|valve|drain|supply)\b/.test(s)
+  const hasElectrical = /\b(outlet|switch|recessed|can\s*light|fixture|panel)\b/.test(s)
+  const hasDrywall = /\b(drywall|sheetrock|texture|patch)\b/.test(s)
+  const hasCarpentry = /\b(cabinet|vanity|trim|baseboard|framing|blocking|door)\b/.test(s)
+
+  if (hasDemo) add("demolition", "Demo detected")
+  if (hasTile) add("tile", "Tile detected")
+  if (hasWaterproof) add("waterproofing", "Wet-area waterproofing detected")
+  if (hasPlumbing) add("plumbing", "Plumbing work detected")
+  if (hasElectrical) add("electrical", "Electrical work detected")
+  if (hasDrywall) add("drywall", "Drywall work detected")
+  if (hasCarpentry) add("carpentry", "Carpentry work detected")
+
+  const uniqueTrades = trades.filter((t, i) => trades.indexOf(t) === i)
+  const isMultiTrade = uniqueTrades.length >= 2
+
+  return {
+    primaryTrade: primary || "unknown",
+    trades: uniqueTrades,
+    signals,
+    isMultiTrade,
+  }
+}
+
+function appendTradeCoordinationSentence(desc: string, stack: TradeStack): string {
+  let d = (desc || "").trim()
+  if (!d) return d
+  if (!stack?.isMultiTrade) return d
+
+  // ✅ prevent duplicates more reliably
+  const alreadyMentionsCoordination =
+    /\bcoordination\b/i.test(d) ||
+    /\bmulti[-\s]?trade\b/i.test(d) ||
+    /\bmultiple trades\b/i.test(d)
+
+  if (alreadyMentionsCoordination) return d
+
+  const list = stack.trades
+    .filter(Boolean)
+    .filter((t) => t !== stack.primaryTrade)
+    .slice(0, 3)
+
+  if (list.length === 0) return d
+
+  return (d + ` The scope includes coordination across ${list.join(", ")} activities to maintain sequencing with existing conditions.`).trim()
+}
+
 function appendExecutionPlanSentence(args: {
   description: string
   documentType: string
@@ -1993,6 +2067,13 @@ if (trade === "painting" && isMixedRenovation(scopeChange)) {
   trade = "general renovation"
 }
 
+const tradeStack = detectTradeStack({
+  scopeText: scopeChange,
+  primaryTrade: trade,
+})
+
+console.log("PG TRADE STACK", tradeStack)
+
 const paintScopeForJob: PaintScope | null =
   trade === "painting" ? paintScope : null
 
@@ -2285,7 +2366,9 @@ PRE-ANALYSIS:
 ${intentHint}
 
 INPUTS:
-- Trade Type: ${trade}
+- Primary Trade Type: ${trade}
+- Trade Stack (coordination): ${tradeStack.trades.join(", ") || "N/A"}
+- Stack Signals: ${tradeStack.signals.slice(0, 5).join(" | ") || "N/A"}
 - Job State: ${jobState}
 - Paint Scope: ${looksLikePainting ? effectivePaintScope : "N/A"}
 
@@ -2813,6 +2896,11 @@ normalized.description = appendExecutionPlanSentence({
   scopeText: scopeChange,
 })
 
+normalized.description = appendTradeCoordinationSentence(
+  normalized.description,
+  tradeStack
+)
+
   const pg = buildPriceGuardReport({
     pricingSource,
     priceGuardVerified,
@@ -3040,6 +3128,11 @@ normalized.description = appendExecutionPlanSentence({
   basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
   scopeText: scopeChange,
 })
+
+normalized.description = appendTradeCoordinationSentence(
+  normalized.description,
+  tradeStack
+)
 
 await incrementUsageIfFree()
 
