@@ -7,7 +7,7 @@ import {
   cleanScopeText,
   jsonError,
   assertSameOrigin,
-  assertBodySize,
+  readJsonWithLimit,
 } from "./lib/guards"
 
 import { rateLimit } from "./lib/rateLimit"
@@ -52,7 +52,8 @@ const supabase = createClient(
 // CONSTANTS
 // -----------------------------
 const FREE_LIMIT = 3
-const PRIMARY_MODEL = "gpt-4o" as const
+const PRIMARY_MODEL = "gpt-4.1-mini" as const
+const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
 // -----------------------------
 // TYPES
@@ -244,6 +245,163 @@ type PricingAnchor = {
 // HELPERS
 // -----------------------------
 
+function enforcePhaseVisitCrewDaysFloor(args: {
+  pricing: Pricing
+  basis: EstimateBasis | null
+  cp: ComplexityProfile | null
+  scopeText: string
+}): { pricing: Pricing; basis: EstimateBasis | null; applied: boolean; note: string } {
+  const cp = args.cp
+  const b = args.basis
+
+  if (!cp || !b || !isValidEstimateBasis(b)) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  const hasDaysUnit = Array.isArray(b.units) && b.units.includes("days")
+  if (!hasDaysUnit) {
+    // If complexity requires days basis, your validator will already flag it.
+    // This enforcer only adjusts when days-based basis exists.
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  const { visits, phases } = inferPhaseVisitsFromSignals({
+    scopeText: args.scopeText,
+    cp,
+  })
+
+  // --- Minimum crewDays by visits (and class) ---
+  // These are "show-up realism" floors. Keep them conservative but meaningful.
+  let minByVisits = 0
+
+  if (visits <= 1) minByVisits = 0
+  else if (visits === 2) minByVisits = cp.class === "remodel" || cp.class === "complex" ? 1.5 : 1.0
+  else minByVisits = cp.class === "remodel" || cp.class === "complex" ? 2.5 : 2.0
+
+  // If permit/inspection is implied, add a small return-visit allowance
+  if (cp.permitLikely || phases.some(p => /permit|inspection/i.test(p))) {
+    minByVisits += 0.5
+  }
+
+  // Final required min = max(class floor, visit floor)
+  const requiredMinCrewDays = Math.max(Number(cp.minCrewDays ?? 0), minByVisits)
+
+  const crewDaysCurrent = Number(b.crewDays ?? b.quantities?.days ?? 0)
+  if (!Number.isFinite(crewDaysCurrent) || crewDaysCurrent <= 0) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // If already meets the floor, do nothing
+  if (crewDaysCurrent >= requiredMinCrewDays) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // --- Apply bump ---
+  const bumpedCrewDays = Math.round(requiredMinCrewDays * 2) / 2 // nearest 0.5
+  const laborRate = Number(b.laborRate)
+
+  // crew realism (for labor math)
+  const crewSize = Math.max(1, Number(cp.crewSizeMin ?? 1))
+  const hrsPerDay = Math.max(5.5, Math.min(8, Number(cp.hoursPerDayEffective ?? 7)))
+  const impliedMinLaborHours = bumpedCrewDays * crewSize * hrsPerDay
+  const impliedMinLaborDollars = Math.round(impliedMinLaborHours * laborRate)
+
+  const p = coercePricing(args.pricing)
+
+  // bump labor to meet the implied minimum for this many visits/days
+  const laborNew = Math.max(Math.round(p.labor || 0), impliedMinLaborDollars)
+
+  // bump subs to account for additional mobilization/returns (stay conservative)
+  const subsNew = Math.max(Math.round(p.subs || 0), Number(cp.minSubs ?? 0), Number(cp.minMobilization ?? 0))
+
+  const markupNew = Math.min(25, Math.max(15, Number(p.markup || 20)))
+  const base = Math.round(laborNew + Number(p.materials || 0) + subsNew)
+  const totalNew = Math.round(base * (1 + markupNew / 100))
+
+  // mutate basis to match
+  const basisNew: EstimateBasis = {
+    ...b,
+    crewDays: bumpedCrewDays,
+    quantities: { ...(b.quantities || {}), days: bumpedCrewDays },
+    assumptions: Array.isArray(b.assumptions)
+      ? [...b.assumptions, `Multi-phase scope implies ~${visits} visit(s) (${phases.slice(0, 3).join(", ") || "sequencing"}); crewDays floor enforced.`]
+      : [`Multi-phase scope implies ~${visits} visit(s); crewDays floor enforced.`],
+  }
+
+  const pricingNew: Pricing = clampPricing({
+    labor: laborNew,
+    materials: Number(p.materials || 0),
+    subs: subsNew,
+    markup: markupNew,
+    total: totalNew,
+  })
+
+  return {
+    pricing: pricingNew,
+    basis: basisNew,
+    applied: true,
+    note: `CrewDays bumped to ${bumpedCrewDays} due to multi-phase sequencing (${visits} visit(s)).`,
+  }
+}
+
+async function polishDescriptionWith4o(args: {
+  description: string
+  documentType: string
+  trade: string
+}): Promise<string> {
+  const d = (args.description || "").trim()
+  if (!d || d.length < 20) return d
+
+  const polishPrompt = `
+You are a licensed U.S. construction project manager rewriting scope language for a formal contract document.
+
+TASK:
+Rewrite the following scope description to improve clarity, sequencing language, and contractual tone.
+
+REQUIREMENTS:
+- Do NOT change the meaning or scope.
+- Do NOT add or remove work.
+- Do NOT mention pricing or costs.
+- Do NOT introduce guarantees or warranties.
+- Avoid vague phrases such as "as needed".
+- Avoid banned phrases: ensure, industry standards, quality standards, compliance, durability, aesthetic appeal.
+- Keep professional contract-ready tone.
+- Preserve sequencing language (demo, prep, coordination, etc).
+- Output 3–5 sentences.
+- Opening sentence must still begin with:
+  "This ${args.documentType}"
+
+TRADE:
+${args.trade}
+
+SCOPE:
+${d}
+
+Return ONLY the rewritten paragraph.
+`
+
+  try {
+    const resp = await openai.chat.completions.create({
+      model: DESCRIPTION_POLISH_MODEL,
+      temperature: 0.3,
+      messages: [{ role: "user", content: polishPrompt }],
+    })
+
+    const out = resp.choices[0]?.message?.content?.trim()
+    if (!out || out.length < 20) return d
+
+    // Final safety: preserve opening token
+    if (!/^This\s+(Change Order|Estimate|Change Order \/ Estimate)/i.test(out)) {
+      return d
+    }
+
+    return out
+  } catch (e) {
+    console.warn("4o polish failed — using original description.", e)
+    return d
+  }
+}
+
 function defaultDeterministicDescription(args: {
   documentType: "Change Order" | "Estimate" | "Change Order / Estimate"
   trade: string
@@ -320,6 +478,288 @@ function approxEqual(a: number, b: number, pct = 0.08) {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false
   if (b === 0) return a === 0
   return Math.abs(a - b) / Math.abs(b) <= pct
+}
+
+function computePermitCoordinationAllowance(args: {
+  trade: string
+  cp: ComplexityProfile | null
+}): { dollars: number; note: string } {
+  const t = (args.trade || "").toLowerCase()
+  const cp = args.cp
+
+  if (!cp?.permitLikely) return { dollars: 0, note: "" }
+
+  // Conservative, mid-market allowances (not permit fees themselves; coordination + return visits)
+  // NOTE: We keep it simple and forgiving to avoid overpricing.
+  let dollars = 0
+
+  if (t === "electrical") dollars = 650
+  else if (t === "plumbing") dollars = 550
+  else if (t === "general renovation") dollars = 750
+  else dollars = 450
+
+  // Complex/remodel tends to need more admin/coordination/returns
+  if (cp.class === "complex") dollars += 250
+  if (cp.class === "remodel") dollars += 350
+
+  const note =
+    "Permit/inspection coordination allowance included for scheduling, return visits, and administrative handling as applicable."
+
+  return { dollars, note }
+}
+
+function applyPermitBuffer(args: {
+  pricing: Pricing
+  trade: string
+  cp: ComplexityProfile | null
+  pricingSource: "ai" | "deterministic" | "merged"
+  priceGuardVerified: boolean
+  detSource: string | null
+}): { pricing: Pricing; applied: boolean; note: string } {
+  const cp = args.cp
+  if (!cp?.permitLikely) return { pricing: args.pricing, applied: false, note: "" }
+
+  // Avoid double-counting when you already have a verified deterministic engine or a known remodel anchor.
+  const ds = (args.detSource || "").toLowerCase()
+  const looksLikeAlreadyCovered =
+    args.priceGuardVerified ||
+    ds.includes("verified") ||
+    ds.includes("anchor:bathroom_remodel") ||
+    ds.includes("anchor:kitchen_remodel")
+
+  if (looksLikeAlreadyCovered) {
+    return { pricing: args.pricing, applied: false, note: "" }
+  }
+
+  const allow = computePermitCoordinationAllowance({ trade: args.trade, cp })
+  if (!allow.dollars) return { pricing: args.pricing, applied: false, note: "" }
+
+  // Apply to subs (mobilization/overhead bucket), recompute total
+  const p = coercePricing(args.pricing)
+  const subsNew = Math.round(Number(p.subs || 0) + allow.dollars)
+
+  const mergedMarkup = Math.min(25, Math.max(15, Number(p.markup || 20)))
+  const base = Math.round(Number(p.labor || 0) + Number(p.materials || 0) + subsNew)
+  const totalNew = Math.round(base * (1 + mergedMarkup / 100))
+
+  const out: Pricing = clampPricing({
+    labor: Number(p.labor || 0),
+    materials: Number(p.materials || 0),
+    subs: subsNew,
+    markup: mergedMarkup,
+    total: totalNew,
+  })
+
+  return { pricing: out, applied: true, note: allow.note }
+}
+
+function compressCrossTradeMobilization(args: {
+  pricing: Pricing
+  basis: EstimateBasis | null
+  cp: ComplexityProfile | null
+  tradeStack: TradeStack | null
+  scopeText: string
+  pricingSource: "ai" | "deterministic" | "merged"
+  detSource: string | null
+}): { pricing: Pricing; basis: EstimateBasis | null; applied: boolean; note: string } {
+  const p = coercePricing(args.pricing)
+  const b = args.basis
+  const cp = args.cp
+  const stack = args.tradeStack
+  const s = (args.scopeText || "").toLowerCase()
+
+  // --- decide if we should compress ---
+  const scopeHintsMultiTrade =
+    /\b(plumb|plumbing|toilet|vanity|faucet|shower|valve|drain|supply)\b/.test(s) &&
+    /\b(electric|electrical|outlet|switch|panel|lighting|fixture)\b/.test(s)
+
+  const remodelHints =
+    /\b(remodel|renovation|gut|rebuild|demo|demolition|tile|waterproof|membrane|shower|tub)\b/.test(s)
+
+  // Treat remodels as likely multi-trade *even if tradeStack missed it*
+  // (this is why your “bathroom remodel” can still get protected).
+  const isLikelyMultiTrade =
+    !!stack?.isMultiTrade ||
+    !!cp?.multiTrade ||
+    (cp?.class === "remodel" && remodelHints) ||
+    scopeHintsMultiTrade
+
+  if (!isLikelyMultiTrade) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // Don’t compress verified deterministic engines too aggressively.
+  // (Anchors/engines may already be tuned; we only want to prevent absurd stacking.)
+  const isVerifiedLike = args.pricingSource === "deterministic" && !!args.detSource?.includes("verified")
+
+  const labor = Math.max(0, Number(p.labor || 0))
+  const materials = Math.max(0, Number(p.materials || 0))
+  const subs = Math.max(0, Number(p.subs || 0))
+
+  const baseLM = labor + materials
+  if (baseLM <= 0 || subs <= 0) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // --- caps (conservative) ---
+  // Multi-trade: subs should generally be a smaller share of LM (mobilization is shared across trades).
+  // Keep it forgiving to avoid underpricing.
+  const pctCap = isVerifiedLike ? 0.28 : 0.22 // verified-like gets a looser cap
+  const hardMin = Math.max(450, Number(cp?.minSubs ?? 0), Number(cp?.minMobilization ?? 0))
+  const maxAllowed = Math.max(hardMin, Math.round(baseLM * pctCap))
+
+  if (subs <= maxAllowed) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  const subsNew = maxAllowed
+  const markupNew = Math.min(25, Math.max(15, Number(p.markup || 20)))
+  const base = Math.round(labor + materials + subsNew)
+  const totalNew = Math.round(base * (1 + markupNew / 100))
+
+  const pricingNew: Pricing = clampPricing({
+    labor,
+    materials,
+    subs: subsNew,
+    markup: markupNew,
+    total: totalNew,
+  })
+
+  // Keep estimateBasis aligned (mobilization lives conceptually inside subs)
+  let basisNew: EstimateBasis | null = b
+  if (b && isValidEstimateBasis(b)) {
+    const mob = Number(b.mobilization || 0)
+    const mobNew = Math.min(mob, subsNew)
+
+    basisNew = {
+      ...b,
+      mobilization: Number.isFinite(mobNew) ? Math.round(mobNew) : b.mobilization,
+      assumptions: Array.isArray(b.assumptions)
+        ? [...b.assumptions, "Cross-trade mobilization compressed to avoid stacked multi-trade overhead."]
+        : ["Cross-trade mobilization compressed to avoid stacked multi-trade overhead."],
+    }
+  }
+
+  return {
+    pricing: pricingNew,
+    basis: basisNew,
+    applied: true,
+    note: `Cross-trade mobilization compressed (subs capped from ${subs} → ${subsNew}).`,
+  }
+}
+
+// -----------------------------
+// PATCH: Cross-Trade Mobilization Compression
+// Goal: prevent "stacked mobilization" on true multi-trade jobs when AI is pricing.
+// -----------------------------
+function applyCrossTradeMobilizationCompression(args: {
+  pricing: Pricing
+  basis: EstimateBasis | null
+  tradeStack: TradeStack
+  cp: ComplexityProfile | null
+  scopeText: string
+  pricingSource: "ai" | "deterministic" | "merged"
+}): { pricing: Pricing; basis: EstimateBasis | null; applied: boolean; note: string } {
+  const cp = args.cp
+  const b = args.basis
+
+  // Only compress when AI is the pricing owner (never touch deterministic/merged)
+  if (args.pricingSource !== "ai") {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // Only compress on true multi-trade jobs
+  if (!args.tradeStack?.isMultiTrade) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // Only meaningful on medium/complex/remodel (avoid messing with simple callouts)
+  if (!cp || (cp.class !== "medium" && cp.class !== "complex" && cp.class !== "remodel")) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // We only do this when the estimate is days-based (project-style coordination)
+  if (!b || !isValidEstimateBasis(b)) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+  const hasDaysUnit = Array.isArray(b.units) && b.units.includes("days")
+  if (!hasDaysUnit) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  const p = coercePricing(args.pricing)
+
+  // If subs is already minimal-ish, don't compress (avoid thrash)
+  // (This makes the patch mostly a "downward correction" only when subs is inflated)
+  const base0 = Math.round(Number(p.labor || 0) + Number(p.materials || 0))
+  if (base0 <= 0) return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+
+  // Target subs as "project coordination + single mobilization"
+  // - percent band: 8%–14% depending on class
+  // - minimums: cp.minSubs and cp.minMobilization
+  const pct =
+    cp.class === "remodel" ? 0.14 :
+    cp.class === "complex" ? 0.12 :
+    0.10 // medium
+
+  const targetCoordination = Math.round(base0 * pct)
+
+  // Single mobilization concept (keep it at least the complexity minimum)
+  const singleMobilization = Math.max(cp.minMobilization ?? 0, Number(b.mobilization ?? 0), 0)
+
+  // Target subs = max(minSubs floor, coordination%, single mobilization)
+  const targetSubs = Math.max(
+    Math.round(cp.minSubs ?? 0),
+    targetCoordination,
+    Math.round(singleMobilization)
+  )
+
+  // Only apply if current subs is "meaningfully above" target (10%+ or $150+)
+  const currentSubs = Math.round(Number(p.subs || 0))
+  const delta = currentSubs - targetSubs
+  const meaningful = delta > 150 && delta / Math.max(1, targetSubs) > 0.10
+  if (!meaningful) {
+    return { pricing: args.pricing, basis: args.basis, applied: false, note: "" }
+  }
+
+  // Apply compressed subs and recompute total
+  const markupNew = Math.min(25, Math.max(15, Number(p.markup || 20)))
+  const base = Math.round(Number(p.labor || 0) + Number(p.materials || 0) + targetSubs)
+  const totalNew = Math.round(base * (1 + markupNew / 100))
+
+  const pricingNew: Pricing = clampPricing({
+    labor: Math.round(Number(p.labor || 0)),
+    materials: Math.round(Number(p.materials || 0)),
+    subs: targetSubs,
+    markup: markupNew,
+    total: totalNew,
+  })
+
+  const trades = (args.tradeStack.trades || []).filter(Boolean).slice(0, 4)
+  const note =
+    `Cross-trade mobilization compressed for multi-trade project (${trades.join(", ") || "multi-trade"}): subs ${currentSubs} → ${targetSubs}.`
+
+  const basisNew: EstimateBasis = {
+    ...b,
+    mobilization: Math.max(Number(b.mobilization ?? 0), singleMobilization),
+    assumptions: Array.isArray(b.assumptions)
+      ? [...b.assumptions, `Multi-trade project coordination; mobilization/overhead treated as shared project cost (compressed).`]
+      : [`Multi-trade project coordination; mobilization/overhead treated as shared project cost (compressed).`],
+  }
+
+  return { pricing: pricingNew, basis: basisNew, applied: true, note }
+}
+
+function appendPermitCoordinationSentence(desc: string, cp: ComplexityProfile | null): string {
+  let d = (desc || "").trim()
+  if (!d) return d
+  if (!cp?.permitLikely) return d
+
+  // prevent duplicates
+  if (/\bpermit\b/i.test(d) || /\binspection\b/i.test(d)) return d
+
+  return (d +
+    " Scope includes allowance for permit/inspection coordination, scheduling, and required return visits as applicable.").trim()
 }
 
 type JobComplexityClass = "simple" | "medium" | "complex" | "remodel"
@@ -579,7 +1019,8 @@ function validateCrewAndSequencing(args: {
 // -----------------------------
 type TradeStack = {
   primaryTrade: string
-  trades: string[]
+  trades: string[]        // actual trades only (plumbing/electrical/tile/drywall/carpentry/painting/flooring)
+  activities: string[]    // phases/activities (demo/waterproofing/etc)
   signals: string[]
   isMultiTrade: boolean
 }
@@ -589,37 +1030,51 @@ function detectTradeStack(args: { scopeText: string; primaryTrade: string }): Tr
   const primary = (args.primaryTrade || "").toLowerCase()
 
   const trades: string[] = []
+  const activities: string[] = []
   const signals: string[] = []
 
-  const add = (t: string, why: string) => {
+  const addTrade = (t: string, why: string) => {
     if (!trades.includes(t)) trades.push(t)
     if (why && !signals.includes(why)) signals.push(why)
   }
 
+  const addActivity = (a: string, why: string) => {
+    if (!activities.includes(a)) activities.push(a)
+    if (why && !signals.includes(why)) signals.push(why)
+  }
+
+  // Always include primary trade if present
   if (primary) trades.push(primary)
 
+  // --- PHASES/ACTIVITIES (do NOT count as "multi-trade") ---
   const hasDemo = /\b(demo|demolition|tear\s*out|remove\s+existing|haul\s*away|dispose)\b/.test(s)
-  const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
   const hasWaterproof = /\b(waterproof|membrane|pan|curb|cement\s*board|durock|hardie)\b/.test(s)
+
+  if (hasDemo) addActivity("demolition", "Demo detected")
+  if (hasWaterproof) addActivity("waterproofing", "Wet-area waterproofing detected")
+
+  // --- ACTUAL TRADES ---
+  const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
   const hasPlumbing = /\b(toilet|sink|faucet|vanity|shower|tub|valve|drain|supply)\b/.test(s)
   const hasElectrical = /\b(outlet|switch|recessed|can\s*light|fixture|panel)\b/.test(s)
   const hasDrywall = /\b(drywall|sheetrock|texture|patch)\b/.test(s)
   const hasCarpentry = /\b(cabinet|vanity|trim|baseboard|framing|blocking|door)\b/.test(s)
 
-  if (hasDemo) add("demolition", "Demo detected")
-  if (hasTile) add("tile", "Tile detected")
-  if (hasWaterproof) add("waterproofing", "Wet-area waterproofing detected")
-  if (hasPlumbing) add("plumbing", "Plumbing work detected")
-  if (hasElectrical) add("electrical", "Electrical work detected")
-  if (hasDrywall) add("drywall", "Drywall work detected")
-  if (hasCarpentry) add("carpentry", "Carpentry work detected")
+  if (hasTile) addTrade("tile", "Tile detected")
+  if (hasPlumbing) addTrade("plumbing", "Plumbing work detected")
+  if (hasElectrical) addTrade("electrical", "Electrical work detected")
+  if (hasDrywall) addTrade("drywall", "Drywall work detected")
+  if (hasCarpentry) addTrade("carpentry", "Carpentry work detected")
 
   const uniqueTrades = trades.filter((t, i) => trades.indexOf(t) === i)
+
+  // Multi-trade now means 2+ REAL trades (not demo/waterproofing)
   const isMultiTrade = uniqueTrades.length >= 2
 
   return {
     primaryTrade: primary || "unknown",
     trades: uniqueTrades,
+    activities,
     signals,
     isMultiTrade,
   }
@@ -628,9 +1083,11 @@ function detectTradeStack(args: { scopeText: string; primaryTrade: string }): Tr
 function appendTradeCoordinationSentence(desc: string, stack: TradeStack): string {
   let d = (desc || "").trim()
   if (!d) return d
+
+  // Only add if we truly have multi-trade
   if (!stack?.isMultiTrade) return d
 
-  // ✅ prevent duplicates more reliably
+  // prevent duplicates
   const alreadyMentionsCoordination =
     /\bcoordination\b/i.test(d) ||
     /\bmulti[-\s]?trade\b/i.test(d) ||
@@ -645,7 +1102,13 @@ function appendTradeCoordinationSentence(desc: string, stack: TradeStack): strin
 
   if (list.length === 0) return d
 
-  return (d + ` The scope includes coordination across ${list.join(", ")} activities to maintain sequencing with existing conditions.`).trim()
+  // If demo/waterproofing exists, mention it as sequencing context (not as a "trade")
+  const phaseHint =
+    Array.isArray(stack.activities) && stack.activities.length > 0
+      ? ` with sequencing for ${stack.activities.slice(0, 2).join(" and ")}`
+      : ""
+
+  return (d + ` The scope includes coordination across ${list.join(", ")} activities${phaseHint} to maintain sequencing with existing conditions.`).trim()
 }
 
 function appendExecutionPlanSentence(args: {
@@ -1922,24 +2385,21 @@ function pricePaintingDoors(args: {
 // -----------------------------
 export async function POST(req: NextRequest) {
   try {
-    // -----------------------------
-  // HARDENED FRONT DOOR
-  // -----------------------------
-  if (!assertBodySize(req, 40_000)) {
-    return jsonError(413, "BODY_TOO_LARGE", "Request too large.")
-  }
-
+    
   if (!assertSameOrigin(req)) {
     return jsonError(403, "BAD_ORIGIN", "Invalid request origin.")
   }
 
-  // Rate limit (IP + email). Email needs body, so parse first safely.
-  let raw: any
-  try {
-    raw = await req.json()
-  } catch {
-    return jsonError(400, "BAD_JSON", "Invalid JSON body.")
+  // Parse JSON with an actual byte limit (stream-safe)
+let raw: any
+try {
+  raw = await readJsonWithLimit<any>(req, 40_000)
+} catch (e: any) {
+  if (e?.status === 413) {
+    return jsonError(413, "BODY_TOO_LARGE", "Request too large.")
   }
+  return jsonError(400, "BAD_JSON", "Invalid JSON body.")
+}
 
   const inputParsed = GenerateSchema.safeParse(raw)
 if (!inputParsed.success) {
@@ -2009,44 +2469,41 @@ const paintScope: PaintScope | null =
     const rawState = typeof body.state === "string" ? body.state.trim() : ""
 
     // -----------------------------
-    // ENTITLEMENT + FREE LIMIT ENFORCEMENT
-    // -----------------------------
-    const { data: entitlement, error } = await supabase
-  .from("entitlements")
-  .select("active, usage_count")
-  .eq("email", normalizedEmail)
-  .maybeSingle()
-
-if (error) {
-  console.error("Supabase entitlement lookup error:", error)
-  return NextResponse.json({ error: "Entitlement lookup failed" }, { status: 500 })
-}
-
-    const isPaid = entitlement?.active === true
-    const usageCount = typeof entitlement?.usage_count === "number" ? entitlement.usage_count : 0
-
-async function incrementUsageIfFree() {
-  if (isPaid) return
-
-  const { error } = await supabase.rpc("increment_usage", {
+// ATOMIC FREE LIMIT ENFORCEMENT (DB-LOCKED)
+// -----------------------------
+// This function:
+// - creates the row if missing
+// - locks the row (FOR UPDATE) to prevent races
+// - increments usage_count ONLY for free users
+// - never increments for paid users
+const { data: consumeRows, error: consumeErr } = await supabase.rpc(
+  "consume_free_generation",
+  {
     p_email: normalizedEmail,
-  })
+    p_free_limit: FREE_LIMIT,
+  }
+)
 
-  if (error) console.error("usage increment failed:", error)
+// Supabase RPC returns an array of rows for "returns table"
+const consume = Array.isArray(consumeRows) ? consumeRows[0] : null
+
+if (consumeErr || !consume) {
+  console.error("consume_free_generation failed:", consumeErr)
+  return NextResponse.json({ error: "Entitlement check failed" }, { status: 500 })
 }
 
-    // HARD abuse protection (refresh spam, bots)
-if (!isPaid && usageCount > FREE_LIMIT + 1) {
-  return NextResponse.json(
-    { error: "Rate limited" },
-    { status: 429 }
-  )
-}
+const isPaid = consume.entitled === true
+const usageCount = typeof consume.usage_count === "number" ? consume.usage_count : 0
 
-// Normal free limit
-if (!isPaid && usageCount >= FREE_LIMIT) {
+// If not allowed, stop BEFORE any OpenAI / heavy compute
+if (!consume.allowed) {
   return NextResponse.json(
-    { error: "Free limit reached" },
+    {
+      error: "Free limit reached",
+      entitled: isPaid,
+      usage_count: usageCount,
+      free_limit: FREE_LIMIT,
+    },
     { status: 403 }
   )
 }
@@ -2200,10 +2657,7 @@ const allowBathAnchorInPlumbing =
   trade === "plumbing" && /\b(bath|bathroom|shower|tub)\b/i.test(scopeChange)
 
 const anchorHit =
-  (trade === "electrical" ||
-   trade === "flooring" ||
-   trade === "drywall" ||
-   (trade === "plumbing" && !allowBathAnchorInPlumbing))
+ (!allowAnchors && !allowBathAnchorInPlumbing)
     ? null
     : runPriceGuardAnchors({
         scope: scopeChange,
@@ -2368,6 +2822,7 @@ ${intentHint}
 INPUTS:
 - Primary Trade Type: ${trade}
 - Trade Stack (coordination): ${tradeStack.trades.join(", ") || "N/A"}
+- Activities (sequencing): ${tradeStack.activities?.join(", ") || "N/A"}
 - Stack Signals: ${tradeStack.signals.slice(0, 5).join(" | ") || "N/A"}
 - Job State: ${jobState}
 - Paint Scope: ${looksLikePainting ? effectivePaintScope : "N/A"}
@@ -2716,6 +3171,35 @@ Return corrected JSON using the SAME schema, and make estimateBasis match the pr
   }
 }
 
+// -----------------------------
+// ENFORCE MULTI-VISIT CREW-DAYS FLOOR (AI OUTPUT)
+// -----------------------------
+{
+  const enforced = enforcePhaseVisitCrewDaysFloor({
+    pricing: normalized.pricing,
+    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+    cp: complexityProfile,
+    scopeText: scopeChange,
+  })
+
+  if (enforced.applied) {
+    normalized.pricing = enforced.pricing
+    normalized.estimateBasis = enforced.basis
+  }
+}
+
+const v3 = validateAiMath({
+  pricing: normalized.pricing,
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+  parsedCounts: { rooms, doors, sqft: parsedSqft },
+  complexity: complexityProfile,
+  scopeText: scopeChange,
+})
+
+if (!v3.ok) {
+  console.warn("AI output failed after phase-visit enforcement:", v3.reasons)
+}
+
 // ✅ Normalize documentType BEFORE any early returns (deterministic path included)
 const allowedTypes = [
   "Change Order",
@@ -2852,8 +3336,41 @@ const deterministicOwned =
       sourceId: "drywall_engine_v1",
     }))
 
+  // -----------------------------
+  // CROSS-TRADE MOBILIZATION COMPRESSION (pre-permit)
+  // -----------------------------
+  {
+    const ctm = compressCrossTradeMobilization({
+      pricing: pricingFinal,
+      basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+      cp: complexityProfile,
+      tradeStack,
+      scopeText: scopeChange,
+      pricingSource,
+      detSource,
+    })
+
+    if (ctm.applied) {
+      pricingFinal = ctm.pricing
+      normalized.pricing = pricingFinal
+      normalized.estimateBasis = ctm.basis
+      console.log("PG XTRADE COMPRESS (det)", ctm.note)
+    }
+  }
+
 if (deterministicOwned) {
-  const safePricing = clampPricing(pricingFinal)
+  const permitPatch1 = applyPermitBuffer({
+  pricing: clampPricing(pricingFinal),
+  trade,
+  cp: complexityProfile,
+  pricingSource,
+  priceGuardVerified,
+  detSource,
+})
+
+pricingFinal = permitPatch1.pricing
+const safePricing = clampPricing(pricingFinal)
+
   const priceGuardProtected = true
 
   normalized.trade = trade
@@ -2901,6 +3418,11 @@ normalized.description = appendTradeCoordinationSentence(
   tradeStack
 )
 
+normalized.description = appendPermitCoordinationSentence(
+  normalized.description,
+  complexityProfile
+)
+
   const pg = buildPriceGuardReport({
     pricingSource,
     priceGuardVerified,
@@ -2914,8 +3436,6 @@ normalized.description = appendTradeCoordinationSentence(
     detSource,
     usedNationalBaseline,
   })
-
-  await incrementUsageIfFree()
 
   return NextResponse.json({
     documentType: normalized.documentType,
@@ -3041,8 +3561,27 @@ console.log("PG AFTER MERGE DECISION", {
 const shouldRunAiRealism = pricingSource === "ai"
 
 if (shouldRunAiRealism) {
+  // ✅ Patch: compress stacked overhead for real multi-trade projects (AI-only)
+  {
+    const cc = applyCrossTradeMobilizationCompression({
+      pricing: pricingFinal,
+      basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+      tradeStack,
+      cp: complexityProfile,
+      scopeText: scopeChange,
+      pricingSource,
+    })
+
+    if (cc.applied) {
+      pricingFinal = cc.pricing
+      normalized.pricing = pricingFinal
+      normalized.estimateBasis = cc.basis
+      console.log("PG CROSS-TRADE COMPRESSION", cc.note)
+    }
+  }
+
   // ✅ run realism on the actual current pricing
-  const p = { ...pricingFinal } // copy so we don't mutate references unexpectedly
+  const p = { ...pricingFinal }
 
   // ---- Markup realism (true contractor ranges) ----
   if (p.markup < 12) p.markup = 15
@@ -3096,6 +3635,38 @@ if (shouldRunAiRealism) {
   pricingFinal = clampPricing(pricingFinal)
 }
 
+// -----------------------------
+// CROSS-TRADE MOBILIZATION COMPRESSION (pre-permit)
+// -----------------------------
+{
+  const ctm = compressCrossTradeMobilization({
+    pricing: pricingFinal,
+    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+    cp: complexityProfile,
+    tradeStack,
+    scopeText: scopeChange,
+    pricingSource,
+    detSource,
+  })
+
+  if (ctm.applied) {
+    pricingFinal = ctm.pricing
+    normalized.pricing = pricingFinal
+    normalized.estimateBasis = ctm.basis
+    console.log("PG XTRADE COMPRESS", ctm.note)
+  }
+}
+
+const permitPatch2 = applyPermitBuffer({
+  pricing: clampPricing(pricingFinal),
+  trade,
+  cp: complexityProfile,
+  pricingSource,
+  priceGuardVerified,
+  detSource,
+})
+
+pricingFinal = permitPatch2.pricing
 const safePricing = pricingFinal
 
 const priceGuardProtected = (["merged", "deterministic"] as readonly string[]).includes(
@@ -3134,7 +3705,19 @@ normalized.description = appendTradeCoordinationSentence(
   tradeStack
 )
 
-await incrementUsageIfFree()
+normalized.description = appendPermitCoordinationSentence(
+  normalized.description,
+  complexityProfile
+)
+
+// -----------------------------
+// FINAL DESCRIPTION POLISH (4o)
+// -----------------------------
+normalized.description = await polishDescriptionWith4o({
+  description: normalized.description,
+  documentType: normalized.documentType,
+  trade,
+})
 
 return NextResponse.json({
   documentType: normalized.documentType,

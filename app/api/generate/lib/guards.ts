@@ -58,25 +58,90 @@ export function jsonError(status: number, code: string, message: string) {
   })
 }
 
-// VERY basic origin check (good first line of defense)
 export function assertSameOrigin(req: Request) {
-  const origin = req.headers.get("origin") || ""
-  const host = req.headers.get("host") || ""
-  if (!origin || !host) return true // allow in dev / edge oddities
+  const origin = req.headers.get("origin")
 
+  // In production, require Origin (blocks curl/other clients unless you want to allow them)
+  if (!origin) return process.env.NODE_ENV !== "production"
+
+  let o: URL
   try {
-    const o = new URL(origin)
-    // allow same host (covers http/https differences in some deployments)
-    return o.host === host
+    o = new URL(origin)
   } catch {
     return false
   }
+
+  // Primary allowed host comes from your env (you already have NEXT_PUBLIC_SITE_URL)
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || ""
+  let expectedHost = ""
+  try {
+    expectedHost = siteUrl ? new URL(siteUrl).host : ""
+  } catch {
+    expectedHost = ""
+  }
+
+  // Optional additional allowed hosts (comma-separated)
+  const extraHosts = (process.env.ALLOWED_ORIGIN_HOSTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const allowed = new Set<string>()
+  if (expectedHost) allowed.add(expectedHost)
+  for (const h of extraHosts) allowed.add(h)
+
+  // If you didn't configure anything, fail closed in production
+  if (allowed.size === 0) return process.env.NODE_ENV !== "production"
+
+  return allowed.has(o.host)
 }
 
-// Body size guard (rough, but effective)
-export function assertBodySize(req: Request, maxBytes = 40_000) {
+// ✅ STREAM-SAFE BODY PARSER
+export async function readJsonWithLimit<T>(req: Request, maxBytes: number): Promise<T> {
   const len = req.headers.get("content-length")
-  if (!len) return true
-  const n = Number(len)
-  return Number.isFinite(n) && n <= maxBytes
+  if (len) {
+    const n = Number(len)
+    if (Number.isFinite(n) && n > maxBytes) {
+      throw Object.assign(new Error("BODY_TOO_LARGE"), { status: 413 })
+    }
+  }
+
+  if (!req.body) {
+    return (await req.json()) as T
+  }
+
+  const reader = req.body.getReader()
+  let size = 0
+  const chunks: Uint8Array[] = []
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    if (!value) continue
+
+    size += value.byteLength
+    if (size > maxBytes) {
+      throw Object.assign(new Error("BODY_TOO_LARGE"), { status: 413 })
+    }
+    chunks.push(value)
+  }
+
+  const text = new TextDecoder().decode(concatUint8(chunks))
+
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw Object.assign(new Error("BAD_JSON"), { status: 400 })
+  }
+}
+
+function concatUint8(chunks: Uint8Array[]) {
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0)
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const c of chunks) {
+    out.set(c, offset)
+    offset += c.byteLength
+  }
+  return out
 }
