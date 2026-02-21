@@ -162,6 +162,15 @@ type PriceGuardReport = {
   }
 }
 
+type Schedule = {
+  crewDays: number | null
+  visits: number | null
+  calendarDays: { min: number; max: number } | null
+  workDaysPerWeek: number | null
+  rationale: string[]
+  startDate?: string | null   // ✅ ADD THIS
+}
+
 type UiTrade =
   | ""
   | "painting"
@@ -218,6 +227,9 @@ type EstimateHistoryItem = {
     markup: number
     total: number
   }
+
+    schedule?: Schedule | null
+
   pricingSource?: PricingSource
   priceGuardVerified?: boolean
 
@@ -545,6 +557,9 @@ useEffect(() => {
       markup: Number(x?.pricing?.markup ?? 0),
       total: Number(x?.pricing?.total ?? 0),
     },
+
+    schedule: x?.schedule ?? undefined,
+
         tax: x?.tax
       ? {
           enabled: Boolean(x.tax.enabled),
@@ -577,6 +592,27 @@ useEffect(() => {
   // -------------------------
   const [scopeChange, setScopeChange] = useState("")
   const [result, setResult] = useState("")
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const completionWindow = useMemo(() => {
+  if (!schedule?.startDate || !schedule?.calendarDays) return null
+
+  const start = new Date(schedule.startDate)
+
+  const minEnd = new Date(start)
+  minEnd.setDate(start.getDate() + schedule.calendarDays.min)
+
+  const maxEnd = new Date(start)
+  maxEnd.setDate(start.getDate() + schedule.calendarDays.max)
+
+  return {
+    min: minEnd,
+    max: maxEnd,
+  }
+}, [
+  schedule?.startDate,
+  schedule?.calendarDays?.min,
+  schedule?.calendarDays?.max,
+])
   const [documentType, setDocumentType] = useState<
   "Change Order" | "Estimate" | "Change Order / Estimate"
 >("Change Order / Estimate")
@@ -893,6 +929,15 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [pricing.labor, pricing.materials, pricing.subs, pricing.markup, pricing.total])
 
+useEffect(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return
+  if (!result) return
+  updateHistoryItem(id, {
+    schedule: schedule ?? undefined,
+  })
+}, [schedule])
+
   // -------------------------
 // Generate AI document
 // -------------------------
@@ -934,6 +979,7 @@ async function generate() {
   setPriceGuard(null)
   setPricingEdited(false)
   setPriceGuardVerified(false)
+  setSchedule(null)
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -1009,6 +1055,7 @@ const nextPricingSource =
   (data?.pricingSource as PricingSource) || "ai"
 
 setResult(nextResult)
+setSchedule(data?.schedule ?? null)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
@@ -1033,6 +1080,9 @@ saveToHistory({
     markup: Number(nextPricing.markup || 0),
     total: Number(nextPricing.total || 0),
   },
+
+  schedule: data?.schedule ?? null,
+ 
   pricingSource: nextPricingSource,
   priceGuardVerified: nextVerified,
 
@@ -1218,6 +1268,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setPricingEdited(false)
   setResult(item.result || "")
   setPricing(item.pricing)
+  setSchedule(item.schedule ?? null)
 
     // restore tax settings (if present)
   if (item.tax) {
@@ -1289,6 +1340,86 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     .replaceAll("'", "&#039;")
 
     const safeResult = esc(result || "")
+
+    const scheduleHtml = (s: Schedule | null) => {
+  if (!s) return ""
+
+  const crew = s.crewDays != null ? `${esc(s.crewDays)} crew-days` : "—"
+  const visits = s.visits != null ? `${esc(s.visits)}` : "—"
+  const workweek = s.workDaysPerWeek != null ? `${esc(s.workDaysPerWeek)}-day workweek` : ""
+  const duration = s.calendarDays ? `${esc(s.calendarDays.min)}–${esc(s.calendarDays.max)} calendar days` : "—"
+
+  const notes =
+    (s.rationale?.length ?? 0) > 0
+      ? `<ul style="margin:6px 0 0; padding-left:18px; line-height:1.45;">
+           ${s.rationale.map((r) => `<li>${esc(r)}</li>`).join("")}
+         </ul>`
+      : ""
+
+  return `
+    <div class="section">
+      <div class="muted" style="margin-bottom:6px;">Estimated Schedule</div>
+
+      <div style="
+        border:1px solid #cfcfcf;
+        border-radius:10px;
+        padding:12px;
+        background:#fff;
+      ">
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div style="font-weight:800; font-size:13px;">Duration Expectations</div>
+          <div style="font-size:12px; color:#666;">${workweek}</div>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:13px;">
+          <tr>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e5e5;">Crew Time</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e5e5;">Site Visits</th>
+            <th style="text-align:left; padding:8px; border-bottom:1px solid #e5e5e5;">Calendar Duration</th>
+          </tr>
+          <tr>
+            <td style="padding:8px; border-bottom:1px solid #f0f0f0; font-weight:700;">${crew}</td>
+            <td style="padding:8px; border-bottom:1px solid #f0f0f0; font-weight:700;">${visits}</td>
+            <td style="padding:8px; border-bottom:1px solid #f0f0f0; font-weight:700;">${duration}</td>
+          </tr>
+        </table>
+
+        ${
+          notes
+            ? `<div style="margin-top:10px;">
+                 <div style="font-size:12px; color:#666; margin-bottom:4px;">Scheduling considerations</div>
+                 ${notes}
+               </div>`
+            : ""
+        }
+      </div>
+     ${
+  s.startDate && s.calendarDays
+    ? (() => {
+        // ✅ timezone-safe parse for YYYY-MM-DD
+        const start = new Date(s.startDate + "T00:00:00")
+
+        const minEnd = new Date(start)
+        minEnd.setDate(start.getDate() + s.calendarDays.min)
+
+        const maxEnd = new Date(start)
+        maxEnd.setDate(start.getDate() + s.calendarDays.max)
+
+        return `
+<div style="margin-top:10px; font-size:13px;">
+  <strong>Estimated Start:</strong>
+  ${esc(start.toLocaleDateString())}<br/>
+  <strong>Estimated Completion:</strong>
+  ${esc(minEnd.toLocaleDateString())} –
+  ${esc(maxEnd.toLocaleDateString())}
+</div>
+`
+      })()
+    : ""
+}
+    </div>
+  `
+}
 
     win.document.write(`
       <html>
@@ -1525,6 +1656,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             <div class="muted" style="margin-bottom:6px;">Scope / Description</div>
             <div class="box">${safeResult}</div>
           </div>
+
+          ${scheduleHtml(schedule)}
 
           <div class="section">
             <div class="muted" style="margin-bottom:6px;">Pricing Summary</div>
@@ -2225,6 +2358,246 @@ const sub =
         </div>
       )}
     </span>
+  )
+}
+
+function ScheduleBlock({ schedule }: { schedule?: Schedule | null }) {
+  if (!schedule) return null
+
+  const { crewDays, visits, calendarDays, workDaysPerWeek, rationale } = schedule
+
+  const hasAny =
+    crewDays != null ||
+    visits != null ||
+    calendarDays != null ||
+    workDaysPerWeek != null ||
+    (rationale?.length ?? 0) > 0
+
+  if (!hasAny) return null
+
+  const calendarText =
+    calendarDays ? `${calendarDays.min}–${calendarDays.max} calendar days` : null
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 800 }}>Estimated Schedule</div>
+        <div style={{ fontSize: 12, color: "#666" }}>
+          {workDaysPerWeek ? `${workDaysPerWeek}-day workweek` : ""}
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 10,
+          marginTop: 10,
+        }}
+      >
+        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 12, color: "#666" }}>Crew Time</div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            {crewDays != null ? `${crewDays} crew-days` : "—"}
+          </div>
+        </div>
+
+        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 12, color: "#666" }}>Site Visits</div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            {visits != null ? visits : "—"}
+          </div>
+        </div>
+
+        <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+          <div style={{ fontSize: 12, color: "#666" }}>Duration</div>
+          <div style={{ fontSize: 15, fontWeight: 800 }}>
+            {calendarText ?? "—"}
+          </div>
+        </div>
+      </div>
+
+      {(rationale?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+            Scheduling considerations
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
+            {rationale.map((r, idx) => (
+              <li key={idx}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ScheduleEditor({
+  schedule,
+  setSchedule,
+}: {
+  schedule: Schedule
+  setSchedule: React.Dispatch<React.SetStateAction<Schedule | null>>
+}) {
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
+        Edit Schedule
+      </div>
+
+      <label style={{ fontSize: 12 }}>Start Date (Optional)</label>
+<input
+  type="date"
+  value={schedule.startDate ?? ""}
+  onChange={(e) =>
+    setSchedule((s) =>
+      s ? { ...s, startDate: e.target.value } : s
+    )
+  }
+  style={{ width: "100%", padding: 8, marginBottom: 8 }}
+/>
+
+      {/* Crew Days */}
+      <label style={{ fontSize: 12 }}>Crew Days</label>
+      <input
+        type="number"
+        value={schedule.crewDays ?? ""}
+        onChange={(e) =>
+          setSchedule((s) =>
+            s
+              ? { ...s, crewDays: e.target.value === "" ? null : Number(e.target.value) }
+              : s
+          )
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+
+      {/* Visits */}
+      <label style={{ fontSize: 12 }}>Site Visits</label>
+      <input
+        type="number"
+        value={schedule.visits ?? ""}
+        onChange={(e) =>
+          setSchedule((s) =>
+            s
+              ? { ...s, visits: e.target.value === "" ? null : Number(e.target.value) }
+              : s
+          )
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+
+      {/* Work Week */}
+      <label style={{ fontSize: 12 }}>Work Days Per Week</label>
+      <input
+        type="number"
+        value={schedule.workDaysPerWeek ?? ""}
+        onChange={(e) =>
+          setSchedule((s) =>
+            s
+              ? {
+                  ...s,
+                  workDaysPerWeek:
+                    e.target.value === "" ? null : Number(e.target.value),
+                }
+              : s
+          )
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+
+      {/* Calendar Days */}
+      <label style={{ fontSize: 12 }}>Calendar Days (Min)</label>
+      <input
+        type="number"
+        value={schedule.calendarDays?.min ?? ""}
+        onChange={(e) =>
+          setSchedule((s) =>
+            s
+              ? {
+                  ...s,
+                  calendarDays: {
+                    ...(s.calendarDays ?? { min: 0, max: 0 }),
+                    min: e.target.value === "" ? 0 : Number(e.target.value),
+                  },
+                }
+              : s
+          )
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+
+      <label style={{ fontSize: 12 }}>Calendar Days (Max)</label>
+      <input
+        type="number"
+        value={schedule.calendarDays?.max ?? ""}
+        onChange={(e) =>
+          setSchedule((s) =>
+            s
+              ? {
+                  ...s,
+                  calendarDays: {
+                    ...(s.calendarDays ?? { min: 0, max: 0 }),
+                    max: e.target.value === "" ? 0 : Number(e.target.value),
+                  },
+                }
+              : s
+          )
+        }
+        style={{ width: "100%", padding: 8, marginBottom: 8 }}
+      />
+
+      {/* Rationale */}
+      <label style={{ fontSize: 12 }}>Scheduling Notes</label>
+      {schedule.rationale.map((r, i) => (
+        <input
+          key={i}
+          value={r}
+          onChange={(e) =>
+            setSchedule((s) =>
+              s
+                ? {
+                    ...s,
+                    rationale: s.rationale.map((x, idx) =>
+                      idx === i ? e.target.value : x
+                    ),
+                  }
+                : s
+            )
+          }
+          style={{ width: "100%", padding: 8, marginBottom: 6 }}
+        />
+      ))}
+
+      <button
+        type="button"
+        onClick={() =>
+          setSchedule((s) =>
+            s ? { ...s, rationale: [...s.rationale, ""] } : s
+          )
+        }
+        style={{ fontSize: 12, marginTop: 6 }}
+      >
+        + Add Note
+      </button>
+    </div>
   )
 }
 
@@ -3332,11 +3705,30 @@ const sub =
   Generated from the scope provided.
 </p>
 
-    <p>{result}</p>
+   <p>{result}</p>
+
+{schedule && (
+  <>
+    <ScheduleBlock schedule={schedule} />
+
+    {completionWindow && (
+      <div style={{ marginTop: 10, fontSize: 13 }}>
+        Estimated Completion:
+        <strong>
+          {" "}
+          {completionWindow.min.toLocaleDateString()} –{" "}
+          {completionWindow.max.toLocaleDateString()}
+        </strong>
+      </div>
+    )}
+
+    <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
+  </>
+)}
   </div>
 )}
 
-      {!paid && (showUpgrade || remaining <= 0) && (
+  {!paid && (showUpgrade || remaining <= 0) && (
   <button
     type="button"
     onClick={upgrade}

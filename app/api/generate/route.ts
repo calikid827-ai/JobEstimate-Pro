@@ -62,16 +62,60 @@ const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 // -----------------------------
 // TYPES
 // -----------------------------
-type WorkSchedule = {
-  workDaysPerWeek: 5 | 6 | 7
-}
-
 type Pricing = {
   labor: number
   materials: number
   subs: number
   markup: number
   total: number
+}
+
+type ScheduleBlock = {
+  crewDays: number | null
+  visits: number | null
+  calendarDays: { min: number; max: number } | null
+  workDaysPerWeek: 5 | 6 | 7
+  rationale: string[]
+}
+
+function buildScheduleBlock(args: {
+  basis: EstimateBasis | null
+  cp: ComplexityProfile | null
+  trade: string
+  tradeStack: TradeStack | null
+  scopeText: string
+  workDaysPerWeek: 5 | 6 | 7
+}): ScheduleBlock {
+  const b = args.basis
+  const sched = args.workDaysPerWeek
+
+  const crewDaysRaw = Number(b?.crewDays ?? b?.quantities?.days ?? 0)
+  const hasDays =
+    !!b && Array.isArray(b.units) && b.units.includes("days") && Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
+
+  const crewDays = hasDays ? Math.round(crewDaysRaw * 2) / 2 : null
+
+  const phase = inferPhaseVisitsFromSignals({ scopeText: args.scopeText, cp: args.cp })
+  const visits = phase?.visits ? Number(phase.visits) : null
+
+  const cal = crewDays
+    ? estimateCalendarDaysRange({
+        crewDays,
+        cp: args.cp,
+        trade: args.trade,
+        tradeStack: args.tradeStack,
+        scopeText: args.scopeText,
+        workDaysPerWeek: sched,
+      })
+    : null
+
+  return {
+    crewDays,
+    visits,
+    calendarDays: cal ? { min: cal.minDays, max: cal.maxDays } : null,
+    workDaysPerWeek: sched,
+    rationale: cal?.rationale ?? [],
+  }
 }
 
 type PriceGuardStatus =
@@ -439,7 +483,11 @@ REQUIREMENTS:
 - Avoid banned phrases: ensure, industry standards, quality standards, compliance, durability, aesthetic appeal.
 - Keep professional contract-ready tone.
 - Preserve sequencing language (demo, prep, coordination, etc).
-- Output 3–5 sentences.
+- Preserve the original level of detail and approximate length (do not shorten).
+- Preserve paragraph breaks and any lists/newlines.
+- Only improve clarity/contract tone; do not compress.
+- Do NOT remove sequencing steps.
+- Do NOT merge multiple steps into one sentence.
 - Opening sentence must still begin with:
   "This ${args.documentType}"
 
@@ -3095,127 +3143,6 @@ console.log("PG ANCHOR PRICING", {
   anchorTotal: anchorPricing?.total ?? null,
 })
 
-// -----------------------------
-// ✅ SHORT-CIRCUIT: PRICING ANCHOR OWNS (skip OpenAI)
-// This makes testing stable and avoids AI math validation noise.
-// -----------------------------
-if (
-  anchorHit?.id === "bathroom_remodel_v1" ||
-  anchorHit?.id === "kitchen_remodel_v1"
-) {
-  if (anchorPricing) {
-    const pricingFinal = normalizePricingMath(anchorPricing)
-
-    // Build a deterministic estimateBasis so schedule + debug output works
-    const parsedSqft = parseSqft(scopeChange)
-    const basis = normalizeEstimateBasisUnits(
-      buildEstimateBasisFallback({
-        trade,
-        pricing: pricingFinal,
-        parsed: { rooms, doors, sqft: parsedSqft },
-        complexity: complexityProfile,
-      })
-    )
-
-    // Create a deterministic description (then append scheduling + coordination)
-    const documentType: "Estimate" | "Change Order" | "Change Order / Estimate" =
-  /\b(change order|additional work|add(?:ition)?\b|revise|revision|extra)\b/i.test(scopeChange)
-    ? "Change Order"
-    : /\b(estimate|proposal|quote)\b/i.test(scopeChange)
-    ? "Estimate"
-    : "Change Order / Estimate"
-    let desc = defaultDeterministicDescription({
-      documentType,
-      trade,
-      scopeText: effectiveScopeChange,
-      jobType: null,
-    })
-
-    desc = appendExecutionPlanSentence({
-      description: desc,
-      documentType,
-      trade,
-      cp: complexityProfile,
-      basis,
-      scopeText: scopeChange,
-      tradeStack,
-      workDaysPerWeek,
-    })
-
-    desc = appendTradeCoordinationSentence(desc, tradeStack)
-    desc = appendPermitCoordinationSentence(desc, complexityProfile)
-
-    const pg = buildPriceGuardReport({
-      pricingSource: "deterministic",
-      priceGuardVerified: true,
-      priceGuardAnchorStrict: false,
-      stateAbbrev,
-      rooms,
-      doors,
-      measurements,
-      effectivePaintScope: null,
-      anchorId: anchorHit.id,
-      detSource: `anchor:${anchorHit.id}`,
-      usedNationalBaseline,
-    })
-
-    const payload = {
-      documentType,
-      trade,
-      text: desc,
-      pricing: pricingFinal,
-
-      ...(wantsDebug(req) ? { estimateBasis: basis } : {}),
-
-      pricingSource: "deterministic" as const,
-      detSource: `anchor:${anchorHit.id}`,
-      priceGuardAnchor: anchorHit.id,
-      priceGuardVerified: true,
-      priceGuardProtected: true,
-      priceGuard: pg,
-
-      flooring: flooringDet ? {
-        okForDeterministic: flooringDet.okForDeterministic,
-        okForVerified: flooringDet.okForVerified,
-        flooringType: flooringDet.flooringType,
-        sqft: flooringDet.sqft,
-        notes: flooringDet.notes,
-      } : null,
-
-      electrical: electricalDet ? {
-        okForDeterministic: electricalDet.okForDeterministic,
-        okForVerified: electricalDet.okForVerified,
-        jobType: electricalDet.jobType,
-        signals: electricalDet.signals ?? null,
-        notes: electricalDet.notes,
-      } : null,
-
-      plumbing: plumbingDet ? {
-        okForDeterministic: plumbingDet.okForDeterministic,
-        okForVerified: plumbingDet.okForVerified,
-        jobType: plumbingDet.jobType,
-        signals: plumbingDet.signals ?? null,
-        notes: plumbingDet.notes,
-      } : null,
-
-      drywall: drywallDet ? {
-        okForDeterministic: drywallDet.okForDeterministic,
-        okForVerified: drywallDet.okForVerified,
-        jobType: drywallDet.jobType,
-        signals: drywallDet.signals ?? null,
-        notes: drywallDet.notes,
-      } : null,
-    }
-
-    return await respondAndCache({
-  email: normalizedEmail,
-  requestId,
-  payload,
-  cache: cacheEligible,
-})
-  }
-}
-
 const useBigJobPricing =
   looksLikePainting &&
   typeof rooms === "number" &&
@@ -3393,7 +3320,11 @@ DOCUMENT RULES (CRITICAL):
 - The opening sentence must begin with “This Change Order…” or “This Estimate…” and clearly identify the nature of the work
 - Use professional, contract-ready language
 - Describe labor activities, materials, preparation, and intent
-- Write 3–5 clear, detailed sentences
+- Write a thorough, contract-ready scope description with clear sequencing.
+- Length: 180–450 words (or 10–18 sentences).
+- Use line breaks for readability (plain text is fine). No markdown.
+- Include: prep/protection, execution steps, materials/consumables, coordination/visits, cleanup.
+- Do not add pricing, warranties, guarantees, or new scope not implied by the input.
 - No disclaimers or markdown
 
 DOCUMENT-TYPE TONE RULES (VERY IMPORTANT):
@@ -3408,7 +3339,6 @@ If documentType is "Estimate":
 - Frame work as proposed or anticipated
 - Avoid implying an existing contract
 - Use conditional language (e.g., "This Estimate outlines the proposed scope…")
-- Position pricing as preliminary but professional (no disclaimers)
 
 If documentType is "Change Order / Estimate":
 - Use neutral language that could apply in either context
@@ -3997,12 +3927,23 @@ if (deterministicOwned) {
 
     normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
+    const outTrade = normalized.trade || trade
+
   // ✅ BUILD PAYLOAD ONCE
   const payload = {
     documentType: normalized.documentType,
     trade: normalized.trade || trade,
     text: normalized.description,
     pricing: safePricing,
+
+    schedule: buildScheduleBlock({
+    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+    cp: complexityProfile,
+    trade: outTrade,
+    tradeStack,
+    scopeText: scopeChange,
+    workDaysPerWeek,
+  }),
 
     // debug-only: expose estimateBasis for terminal tests
     ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),
@@ -4295,11 +4236,22 @@ normalized.description = await polishDescriptionWith4o({
 
   normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
+  const outTrade = normalized.trade || trade
+
 const payload = {
   documentType: normalized.documentType,
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+
+  schedule: buildScheduleBlock({
+    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+    cp: complexityProfile,
+    trade: outTrade,
+    tradeStack,
+    scopeText: scopeChange,
+    workDaysPerWeek,
+  }),
 
   // debug-only: expose estimateBasis for terminal tests
     ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),
