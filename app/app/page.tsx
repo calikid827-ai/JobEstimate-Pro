@@ -113,6 +113,47 @@ type Invoice = {
   }
 }
 
+type JobBudget = {
+  jobId: string
+  updatedAt: number
+  lastEstimateId: string
+
+  // snapshot from estimate
+  estimateTotal: number
+  labor: number
+  materials: number
+  subs: number
+  markupPct: number
+  taxEnabled: boolean
+  taxRate: number
+  taxAmount: number
+
+  deposit?: {
+    enabled: boolean
+    type: "percent" | "fixed"
+    value: number
+    depositDue: number
+    remainingBalance: number
+  }
+}
+
+const BUDGET_KEY = "jobestimatepro_budgets_v1"
+
+type JobActuals = {
+  jobId: string
+  updatedAt: number
+  labor: number
+  materials: number
+  subs: number
+  notes?: string
+}
+
+const ACTUALS_KEY = "jobestimatepro_actuals_v1"
+const [actuals, setActuals] = useState<JobActuals[]>([])
+
+const CREW_KEY = "jobestimatepro_crews_v1"
+const [crewCount, setCrewCount] = useState<number>(1)
+
 type Job = {
   id: string
   createdAt: number
@@ -247,6 +288,7 @@ type EstimateHistoryItem = {
 
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
 
+const [budgets, setBudgets] = useState<JobBudget[]>([])
 
 const [jobDetails, setJobDetails] = useState({
   clientName: "",
@@ -361,6 +403,62 @@ function money(n: number) {
   return `$${Number(n || 0).toLocaleString()}`
 }
 
+function upsertActuals(jobId: string, patch: Partial<JobActuals>) {
+  setActuals((prev) => {
+    const idx = prev.findIndex((a) => a.jobId === jobId)
+
+    const base: JobActuals =
+      idx === -1
+        ? {
+            jobId,
+            updatedAt: Date.now(),
+            labor: 0,
+            materials: 0,
+            subs: 0,
+            notes: "",
+          }
+        : prev[idx]
+
+    const nextItem: JobActuals = {
+      ...base,
+      ...patch,
+      updatedAt: Date.now(),
+      labor: Number(patch.labor ?? base.labor ?? 0),
+      materials: Number(patch.materials ?? base.materials ?? 0),
+      subs: Number(patch.subs ?? base.subs ?? 0),
+      notes: String(patch.notes ?? base.notes ?? ""),
+    }
+
+    const next =
+      idx === -1
+        ? [nextItem, ...prev]
+        : prev.map((x, i) => (i === idx ? nextItem : x))
+
+    return next
+  })
+}
+
+function actualsForJob(jobId: string) {
+  return actuals.find((a) => a.jobId === jobId) || null
+}
+
+function computeProfitSummary(jobId: string) {
+  const budget = budgets.find((b) => b.jobId === jobId) || null
+  const act = actualsForJob(jobId)
+
+  const budgetTotal = Number(budget?.estimateTotal || 0)
+  const actLabor = Number(act?.labor || 0)
+  const actMat = Number(act?.materials || 0)
+  const actSubs = Number(act?.subs || 0)
+  const actTotal = actLabor + actMat + actSubs
+
+  const profit = budgetTotal - actTotal
+  const marginPct =
+    budgetTotal > 0 ? Math.round((profit / budgetTotal) * 100) : 0
+
+  return { budgetTotal, actTotal, profit, marginPct }
+}
+
 function invoiceSummaryForJob(jobId: string) {
   const list = invoices.filter((x) => x.jobId === jobId)
   let paidCount = 0
@@ -396,6 +494,88 @@ return {
   openCount,
   outstanding: Math.round(outstanding),
  }
+}
+
+function computeTaxAmountFromEstimate(est: EstimateHistoryItem) {
+  const labor = Number(est?.pricing?.labor || 0)
+  const materials = Number(est?.pricing?.materials || 0)
+  const subs = Number(est?.pricing?.subs || 0)
+  const markupPct = Number(est?.pricing?.markup || 0)
+
+  const base = labor + materials + subs
+  const markedUp = base * (1 + markupPct / 100)
+
+  const taxEnabledSnap = Boolean(est.tax?.enabled)
+  const taxRateSnap = Number(est.tax?.rate || 0)
+  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
+
+  const estimateTotal = Math.round(markedUp + taxAmt)
+  return { taxAmt, estimateTotal, markedUp }
+}
+
+function upsertBudgetFromEstimate(est: EstimateHistoryItem) {
+  const jobId = est.jobId
+  if (!jobId) return
+
+  const labor = Number(est?.pricing?.labor || 0)
+  const materials = Number(est?.pricing?.materials || 0)
+  const subs = Number(est?.pricing?.subs || 0)
+  const markupPct = Number(est?.pricing?.markup || 0)
+
+  const taxEnabledSnap = Boolean(est.tax?.enabled)
+  const taxRateSnap = Number(est.tax?.rate || 0)
+
+  const { taxAmt, estimateTotal } = computeTaxAmountFromEstimate(est)
+
+  // deposit snapshot (optional)
+  let dep: JobBudget["deposit"] = undefined
+  if (est.deposit?.enabled) {
+    const depType = est.deposit.type === "fixed" ? "fixed" : "percent"
+    const depValue = Number(est.deposit.value || 0)
+
+    let depositDue = 0
+    if (depType === "percent") {
+      const pct = Math.max(0, Math.min(100, depValue))
+      depositDue = Math.round(estimateTotal * (pct / 100))
+    } else {
+      depositDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
+    }
+
+    dep = {
+      enabled: true,
+      type: depType,
+      value: depValue,
+      depositDue,
+      remainingBalance: Math.max(0, estimateTotal - depositDue),
+    }
+  }
+
+  const nextBudget: JobBudget = {
+    jobId,
+    updatedAt: Date.now(),
+    lastEstimateId: est.id,
+    estimateTotal,
+    labor,
+    materials,
+    subs,
+    markupPct,
+    taxEnabled: taxEnabledSnap,
+    taxRate: taxRateSnap,
+    taxAmount: taxAmt,
+    deposit: dep,
+  }
+
+  setBudgets((prev) => {
+    const idx = prev.findIndex((b) => b.jobId === jobId)
+    if (idx === -1) return [nextBudget, ...prev]
+    const copy = prev.slice()
+    copy[idx] = nextBudget
+    return copy
+  })
+}
+
+function findHistoryById(id: string) {
+  return history.find((h) => h.id === id) || null
 }
 
   
@@ -468,6 +648,81 @@ function computeDepositFromEstimateTotal(estTotal: number, dep?: { enabled: bool
   const fixed = Math.max(0, Number(dep.value || 0))
   const depositDue = Math.min(estTotal, Math.round(fixed))
   return { depositDue, remaining: Math.max(0, estTotal - depositDue) }
+}
+
+function startOfWeek(d: Date) {
+  const x = new Date(d)
+  const day = x.getDay()
+  const diff = (day === 0 ? -6 : 1) - day
+  x.setDate(x.getDate() + diff)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function addDays(d: Date, n: number) {
+  const x = new Date(d)
+  x.setDate(x.getDate() + n)
+  return x
+}
+
+function isoDay(d: Date) {
+  return d.toISOString().slice(0, 10)
+}
+
+type WeekLoad = {
+  weekStartISO: string
+  demandCrewDays: number
+}
+
+function computeWeeklyCrewLoad() {
+  const items = jobs
+    .map((j) => {
+      const latest = latestEstimateForJob(j.id)
+      const s = latest?.schedule
+      if (!s?.startDate) return null
+
+      const crewDays = Number(s?.crewDays ?? 0)
+      if (!Number.isFinite(crewDays) || crewDays <= 0) return null
+
+      const start = new Date(s.startDate + "T00:00:00")
+
+      return {
+        jobId: j.id,
+        jobName: j.jobName || "Untitled Job",
+        start,
+        crewDays,
+      }
+    })
+    .filter(Boolean) as {
+    jobId: string
+    jobName: string
+    start: Date
+    crewDays: number
+  }[]
+
+  const byWeek = new Map<string, number>()
+
+  for (const it of items) {
+    let remaining = it.crewDays
+    let wk = startOfWeek(it.start)
+
+    while (remaining > 0) {
+      const take = Math.min(6, remaining)
+      const key = isoDay(wk)
+      byWeek.set(key, (byWeek.get(key) ?? 0) + take)
+      remaining -= take
+      wk = addDays(wk, 7)
+    }
+  }
+
+  const weeks: WeekLoad[] = Array.from(byWeek.entries())
+    .map(([weekStartISO, demandCrewDays]) => ({
+      weekStartISO,
+      demandCrewDays,
+    }))
+    .sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO))
+
+  return weeks
 }
 
   // -------------------------
@@ -596,7 +851,7 @@ useEffect(() => {
   const completionWindow = useMemo(() => {
   if (!schedule?.startDate || !schedule?.calendarDays) return null
 
-  const start = new Date(schedule.startDate)
+  const start = new Date(schedule.startDate + "T00:00:00")
 
   const minEnd = new Date(start)
   minEnd.setDate(start.getDate() + schedule.calendarDays.min)
@@ -856,6 +1111,55 @@ useEffect(() => {
   if (typeof window === "undefined") return
   localStorage.setItem(INVOICE_KEY, JSON.stringify(invoices))
 }, [invoices])
+
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  const saved = localStorage.getItem(BUDGET_KEY)
+  if (!saved) return
+
+  try {
+    const parsed = JSON.parse(saved)
+    if (Array.isArray(parsed)) setBudgets(parsed)
+  } catch {}
+}, [])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets))
+}, [budgets])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  const saved = localStorage.getItem(ACTUALS_KEY)
+  if (!saved) return
+
+  try {
+    const parsed = JSON.parse(saved)
+    if (Array.isArray(parsed)) setActuals(parsed)
+  } catch {}
+}, [])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(ACTUALS_KEY, JSON.stringify(actuals))
+}, [actuals])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+  const saved = localStorage.getItem(CREW_KEY)
+  if (saved) {
+    const n = Number(saved)
+    if (Number.isFinite(n) && n > 0) setCrewCount(Math.max(1, Math.round(n)))
+  }
+}, [])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(CREW_KEY, String(crewCount))
+}, [crewCount])
   
   useEffect(() => {
   if (paid) setShowUpgrade(false)
@@ -895,9 +1199,17 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
-  updateHistoryItem(id, {
+
+  const current = findHistoryById(id)
+  if (!current) return
+
+  const patched: EstimateHistoryItem = {
+    ...current,
     tax: { enabled: taxEnabled, rate: Number(taxRate || 0) },
-  })
+  }
+
+  updateHistoryItem(id, { tax: patched.tax })
+  upsertBudgetFromEstimate(patched)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [taxEnabled, taxRate])
 
@@ -905,11 +1217,19 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
-  updateHistoryItem(id, {
+
+  const current = findHistoryById(id)
+  if (!current) return
+
+  const patched: EstimateHistoryItem = {
+    ...current,
     deposit: depositEnabled
       ? { enabled: true, type: depositType, value: Number(depositValue || 0) }
       : undefined,
-  })
+  }
+
+  updateHistoryItem(id, { deposit: patched.deposit })
+  upsertBudgetFromEstimate(patched)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [depositEnabled, depositType, depositValue])
 
@@ -917,7 +1237,12 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
-  updateHistoryItem(id, {
+
+  const current = findHistoryById(id)
+  if (!current) return
+
+  const patched: EstimateHistoryItem = {
+    ...current,
     pricing: {
       labor: Number(pricing.labor || 0),
       materials: Number(pricing.materials || 0),
@@ -925,7 +1250,10 @@ useEffect(() => {
       markup: Number(pricing.markup || 0),
       total: Number(pricing.total || 0),
     },
-  })
+  }
+
+  updateHistoryItem(id, { pricing: patched.pricing })
+  upsertBudgetFromEstimate(patched)
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [pricing.labor, pricing.materials, pricing.subs, pricing.markup, pricing.total])
 
@@ -1063,7 +1391,7 @@ if (!trade && nextTrade) setTrade(nextTrade)
 
 const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
 
-saveToHistory({
+const estItem: EstimateHistoryItem = {
   id: newId,
   createdAt: Date.now(),
   jobDetails: { ...jobDetails },
@@ -1080,17 +1408,13 @@ saveToHistory({
     markup: Number(nextPricing.markup || 0),
     total: Number(nextPricing.total || 0),
   },
-
   schedule: data?.schedule ?? null,
- 
   pricingSource: nextPricingSource,
   priceGuardVerified: nextVerified,
-
   tax: {
     enabled: taxEnabled,
     rate: Number(taxRate || 0),
   },
-
   deposit: depositEnabled
     ? {
         enabled: true,
@@ -1098,9 +1422,14 @@ saveToHistory({
         value: Number(depositValue || 0),
       }
     : undefined,
-})
+}
 
-// ✅ ADD THIS LINE RIGHT AFTER saveToHistory(...)
+saveToHistory(estItem)
+
+// ✅ Auto-create/update job budget
+upsertBudgetFromEstimate(estItem)
+
+// ✅ keep latest id pointer
 lastSavedEstimateIdRef.current = newId
 
 await checkEntitlementNow()
@@ -1236,6 +1565,13 @@ function deleteJob(id: string) {
   setInvoices((prev) => {
     const next = prev.filter((inv) => inv.jobId !== id)
     localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+    return next
+  })
+
+    // remove actuals tied to it
+  setActuals((prev) => {
+    const next = prev.filter((a) => a.jobId !== id)
+    localStorage.setItem(ACTUALS_KEY, JSON.stringify(next))
     return next
   })
 
@@ -3371,6 +3707,116 @@ function ScheduleEditor({
     </select>
   </div>
 
+  <div
+  style={{
+    marginTop: 10,
+    padding: 10,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    background: "#fff",
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  }}
+>
+  <div>
+    <div style={{ fontSize: 12, fontWeight: 800, color: "#111" }}>
+      Crew Capacity Settings
+    </div>
+    <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+      Set how many crews you can run in parallel.
+    </div>
+  </div>
+
+  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <span style={{ fontSize: 12, color: "#444", fontWeight: 700 }}>
+      Crews:
+    </span>
+
+    <input
+      type="number"
+      min={1}
+      value={crewCount}
+      onChange={(e) =>
+        setCrewCount(Math.max(1, Number(e.target.value || 1)))
+      }
+      style={{ width: 90, padding: 8 }}
+    />
+
+    <div style={{ fontSize: 12, color: "#111" }}>
+      Weekly capacity: <strong>{crewCount * 6}</strong> crew-days
+    </div>
+  </div>
+</div>
+
+{(() => {
+  const weeks = computeWeeklyCrewLoad()
+  if (weeks.length === 0) return null
+
+  const capacity = crewCount * 6
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 14 }}>
+        Crew Loading Dashboard
+      </div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        Weekly demand vs capacity (capacity = {capacity} crew-days/week)
+      </div>
+
+      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+        {weeks.map((w) => {
+          const over = w.demandCrewDays > capacity
+
+          return (
+            <div
+              key={w.weekStartISO}
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #eee",
+                background: over ? "#fff5f5" : "#f9fafb",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800 }}>
+                Week of {new Date(w.weekStartISO + "T00:00:00").toLocaleDateString()}
+              </div>
+
+              <div style={{ fontSize: 12 }}>
+                Demand: <strong>{w.demandCrewDays}</strong> / Capacity:{" "}
+                <strong>{capacity}</strong>{" "}
+                {over ? (
+                  <span style={{ color: "#9b1c1c", fontWeight: 900 }}>
+                    • OVERLOADED
+                  </span>
+                ) : (
+                  <span style={{ color: "#065f46", fontWeight: 900 }}>
+                    • OK
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+})()}
+
   {jobs.length === 0 ? (
     <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
       No jobs yet. Fill out Job Details and click <strong>Create / Select from Job Details</strong>.
@@ -3387,7 +3833,11 @@ function ScheduleEditor({
           const depComputed = computeDepositFromEstimateTotal(latestTotal, dep)
 
           const invSum = invoiceSummaryForJob(j.id)
+          const budget = budgets.find((b) => b.jobId === j.id)
+          const budgetTotal = Number(budget?.estimateTotal || 0)
           const latestInv = latestInvoiceForJob(j.id)
+          const profit = computeProfitSummary(j.id)
+          const act = actualsForJob(j.id)
 
           const isActive = activeJobId === j.id
 
@@ -3434,6 +3884,18 @@ function ScheduleEditor({
                       Latest Estimate: <strong>{latest ? money(latestTotal) : "—"}</strong>
                     </div>
 
+                    <div>
+                      Budget (Latest Estimate):{" "}
+                      <strong>{budget ? money(budgetTotal) : "—"}</strong>
+                    </div>
+
+                   <div>
+                     Budget Remaining (vs Outstanding):{" "}
+                     <strong>
+                      {budget ? money(Math.max(0, budgetTotal - invSum.outstanding)) : "—"}
+                    </strong>
+                  </div>
+
                     {latest?.deposit?.enabled ? (
                       <div>
                         Deposit / Remaining:{" "}
@@ -3459,6 +3921,98 @@ function ScheduleEditor({
                       ) : null}
                     </div>
                   </div>
+
+                  <div
+  style={{
+    marginTop: 8,
+    padding: 10,
+    border: "1px solid #eee",
+    borderRadius: 10,
+    background: "#fff",
+  }}
+>
+  <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>
+    Profit Tracking
+  </div>
+
+  <div style={{ fontSize: 12, marginTop: 6 }}>
+    Budget Total: <strong>{money(profit.budgetTotal)}</strong>
+  </div>
+
+  <div style={{ fontSize: 12 }}>
+    Actual Costs: <strong>{money(profit.actTotal)}</strong>
+  </div>
+
+  <div style={{ fontSize: 12, marginTop: 4 }}>
+    Profit:{" "}
+    <strong
+      style={{
+        color: profit.profit >= 0 ? "#065f46" : "#9b1c1c",
+      }}
+    >
+      {money(profit.profit)}
+    </strong>{" "}
+    <span style={{ color: "#666" }}>({profit.marginPct}% margin)</span>
+  </div>
+
+  <details style={{ marginTop: 8 }}>
+    <summary style={{ cursor: "pointer", fontSize: 12 }}>
+      Edit actual costs
+    </summary>
+
+    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+      <input
+        type="number"
+        placeholder="Labor actual ($)"
+        value={act?.labor ?? 0}
+        onChange={(e) =>
+          upsertActuals(j.id, {
+            labor: e.target.value === "" ? 0 : Number(e.target.value),
+          })
+        }
+        style={{ width: "100%", padding: 8 }}
+      />
+
+      <input
+        type="number"
+        placeholder="Materials actual ($)"
+        value={act?.materials ?? 0}
+        onChange={(e) =>
+          upsertActuals(j.id, {
+            materials: e.target.value === "" ? 0 : Number(e.target.value),
+          })
+        }
+        style={{ width: "100%", padding: 8 }}
+      />
+
+      <input
+        type="number"
+        placeholder="Subs / other actual ($)"
+        value={act?.subs ?? 0}
+        onChange={(e) =>
+          upsertActuals(j.id, {
+            subs: e.target.value === "" ? 0 : Number(e.target.value),
+          })
+        }
+        style={{ width: "100%", padding: 8 }}
+      />
+
+      <textarea
+        placeholder="Notes (optional)"
+        value={act?.notes ?? ""}
+        onChange={(e) => upsertActuals(j.id, { notes: e.target.value })}
+        style={{ width: "100%", padding: 8, height: 60 }}
+      />
+
+      <div style={{ fontSize: 11, color: "#666" }}>
+        Last updated:{" "}
+        <strong>
+          {act?.updatedAt ? new Date(act.updatedAt).toLocaleString() : "—"}
+        </strong>
+      </div>
+    </div>
+  </details>
+</div>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
