@@ -672,6 +672,11 @@ function isoDay(d: Date) {
 type WeekLoad = {
   weekStartISO: string
   demandCrewDays: number
+  jobs: {
+    jobId: string
+    jobName: string
+    crewDays: number
+  }[]
 }
 
 function computeWeeklyCrewLoad() {
@@ -700,7 +705,17 @@ function computeWeeklyCrewLoad() {
     crewDays: number
   }[]
 
-  const byWeek = new Map<string, number>()
+  const byWeek = new Map<
+    string,
+    {
+      demandCrewDays: number
+      jobs: {
+        jobId: string
+        jobName: string
+        crewDays: number
+      }[]
+    }
+  >()
 
   for (const it of items) {
     let remaining = it.crewDays
@@ -709,20 +724,123 @@ function computeWeeklyCrewLoad() {
     while (remaining > 0) {
       const take = Math.min(6, remaining)
       const key = isoDay(wk)
-      byWeek.set(key, (byWeek.get(key) ?? 0) + take)
+
+      const existing = byWeek.get(key) ?? {
+        demandCrewDays: 0,
+        jobs: [],
+      }
+
+      existing.demandCrewDays += take
+      existing.jobs.push({
+        jobId: it.jobId,
+        jobName: it.jobName,
+        crewDays: take,
+      })
+
+      byWeek.set(key, existing)
+
       remaining -= take
       wk = addDays(wk, 7)
     }
   }
 
   const weeks: WeekLoad[] = Array.from(byWeek.entries())
-    .map(([weekStartISO, demandCrewDays]) => ({
+    .map(([weekStartISO, value]) => ({
       weekStartISO,
-      demandCrewDays,
+      demandCrewDays: value.demandCrewDays,
+      jobs: value.jobs.sort((a, b) => b.crewDays - a.crewDays),
     }))
     .sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO))
 
   return weeks
+}
+
+function previousEstimateForJob(jobId?: string, excludeId?: string) {
+  if (!jobId) return null
+
+  const list = history
+    .filter((h) => h.jobId === jobId && h.id !== excludeId)
+    .sort((a, b) => b.createdAt - a.createdAt)
+
+  return list[0] || null
+}
+
+function estimateTotalWithTax(est: EstimateHistoryItem | null) {
+  if (!est) return 0
+
+  const labor = Number(est.pricing?.labor || 0)
+  const materials = Number(est.pricing?.materials || 0)
+  const subs = Number(est.pricing?.subs || 0)
+  const markup = Number(est.pricing?.markup || 0)
+
+  const base = labor + materials + subs
+  const markedUp = base * (1 + markup / 100)
+
+  const taxEnabled = Boolean(est.tax?.enabled)
+  const taxRate = Number(est.tax?.rate || 0)
+  const taxAmt = taxEnabled ? markedUp * (taxRate / 100) : 0
+
+  return Math.round(markedUp + taxAmt)
+}
+
+function completionEndFromSchedule(s?: Schedule | null) {
+  if (!s?.startDate || !s?.calendarDays?.max) return null
+
+  const start = new Date(s.startDate + "T00:00:00")
+  const end = new Date(start)
+  end.setDate(start.getDate() + Number(s.calendarDays.max || 0))
+  return end
+}
+
+function daysBetween(a: Date | null, b: Date | null) {
+  if (!a || !b) return null
+  const ms = b.getTime() - a.getTime()
+  return Math.round(ms / (1000 * 60 * 60 * 24))
+}
+
+function formatDelta(n: number) {
+  if (n > 0) return `+$${n.toLocaleString()}`
+  if (n < 0) return `-$${Math.abs(n).toLocaleString()}`
+  return "$0"
+}
+
+function formatSignedNumber(n: number) {
+  if (n > 0) return `+${n}`
+  if (n < 0) return `${n}`
+  return "0"
+}
+
+function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
+  if (!current?.jobId) return null
+
+  const previous = previousEstimateForJob(current.jobId, current.id)
+  if (!previous) return null
+
+  const previousTotal = estimateTotalWithTax(previous)
+  const currentTotal = estimateTotalWithTax(current)
+  const costDelta = currentTotal - previousTotal
+
+  const previousCrewDays = Number(previous.schedule?.crewDays || 0)
+  const currentCrewDays = Number(current.schedule?.crewDays || 0)
+  const crewDayDelta = currentCrewDays - previousCrewDays
+
+  const previousEnd = completionEndFromSchedule(previous.schedule)
+  const currentEnd = completionEndFromSchedule(current.schedule)
+  const scheduleDeltaDays = daysBetween(previousEnd, currentEnd)
+
+  return {
+    previous,
+    current,
+    previousTotal,
+    currentTotal,
+    costDelta,
+    previousCrewDays,
+    currentCrewDays,
+    crewDayDelta,
+    previousEnd,
+    currentEnd,
+    scheduleDeltaDays,
+  }
 }
 
   // -------------------------
@@ -1016,6 +1134,16 @@ const filteredInvoices = useMemo(() => {
   if (!activeJobId) return invoices
   return invoices.filter((inv) => inv.jobId === activeJobId)
 }, [invoices, activeJobId])
+
+const currentLoadedEstimate = useMemo(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return null
+  return history.find((h) => h.id === id) || null
+}, [history])
+
+const changeOrderSummary = useMemo(() => {
+  return computeChangeOrderSummary(currentLoadedEstimate)
+}, [currentLoadedEstimate])
 
 // -------------------------
 // Jobs (localStorage)
@@ -3736,14 +3864,17 @@ function ScheduleEditor({
     </span>
 
     <input
-      type="number"
-      min={1}
-      value={crewCount}
-      onChange={(e) =>
-        setCrewCount(Math.max(1, Number(e.target.value || 1)))
-      }
-      style={{ width: 90, padding: 8 }}
-    />
+  type="number"
+  min={1}
+  max={5}
+  value={crewCount}
+  onChange={(e) => {
+    const raw = Number(e.target.value || 1)
+    const next = Math.max(1, Math.min(5, Math.round(raw)))
+    setCrewCount(next)
+  }}
+  style={{ width: 90, padding: 8 }}
+/>
 
     <div style={{ fontSize: 12, color: "#111" }}>
       Weekly capacity: <strong>{crewCount * 6}</strong> crew-days
@@ -3770,13 +3901,21 @@ function ScheduleEditor({
       <div style={{ fontWeight: 900, fontSize: 14 }}>
         Crew Loading Dashboard
       </div>
+
       <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-        Weekly demand vs capacity (capacity = {capacity} crew-days/week)
+        Weekly demand vs capacity using each job’s latest schedule start date and crew-days.
       </div>
 
-      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+      <div style={{ fontSize: 12, color: "#444", marginTop: 6 }}>
+        Capacity: <strong>{crewCount}</strong> crew{crewCount > 1 ? "s" : ""} × 6 days
+        = <strong> {capacity}</strong> crew-days/week
+      </div>
+
+      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
         {weeks.map((w) => {
           const over = w.demandCrewDays > capacity
+          const utilization =
+            capacity > 0 ? Math.round((w.demandCrewDays / capacity) * 100) : 0
 
           return (
             <div
@@ -3786,28 +3925,56 @@ function ScheduleEditor({
                 borderRadius: 10,
                 border: "1px solid #eee",
                 background: over ? "#fff5f5" : "#f9fafb",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "center",
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800 }}>
-                Week of {new Date(w.weekStartISO + "T00:00:00").toLocaleDateString()}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800 }}>
+                  Week of {new Date(w.weekStartISO + "T00:00:00").toLocaleDateString()}
+                </div>
+
+                <div style={{ fontSize: 12 }}>
+                  Demand: <strong>{w.demandCrewDays}</strong> / Capacity:{" "}
+                  <strong>{capacity}</strong> • Utilization:{" "}
+                  <strong>{utilization}%</strong>{" "}
+                  {over ? (
+                    <span style={{ color: "#9b1c1c", fontWeight: 900 }}>
+                      • OVERLOADED
+                    </span>
+                  ) : (
+                    <span style={{ color: "#065f46", fontWeight: 900 }}>
+                      • OK
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div style={{ fontSize: 12 }}>
-                Demand: <strong>{w.demandCrewDays}</strong> / Capacity:{" "}
-                <strong>{capacity}</strong>{" "}
-                {over ? (
-                  <span style={{ color: "#9b1c1c", fontWeight: 900 }}>
-                    • OVERLOADED
-                  </span>
-                ) : (
-                  <span style={{ color: "#065f46", fontWeight: 900 }}>
-                    • OK
-                  </span>
-                )}
+              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                {w.jobs.map((job, idx) => (
+                  <div
+                    key={`${w.weekStartISO}_${job.jobId}_${idx}`}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      fontSize: 12,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      background: "#fff",
+                      border: "1px solid #f0f0f0",
+                    }}
+                  >
+                    <div style={{ color: "#111" }}>{job.jobName}</div>
+                    <div style={{ fontWeight: 700 }}>{job.crewDays} crew-day{job.crewDays !== 1 ? "s" : ""}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )
@@ -4258,6 +4425,86 @@ function ScheduleEditor({
 >
   Generated from the scope provided.
 </p>
+
+{changeOrderSummary && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      background: "#fff",
+    }}
+  >
+    <div style={{ fontWeight: 900, fontSize: 14 }}>
+      Smart Change Order Summary
+    </div>
+
+    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+      Compared against the previous estimate for this job.
+    </div>
+
+    <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
+      <div>
+        Previous Estimate:{" "}
+        <strong>${changeOrderSummary.previousTotal.toLocaleString()}</strong>
+      </div>
+
+      <div>
+        Current Estimate:{" "}
+        <strong>${changeOrderSummary.currentTotal.toLocaleString()}</strong>
+      </div>
+
+      <div>
+        Cost Change:{" "}
+        <strong
+          style={{
+            color:
+              changeOrderSummary.costDelta > 0
+                ? "#9b1c1c"
+                : changeOrderSummary.costDelta < 0
+                ? "#065f46"
+                : "#111",
+          }}
+        >
+          {formatDelta(changeOrderSummary.costDelta)}
+        </strong>
+      </div>
+
+      <div>
+        Crew-Day Change:{" "}
+        <strong>{formatSignedNumber(changeOrderSummary.crewDayDelta)}</strong>
+      </div>
+
+      <div>
+        Schedule Impact:{" "}
+        <strong>
+          {changeOrderSummary.scheduleDeltaDays == null
+            ? "—"
+            : `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays)} day(s)`}
+        </strong>
+      </div>
+
+      <div>
+        Previous Completion:{" "}
+        <strong>
+          {changeOrderSummary.previousEnd
+            ? changeOrderSummary.previousEnd.toLocaleDateString()
+            : "—"}
+        </strong>
+      </div>
+
+      <div>
+        New Completion:{" "}
+        <strong>
+          {changeOrderSummary.currentEnd
+            ? changeOrderSummary.currentEnd.toLocaleDateString()
+            : "—"}
+        </strong>
+      </div>
+    </div>
+  </div>
+)}
 
    <p>{result}</p>
 
