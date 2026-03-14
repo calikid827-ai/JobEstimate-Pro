@@ -90,10 +90,11 @@ function buildScheduleBlock(args: {
   const sched = args.workDaysPerWeek
 
   const crewDaysRaw = Number(b?.crewDays ?? b?.quantities?.days ?? 0)
-  const hasDays =
-    !!b && Array.isArray(b.units) && b.units.includes("days") && Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
 
-  const crewDays = hasDays ? Math.round(crewDaysRaw * 2) / 2 : null
+const crewDays =
+  Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
+    ? Math.round(crewDaysRaw * 2) / 2
+    : null
 
   const phase = inferPhaseVisitsFromSignals({ scopeText: args.scopeText, cp: args.cp })
   const visits = phase?.visits ? Number(phase.visits) : null
@@ -1156,10 +1157,13 @@ function buildComplexityProfile(args: { scopeText: string; trade: string }): Com
 
   // --- force “days” basis for complex/remodel (and for heavy electrical/plumbing patterns) ---
   const requireDaysBasis =
-    cls === "complex" ||
-    cls === "remodel" ||
-    (trade === "electrical" && /\b(panel|service\s*upgrade|rewire)\b/.test(s)) ||
-    (trade === "plumbing" && /\b(rough[-\s]*in|relocat|move\s+drain|move\s+supply)\b/.test(s))
+  cls === "complex" ||
+  cls === "remodel" ||
+  multiPhase ||
+  hasDemo ||
+  multiTrade ||
+  (trade === "electrical" && /\b(panel|service\s*upgrade|rewire)\b/.test(s)) ||
+  (trade === "plumbing" && /\b(rough[-\s]*in|relocat|move\s+drain|move\s+supply)\b/.test(s))
 
   // --- guardrail minimums by class ---
   // These are intentionally forgiving but block “0.5 day remodels”
@@ -1932,12 +1936,28 @@ function priceBathroomRemodelAnchor(args: {
 
   // Materials allowances (mid-market; not luxury finishes)
   let materials = 0
-  materials += hasDemo ? 150 : 75                       // protection/consumables
-  materials += hasValveRelocate ? 300 : 0               // fittings/valve misc (not designer trim kits)
-  materials += hasWaterproof ? 350 : 0                  // membrane/roll-on + accessories
-  materials += hasWallTile ? Math.max(900, wallTileSqft * 10) : 0 // tile + setting materials allowance
-  materials += hasVanity ? 250 : 0                      // supplies, traps, stops, misc
-  materials = Math.round(materials)
+
+// baseline remodel consumables / protection / patch / misc
+materials += 450
+
+// demo/protection allowance
+materials += hasDemo ? 250 : 100
+
+// plumbing/electrical rough misc baseline for remodel context
+materials += 300
+
+// waterproofing / wet-area prep
+materials += hasWaterproof ? 350 : 200
+
+// wall finish / tile allowance
+materials += hasWallTile
+  ? Math.max(900, wallTileSqft * 10)
+  : 600
+
+// vanity / fixture allowance
+materials += hasVanity ? 250 : 200
+
+materials = Math.round(materials)
 
   // Subs / overhead (dump + supervision + mobilization)
   const mobilization = 750

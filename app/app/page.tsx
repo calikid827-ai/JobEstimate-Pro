@@ -755,12 +755,12 @@ function computeWeeklyCrewLoad() {
   return weeks
 }
 
-function previousEstimateForJob(jobId?: string, excludeId?: string) {
+function originalEstimateForJob(jobId?: string, excludeId?: string) {
   if (!jobId) return null
 
   const list = history
     .filter((h) => h.jobId === jobId && h.id !== excludeId)
-    .sort((a, b) => b.createdAt - a.createdAt)
+    .sort((a, b) => a.createdAt - b.createdAt)
 
   return list[0] || null
 }
@@ -783,18 +783,43 @@ function estimateTotalWithTax(est: EstimateHistoryItem | null) {
   return Math.round(markedUp + taxAmt)
 }
 
-function completionEndFromSchedule(s?: Schedule | null) {
-  if (!s?.startDate || !s?.calendarDays?.max) return null
+function completionEndFromSchedule(
+  s?: Schedule | null,
+  fallbackCreatedAt?: number
+) {
+  const start =
+    s?.startDate
+      ? new Date(s.startDate + "T00:00:00")
+      : fallbackCreatedAt
+      ? new Date(fallbackCreatedAt)
+      : null
 
-  const start = new Date(s.startDate + "T00:00:00")
+  if (!start) return null
+
+  const maxDays =
+    Number(s?.calendarDays?.max ?? s?.calendarDays?.min ?? 0) > 0
+      ? Number(s?.calendarDays?.max ?? s?.calendarDays?.min ?? 0)
+      : Number(s?.crewDays ?? 0) > 0
+      ? Number(s?.crewDays)
+      : 0
+
+  if (!Number.isFinite(maxDays) || maxDays <= 0) return null
+
   const end = new Date(start)
-  end.setDate(start.getDate() + Number(s.calendarDays.max || 0))
+  end.setDate(start.getDate() + Math.max(maxDays - 1, 0))
+
   return end
 }
 
 function daysBetween(a: Date | null, b: Date | null) {
   if (!a || !b) return null
-  const ms = b.getTime() - a.getTime()
+
+  const aMid = new Date(a)
+  const bMid = new Date(b)
+  aMid.setHours(0, 0, 0, 0)
+  bMid.setHours(0, 0, 0, 0)
+
+  const ms = bMid.getTime() - aMid.getTime()
   return Math.round(ms / (1000 * 60 * 60 * 24))
 }
 
@@ -813,7 +838,7 @@ function formatSignedNumber(n: number) {
 function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
   if (!current?.jobId) return null
 
-  const previous = previousEstimateForJob(current.jobId, current.id)
+  const previous = originalEstimateForJob(current.jobId, current.id)
   if (!previous) return null
 
   const previousTotal = estimateTotalWithTax(previous)
@@ -824,8 +849,8 @@ function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
   const currentCrewDays = Number(current.schedule?.crewDays || 0)
   const crewDayDelta = currentCrewDays - previousCrewDays
 
-  const previousEnd = completionEndFromSchedule(previous.schedule)
-  const currentEnd = completionEndFromSchedule(current.schedule)
+  const previousEnd = completionEndFromSchedule(previous.schedule, previous.createdAt)
+const currentEnd = completionEndFromSchedule(current.schedule, current.createdAt)
   const scheduleDeltaDays = daysBetween(previousEnd, currentEnd)
 
   return {
@@ -967,15 +992,35 @@ useEffect(() => {
   const [result, setResult] = useState("")
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const completionWindow = useMemo(() => {
-  if (!schedule?.startDate || !schedule?.calendarDays) return null
+  const start =
+    schedule?.startDate
+      ? new Date(schedule.startDate + "T00:00:00")
+      : null
 
-  const start = new Date(schedule.startDate + "T00:00:00")
+  if (!start) return null
+
+  const minDays =
+    Number(schedule?.calendarDays?.min ?? 0) > 0
+      ? Number(schedule?.calendarDays?.min)
+      : Number(schedule?.crewDays ?? 0) > 0
+      ? Number(schedule?.crewDays)
+      : 0
+
+  const maxDays =
+    Number(schedule?.calendarDays?.max ?? 0) > 0
+      ? Number(schedule?.calendarDays?.max)
+      : Number(schedule?.crewDays ?? 0) > 0
+      ? Number(schedule?.crewDays)
+      : 0
+
+  if (!minDays || !maxDays) return null
 
   const minEnd = new Date(start)
-  minEnd.setDate(start.getDate() + schedule.calendarDays.min)
+  minEnd.setDate(start.getDate() + Math.max(minDays - 1, 0))
+
 
   const maxEnd = new Date(start)
-  maxEnd.setDate(start.getDate() + schedule.calendarDays.max)
+  maxEnd.setDate(start.getDate() + Math.max(maxDays - 1, 0))
 
   return {
     min: minEnd,
@@ -985,8 +1030,10 @@ useEffect(() => {
   schedule?.startDate,
   schedule?.calendarDays?.min,
   schedule?.calendarDays?.max,
+  schedule?.crewDays,
 ])
-  const [documentType, setDocumentType] = useState<
+  
+const [documentType, setDocumentType] = useState<
   "Change Order" | "Estimate" | "Change Order / Estimate"
 >("Change Order / Estimate")
   const [trade, setTrade] = useState<UiTrade>("")
@@ -1135,11 +1182,59 @@ const filteredInvoices = useMemo(() => {
   return invoices.filter((inv) => inv.jobId === activeJobId)
 }, [invoices, activeJobId])
 
-const currentLoadedEstimate = useMemo(() => {
+const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return null
-  return history.find((h) => h.id === id) || null
-}, [history])
+
+  const base = history.find((h) => h.id === id)
+  if (!base) return null
+
+  return {
+    ...base,
+    jobDetails: { ...jobDetails },
+    trade,
+    state,
+    scopeChange,
+    result,
+    pricing: {
+      labor: Number(pricing.labor || 0),
+      materials: Number(pricing.materials || 0),
+      subs: Number(pricing.subs || 0),
+      markup: Number(pricing.markup || 0),
+      total: Number(pricing.total || 0),
+    },
+    schedule: schedule ?? null,
+    tax: {
+      enabled: taxEnabled,
+      rate: Number(taxRate || 0),
+    },
+    deposit: depositEnabled
+      ? {
+          enabled: true,
+          type: depositType,
+          value: Number(depositValue || 0),
+        }
+      : undefined,
+  }
+}, [
+  history,
+  jobDetails,
+  trade,
+  state,
+  scopeChange,
+  result,
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  pricing.markup,
+  pricing.total,
+  schedule,
+  taxEnabled,
+  taxRate,
+  depositEnabled,
+  depositType,
+  depositValue,
+])
 
 const changeOrderSummary = useMemo(() => {
   return computeChangeOrderSummary(currentLoadedEstimate)
@@ -1510,8 +1605,36 @@ const nextPricing = data.pricing ? data.pricing : pricing
 const nextPricingSource =
   (data?.pricingSource as PricingSource) || "ai"
 
+const normalizedSchedule =
+  data?.schedule
+    ? {
+        ...data.schedule,
+        startDate:
+          data.schedule.startDate ?? new Date().toISOString().slice(0, 10),
+        crewDays:
+          data.schedule.crewDays == null ? 1 : Number(data.schedule.crewDays),
+        visits:
+          data.schedule.visits == null ? 1 : Number(data.schedule.visits),
+        workDaysPerWeek:
+          data.schedule.workDaysPerWeek == null
+            ? 5
+            : Number(data.schedule.workDaysPerWeek),
+        calendarDays:
+          data.schedule.calendarDays?.min != null &&
+          data.schedule.calendarDays?.max != null
+            ? {
+                min: Number(data.schedule.calendarDays.min),
+                max: Number(data.schedule.calendarDays.max),
+              }
+            : null,
+        rationale: Array.isArray(data.schedule.rationale)
+          ? data.schedule.rationale
+          : [],
+      }
+    : null
+
 setResult(nextResult)
-setSchedule(data?.schedule ?? null)
+setSchedule(normalizedSchedule)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
@@ -1536,7 +1659,7 @@ const estItem: EstimateHistoryItem = {
     markup: Number(nextPricing.markup || 0),
     total: Number(nextPricing.total || 0),
   },
-  schedule: data?.schedule ?? null,
+  schedule: normalizedSchedule,
   pricingSource: nextPricingSource,
   priceGuardVerified: nextVerified,
   tax: {
@@ -1864,10 +1987,11 @@ function loadHistoryItem(item: EstimateHistoryItem) {
         const start = new Date(s.startDate + "T00:00:00")
 
         const minEnd = new Date(start)
-        minEnd.setDate(start.getDate() + s.calendarDays.min)
+        minEnd.setDate(start.getDate() + Math.max(s.calendarDays.min - 1, 0))
+
 
         const maxEnd = new Date(start)
-        maxEnd.setDate(start.getDate() + s.calendarDays.max)
+        maxEnd.setDate(start.getDate() + Math.max(s.calendarDays.max - 1, 0))
 
         return `
 <div style="margin-top:10px; font-size:13px;">
@@ -4441,12 +4565,12 @@ function ScheduleEditor({
     </div>
 
     <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-      Compared against the previous estimate for this job.
+      Compared against the original estimate for this job.
     </div>
 
     <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
       <div>
-        Previous Estimate:{" "}
+        Original Estimate:{" "}
         <strong>${changeOrderSummary.previousTotal.toLocaleString()}</strong>
       </div>
 
@@ -4477,16 +4601,31 @@ function ScheduleEditor({
       </div>
 
       <div>
-        Schedule Impact:{" "}
-        <strong>
-          {changeOrderSummary.scheduleDeltaDays == null
-            ? "—"
-            : `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays)} day(s)`}
-        </strong>
-      </div>
+  Schedule Impact:{" "}
+<strong>
+  {(() => {
+  const hasPreviousSchedule = !!changeOrderSummary.previousEnd
+  const hasCurrentSchedule = !!changeOrderSummary.currentEnd
+
+  if (!hasPreviousSchedule && !hasCurrentSchedule) {
+    return "Neither estimate has a full schedule"
+  }
+
+  if (!hasPreviousSchedule) {
+    return "Original estimate had no full schedule"
+  }
+
+  if (!hasCurrentSchedule) {
+    return "Current estimate has no full schedule"
+  }
+
+  return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
+})()}
+</strong>
+</div>
 
       <div>
-        Previous Completion:{" "}
+        Original Completion:{" "}
         <strong>
           {changeOrderSummary.previousEnd
             ? changeOrderSummary.previousEnd.toLocaleDateString()
