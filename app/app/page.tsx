@@ -161,6 +161,7 @@ type Job = {
   jobName: string
   jobAddress: string
   changeOrderNo?: string
+  originalEstimateId?: string
 }
 
 const JOBS_KEY = "jobestimatepro_jobs_v1"
@@ -284,6 +285,13 @@ type EstimateHistoryItem = {
     type: "percent" | "fixed"
     value: number
   }
+
+  approval?: {
+  status: "pending" | "approved"
+  approvedBy?: string
+  approvedAt?: number
+  signatureDataUrl?: string
+}
 }
 
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
@@ -443,10 +451,10 @@ function actualsForJob(jobId: string) {
 }
 
 function computeProfitSummary(jobId: string) {
-  const budget = budgets.find((b) => b.jobId === jobId) || null
+  const contract = computeJobContractSummary(jobId)
   const act = actualsForJob(jobId)
 
-  const budgetTotal = Number(budget?.estimateTotal || 0)
+  const budgetTotal = Number(contract.currentContractValue || 0)
   const actLabor = Number(act?.labor || 0)
   const actMat = Number(act?.materials || 0)
   const actSubs = Number(act?.subs || 0)
@@ -755,8 +763,23 @@ function computeWeeklyCrewLoad() {
   return weeks
 }
 
+function lockedOriginalEstimateForJob(jobId?: string) {
+  if (!jobId) return null
+
+  const job = jobs.find((j) => j.id === jobId)
+  if (!job?.originalEstimateId) return null
+
+  return history.find((h) => h.id === job.originalEstimateId) || null
+}
+
 function originalEstimateForJob(jobId?: string, excludeId?: string) {
   if (!jobId) return null
+
+  const locked = lockedOriginalEstimateForJob(jobId)
+
+  if (locked && locked.id !== excludeId) {
+    return locked
+  }
 
   const list = history
     .filter((h) => h.jobId === jobId && h.id !== excludeId)
@@ -781,6 +804,51 @@ function estimateTotalWithTax(est: EstimateHistoryItem | null) {
   const taxAmt = taxEnabled ? markedUp * (taxRate / 100) : 0
 
   return Math.round(markedUp + taxAmt)
+}
+
+function computeJobContractSummary(jobId?: string) {
+  if (!jobId) {
+    return {
+      originalEstimate: null as EstimateHistoryItem | null,
+      originalEstimateTotal: 0,
+      changeOrders: [] as EstimateHistoryItem[],
+      changeOrdersTotal: 0,
+      currentContractValue: 0,
+    }
+  }
+
+  const originalEstimate = lockedOriginalEstimateForJob(jobId)
+
+  if (!originalEstimate) {
+    return {
+      originalEstimate: null,
+      originalEstimateTotal: 0,
+      changeOrders: [],
+      changeOrdersTotal: 0,
+      currentContractValue: 0,
+    }
+  }
+
+  const originalEstimateTotal = estimateTotalWithTax(originalEstimate)
+
+  const changeOrders = history
+    .filter((h) => h.jobId === jobId && h.id !== originalEstimate.id)
+    .sort((a, b) => a.createdAt - b.createdAt)
+
+  const changeOrdersTotal = changeOrders.reduce(
+    (sum, h) => sum + estimateTotalWithTax(h),
+    0
+  )
+
+  const currentContractValue = originalEstimateTotal + changeOrdersTotal
+
+  return {
+    originalEstimate,
+    originalEstimateTotal,
+    changeOrders,
+    changeOrdersTotal,
+    currentContractValue,
+  }
 }
 
 function completionEndFromSchedule(
@@ -838,31 +906,47 @@ function formatSignedNumber(n: number) {
 function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
   if (!current?.jobId) return null
 
-  const previous = originalEstimateForJob(current.jobId, current.id)
-  if (!previous) return null
+  const contract = computeJobContractSummary(current.jobId)
+  const original = contract.originalEstimate
+  if (!original) return null
 
-  const previousTotal = estimateTotalWithTax(previous)
-  const currentTotal = estimateTotalWithTax(current)
-  const costDelta = currentTotal - previousTotal
+  const isOriginalEstimate = current.id === original.id
 
-  const previousCrewDays = Number(previous.schedule?.crewDays || 0)
+  const previousContractValue = isOriginalEstimate
+    ? contract.originalEstimateTotal
+    : contract.originalEstimateTotal +
+      contract.changeOrders
+        .filter((h) => h.createdAt < current.createdAt)
+        .reduce((sum, h) => sum + estimateTotalWithTax(h), 0)
+
+  const currentEstimateTotal = estimateTotalWithTax(current)
+  const newContractValue = isOriginalEstimate
+    ? contract.originalEstimateTotal
+    : previousContractValue + currentEstimateTotal
+
+  const costDelta = isOriginalEstimate ? 0 : currentEstimateTotal
+
+  const originalCrewDays = Number(original.schedule?.crewDays || 0)
   const currentCrewDays = Number(current.schedule?.crewDays || 0)
-  const crewDayDelta = currentCrewDays - previousCrewDays
+  const crewDayDelta = currentCrewDays - originalCrewDays
 
-  const previousEnd = completionEndFromSchedule(previous.schedule, previous.createdAt)
-const currentEnd = completionEndFromSchedule(current.schedule, current.createdAt)
-  const scheduleDeltaDays = daysBetween(previousEnd, currentEnd)
+  const originalEnd = completionEndFromSchedule(original.schedule, original.createdAt)
+  const currentEnd = completionEndFromSchedule(current.schedule, current.createdAt)
+  const scheduleDeltaDays = daysBetween(originalEnd, currentEnd)
 
   return {
-    previous,
+    original,
     current,
-    previousTotal,
-    currentTotal,
+    isOriginalEstimate,
+    originalEstimateTotal: contract.originalEstimateTotal,
+    previousContractValue,
+    currentEstimateTotal,
+    newContractValue,
     costDelta,
-    previousCrewDays,
+    originalCrewDays,
     currentCrewDays,
     crewDayDelta,
-    previousEnd,
+    originalEnd,
     currentEnd,
     scheduleDeltaDays,
   }
@@ -972,8 +1056,26 @@ useEffect(() => {
         }
       : undefined,
     pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
-    priceGuardVerified: Boolean(x?.priceGuardVerified),
-  }))
+priceGuardVerified: Boolean(x?.priceGuardVerified),
+
+approval: x?.approval
+  ? {
+      status: x.approval.status === "approved" ? "approved" : "pending",
+      approvedBy: x.approval.approvedBy
+        ? String(x.approval.approvedBy)
+        : undefined,
+      approvedAt:
+        typeof x.approval.approvedAt === "number"
+          ? x.approval.approvedAt
+          : undefined,
+      signatureDataUrl: x.approval.signatureDataUrl
+        ? String(x.approval.signatureDataUrl)
+        : undefined,
+    }
+  : {
+      status: "pending",
+    },
+}))
 
   setHistory(cleaned)
 }
@@ -1642,11 +1744,13 @@ if (!trade && nextTrade) setTrade(nextTrade)
 
 const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
 
+const jobId = getOrCreateJobIdFromDetails()
+
 const estItem: EstimateHistoryItem = {
   id: newId,
   createdAt: Date.now(),
   jobDetails: { ...jobDetails },
-  jobId: getOrCreateJobIdFromDetails(),
+  jobId,
   documentType: nextDocumentType,
   trade: nextTrade,
   state: state || "",
@@ -1673,9 +1777,17 @@ const estItem: EstimateHistoryItem = {
         value: Number(depositValue || 0),
       }
     : undefined,
+    approval: {
+      status: "pending",
+    },
 }
 
 saveToHistory(estItem)
+
+// lock original estimate only once for this job
+if (jobId) {
+  lockOriginalEstimateForJob(jobId, newId)
+}
 
 // ✅ Auto-create/update job budget
 upsertBudgetFromEstimate(estItem)
@@ -1771,6 +1883,17 @@ function normalizeJobKey(d: {
     .toLowerCase()}|${(d.jobAddress || "").trim().toLowerCase()}`
 }
 
+function lockOriginalEstimateForJob(jobId: string, estimateId: string) {
+  setJobs((prev) => {
+    const next = prev.map((j) => {
+      if (j.id !== jobId) return j
+      if (j.originalEstimateId) return j // already locked
+      return { ...j, originalEstimateId: estimateId }
+    })
+    return next
+  })
+}
+
 function getOrCreateJobIdFromDetails() {
   const clientName = jobDetails.clientName?.trim() || "Client"
   const jobName = jobDetails.jobName?.trim() || "Job"
@@ -1784,13 +1907,14 @@ function getOrCreateJobIdFromDetails() {
 
   if (existing) return existing.id
 
-  const newJob: Job = {
+    const newJob: Job = {
     id: makeJobId(),
     createdAt: Date.now(),
     clientName,
     jobName,
     jobAddress,
     changeOrderNo: jobDetails.changeOrderNo?.trim() || "",
+    originalEstimateId: undefined,
   }
 
   setJobs((prev) => [newJob, ...prev])
@@ -4118,14 +4242,19 @@ function ScheduleEditor({
         .slice()
         .sort((a, b) => b.createdAt - a.createdAt)
         .map((j) => {
-          const latest = latestEstimateForJob(j.id)
-          const latestTotal = Number(latest?.pricing?.total || 0)
+  const latest = latestEstimateForJob(j.id)
+  const latestTotal = Number(latest?.pricing?.total || 0)
+  const originalLocked = lockedOriginalEstimateForJob(j.id)
+
+  const contract = computeJobContractSummary(j.id)
+  const originalLockedTotal = contract.originalEstimateTotal
+  const changeOrdersTotal = contract.changeOrdersTotal
+  const currentContractValue = contract.currentContractValue
           const dep = latest?.deposit
           const depComputed = computeDepositFromEstimateTotal(latestTotal, dep)
 
           const invSum = invoiceSummaryForJob(j.id)
-          const budget = budgets.find((b) => b.jobId === j.id)
-          const budgetTotal = Number(budget?.estimateTotal || 0)
+          
           const latestInv = latestInvoiceForJob(j.id)
           const profit = computeProfitSummary(j.id)
           const act = actualsForJob(j.id)
@@ -4176,16 +4305,23 @@ function ScheduleEditor({
                     </div>
 
                     <div>
-                      Budget (Latest Estimate):{" "}
-                      <strong>{budget ? money(budgetTotal) : "—"}</strong>
-                    </div>
+  Original Estimate: <strong>{originalLocked ? money(originalLockedTotal) : "—"}</strong>
+</div>
 
-                   <div>
-                     Budget Remaining (vs Outstanding):{" "}
-                     <strong>
-                      {budget ? money(Math.max(0, budgetTotal - invSum.outstanding)) : "—"}
-                    </strong>
-                  </div>
+                    <div>
+  Change Orders Total: <strong>{originalLocked ? money(changeOrdersTotal) : "—"}</strong>
+</div>
+
+<div>
+  Current Contract Value: <strong>{originalLocked ? money(currentContractValue) : "—"}</strong>
+</div>
+
+<div>
+  Budget Remaining (vs Outstanding):{" "}
+  <strong>
+    {originalLocked ? money(Math.max(0, currentContractValue - invSum.outstanding)) : "—"}
+  </strong>
+</div>
 
                     {latest?.deposit?.enabled ? (
                       <div>
@@ -4476,9 +4612,25 @@ function ScheduleEditor({
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
             <div>
-              <div style={{ fontWeight: 700 }}>
-                {h.jobDetails.jobName || "Untitled Job"}
-              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+  <div style={{ fontWeight: 700 }}>
+    {h.jobDetails.jobName || "Untitled Job"}
+  </div>
+
+  <span
+    style={{
+      fontSize: 11,
+      fontWeight: 800,
+      padding: "3px 8px",
+      borderRadius: 999,
+      background: h.approval?.status === "approved" ? "#ecfdf5" : "#f3f4f6",
+      border: "1px solid #e5e7eb",
+      color: h.approval?.status === "approved" ? "#065f46" : "#444",
+    }}
+  >
+    {h.approval?.status === "approved" ? "APPROVED" : "PENDING APPROVAL"}
+  </span>
+</div>
              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
   {h.jobDetails.clientName ? `Client: ${h.jobDetails.clientName} • ` : ""}
   {h.documentType} • {new Date(h.createdAt).toLocaleString()}
@@ -4486,9 +4638,30 @@ function ScheduleEditor({
               <div style={{ fontSize: 12, color: "#333", marginTop: 6 }}>
                 Total: <strong>${Number(h.pricing.total || 0).toLocaleString()}</strong>
               </div>
+              {h.approval?.status === "approved" && (
+  <div style={{ fontSize: 12, color: "#065f46", marginTop: 4 }}>
+    Approved by {h.approval?.approvedBy || "Client"}
+    {h.approval?.approvedAt
+      ? ` on ${new Date(h.approval.approvedAt).toLocaleString()}`
+      : ""}
+  </div>
+)}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+
+<button
+  type="button"
+  onClick={() => {
+    const url = `${window.location.origin}/approve/${h.id}`
+    navigator.clipboard.writeText(url)
+    setStatus("Approval link copied to clipboard.")
+  }}
+  style={{ fontSize: 12 }}
+>
+  Copy Approval Link
+</button>
+
               <button type="button" onClick={() => loadHistoryItem(h)}>
                 Load
               </button>
@@ -4570,17 +4743,30 @@ function ScheduleEditor({
 
     <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
       <div>
-        Original Estimate:{" "}
-        <strong>${changeOrderSummary.previousTotal.toLocaleString()}</strong>
-      </div>
+  Original Estimate:{" "}
+  <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
+</div>
 
-      <div>
-        Current Estimate:{" "}
-        <strong>${changeOrderSummary.currentTotal.toLocaleString()}</strong>
-      </div>
+{!changeOrderSummary.isOriginalEstimate && (
+  <div>
+    This Change Order:{" "}
+    <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
+  </div>
+)}
 
-      <div>
-        Cost Change:{" "}
+<div>
+  Previous Contract Value:{" "}
+  <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
+</div>
+
+<div>
+  New Contract Value:{" "}
+  <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
+</div>
+
+<div>
+  Cost Change:{" "}
+  
         <strong
           style={{
             color:
@@ -4604,7 +4790,7 @@ function ScheduleEditor({
   Schedule Impact:{" "}
 <strong>
   {(() => {
-  const hasPreviousSchedule = !!changeOrderSummary.previousEnd
+  const hasPreviousSchedule = !!changeOrderSummary.originalEnd
   const hasCurrentSchedule = !!changeOrderSummary.currentEnd
 
   if (!hasPreviousSchedule && !hasCurrentSchedule) {
@@ -4627,9 +4813,9 @@ function ScheduleEditor({
       <div>
         Original Completion:{" "}
         <strong>
-          {changeOrderSummary.previousEnd
-            ? changeOrderSummary.previousEnd.toLocaleDateString()
-            : "—"}
+          {changeOrderSummary.originalEnd
+  ? changeOrderSummary.originalEnd.toLocaleDateString()
+  : "—"}
         </strong>
       </div>
 

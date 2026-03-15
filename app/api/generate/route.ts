@@ -552,6 +552,21 @@ function defaultDeterministicDescription(args: {
   return `This ${dt} covers the described scope of work as provided, including labor, materials, protection, and cleanup. Scope: ${s}`
 }
 
+function cleanupDocumentTypeLead(text: string) {
+  return String(text || "")
+    .replace(
+      /^This\s+Change Order\s*\/\s*Estimate\s*\/\s*Estimate\b/i,
+      "This Change Order / Estimate"
+    )
+    .replace(/^This\s+Estimate\s*\/\s*Estimate\b/i, "This Estimate")
+    .replace(/^This\s+Change Order\s*\/\s*Change Order\b/i, "This Change Order")
+    .replace(
+      /^This\s+Change Order\s*\/\s*Estimate\s*\/\s*Change Order\b/i,
+      "This Change Order / Estimate"
+    )
+    .trim()
+}
+
 function isValidPricing(p: any): p is Pricing {
   return (
     typeof p?.labor === "number" &&
@@ -3337,7 +3352,15 @@ DOCUMENT RULES (CRITICAL):
 - If modifying existing contract work → "Change Order"
 - If proposing new work → "Estimate"
 - If unclear → "Change Order / Estimate"
-- The opening sentence must begin with “This Change Order…” or “This Estimate…” and clearly identify the nature of the work
+- The first sentence must begin with the exact selected document type:
+  - If documentType is "Change Order", begin with: "This Change Order ..."
+  - If documentType is "Estimate", begin with: "This Estimate ..."
+  - If documentType is "Change Order / Estimate", begin with: "This Change Order / Estimate ..."
+- Do not repeat, combine, or duplicate document types in the opening sentence.
+- Do not write phrases like:
+  - "This Change Order / Estimate / Estimate"
+  - "This Estimate / Estimate"
+  - "This Change Order / Change Order"
 - Use professional, contract-ready language
 - Describe labor activities, materials, preparation, and intent
 - Write a thorough, contract-ready scope description with clear sequencing.
@@ -3352,18 +3375,21 @@ DOCUMENT-TYPE TONE RULES (VERY IMPORTANT):
 If documentType is "Change Order":
 - Reference existing contract or original scope implicitly
 - Clearly indicate work is additional, revised, or not previously included
-- Use firm, contractual language (e.g., "This Change Order covers…")
+- Use firm, contractual language
+- The first sentence must start exactly with: "This Change Order ..."
 - Frame the scope as authorized upon approval, without conditional or speculative language
 
 If documentType is "Estimate":
 - Frame work as proposed or anticipated
 - Avoid implying an existing contract
-- Use conditional language (e.g., "This Estimate outlines the proposed scope…")
+- Use conditional language
+- The first sentence must start exactly with: "This Estimate ..."
 
 If documentType is "Change Order / Estimate":
 - Use neutral language that could apply in either context
 - Avoid firm contractual assumptions
 - Clearly describe scope without asserting approval status
+- The first sentence must start exactly with: "This Change Order / Estimate ..."
 
 ADVANCED DESCRIPTION RULES:
 - Reference existing conditions where applicable (e.g., "existing finishes", "current layout")
@@ -3728,13 +3754,7 @@ if (typeof normalized.description !== "string" || normalized.description.trim().
 
 // Clean up duplicated document type tokens in the first sentence
 if (typeof normalized.description === "string") {
-  normalized.description = normalized.description
-    .replace(
-      /^This\s+Change Order\s*\/\s*Estimate\s*\/\s*Estimate\b/i,
-      "This Change Order / Estimate"
-    )
-    .replace(/^This\s+Estimate\s*\/\s*Estimate\b/i, "This Estimate")
-    .trim()
+  normalized.description = cleanupDocumentTypeLead(normalized.description)
 }
 
 // Start from AI as default
@@ -3930,6 +3950,8 @@ if (deterministicOwned) {
   normalized.description = appendTradeCoordinationSentence(normalized.description, tradeStack)
 
   normalized.description = appendPermitCoordinationSentence(normalized.description, complexityProfile)
+
+  normalized.description = cleanupDocumentTypeLead(normalized.description)
 
   const pg = buildPriceGuardReport({
     pricingSource,
@@ -4253,6 +4275,8 @@ normalized.description = await polishDescriptionWith4o({
   documentType: normalized.documentType,
   trade,
 })
+
+normalized.description = cleanupDocumentTypeLead(normalized.description)
 
   normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
