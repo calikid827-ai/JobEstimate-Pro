@@ -55,6 +55,36 @@ type EstimateHistoryItem = {
 }
 
 const HISTORY_KEY = "jobestimatepro_history_v1"
+const INVOICE_KEY = "jobestimatepro_invoices"
+
+type InvoiceStatus = "draft" | "sent" | "paid" | "overdue"
+
+type Invoice = {
+  id: string
+  createdAt: number
+  jobId?: string
+  fromEstimateId: string
+  invoiceNo: string
+  issueDate: string
+  dueDate: string
+  billToName: string
+  jobName: string
+  jobAddress: string
+  lineItems: { label: string; amount: number }[]
+  subtotal: number
+  total: number
+  notes: string
+  status: InvoiceStatus
+  paidAt?: number
+  deposit?: {
+    enabled: boolean
+    type: "percent" | "fixed"
+    value: number
+    depositDue: number
+    remainingBalance: number
+    estimateTotal: number
+  }
+}
 
 export default function ApproveEstimatePage() {
   const params = useParams()
@@ -103,6 +133,169 @@ export default function ApproveEstimatePage() {
       remaining: Math.max(0, total - depositDue),
     }
   }, [estimate])
+
+    function makeInvoiceNo() {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    const rand = Math.floor(Math.random() * 900 + 100)
+    return `INV-${y}${m}${day}-${rand}`
+  }
+
+  function toISODate(d: Date) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
+  }
+
+  function parseNetDays(termsRaw: string): number | null {
+    const t = (termsRaw || "").toLowerCase().trim()
+
+    if (
+      t.includes("due upon receipt") ||
+      t.includes("due on receipt") ||
+      t.includes("due upon approval") ||
+      t.includes("due on approval") ||
+      t === "due immediately" ||
+      t === "due now"
+    ) {
+      return 0
+    }
+
+    const m = t.match(/\bnet\s*(\d{1,3})\b/i)
+    if (m?.[1]) {
+      const n = Number(m[1])
+      if (Number.isFinite(n) && n >= 0 && n <= 365) return n
+    }
+
+    const m2 = t.match(/\b(?:due|payable)\s+in\s+(\d{1,3})\s+days?\b/i)
+    if (m2?.[1]) {
+      const n = Number(m2[1])
+      if (Number.isFinite(n) && n >= 0 && n <= 365) return n
+    }
+
+    return null
+  }
+
+  function computeDueDateISO(issueDate: Date, termsRaw: string) {
+    const netDays = parseNetDays(termsRaw)
+    const daysToAdd = netDays == null ? 7 : netDays
+    const due = new Date(issueDate)
+    due.setDate(due.getDate() + daysToAdd)
+    return toISODate(due)
+  }
+
+  function autoCreateInvoiceForApprovedEstimate(est: EstimateHistoryItem) {
+    const existingRaw = localStorage.getItem(INVOICE_KEY)
+
+    let existingInvoices: Invoice[] = []
+    try {
+      const parsed = existingRaw ? JSON.parse(existingRaw) : []
+      if (Array.isArray(parsed)) {
+        existingInvoices = parsed
+      }
+    } catch {}
+
+    const alreadyExists = existingInvoices.some(
+      (inv) => String(inv?.fromEstimateId) === est.id
+    )
+
+    if (alreadyExists) {
+      return false
+    }
+
+    const issue = new Date()
+    const terms = "Due upon approval"
+    const dueISO = computeDueDateISO(issue, terms)
+
+    const client = est.jobDetails?.clientName || "Client"
+    const jobNm = est.jobDetails?.jobName || "Job"
+    const jobAddr = est.jobDetails?.jobAddress || ""
+
+    const labor = Number(est?.pricing?.labor || 0)
+    const materials = Number(est?.pricing?.materials || 0)
+    const subs = Number(est?.pricing?.subs || 0)
+    const markupPct = Number(est?.pricing?.markup || 0)
+
+    const taxEnabledSnap = Boolean(est.tax?.enabled)
+    const taxRateSnap = Number(est.tax?.rate || 0)
+
+    const base = labor + materials + subs
+    const markedUp = base * (1 + markupPct / 100)
+    const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
+    const estimateTotal = Math.round(markedUp + taxAmt)
+
+    const depEnabled = Boolean(est.deposit?.enabled)
+    const depType = est.deposit?.type === "fixed" ? "fixed" : "percent"
+    const depValue = Number(est.deposit?.value || 0)
+
+    let depDue = 0
+    if (depEnabled && estimateTotal > 0) {
+      if (depType === "percent") {
+        const pct = Math.max(0, Math.min(100, depValue))
+        depDue = Math.round(estimateTotal * (pct / 100))
+      } else {
+        depDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
+      }
+    }
+
+    const depRemain = Math.max(0, estimateTotal - depDue)
+
+    const lineItems: { label: string; amount: number }[] = []
+
+    if (depEnabled) {
+      const label =
+        depType === "percent"
+          ? `Deposit (${Math.max(0, Math.min(100, depValue))}% of total)`
+          : `Deposit (fixed amount)`
+
+      lineItems.push({ label, amount: depDue })
+    } else {
+      if (labor) lineItems.push({ label: "Labor", amount: labor })
+      if (materials) lineItems.push({ label: "Materials", amount: materials })
+      if (subs) lineItems.push({ label: "Other / Mobilization", amount: subs })
+      if (taxEnabledSnap) {
+        lineItems.push({ label: `Sales Tax (${taxRateSnap}%)`, amount: taxAmt })
+      }
+    }
+
+    const inv: Invoice = {
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      jobId: est.jobId,
+      fromEstimateId: est.id,
+      invoiceNo: makeInvoiceNo(),
+      issueDate: toISODate(issue),
+      dueDate: dueISO,
+      billToName: client,
+      jobName: jobNm,
+      jobAddress: jobAddr,
+      lineItems,
+      subtotal: depEnabled ? depDue : Math.round(markedUp),
+      total: depEnabled ? depDue : estimateTotal,
+      notes: depEnabled
+        ? `Deposit invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Remaining balance after deposit: $${depRemain.toLocaleString()}. Payment terms: Due upon approval.`
+        : `Payment terms: Due upon approval.`,
+      status: "draft",
+      paidAt: undefined,
+      deposit: depEnabled
+        ? {
+            enabled: true,
+            type: depType,
+            value: depValue,
+            depositDue: depDue,
+            remainingBalance: depRemain,
+            estimateTotal,
+          }
+        : undefined,
+    }
+
+    const nextInvoices = [inv, ...existingInvoices]
+    localStorage.setItem(INVOICE_KEY, JSON.stringify(nextInvoices))
+    return true
+  }
 
   function approveNow() {
   if (!estimate) return
@@ -159,23 +352,28 @@ export default function ApproveEstimatePage() {
         : x
     )
 
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
 
-    setEstimate((prev) =>
-      prev
-        ? {
-            ...prev,
-            approval: {
-              status: "approved",
-              approvedBy: clientName.trim(),
-              approvedAt,
-              signatureDataUrl,
-            },
-          }
-        : prev
+    const approvedEstimate: EstimateHistoryItem = {
+      ...estimate,
+      approval: {
+        status: "approved",
+        approvedBy: clientName.trim(),
+        approvedAt,
+        signatureDataUrl,
+      },
+    }
+
+    const invoiceCreated = autoCreateInvoiceForApprovedEstimate(approvedEstimate)
+
+    setEstimate(approvedEstimate)
+
+    setStatus(
+      invoiceCreated
+        ? "Approved successfully. Draft invoice created."
+        : "Approved successfully."
     )
-
-    setStatus("Approved successfully.")
+    window.dispatchEvent(new Event("jobestimatepro:update"))
   } catch {
     setStatus("Approval failed.")
   }

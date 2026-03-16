@@ -586,9 +586,24 @@ function findHistoryById(id: string) {
   return history.find((h) => h.id === id) || null
 }
 
-  
+function invoicesForEstimate(estimateId: string) {
+  return invoices.filter((inv) => inv.fromEstimateId === estimateId)
+}
 
-function latestInvoiceForJob(jobId: string) {
+function hasAnyInvoiceForEstimate(estimateId: string) {
+  return invoices.some((inv) => inv.fromEstimateId === estimateId)
+}
+
+function hasBalanceInvoiceForEstimate(estimateId: string) {
+  return invoices.some(
+    (inv) =>
+      inv.fromEstimateId === estimateId &&
+      inv.deposit?.enabled &&
+      inv.total === inv.deposit.remainingBalance
+  )
+}
+
+  function latestInvoiceForJob(jobId: string) {
   const list = invoices
     .filter((x) => x.jobId === jobId)
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -1433,6 +1448,118 @@ useEffect(() => {
 }, [])
 
 useEffect(() => {
+  function refreshData() {
+    try {
+      const histRaw = localStorage.getItem(HISTORY_KEY)
+      const invRaw = localStorage.getItem(INVOICE_KEY)
+
+      if (histRaw) {
+        const parsedHist = JSON.parse(histRaw)
+        if (Array.isArray(parsedHist)) {
+          const cleanedHistory: EstimateHistoryItem[] = parsedHist.map((x: any) => ({
+            id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
+            jobId: String(x?.jobId ?? ""),
+            createdAt: Number(x?.createdAt ?? Date.now()),
+            documentType:
+              x?.documentType === "Change Order" ||
+              x?.documentType === "Estimate" ||
+              x?.documentType === "Change Order / Estimate"
+                ? x.documentType
+                : "Change Order / Estimate",
+            jobDetails: {
+              clientName: String(x?.jobDetails?.clientName ?? ""),
+              jobName: String(x?.jobDetails?.jobName ?? ""),
+              changeOrderNo: String(x?.jobDetails?.changeOrderNo ?? ""),
+              jobAddress: String(x?.jobDetails?.jobAddress ?? ""),
+              date: String(x?.jobDetails?.date ?? ""),
+            },
+            trade: normalizeTrade(x?.trade),
+            state: String(x?.state ?? ""),
+            scopeChange: String(x?.scopeChange ?? ""),
+            result: String(x?.result ?? ""),
+            pricing: {
+              labor: Number(x?.pricing?.labor ?? 0),
+              materials: Number(x?.pricing?.materials ?? 0),
+              subs: Number(x?.pricing?.subs ?? 0),
+              markup: Number(x?.pricing?.markup ?? 0),
+              total: Number(x?.pricing?.total ?? 0),
+            },
+            schedule: x?.schedule ?? undefined,
+            tax: x?.tax
+              ? {
+                  enabled: Boolean(x.tax.enabled),
+                  rate: Number(x.tax.rate || 0),
+                }
+              : undefined,
+            deposit: x?.deposit
+              ? {
+                  enabled: Boolean(x.deposit.enabled),
+                  type: x.deposit.type === "fixed" ? "fixed" : "percent",
+                  value: Number(x.deposit.value || 0),
+                }
+              : undefined,
+            pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
+            priceGuardVerified: Boolean(x?.priceGuardVerified),
+            approval: x?.approval
+              ? {
+                  status: x.approval.status === "approved" ? "approved" : "pending",
+                  approvedBy: x.approval.approvedBy
+                    ? String(x.approval.approvedBy)
+                    : undefined,
+                  approvedAt:
+                    typeof x.approval.approvedAt === "number"
+                      ? x.approval.approvedAt
+                      : undefined,
+                  signatureDataUrl: x.approval.signatureDataUrl
+                    ? String(x.approval.signatureDataUrl)
+                    : undefined,
+                }
+              : {
+                  status: "pending",
+                },
+          }))
+
+          setHistory(cleanedHistory)
+        }
+      }
+
+      if (invRaw) {
+        const parsedInv = JSON.parse(invRaw)
+        if (Array.isArray(parsedInv)) {
+          const cleanedInvoices: Invoice[] = parsedInv.map((x: any) => ({
+            id: String(x?.id ?? crypto.randomUUID()),
+            createdAt: Number(x?.createdAt ?? Date.now()),
+            jobId: x?.jobId ? String(x.jobId) : undefined,
+            fromEstimateId: String(x?.fromEstimateId ?? ""),
+            invoiceNo: String(x?.invoiceNo ?? "INV-UNKNOWN"),
+            issueDate: String(x?.issueDate ?? ""),
+            dueDate: String(x?.dueDate ?? ""),
+            billToName: String(x?.billToName ?? ""),
+            jobName: String(x?.jobName ?? ""),
+            jobAddress: String(x?.jobAddress ?? ""),
+            lineItems: Array.isArray(x?.lineItems) ? x.lineItems : [],
+            subtotal: Number(x?.subtotal ?? 0),
+            total: Number(x?.total ?? 0),
+            notes: String(x?.notes ?? ""),
+            deposit: x?.deposit ?? undefined,
+            status: normalizeInvoiceStatus(x),
+            paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
+          }))
+
+          setInvoices(cleanedInvoices)
+        }
+      }
+    } catch {}
+  }
+
+  window.addEventListener("jobestimatepro:update", refreshData)
+
+  return () => {
+    window.removeEventListener("jobestimatepro:update", refreshData)
+  }
+}, [])
+
+useEffect(() => {
   if (typeof window === "undefined") return
   localStorage.setItem(INVOICE_KEY, JSON.stringify(invoices))
 }, [invoices])
@@ -2032,6 +2159,14 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     const jobName = jobDetails.jobName?.trim() || ""
     const jobAddress = jobDetails.jobAddress?.trim() || ""
     const changeOrderNo = jobDetails.changeOrderNo?.trim() || ""
+    const approval = currentLoadedEstimate?.approval
+    const isApproved = approval?.status === "approved"
+    const approvedBy = approval?.approvedBy?.trim() || "Client"
+    const approvedAtText =
+     approval?.approvedAt
+    ? new Date(approval.approvedAt).toLocaleString()
+    : ""
+    const approvedSignature = approval?.signatureDataUrl?.trim() || ""
     const showPriceGuardNote =
     pdfShowPriceGuard && documentType !== "Change Order"
 
@@ -2431,27 +2566,76 @@ ${
   </div>
 
   <div class="approval">
-    <div class="approvalTitle">Customer Approval</div>
+  <div class="approvalTitle">Customer Approval</div>
 
-    <div class="approvalGrid">
-      <div class="approvalField">
-        <div class="approvalLine"></div>
-        <div class="approvalHint">Customer Signature</div>
-      </div>
-
-      <div class="approvalField">
-        <div class="approvalLine"></div>
-        <div class="approvalHint">
-          Date (${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())})
+  ${
+    isApproved
+      ? `
+        <div style="font-size:12px; margin-bottom:8px;">
+          <strong>Approved by:</strong> ${esc(approvedBy)}
         </div>
-      </div>
-    </div>
 
-    <div class="approvalNote">
-      By signing above, the customer approves the scope of work and pricing described in this document.
-      Payment terms: <strong>${esc(paymentTerms)}</strong>
-    </div>
+        ${
+          approvedAtText
+            ? `
+              <div style="font-size:12px; margin-bottom:8px; color:#444;">
+                <strong>Approved on:</strong> ${esc(approvedAtText)}
+              </div>
+            `
+            : ""
+        }
+
+        ${
+          approvedSignature
+            ? `
+              <div style="margin:8px 0 10px;">
+                <div style="font-size:11px; color:#333; margin-bottom:4px;">
+                  Customer Signature
+                </div>
+                <img
+                  src="${approvedSignature}"
+                  alt="Customer signature"
+                  style="max-width:220px; max-height:90px; border-bottom:1px solid #111; display:block;"
+                />
+              </div>
+            `
+            : `
+              <div class="approvalGrid">
+                <div class="approvalField">
+                  <div class="approvalLine"></div>
+                  <div class="approvalHint">Customer Signature</div>
+                </div>
+
+                <div class="approvalField">
+                  <div class="approvalLine"></div>
+                  <div class="approvalHint">Date</div>
+                </div>
+              </div>
+            `
+        }
+      `
+      : `
+        <div class="approvalGrid">
+          <div class="approvalField">
+            <div class="approvalLine"></div>
+            <div class="approvalHint">Customer Signature</div>
+          </div>
+
+          <div class="approvalField">
+            <div class="approvalLine"></div>
+            <div class="approvalHint">
+              Date (${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())})
+            </div>
+          </div>
+        </div>
+      `
+  }
+
+  <div class="approvalNote">
+    By signing above, the customer approves the scope of work and pricing described in this document.
+    Payment terms: <strong>${esc(paymentTerms)}</strong>
   </div>
+</div>
 </div>
 
           <div class="footer">
@@ -2462,10 +2646,12 @@ ${
       </html>
     `)
 
-    win.document.close()
-    win.focus()
-    win.print()
-    win.close()
+        win.document.close()
+
+    setTimeout(() => {
+      win.focus()
+      win.print()
+    }, 500)
   }
 
   function downloadInvoicePDF(inv: Invoice) {
@@ -2700,6 +2886,11 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
   const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
   const jobAddr = est?.jobDetails?.jobAddress || jobDetails.jobAddress || ""
 
+    if (hasAnyInvoiceForEstimate(est.id)) {
+    setStatus("An invoice already exists for this estimate.")
+    return
+  }
+
   const labor = Number(est?.pricing?.labor || 0)
   const materials = Number(est?.pricing?.materials || 0)
   const subs = Number(est?.pricing?.subs || 0)
@@ -2805,6 +2996,11 @@ function createBalanceInvoiceFromEstimate(est: EstimateHistoryItem) {
   const client = est?.jobDetails?.clientName || jobDetails.clientName || "Client"
   const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
   const jobAddr = est?.jobDetails?.jobAddress || jobDetails.jobAddress || ""
+
+    if (hasBalanceInvoiceForEstimate(est.id)) {
+    setStatus("A balance invoice already exists for this estimate.")
+    return
+  }
 
   const labor = Number(est?.pricing?.labor || 0)
   const materials = Number(est?.pricing?.materials || 0)
@@ -4636,8 +4832,15 @@ function ScheduleEditor({
   {h.documentType} • {new Date(h.createdAt).toLocaleString()}
 </div>
               <div style={{ fontSize: 12, color: "#333", marginTop: 6 }}>
-                Total: <strong>${Number(h.pricing.total || 0).toLocaleString()}</strong>
-              </div>
+  Total: <strong>${Number(h.pricing.total || 0).toLocaleString()}</strong>
+</div>
+
+<div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+  Invoice Status:{" "}
+  <strong>
+    {hasAnyInvoiceForEstimate(h.id) ? "Invoice Created" : "No Invoice Yet"}
+  </strong>
+</div>
               {h.approval?.status === "approved" && (
   <div style={{ fontSize: 12, color: "#065f46", marginTop: 4 }}>
     Approved by {h.approval?.approvedBy || "Client"}
@@ -4667,12 +4870,17 @@ function ScheduleEditor({
               </button>
 
               <button
-                type="button"
-                onClick={() => createInvoiceFromEstimate(h)}
-                style={{ fontSize: 12 }}
-              >
-                Create Invoice
-              </button>
+  type="button"
+  onClick={() => createInvoiceFromEstimate(h)}
+  disabled={hasAnyInvoiceForEstimate(h.id)}
+  style={{
+    fontSize: 12,
+    opacity: hasAnyInvoiceForEstimate(h.id) ? 0.6 : 1,
+    cursor: hasAnyInvoiceForEstimate(h.id) ? "not-allowed" : "pointer",
+  }}
+>
+  {hasAnyInvoiceForEstimate(h.id) ? "Invoice Created" : "Create Invoice"}
+</button>
 
               <button
   type="button"
