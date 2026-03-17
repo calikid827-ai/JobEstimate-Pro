@@ -21,6 +21,9 @@ import {
   parsePlumbingFixtureBreakdown,
 } from "./lib/priceguard/plumbingEngine"
 import { computeDrywallDeterministic } from "./lib/priceguard/drywallEngine"
+import { computePaintingDeterministic } from "./lib/priceguard/paintingEngine"
+
+import { applyMinimumCharge } from "./lib/priceguard/minimumCharges"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -3129,13 +3132,31 @@ const drywallDetPricing: Pricing | null =
     ? clampPricing(coercePricing(drywallDet.pricing))
     : null
 
+    const paintingDet =
+  trade === "painting"
+    ? computePaintingDeterministic({
+        scopeText: scopeChange,
+        stateMultiplier,
+        measurements,
+        paintScope: paintScopeForJob ?? "walls",
+      })
+    : null
+
+const paintingDetPricing: Pricing | null =
+  paintingDet?.okForDeterministic
+    ? clampPricing(coercePricing(paintingDet.pricing))
+    : null
+
     
    
   console.log("PG FLAGS", {
   trade,
+  painting_ok: paintingDet?.okForDeterministic,
+  flooring_ok: flooringDet?.okForDeterministic,
   electrical_ok: electricalDet?.okForDeterministic,
   plumbing_ok: plumbingDet?.okForDeterministic,
   drywall_ok: drywallDet?.okForDeterministic,
+  painting_type: paintingDet?.jobType,
   plumbing_type: plumbingDet?.jobType,
   drywall_type: drywallDet?.jobType,
 })
@@ -3143,15 +3164,13 @@ const drywallDetPricing: Pricing | null =
 // Only treat as painting when the final trade is painting
 const looksLikePainting = trade === "painting"
 
-// PriceGuard™ v2 — Orchestration table (anchors only for non-deterministic trades)
 const allowAnchors =
-  // normal rule: anchors for non-deterministic trades
-  !(trade === "electrical" || trade === "plumbing" || trade === "flooring" || trade === "drywall")
-  // exception: if deterministic pricing is NOT available, allow anchors
+  !(trade === "electrical" || trade === "plumbing" || trade === "flooring" || trade === "drywall" || trade === "painting")
   || (trade === "plumbing" && !plumbingDetPricing)
   || (trade === "electrical" && !electricalDetPricing)
   || (trade === "flooring" && !flooringDetPricing)
   || (trade === "drywall" && !drywallDetPricing)
+  || (trade === "painting" && !paintingDetPricing)
 
 const allowBathAnchorInPlumbing =
   trade === "plumbing" && /\b(bath|bathroom|shower|tub)\b/i.test(scopeChange)
@@ -3835,6 +3854,13 @@ function applyDeterministicOwnership(args: {
 
 const deterministicOwned =
   pricingSource === "deterministic" ||
+  (trade === "painting" &&
+    applyDeterministicOwnership({
+      pricing: paintingDetPricing,
+      okForVerified: !!paintingDet?.okForVerified,
+      sourceVerifiedId: "painting_engine_v1_verified",
+      sourceId: "painting_engine_v1",
+    })) ||
   (trade === "flooring" &&
     applyDeterministicOwnership({
       pricing: flooringDetPricing,
@@ -3850,13 +3876,13 @@ const deterministicOwned =
       sourceId: "electrical_engine_v1",
     })) ||
   (trade === "plumbing" &&
-  !plumbingScopeConflict &&
-  applyDeterministicOwnership({
-    pricing: plumbingDetPricing,
-    okForVerified: !!plumbingDet?.okForVerified,
-    sourceVerifiedId: "plumbing_engine_v1_verified",
-    sourceId: "plumbing_engine_v1",
-  })) ||
+    !plumbingScopeConflict &&
+    applyDeterministicOwnership({
+      pricing: plumbingDetPricing,
+      okForVerified: !!plumbingDet?.okForVerified,
+      sourceVerifiedId: "plumbing_engine_v1_verified",
+      sourceId: "plumbing_engine_v1",
+    })) ||
   (trade === "drywall" &&
     applyDeterministicOwnership({
       pricing: drywallDetPricing,
@@ -3864,6 +3890,10 @@ const deterministicOwned =
       sourceVerifiedId: "drywall_engine_v1_verified",
       sourceId: "drywall_engine_v1",
     }))
+
+    if (trade === "painting" && paintingDet?.estimateBasis && deterministicOwned) {
+  normalized.estimateBasis = paintingDet.estimateBasis
+}
 
   // -----------------------------
   // CROSS-TRADE MOBILIZATION COMPRESSION (pre-permit)
@@ -3897,7 +3927,20 @@ if (deterministicOwned) {
     detSource,
   })
 
-  pricingFinal = permitPatch1.pricing
+    pricingFinal = permitPatch1.pricing
+
+  const minResult = applyMinimumCharge(trade, pricingFinal.total)
+
+if (minResult.applied) {
+  const diff = minResult.total - pricingFinal.total
+
+  pricingFinal = clampPricing({
+    ...pricingFinal,
+    subs: Math.round(Number(pricingFinal.subs || 0) + diff),
+    total: minResult.total,
+  })
+}
+
   const safePricing = clampPricing(pricingFinal)
 
   const priceGuardProtected = true
@@ -3966,6 +4009,12 @@ if (deterministicOwned) {
     detSource,
     usedNationalBaseline,
   })
+
+    if (minResult.applied) {
+    pg.appliedRules.push(
+      `Minimum service charge applied for ${trade}: $${minResult.minimum}`
+    )
+  }
 
     normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
@@ -4222,7 +4271,20 @@ const permitPatch2 = applyPermitBuffer({
 })
 
 pricingFinal = permitPatch2.pricing
-const safePricing = pricingFinal
+
+const minResult = applyMinimumCharge(trade, pricingFinal.total)
+
+if (minResult.applied) {
+  const diff = minResult.total - pricingFinal.total
+
+  pricingFinal = clampPricing({
+    ...pricingFinal,
+    subs: Math.round(Number(pricingFinal.subs || 0) + diff),
+    total: minResult.total,
+  })
+}
+
+const safePricing = clampPricing(pricingFinal)
 
 const priceGuardProtected = (["merged", "deterministic"] as readonly string[]).includes(
   pricingSource
@@ -4233,7 +4295,7 @@ console.log("PG RESULT", { pricingSource, detSource, total: pricingFinal.total }
 const pg = buildPriceGuardReport({
   pricingSource,
   priceGuardVerified,
-  priceGuardAnchorStrict: false, // ✅ ADD THIS
+  priceGuardAnchorStrict: false, 
   stateAbbrev,
   rooms,
   doors,
@@ -4243,6 +4305,12 @@ const pg = buildPriceGuardReport({
   detSource,
   usedNationalBaseline,
 })
+
+if (minResult.applied) {
+  pg.appliedRules.push(
+    `Minimum service charge applied for ${trade}: $${minResult.minimum}`
+  )
+}
 
 normalized.trade = trade
 

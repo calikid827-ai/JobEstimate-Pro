@@ -2,12 +2,62 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 
-type PaintScope = "walls" | "walls_ceilings" | "full"
-type EffectivePaintScope = PaintScope | "doors_only"
-type DocumentType = "Change Order" | "Estimate" | "Change Order / Estimate"
+import {
+  FREE_LIMIT,
+  EMAIL_KEY,
+  COMPANY_KEY,
+  JOB_KEY,
+  INVOICE_KEY,
+  HISTORY_KEY,
+  BUDGET_KEY,
+  ACTUALS_KEY,
+  CREW_KEY,
+  JOBS_KEY,
+  PAINT_SCOPE_OPTIONS,
+} from "./lib/constants"
+
+import type {
+  PaintScope,
+  EffectivePaintScope,
+  DocumentType,
+  MeasureRow,
+  Invoice,
+  JobBudget,
+  JobActuals,
+  Job,
+  PricingSource,
+  PriceGuardReport,
+  Schedule,
+  UiTrade,
+  EstimateHistoryItem,
+  WeekLoad,
+} from "./lib/types"
+
+import {
+  normalizeTrade,
+  money,
+  normalizeInvoiceStatus,
+  computeLiveInvoiceStatus,
+  computeDepositFromEstimateTotal,
+  computeTaxAmountFromEstimate,
+  estimateTotalWithTax,
+  startOfWeek,
+  addDays,
+  isoDay,
+  completionEndFromSchedule,
+  daysBetween,
+  formatDelta,
+  formatSignedNumber,
+  toISODate,
+  computeDueDateISO,
+  buildActualsPatch,
+} from "./lib/estimate-utils"
+
+import { getPricingMemory } from "./lib/ai-pricing-memory"
+import { compareEstimateToHistory } from "./lib/price-guard"
 
 export default function Home() {
-  const FREE_LIMIT = 3
+
   const generatingRef = useRef(false)
 
 // Prevent out-of-order entitlement responses from overwriting newer state
@@ -23,22 +73,6 @@ function scrollToInvoices() {
     invoicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, 50)
 }
-  
-  const PAINT_SCOPE_OPTIONS = [
-  { label: "Walls only", value: "walls" },
-  { label: "Walls + ceilings", value: "walls_ceilings" },
-  { label: "Full interior (walls, ceilings, trim & doors)", value: "full" },
-] as const
-
-    // -------------------------
-  // Optional Measurements
-  // -------------------------
-  type MeasureRow = {
-    label: string
-    lengthFt: number
-    heightFt: number
-    qty: number
-  }
 
   const [measureEnabled, setMeasureEnabled] = useState(false)
 
@@ -52,119 +86,8 @@ function scrollToInvoices() {
   const totalSqft =
     Math.round(measureRows.reduce((sum, r) => sum + rowSqft(r), 0) * 10) / 10
 
-    type SavedDoc = {
-  id: string
-  createdAt: number
-  // what you already save today (adjust names if yours differ)
-  result: string
-  pricing: {
-    labor: number
-    materials: number
-    subs: number
-    markup: number
-    total: number
-  }
-  trade?: string
-  state?: string
-  jobDetails?: {
-    clientName: string
-    jobName: string
-    changeOrderNo: string
-    jobAddress: string
-    date: string
-  }
-  companyProfile?: {
-    name: string
-    address: string
-    phone: string
-    email: string
-  }
-}
-
-type InvoiceStatus = "draft" | "sent" | "paid" | "overdue"
-
-type Invoice = {
-  id: string
-  createdAt: number
-  jobId?: string
-  fromEstimateId: string
-  invoiceNo: string
-  issueDate: string
-  dueDate: string
-  billToName: string
-  jobName: string
-  jobAddress: string
-  lineItems: { label: string; amount: number }[]
-  subtotal: number
-  total: number
-  notes: string
-
-  // ✅ NEW
-  status: InvoiceStatus
-  paidAt?: number
-
-  deposit?: {
-    enabled: boolean
-    type: "percent" | "fixed"
-    value: number
-    depositDue: number
-    remainingBalance: number
-    estimateTotal: number
-  }
-}
-
-type JobBudget = {
-  jobId: string
-  updatedAt: number
-  lastEstimateId: string
-
-  // snapshot from estimate
-  estimateTotal: number
-  labor: number
-  materials: number
-  subs: number
-  markupPct: number
-  taxEnabled: boolean
-  taxRate: number
-  taxAmount: number
-
-  deposit?: {
-    enabled: boolean
-    type: "percent" | "fixed"
-    value: number
-    depositDue: number
-    remainingBalance: number
-  }
-}
-
-const BUDGET_KEY = "jobestimatepro_budgets_v1"
-
-type JobActuals = {
-  jobId: string
-  updatedAt: number
-  labor: number
-  materials: number
-  subs: number
-  notes?: string
-}
-
-const ACTUALS_KEY = "jobestimatepro_actuals_v1"
 const [actuals, setActuals] = useState<JobActuals[]>([])
-
-const CREW_KEY = "jobestimatepro_crews_v1"
 const [crewCount, setCrewCount] = useState<number>(1)
-
-type Job = {
-  id: string
-  createdAt: number
-  clientName: string
-  jobName: string
-  jobAddress: string
-  changeOrderNo?: string
-  originalEstimateId?: string
-}
-
-const JOBS_KEY = "jobestimatepro_jobs_v1"
 
   // -------------------------
 // Email (required for entitlement)
@@ -173,126 +96,11 @@ const [email, setEmail] = useState("")
 const [paid, setPaid] = useState(false)
 const [remaining, setRemaining] = useState(FREE_LIMIT)
 const [showUpgrade, setShowUpgrade] = useState(false)
-const EMAIL_KEY = "jobestimatepro_email"
-const COMPANY_KEY = "jobestimatepro_company"
-const JOB_KEY = "jobestimatepro_job"
-const INVOICE_KEY = "jobestimatepro_invoices"
 
 // -------------------------
 // Saved Estimate History (localStorage)
 // -------------------------
-const HISTORY_KEY = "jobestimatepro_history_v1"
-type PricingSource = "ai" | "deterministic" | "merged"
 
-type PriceGuardStatus = "verified" | "deterministic" | "adjusted" | "review" | "ai"
-
-type PriceGuardReport = {
-  status: PriceGuardStatus
-  confidence: number
-  pricingSource: PricingSource
-  appliedRules: string[]
-  assumptions: string[]
-  warnings: string[]
-  details: {
-    stateAdjusted: boolean
-    stateAbbrev?: string
-    rooms?: number | null
-    doors?: number | null
-    paintScope?: string | null
-    anchorId?: string | null
-    detSource?: string | null
-  }
-}
-
-type Schedule = {
-  crewDays: number | null
-  visits: number | null
-  calendarDays: { min: number; max: number } | null
-  workDaysPerWeek: number | null
-  rationale: string[]
-  startDate?: string | null   // ✅ ADD THIS
-}
-
-type UiTrade =
-  | ""
-  | "painting"
-  | "drywall"
-  | "flooring"
-  | "electrical"
-  | "plumbing"
-  | "bathroom_tile"
-  | "carpentry"
-  | "general_renovation"
-
-const normalizeTrade = (t: any): UiTrade => {
-  if (t === "general renovation") return "general_renovation"
-
-  const allowed: UiTrade[] = [
-    "",
-    "painting",
-    "drywall",
-    "flooring",
-    "electrical",
-    "plumbing",
-    "bathroom_tile",
-    "carpentry",
-    "general_renovation",
-  ]
-
-  return allowed.includes(t) ? (t as UiTrade) : ""
-}
-
-type EstimateHistoryItem = {
-  id: string
-  createdAt: number
-  jobId?: string
-  documentType: "Change Order" | "Estimate" | "Change Order / Estimate"
-  
-  // job context snapshot
-  jobDetails: {
-    clientName: string
-    jobName: string
-    changeOrderNo: string
-    jobAddress: string
-    date: string
-  }
-  trade: UiTrade
-  state: string
-  scopeChange: string
-
-  // generated outputs snapshot
-  result: string
-  pricing: {
-    labor: number
-    materials: number
-    subs: number
-    markup: number
-    total: number
-  }
-
-    schedule?: Schedule | null
-
-  pricingSource?: PricingSource
-  priceGuardVerified?: boolean
-
-  tax?: {
-    enabled: boolean
-    rate: number
-  }
-
-    deposit?: {
-    enabled: boolean
-    type: "percent" | "fixed"
-    value: number
-  }
-
-  approval?: {
-  status: "pending" | "approved"
-  approvedBy?: string
-  approvedAt?: number
-  signatureDataUrl?: string
-}
-}
 
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
 
@@ -407,35 +215,15 @@ function latestEstimateForJob(jobId: string) {
   return list[0] || null
 }
 
-function money(n: number) {
-  return `$${Number(n || 0).toLocaleString()}`
-}
-
 function upsertActuals(jobId: string, patch: Partial<JobActuals>) {
   setActuals((prev) => {
     const idx = prev.findIndex((a) => a.jobId === jobId)
+    const base = idx === -1 ? null : prev[idx]
 
-    const base: JobActuals =
-      idx === -1
-        ? {
-            jobId,
-            updatedAt: Date.now(),
-            labor: 0,
-            materials: 0,
-            subs: 0,
-            notes: "",
-          }
-        : prev[idx]
-
-    const nextItem: JobActuals = {
-      ...base,
+    const nextItem = buildActualsPatch(base, {
       ...patch,
-      updatedAt: Date.now(),
-      labor: Number(patch.labor ?? base.labor ?? 0),
-      materials: Number(patch.materials ?? base.materials ?? 0),
-      subs: Number(patch.subs ?? base.subs ?? 0),
-      notes: String(patch.notes ?? base.notes ?? ""),
-    }
+      jobId,
+    })
 
     const next =
       idx === -1
@@ -504,23 +292,6 @@ return {
  }
 }
 
-function computeTaxAmountFromEstimate(est: EstimateHistoryItem) {
-  const labor = Number(est?.pricing?.labor || 0)
-  const materials = Number(est?.pricing?.materials || 0)
-  const subs = Number(est?.pricing?.subs || 0)
-  const markupPct = Number(est?.pricing?.markup || 0)
-
-  const base = labor + materials + subs
-  const markedUp = base * (1 + markupPct / 100)
-
-  const taxEnabledSnap = Boolean(est.tax?.enabled)
-  const taxRateSnap = Number(est.tax?.rate || 0)
-  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
-
-  const estimateTotal = Math.round(markedUp + taxAmt)
-  return { taxAmt, estimateTotal, markedUp }
-}
-
 function upsertBudgetFromEstimate(est: EstimateHistoryItem) {
   const jobId = est.jobId
   if (!jobId) return
@@ -586,10 +357,6 @@ function findHistoryById(id: string) {
   return history.find((h) => h.id === id) || null
 }
 
-function invoicesForEstimate(estimateId: string) {
-  return invoices.filter((inv) => inv.fromEstimateId === estimateId)
-}
-
 function hasAnyInvoiceForEstimate(estimateId: string) {
   return invoices.some((inv) => inv.fromEstimateId === estimateId)
 }
@@ -634,72 +401,6 @@ function createBalanceInvoiceFromLatestEstimate(jobId: string) {
   }
   createBalanceInvoiceFromEstimate(est)
   selectJobAndJumpToInvoices(jobId)
-}
-
-function isPastDue(dueISO: string) {
-  // dueISO is "yyyy-mm-dd"
-  const due = new Date(dueISO + "T23:59:59")
-  return Date.now() > due.getTime()
-}
-
-function normalizeInvoiceStatus(inv: any): InvoiceStatus {
-  const s = String(inv?.status || "").toLowerCase()
-  const allowed: InvoiceStatus[] = ["draft", "sent", "paid", "overdue"]
-  if (allowed.includes(s as InvoiceStatus)) return s as InvoiceStatus
-
-  // migration default:
-  // if already paidAt exists -> paid, else if past due -> overdue, else sent
-  if (typeof inv?.paidAt === "number") return "paid"
-  if (typeof inv?.dueDate === "string" && isPastDue(inv.dueDate)) return "overdue"
-  return "draft"
-}
-
-function computeLiveInvoiceStatus(inv: Invoice): InvoiceStatus {
-  if (typeof inv.paidAt === "number") return "paid"
-  if (inv.status === "draft") return "draft"
-  if (isPastDue(inv.dueDate)) return "overdue"
-  return "sent"
-}
-
-function computeDepositFromEstimateTotal(estTotal: number, dep?: { enabled: boolean; type: "percent" | "fixed"; value: number }) {
-  if (!dep?.enabled || estTotal <= 0) return { depositDue: 0, remaining: estTotal }
-  if (dep.type === "percent") {
-    const pct = Math.max(0, Math.min(100, Number(dep.value || 0)))
-    const depositDue = Math.round(estTotal * (pct / 100))
-    return { depositDue, remaining: Math.max(0, estTotal - depositDue) }
-  }
-  const fixed = Math.max(0, Number(dep.value || 0))
-  const depositDue = Math.min(estTotal, Math.round(fixed))
-  return { depositDue, remaining: Math.max(0, estTotal - depositDue) }
-}
-
-function startOfWeek(d: Date) {
-  const x = new Date(d)
-  const day = x.getDay()
-  const diff = (day === 0 ? -6 : 1) - day
-  x.setDate(x.getDate() + diff)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-function addDays(d: Date, n: number) {
-  const x = new Date(d)
-  x.setDate(x.getDate() + n)
-  return x
-}
-
-function isoDay(d: Date) {
-  return d.toISOString().slice(0, 10)
-}
-
-type WeekLoad = {
-  weekStartISO: string
-  demandCrewDays: number
-  jobs: {
-    jobId: string
-    jobName: string
-    crewDays: number
-  }[]
 }
 
 function computeWeeklyCrewLoad() {
@@ -787,40 +488,6 @@ function lockedOriginalEstimateForJob(jobId?: string) {
   return history.find((h) => h.id === job.originalEstimateId) || null
 }
 
-function originalEstimateForJob(jobId?: string, excludeId?: string) {
-  if (!jobId) return null
-
-  const locked = lockedOriginalEstimateForJob(jobId)
-
-  if (locked && locked.id !== excludeId) {
-    return locked
-  }
-
-  const list = history
-    .filter((h) => h.jobId === jobId && h.id !== excludeId)
-    .sort((a, b) => a.createdAt - b.createdAt)
-
-  return list[0] || null
-}
-
-function estimateTotalWithTax(est: EstimateHistoryItem | null) {
-  if (!est) return 0
-
-  const labor = Number(est.pricing?.labor || 0)
-  const materials = Number(est.pricing?.materials || 0)
-  const subs = Number(est.pricing?.subs || 0)
-  const markup = Number(est.pricing?.markup || 0)
-
-  const base = labor + materials + subs
-  const markedUp = base * (1 + markup / 100)
-
-  const taxEnabled = Boolean(est.tax?.enabled)
-  const taxRate = Number(est.tax?.rate || 0)
-  const taxAmt = taxEnabled ? markedUp * (taxRate / 100) : 0
-
-  return Math.round(markedUp + taxAmt)
-}
-
 function computeJobContractSummary(jobId?: string) {
   if (!jobId) {
     return {
@@ -864,58 +531,6 @@ function computeJobContractSummary(jobId?: string) {
     changeOrdersTotal,
     currentContractValue,
   }
-}
-
-function completionEndFromSchedule(
-  s?: Schedule | null,
-  fallbackCreatedAt?: number
-) {
-  const start =
-    s?.startDate
-      ? new Date(s.startDate + "T00:00:00")
-      : fallbackCreatedAt
-      ? new Date(fallbackCreatedAt)
-      : null
-
-  if (!start) return null
-
-  const maxDays =
-    Number(s?.calendarDays?.max ?? s?.calendarDays?.min ?? 0) > 0
-      ? Number(s?.calendarDays?.max ?? s?.calendarDays?.min ?? 0)
-      : Number(s?.crewDays ?? 0) > 0
-      ? Number(s?.crewDays)
-      : 0
-
-  if (!Number.isFinite(maxDays) || maxDays <= 0) return null
-
-  const end = new Date(start)
-  end.setDate(start.getDate() + Math.max(maxDays - 1, 0))
-
-  return end
-}
-
-function daysBetween(a: Date | null, b: Date | null) {
-  if (!a || !b) return null
-
-  const aMid = new Date(a)
-  const bMid = new Date(b)
-  aMid.setHours(0, 0, 0, 0)
-  bMid.setHours(0, 0, 0, 0)
-
-  const ms = bMid.getTime() - aMid.getTime()
-  return Math.round(ms / (1000 * 60 * 60 * 24))
-}
-
-function formatDelta(n: number) {
-  if (n > 0) return `+$${n.toLocaleString()}`
-  if (n < 0) return `-$${Math.abs(n).toLocaleString()}`
-  return "$0"
-}
-
-function formatSignedNumber(n: number) {
-  if (n > 0) return `+${n}`
-  if (n < 0) return `${n}`
-  return "0"
 }
 
 function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
@@ -1150,9 +765,7 @@ approval: x?.approval
   schedule?.crewDays,
 ])
   
-const [documentType, setDocumentType] = useState<
-  "Change Order" | "Estimate" | "Change Order / Estimate"
->("Change Order / Estimate")
+  const [documentType, setDocumentType] = useState<DocumentType>("Change Order / Estimate")
   const [trade, setTrade] = useState<UiTrade>("")
   const [state, setState] = useState("")
   const [paintScope, setPaintScope] = useState<PaintScope>("walls")
@@ -1356,6 +969,13 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
 const changeOrderSummary = useMemo(() => {
   return computeChangeOrderSummary(currentLoadedEstimate)
 }, [currentLoadedEstimate])
+
+const pricingMemory = getPricingMemory(history, trade)
+
+const historicalPriceGuard =
+  pricingMemory && pricing.total
+    ? compareEstimateToHistory(pricing.total, pricingMemory.avgPrice)
+    : null
 
 // -------------------------
 // Jobs (localStorage)
@@ -2675,8 +2295,6 @@ ${
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;")
 
-  const money = (n: number) => `$${Number(n || 0).toLocaleString()}`
-
   const rows = inv.lineItems
     .map(
       (li) => `
@@ -2818,62 +2436,6 @@ ${inv.notes ? `<div class="box"><strong>Notes:</strong> ${esc(inv.notes)}</div>`
   const day = String(d.getDate()).padStart(2, "0")
   const rand = Math.floor(Math.random() * 900 + 100)
   return `INV-${y}${m}${day}-${rand}`
-}
-
-function toISODate(d: Date) {
-  // yyyy-mm-dd
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
-
-// -------------------------
-// ✅ Due Date Logic (Net 7 / Net 14 / Net 30 / Due upon receipt)
-// Uses companyProfile.paymentTerms as the source of truth
-// -------------------------
-function parseNetDays(termsRaw: string): number | null {
-  const t = (termsRaw || "").toLowerCase().trim()
-
-  // common phrases that mean "due today"
-  if (
-    t.includes("due upon receipt") ||
-    t.includes("due on receipt") ||
-    t.includes("due upon approval") ||
-    t.includes("due on approval") ||
-    t === "due immediately" ||
-    t === "due now"
-  ) {
-    return 0
-  }
-
-  // match "net 7", "net7", "net 14", "net30", etc.
-  const m = t.match(/\bnet\s*(\d{1,3})\b/i)
-  if (m?.[1]) {
-    const n = Number(m[1])
-    if (Number.isFinite(n) && n >= 0 && n <= 365) return n
-  }
-
-  // match "due in 14 days", "payable in 30 days"
-  const m2 = t.match(/\b(?:due|payable)\s+in\s+(\d{1,3})\s+days?\b/i)
-  if (m2?.[1]) {
-    const n = Number(m2[1])
-    if (Number.isFinite(n) && n >= 0 && n <= 365) return n
-  }
-
-  return null
-}
-
-function computeDueDateISO(issueDate: Date, termsRaw: string): string {
-  const netDays = parseNetDays(termsRaw)
-
-  // default fallback if nothing matches
-  const daysToAdd = netDays == null ? 7 : netDays
-
-  const due = new Date(issueDate)
-  due.setDate(due.getDate() + daysToAdd)
-
-  return toISODate(due)
 }
 
 function createInvoiceFromEstimate(est: EstimateHistoryItem) {
@@ -4931,6 +4493,39 @@ function ScheduleEditor({
   Generated from the scope provided.
 </p>
 
+{pricingMemory && (
+  <div
+    style={{
+      marginTop: 12,
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 10,
+      background: "#fafafa",
+    }}
+  >
+    <div style={{ fontWeight: 700 }}>
+      Smart Pricing Insight
+    </div>
+
+    <div style={{ fontSize: 14, marginTop: 6 }}>
+      Based on {pricingMemory.jobCount} similar {pricingMemory.trade} jobs
+      you estimated before.
+    </div>
+
+    <div style={{ marginTop: 6 }}>
+      Typical range:{" "}
+      <b>
+        ${pricingMemory.minPrice.toLocaleString()} – ${pricingMemory.maxPrice.toLocaleString()}
+      </b>
+    </div>
+
+    <div>
+      Average: <b>${pricingMemory.avgPrice.toLocaleString()}</b>
+    </div>
+  </div>
+)}
+
 {changeOrderSummary && (
   <div
     style={{
@@ -5289,9 +4884,21 @@ function ScheduleEditor({
   )}
 </div>
 
-  <div style={{ fontSize: 16, fontWeight: 800 }}>
+   <div style={{ fontSize: 16, fontWeight: 800 }}>
     Total: ${Number(pricing.total || 0).toLocaleString()}
   </div>
+
+  {historicalPriceGuard && historicalPriceGuard.status === "low" && (
+    <div style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}>
+      ⚠️ This estimate is {Math.abs(historicalPriceGuard.percentDiff)}% below your typical pricing.
+    </div>
+  )}
+
+  {historicalPriceGuard && historicalPriceGuard.status === "high" && (
+    <div style={{ color: "#92400e", fontSize: 13, marginTop: 6 }}>
+      ⚠️ This estimate is {historicalPriceGuard.percentDiff}% higher than your typical pricing.
+    </div>
+  )}
 
   <PriceGuardBadge />
 </div>
