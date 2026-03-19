@@ -12,7 +12,6 @@ import {
 } from "./lib/guards"
 
 import { rateLimit } from "./lib/rateLimit"
-
 import { computeFlooringDeterministic } from "./lib/priceguard/flooringEngine"
 import { computeElectricalDeterministic } from "./lib/priceguard/electricalEngine"
 import {
@@ -20,10 +19,11 @@ import {
   hasHeavyPlumbingSignals,
   parsePlumbingFixtureBreakdown,
 } from "./lib/priceguard/plumbingEngine"
+
 import { computeDrywallDeterministic } from "./lib/priceguard/drywallEngine"
 import { computePaintingDeterministic } from "./lib/priceguard/paintingEngine"
-
 import { applyMinimumCharge } from "./lib/priceguard/minimumCharges"
+import { detectScopeSignals } from "./lib/priceguard/scopeSignals"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -88,16 +88,24 @@ function buildScheduleBlock(args: {
   tradeStack: TradeStack | null
   scopeText: string
   workDaysPerWeek: 5 | 6 | 7
+  scopeSignals?: {
+    needsReturnVisit?: boolean
+    reason?: string
+  }
 }): ScheduleBlock {
   const b = args.basis
   const sched = args.workDaysPerWeek
 
   const crewDaysRaw = Number(b?.crewDays ?? b?.quantities?.days ?? 0)
 
-const crewDays =
+let crewDays =
   Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
     ? Math.round(crewDaysRaw * 2) / 2
     : null
+
+if (args.scopeSignals?.needsReturnVisit && crewDays !== null && crewDays < 2) {
+  crewDays = 2
+}
 
   const phase = inferPhaseVisitsFromSignals({ scopeText: args.scopeText, cp: args.cp })
   const visits = phase?.visits ? Number(phase.visits) : null
@@ -2939,6 +2947,7 @@ const paintScope: PaintScope | null =
     : null
 
     const scopeChange = body.scopeChange
+    const scopeSignals = detectScopeSignals(scopeChange)
     const uiTradeRaw =
       typeof body.trade === "string" ? body.trade.trim().toLowerCase() : ""
 
@@ -4026,7 +4035,7 @@ if (minResult.applied) {
     trade: normalized.trade || trade,
     text: normalized.description,
     pricing: safePricing,
-
+    scopeSignals,
     schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
@@ -4034,6 +4043,7 @@ if (minResult.applied) {
     tradeStack,
     scopeText: scopeChange,
     workDaysPerWeek,
+    scopeSignals,
   }),
 
     // debug-only: expose estimateBasis for terminal tests
@@ -4355,7 +4365,7 @@ const payload = {
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
-
+  scopeSignals,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
@@ -4363,6 +4373,7 @@ const payload = {
     tradeStack,
     scopeText: scopeChange,
     workDaysPerWeek,
+    scopeSignals,
   }),
 
   // debug-only: expose estimateBasis for terminal tests

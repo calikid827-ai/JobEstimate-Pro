@@ -55,6 +55,7 @@ import {
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
+import { checkScopeQuality } from "./lib/scope-quality-check"
 
 export default function Home() {
 
@@ -723,6 +724,10 @@ approval: x?.approval
   const [scopeChange, setScopeChange] = useState("")
   const [result, setResult] = useState("")
   const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const [scopeSignals, setScopeSignals] = useState<{
+  needsReturnVisit?: boolean
+  reason?: string
+} | null>(null)
   const completionWindow = useMemo(() => {
   const start =
     schedule?.startDate
@@ -970,12 +975,268 @@ const changeOrderSummary = useMemo(() => {
   return computeChangeOrderSummary(currentLoadedEstimate)
 }, [currentLoadedEstimate])
 
-const pricingMemory = getPricingMemory(history, trade)
+const pricingMemory = getPricingMemory(history, trade, scopeChange)
+const scopeQuality = checkScopeQuality(scopeChange)
 
 const historicalPriceGuard =
   pricingMemory && pricing.total
     ? compareEstimateToHistory(pricing.total, pricingMemory.avgPrice)
     : null
+
+    const minimumSafePrice = useMemo(() => {
+  const cost =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  if (!cost) return null
+
+  const effectiveTaxRate = taxEnabled ? Number(taxRate || 0) / 100 : 0
+
+  // 15% minimum target margin
+  const minMargin = 0.15
+
+  // pre-tax selling price needed to preserve 15% margin
+  const safeBeforeTax = cost / (1 - minMargin)
+
+  // final customer price if tax is enabled
+  const safeAfterTax = Math.round(safeBeforeTax * (1 + effectiveTaxRate))
+
+  return safeAfterTax
+}, [
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  taxEnabled,
+  taxRate,
+])
+
+const minimumSafeStatus = useMemo(() => {
+  if (!minimumSafePrice || !pricing.total) return null
+
+  const current = Number(pricing.total || 0)
+  const safe = Number(minimumSafePrice || 0)
+  if (!safe) return null
+
+  const diffPct = ((current - safe) / safe) * 100
+
+  if (current < safe) {
+    return {
+      label: "Below minimum safe price",
+      tone: "danger",
+      color: "#9b1c1c",
+      bg: "#fef2f2",
+      border: "#fecaca",
+      message: `This estimate is ${Math.abs(Math.round(diffPct))}% below your minimum safe price.`,
+    }
+  }
+
+  if (diffPct <= 0) {
+    return {
+      label: "At minimum safe price",
+      tone: "warning",
+      color: "#92400e",
+      bg: "#fff7ed",
+      border: "#fdba74",
+      message: "This estimate is right at your minimum safe price floor.",
+    }
+  }
+
+  if (diffPct <= 5) {
+    return {
+      label: "Near minimum safe price",
+      tone: "warning",
+      color: "#92400e",
+      bg: "#fff7ed",
+      border: "#fdba74",
+      message: "This estimate is close to your minimum safe price floor.",
+    }
+  }
+
+  return {
+    label: "Safely above minimum",
+    tone: "good",
+    color: "#065f46",
+    bg: "#ecfdf5",
+    border: "#86efac",
+    message: "This estimate is safely above your minimum safe price.",
+  }
+}, [minimumSafePrice, pricing.total])
+
+    const smartSuggestedPrice = useMemo(() => {
+  if (!pricingMemory) return null
+
+  const historicalAvg = Math.round(Number(pricingMemory.avgPrice || 0))
+
+  if (!historicalAvg) return null
+
+  if (minimumSafePrice) {
+    return Math.max(historicalAvg, minimumSafePrice)
+  }
+
+  return historicalAvg
+}, [pricingMemory, minimumSafePrice])
+
+const smartSuggestedStatus = useMemo(() => {
+  if (!pricingMemory || !smartSuggestedPrice) return null
+
+  const avg = Number(pricingMemory.avgPrice || 0)
+  if (!avg) return null
+
+  const diffPct = Math.round(((smartSuggestedPrice - avg) / avg) * 100)
+
+  if (diffPct <= -10) {
+    return {
+      label: "Below your usual range",
+      color: "#9b1c1c",
+      bg: "#fef2f2",
+      border: "#fecaca",
+    }
+  }
+
+  if (diffPct >= 10) {
+    return {
+      label: "Above your usual range",
+      color: "#92400e",
+      bg: "#fff7ed",
+      border: "#fdba74",
+    }
+  }
+
+  return {
+    label: "Within your normal range",
+    color: "#065f46",
+    bg: "#ecfdf5",
+    border: "#86efac",
+  }
+}, [pricingMemory, smartSuggestedPrice])
+
+const smartPricingReasons = useMemo(() => {
+  const reasons: string[] = []
+
+  const cost =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  if (cost > 0 && cost < 1000) {
+    reasons.push("Small job — higher margin is usually safer")
+  }
+
+  if (minimumSafePrice && pricing.total < minimumSafePrice) {
+    reasons.push("Current price is below your minimum safe floor")
+  }
+
+  if (minimumSafeStatus?.tone === "warning") {
+    reasons.push("Current price is very close to your minimum safe floor")
+  }
+
+  if (Number(pricing.markup || 0) < 20) {
+    reasons.push("Markup is lower than a typical contractor target")
+  }
+
+  if (pricingMemory?.jobCount && pricingMemory.jobCount >= 2) {
+    reasons.push(
+      `Based on ${pricingMemory.jobCount} similar ${pricingMemory.trade} jobs in your history`
+    )
+  }
+
+  return reasons
+}, [
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  pricing.total,
+  pricing.markup,
+  minimumSafePrice,
+  minimumSafeStatus,
+  pricingMemory,
+])
+
+function applySuggestedPrice() {
+  const targetPrice = Number(smartSuggestedPrice || 0)
+  if (!targetPrice) return
+
+  const cost =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  if (!cost) return
+
+  const effectiveTaxRate = taxEnabled ? Number(taxRate || 0) / 100 : 0
+
+  const targetBeforeTax = targetPrice / (1 + effectiveTaxRate)
+  const idealMarkup = ((targetBeforeTax - cost) / cost) * 100
+  const cappedMarkup = Math.min(Math.max(0, idealMarkup), 60)
+
+  setPricing((prev) => ({
+    ...prev,
+    markup: Math.round(cappedMarkup * 10) / 10,
+  }))
+
+  setPricingEdited(true)
+
+  if (idealMarkup > 60) {
+    setStatus(
+      `Suggested price was $${targetPrice.toLocaleString()}, but required markup was capped at 60%. Review labor, materials, or mobilization.`
+    )
+  } else {
+    setStatus(`Suggested price applied: $${targetPrice.toLocaleString()}`)
+  }
+}
+
+function applyMinimumSafePrice() {
+  if (!minimumSafePrice) return
+
+  const cost =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  if (!cost) return
+
+  const effectiveTaxRate = taxEnabled ? Number(taxRate || 0) / 100 : 0
+  const targetBeforeTax = minimumSafePrice / (1 + effectiveTaxRate)
+  const newMarkup = ((targetBeforeTax - cost) / cost) * 100
+
+  setPricing((prev) => ({
+    ...prev,
+    markup: Math.max(0, Math.round(newMarkup * 10) / 10),
+  }))
+
+  setPricingEdited(true)
+  setStatus(`Minimum safe price applied: $${minimumSafePrice.toLocaleString()}`)
+}
+
+function applyProfitTarget(targetMarginPct: number) {
+  const cost =
+    Number(pricing.labor || 0) +
+    Number(pricing.materials || 0) +
+    Number(pricing.subs || 0)
+
+  if (!cost) return
+
+  const targetMargin = Math.max(0, Math.min(95, Number(targetMarginPct || 0))) / 100
+
+  const effectiveTaxRate = taxEnabled ? Number(taxRate || 0) / 100 : 0
+
+  // target total AFTER tax (what contractor actually collects)
+  const targetAfterTax = cost / (1 - targetMargin)
+
+  // convert to pre-tax price
+  const targetBeforeTax = targetAfterTax / (1 + effectiveTaxRate)
+
+  const newMarkup = ((targetBeforeTax - cost) / cost) * 100
+
+  setPricing((prev) => ({
+    ...prev,
+    markup: Math.round(newMarkup * 10) / 10,
+  }))
+
+  setPricingEdited(true)
+  setStatus(`Profit target applied: ${Math.round(targetMarginPct)}% TRUE margin`)
+}
 
 // -------------------------
 // Jobs (localStorage)
@@ -1380,6 +1641,7 @@ async function generate() {
   setPricingEdited(false)
   setPriceGuardVerified(false)
   setSchedule(null)
+  setScopeSignals(null)
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -1484,6 +1746,7 @@ const normalizedSchedule =
 
 setResult(nextResult)
 setSchedule(normalizedSchedule)
+setScopeSignals(data?.scopeSignals ?? null)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
@@ -3587,6 +3850,18 @@ function ScheduleEditor({
         style={{ width: "100%", height: 120, marginTop: 12 }}
       />
 
+      {scopeQuality.score < 70 && (
+  <div className="mt-3 rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm">
+    <div className="font-semibold">⚠ Scope may be incomplete</div>
+
+    <ul className="mt-1 list-disc pl-5">
+      {scopeQuality.warnings.map((w, i) => (
+        <li key={i}>{w}</li>
+      ))}
+    </ul>
+  </div>
+)}
+
       <div
   style={{
     marginTop: 16,
@@ -4520,9 +4795,151 @@ function ScheduleEditor({
       </b>
     </div>
 
-    <div>
+    <div style={{ marginTop: 4 }}>
       Average: <b>${pricingMemory.avgPrice.toLocaleString()}</b>
     </div>
+
+    {smartSuggestedPrice && (
+  <div
+    style={{
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 10,
+      background: "#eff6ff",
+      border: "1px solid #93c5fd",
+      color: "#1e3a8a",
+      fontSize: 14,
+    }}
+  >
+    <div style={{ fontWeight: 700 }}>Suggested Price</div>
+
+    <div style={{ marginTop: 4 }}>
+      <b>${smartSuggestedPrice.toLocaleString()}</b>
+    </div>
+
+    {smartPricingReasons.length > 0 && (
+      <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+        {smartPricingReasons.map((reason, i) => (
+          <li key={i}>{reason}</li>
+        ))}
+      </ul>
+    )}
+
+    <button
+      type="button"
+      onClick={applySuggestedPrice}
+      style={{
+        marginTop: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "none",
+        background: "#111827",
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      Use Suggested Price
+    </button>
+
+    <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>
+      Adjusts markup automatically to match suggested price
+    </div>
+
+    {smartSuggestedStatus && (
+      <div
+        style={{
+          marginTop: 8,
+          display: "inline-block",
+          padding: "6px 10px",
+          borderRadius: 999,
+          background: smartSuggestedStatus.bg,
+          border: `1px solid ${smartSuggestedStatus.border}`,
+          color: smartSuggestedStatus.color,
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        {smartSuggestedStatus.label}
+      </div>
+    )}
+  </div>
+)}
+  </div>
+)}
+
+{minimumSafePrice && (
+  <div
+    style={{
+      marginTop: 10,
+      padding: 10,
+      borderRadius: 10,
+      background: "#fff7ed",
+      border: "1px solid #fdba74",
+      color: "#9a3412",
+      fontSize: 14,
+    }}
+  >
+    <div style={{ fontWeight: 700 }}>Minimum Safe Price</div>
+
+    <div style={{ marginTop: 4 }}>
+      <b>${minimumSafePrice.toLocaleString()}</b>
+    </div>
+
+    <div style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
+      Protects at least a 15% minimum margin
+      {taxEnabled ? " after tax" : ""}.
+    </div>
+
+    <button
+      type="button"
+      onClick={applyMinimumSafePrice}
+      style={{
+        marginTop: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "none",
+        background: "#7c2d12",
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      Use Minimum Safe Price
+    </button>
+
+    {minimumSafeStatus && (
+      <div
+        style={{
+          marginTop: 8,
+          display: "inline-block",
+          padding: "6px 10px",
+          borderRadius: 999,
+          background: minimumSafeStatus.bg,
+          border: `1px solid ${minimumSafeStatus.border}`,
+          color: minimumSafeStatus.color,
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        {minimumSafeStatus.label}
+      </div>
+    )}
+
+    {minimumSafeStatus && (
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 12,
+          color: minimumSafeStatus.color,
+          lineHeight: 1.45,
+        }}
+      >
+        {minimumSafeStatus.message}
+      </div>
+    )}
   </div>
 )}
 
@@ -4634,7 +5051,24 @@ function ScheduleEditor({
   </div>
 )}
 
-   <p>{result}</p>
+      <p>{result}</p>
+
+{scopeSignals?.needsReturnVisit && (
+  <div
+    style={{
+      marginTop: 10,
+      padding: 10,
+      border: "1px solid #fcd34d",
+      borderRadius: 10,
+      background: "#fffbeb",
+      color: "#92400e",
+      fontSize: 13,
+      lineHeight: 1.5,
+    }}
+  >
+    ⚠ This scope likely requires multiple visits: {scopeSignals.reason}
+  </div>
+)}
 
 {schedule && (
   <>
@@ -4771,6 +5205,51 @@ function ScheduleEditor({
 
     <div
   style={{
+    marginTop: 4,
+    marginBottom: 12,
+    padding: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    background: "#fff",
+  }}
+>
+  <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+    Profit Target Mode
+  </div>
+
+  <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+    Set markup automatically based on your desired profit margin.
+  </div>
+
+  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <button
+      type="button"
+      onClick={() => applyProfitTarget(20)}
+      style={{ fontSize: 12 }}
+    >
+      Hit 20% Profit
+    </button>
+
+    <button
+      type="button"
+      onClick={() => applyProfitTarget(25)}
+      style={{ fontSize: 12 }}
+    >
+      Hit 25% Profit
+    </button>
+
+    <button
+      type="button"
+      onClick={() => applyProfitTarget(30)}
+      style={{ fontSize: 12 }}
+    >
+      Hit 30% Profit
+    </button>
+  </div>
+</div>
+
+    <div
+  style={{
     marginTop: 12,
     display: "flex",
     alignItems: "center",
@@ -4887,6 +5366,82 @@ function ScheduleEditor({
    <div style={{ fontSize: 16, fontWeight: 800 }}>
     Total: ${Number(pricing.total || 0).toLocaleString()}
   </div>
+
+  {minimumSafeStatus?.tone === "danger" && (
+  <div
+    style={{
+      marginTop: 8,
+      padding: 10,
+      borderRadius: 10,
+      background: "#fef2f2",
+      border: "1px solid #fecaca",
+      color: "#9b1c1c",
+      fontSize: 13,
+    }}
+  >
+    ⚠ {minimumSafeStatus.message}
+  </div>
+)}
+
+{minimumSafeStatus?.tone === "warning" && (
+  <div
+    style={{
+      marginTop: 8,
+      padding: 10,
+      borderRadius: 10,
+      background: "#fff7ed",
+      border: "1px solid #fdba74",
+      color: "#92400e",
+      fontSize: 13,
+    }}
+  >
+    ⚠ {minimumSafeStatus.message}
+  </div>
+)}
+
+  {pricing && (() => {
+  const cost = (pricing.labor || 0) + (pricing.materials || 0) + (pricing.subs || 0)
+  const total = pricing.total || 0
+  const margin = total > 0 ? (total - cost) / total : 0
+  const marginPct = Math.round(margin * 100)
+
+    const markupPct =
+    cost > 0 ? Math.round((((total - cost) / cost) * 100) * 10) / 10 : 0
+
+  if (marginPct < 15) {
+    return (
+      <div
+        style={{
+          marginTop: 8,
+          padding: 10,
+          borderRadius: 10,
+          background: "#fff7ed",
+          border: "1px solid #fdba74",
+          color: "#9a3412",
+          fontSize: 13,
+        }}
+      >
+        ⚠ Margin Risk: Estimated margin {marginPct}%. Most contractors target 15–25%.
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 8,
+        padding: 10,
+        borderRadius: 10,
+        background: "#ecfdf5",
+        border: "1px solid #6ee7b7",
+        color: "#065f46",
+        fontSize: 13,
+      }}
+    >
+      ✓ Healthy margin: {marginPct}%
+    </div>
+  )
+})()}
 
   {historicalPriceGuard && historicalPriceGuard.status === "low" && (
     <div style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}>
