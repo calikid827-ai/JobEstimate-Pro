@@ -75,6 +75,46 @@ function scrollToInvoices() {
   }, 50)
 }
 
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ""))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function handlePhotoUpload(files: FileList | null) {
+  if (!files || files.length === 0) return
+
+  const remainingSlots = Math.max(0, 5 - jobPhotos.length)
+const picked = Array.from(files).slice(0, remainingSlots)
+
+  try {
+    const nextPhotos = await Promise.all(
+      picked.map(async (file) => ({
+        id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+        name: file.name,
+        dataUrl: await fileToDataUrl(file),
+      }))
+    )
+
+    setJobPhotos((prev) => {
+      const merged = [...prev, ...nextPhotos].slice(0, 5)
+      return merged
+    })
+
+    setStatus("")
+  } catch (err) {
+    console.error(err)
+    setStatus("Could not load selected photo(s).")
+  }
+}
+
+function removeJobPhoto(id: string) {
+  setJobPhotos((prev) => prev.filter((p) => p.id !== id))
+}
+
   const [measureEnabled, setMeasureEnabled] = useState(false)
 
   const [measureRows, setMeasureRows] = useState<MeasureRow[]>([
@@ -728,7 +768,22 @@ approval: x?.approval
   needsReturnVisit?: boolean
   reason?: string
 } | null>(null)
-  const completionWindow = useMemo(() => {
+
+const [jobPhotos, setJobPhotos] = useState<
+  {
+    id: string
+    name: string
+    dataUrl: string
+  }[]
+>([])
+
+const [photoAnalysis, setPhotoAnalysis] = useState<{
+  summary?: string
+  observations?: string[]
+  suggestedScopeNotes?: string[]
+} | null>(null)
+  
+const completionWindow = useMemo(() => {
   const start =
     schedule?.startDate
       ? new Date(schedule.startDate + "T00:00:00")
@@ -1631,7 +1686,7 @@ async function generate() {
     return
   }
 
-  setLoading(true)
+    setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
   setResult("")
   setDocumentType("Change Order / Estimate")
@@ -1642,6 +1697,7 @@ async function generate() {
   setPriceGuardVerified(false)
   setSchedule(null)
   setScopeSignals(null)
+  setPhotoAnalysis(null)
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -1656,20 +1712,34 @@ const tradeToSend =
     : trade
 
   try {
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: e,
-        scopeChange,
-        trade: tradeToSend,
-        state,
-        paintScope: paintScopeToSend,
-        measurements: measureEnabled
-          ? { rows: measureRows, totalSqft, units: "ft" }
-          : null,
-      }),
-    })
+    const requestId = crypto.randomUUID()
+
+const res = await fetch("/api/generate", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-idempotency-key": requestId,
+  },
+  body: JSON.stringify({
+    requestId,
+    email: e,
+    scopeChange,
+    trade: tradeToSend,
+    state,
+    paintScope: paintScopeToSend,
+    workDaysPerWeek: 5,
+    measurements: measureEnabled
+      ? { rows: measureRows, totalSqft, units: "ft" }
+      : null,
+    photos:
+      jobPhotos.length > 0
+        ? jobPhotos.map((p) => ({
+            name: p.name,
+            dataUrl: p.dataUrl,
+          }))
+        : null,
+  }),
+})
 
     if (res.status === 403) {
       setStatus("Free limit reached. Please upgrade.")
@@ -1747,8 +1817,10 @@ const normalizedSchedule =
 setResult(nextResult)
 setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
+setPhotoAnalysis(data?.photoAnalysis ?? null)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
+
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
 if (!trade && nextTrade) setTrade(nextTrade)
 
@@ -3850,6 +3922,89 @@ function ScheduleEditor({
         style={{ width: "100%", height: 120, marginTop: 12 }}
       />
 
+      <div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    background: "#fff",
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 6 }}>
+    Job Photos (optional)
+  </div>
+
+  <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+    Upload up to 5 photos to help detect materials, conditions, access issues, and scope details.
+  </div>
+
+  <input
+    type="file"
+    accept="image/*"
+    multiple
+    onChange={(e) => {
+      handlePhotoUpload(e.target.files)
+      e.currentTarget.value = ""
+    }}
+    style={{ width: "100%" }}
+  />
+
+  {jobPhotos.length > 0 && (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gap: 10,
+        marginTop: 12,
+      }}
+    >
+      {jobPhotos.map((photo) => (
+        <div
+          key={photo.id}
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            padding: 8,
+            background: "#fafafa",
+          }}
+        >
+          <img
+            src={photo.dataUrl}
+            alt={photo.name}
+            style={{
+              width: "100%",
+              height: 140,
+              objectFit: "cover",
+              borderRadius: 8,
+              display: "block",
+            }}
+          />
+
+          <div
+            style={{
+              fontSize: 12,
+              color: "#444",
+              marginTop: 8,
+              wordBreak: "break-word",
+            }}
+          >
+            {photo.name}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => removeJobPhoto(photo.id)}
+            style={{ marginTop: 8, fontSize: 12 }}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+
       {scopeQuality.score < 70 && (
   <div className="mt-3 rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm">
     <div className="font-semibold">⚠ Scope may be incomplete</div>
@@ -4758,15 +4913,66 @@ function ScheduleEditor({
       Generated {documentType}
     </h3>
 
-    <p
+        <p
   style={{
     fontSize: 13,
     color: "#666",
     marginBottom: 12,
   }}
 >
-  Generated from the scope provided.
+  Generated from the scope provided{jobPhotos.length > 0 ? " and uploaded photos" : ""}.
 </p>
+
+{photoAnalysis && (
+  <div
+    style={{
+      marginTop: 12,
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #dbeafe",
+      borderRadius: 10,
+      background: "#eff6ff",
+    }}
+  >
+    <div style={{ fontWeight: 700, color: "#1d4ed8" }}>
+      Photo Analysis
+    </div>
+
+    {photoAnalysis.summary && (
+      <div style={{ marginTop: 6, fontSize: 14, color: "#1e3a8a" }}>
+        {photoAnalysis.summary}
+      </div>
+    )}
+
+    {Array.isArray(photoAnalysis.observations) &&
+      photoAnalysis.observations.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>
+            Observations
+          </div>
+          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
+            {photoAnalysis.observations.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+    {Array.isArray(photoAnalysis.suggestedScopeNotes) &&
+      photoAnalysis.suggestedScopeNotes.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>
+            Suggested Scope Notes
+          </div>
+          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
+            {photoAnalysis.suggestedScopeNotes.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+  </div>
+)}
 
 {pricingMemory && (
   <div

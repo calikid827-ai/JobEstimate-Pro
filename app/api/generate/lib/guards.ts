@@ -1,8 +1,18 @@
 import { z } from "zod"
 
+const PhotoInputSchema = z.object({
+  name: z.string().max(120),
+  dataUrl: z
+    .string()
+    .max(8_000_000) // protects request size
+    .regex(/^data:image\/(png|jpeg|jpg|webp);base64,/, "Invalid image data URL"),
+})
+
 export const GenerateSchema = z.object({
   email: z.string().email().max(254),
+
   scopeChange: z.string().min(10).max(4000),
+
   trade: z
     .enum([
       "",
@@ -16,13 +26,22 @@ export const GenerateSchema = z.object({
     ])
     .optional()
     .default(""),
+
   state: z
     .string()
     .trim()
-    .regex(/^(|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)$/)
+    .regex(
+      /^(|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)$/
+    )
     .optional()
     .default(""),
-  paintScope: z.enum(["walls", "walls_ceilings", "full"]).nullable().optional().default(null),
+
+  paintScope: z
+    .enum(["walls", "walls_ceilings", "full"])
+    .nullable()
+    .optional()
+    .default(null),
+
   measurements: z
     .object({
       units: z.literal("ft"),
@@ -38,15 +57,23 @@ export const GenerateSchema = z.object({
         )
         .max(50),
     })
-.nullable()
-.optional()
-.default(null),
+    .nullable()
+    .optional()
+    .default(null),
 
-workDaysPerWeek: z
-  .union([z.literal(5), z.literal(6), z.literal(7)])
-  .optional()
-  .default(5),
-  })
+  photos: z
+    .array(PhotoInputSchema)
+    .max(5)
+    .nullable()
+    .optional()
+    .default(null),
+
+  workDaysPerWeek: z
+    .union([z.literal(5), z.literal(6), z.literal(7)])
+    .optional()
+    .default(5),
+})
+
 export function cleanScopeText(s: string) {
   return s
     .replace(/\r\n/g, "\n")

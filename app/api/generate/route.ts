@@ -62,6 +62,16 @@ const DEV_ALWAYS_PAID = [
 const PRIMARY_MODEL = "gpt-4.1-mini" as const
 const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
+const PHOTO_ANALYSIS_MODEL = "gpt-4o" as const
+const MAX_PHOTOS = 6
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // 8 MB decoded size per image
+const ALLOWED_PHOTO_MIME = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+])
+
 // -----------------------------
 // TYPES
 // -----------------------------
@@ -74,6 +84,7 @@ type Pricing = {
 }
 
 type ScheduleBlock = {
+  startDate: string
   crewDays: number | null
   visits: number | null
   calendarDays: { min: number; max: number } | null
@@ -88,11 +99,13 @@ function buildScheduleBlock(args: {
   tradeStack: TradeStack | null
   scopeText: string
   workDaysPerWeek: 5 | 6 | 7
+  photoImpact?: PhotoPricingImpact | null
   scopeSignals?: {
     needsReturnVisit?: boolean
     reason?: string
   }
 }): ScheduleBlock {
+  
   const b = args.basis
   const sched = args.workDaysPerWeek
 
@@ -102,6 +115,10 @@ let crewDays =
   Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
     ? Math.round(crewDaysRaw * 2) / 2
     : null
+
+if (crewDays !== null && args.photoImpact?.extraCrewDays) {
+  crewDays = Math.round((crewDays + args.photoImpact.extraCrewDays) * 2) / 2
+}    
 
 if (args.scopeSignals?.needsReturnVisit && crewDays !== null && crewDays < 2) {
   crewDays = 2
@@ -122,12 +139,13 @@ if (args.scopeSignals?.needsReturnVisit && crewDays !== null && crewDays < 2) {
     : null
 
   return {
-    crewDays,
-    visits,
-    calendarDays: cal ? { min: cal.minDays, max: cal.maxDays } : null,
-    workDaysPerWeek: sched,
-    rationale: cal?.rationale ?? [],
-  }
+  startDate: new Date().toISOString().slice(0, 10),
+  crewDays,
+  visits,
+  calendarDays: cal ? { min: cal.minDays, max: cal.maxDays } : null,
+  workDaysPerWeek: sched,
+  rationale: cal?.rationale ?? [],
+}
 }
 
 type PriceGuardStatus =
@@ -285,6 +303,69 @@ type AIResponse = {
   estimateBasis?: EstimateBasis        // ✅ internal-only, optional
 }
 
+type PhotoInput = {
+  name: string
+  dataUrl: string
+}
+
+type PhotoAnalysis = {
+  summary?: string
+  observations?: string[]
+  suggestedScopeNotes?: string[]
+}
+
+function getDataUrlMime(dataUrl: string): string | null {
+  const m = String(dataUrl || "").match(/^data:([^;]+);base64,/i)
+  return m?.[1]?.toLowerCase() ?? null
+}
+
+function getBase64Payload(dataUrl: string): string {
+  const idx = String(dataUrl || "").indexOf(",")
+  return idx >= 0 ? dataUrl.slice(idx + 1) : ""
+}
+
+function estimateBase64DecodedBytes(dataUrl: string): number {
+  const payload = getBase64Payload(dataUrl).replace(/\s/g, "")
+  if (!payload) return 0
+
+  const padding =
+    payload.endsWith("==") ? 2 :
+    payload.endsWith("=") ? 1 :
+    0
+
+  return Math.floor((payload.length * 3) / 4) - padding
+}
+
+function sanitizePhotoInputs(photos: unknown): PhotoInput[] {
+  if (!Array.isArray(photos)) return []
+
+  const cleaned: PhotoInput[] = []
+
+  for (const raw of photos.slice(0, MAX_PHOTOS)) {
+    const name =
+      typeof (raw as any)?.name === "string" && (raw as any).name.trim()
+        ? (raw as any).name.trim().slice(0, 120)
+        : "photo"
+
+    const dataUrl =
+      typeof (raw as any)?.dataUrl === "string"
+        ? (raw as any).dataUrl.trim()
+        : ""
+
+    if (!dataUrl.startsWith("data:image/")) continue
+
+    const mime = getDataUrlMime(dataUrl)
+    if (!mime || !ALLOWED_PHOTO_MIME.has(mime)) continue
+
+    const bytes = estimateBase64DecodedBytes(dataUrl)
+    if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_PHOTO_BYTES) continue
+
+    cleaned.push({ name, dataUrl })
+  }
+
+  return cleaned
+}
+
 type AnchorResult = {
   id: string
   pricing: Pricing
@@ -308,6 +389,174 @@ type PricingAnchor = {
 // -----------------------------
 // HELPERS
 // -----------------------------
+
+async function analyzeJobPhotos(args: {
+  photos: PhotoInput[]
+  scopeText: string
+  trade: string
+}): Promise<PhotoAnalysis | null> {
+  const safePhotos = sanitizePhotoInputs(args.photos)
+  if (!safePhotos.length) return null
+
+  try {
+    const content: any[] = [
+      {
+        type: "text",
+        text: `
+You are analyzing contractor job site photos for estimating support.
+
+Return ONLY valid JSON with this exact shape:
+{
+  "summary": "<short summary>",
+  "observations": ["<observation 1>", "<observation 2>"],
+  "suggestedScopeNotes": ["<scope note 1>", "<scope note 2>"]
+}
+
+Rules:
+- Be practical and contractor-focused.
+- Identify visible materials, site conditions, access issues, demolition, damage, prep needs, finish details, or complexity.
+- Do not identify people.
+- Do not mention anything not reasonably visible.
+- Keep observations concise.
+- If uncertain, say so briefly.
+- No markdown.
+- No extra text.
+
+Trade: ${args.trade}
+Scope text: ${args.scopeText}
+        `.trim(),
+      },
+    ]
+
+    for (const photo of safePhotos) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: photo.dataUrl,
+        },
+      })
+    }
+
+    const resp = await openai.chat.completions.create({
+      model: PHOTO_ANALYSIS_MODEL,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content,
+        },
+      ],
+    })
+
+    const raw = resp.choices[0]?.message?.content?.trim()
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw)
+
+    return {
+      summary:
+        typeof parsed?.summary === "string" ? parsed.summary : undefined,
+      observations: Array.isArray(parsed?.observations)
+        ? parsed.observations.filter((x: any) => typeof x === "string").slice(0, 8)
+        : [],
+      suggestedScopeNotes: Array.isArray(parsed?.suggestedScopeNotes)
+        ? parsed.suggestedScopeNotes.filter((x: any) => typeof x === "string").slice(0, 8)
+        : [],
+    }
+  } catch (err) {
+    console.warn("Photo analysis failed:", err)
+    return null
+  }
+}
+
+type PhotoPricingImpact = {
+  laborDelta: number
+  materialsDelta: number
+  subsDelta: number
+  extraCrewDays: number
+  confidenceBoost: number
+  reasons: string[]
+}
+
+function derivePhotoPricingImpact(args: {
+  analysis: PhotoAnalysis | null
+  trade: string
+  scopeText: string
+}): PhotoPricingImpact {
+  const text = [
+    args.analysis?.summary || "",
+    ...(args.analysis?.observations || []),
+    ...(args.analysis?.suggestedScopeNotes || []),
+  ]
+    .join(" ")
+    .toLowerCase()
+
+  let laborDelta = 0
+  let materialsDelta = 0
+  let subsDelta = 0
+  let extraCrewDays = 0
+  let confidenceBoost = 0
+  const reasons: string[] = []
+
+  if (!text.trim()) {
+    return {
+      laborDelta,
+      materialsDelta,
+      subsDelta,
+      extraCrewDays,
+      confidenceBoost,
+      reasons,
+    }
+  }
+
+  if (/\b(peeling|flaking|damaged|patch|repair|crack|water damage|stain)\b/.test(text)) {
+    laborDelta += 150
+    materialsDelta += 40
+    confidenceBoost += 4
+    reasons.push("Visible surface prep or repair conditions")
+  }
+
+  if (/\b(masking|protection|occupied|furnished|tight access|limited access|obstruction)\b/.test(text)) {
+    laborDelta += 100
+    subsDelta += 75
+    extraCrewDays += 0.5
+    confidenceBoost += 3
+    reasons.push("Access/protection constraints visible")
+  }
+
+  if (/\b(debris|demo|demolition|tear-out|haul away|disposal)\b/.test(text)) {
+    subsDelta += 125
+    extraCrewDays += 0.5
+    confidenceBoost += 3
+    reasons.push("Debris or demolition handling visible")
+  }
+
+  if (/\b(high ceiling|vaulted|scaffold|ladder work|multi-story)\b/.test(text)) {
+    laborDelta += 175
+    subsDelta += 100
+    extraCrewDays += 0.5
+    confidenceBoost += 3
+    reasons.push("Height/access complexity visible")
+  }
+
+  if (/\b(tile|waterproof|membrane|wet area|shower pan|curb)\b/.test(text)) {
+    laborDelta += 200
+    materialsDelta += 75
+    extraCrewDays += 1
+    confidenceBoost += 4
+    reasons.push("Wet-area or finish complexity visible")
+  }
+
+  return {
+    laborDelta: Math.round(laborDelta),
+    materialsDelta: Math.round(materialsDelta),
+    subsDelta: Math.round(subsDelta),
+    extraCrewDays,
+    confidenceBoost: Math.min(10, confidenceBoost),
+    reasons,
+  }
+}
 
 function wantsDebug(req: NextRequest) {
   return req.headers.get("x-debug") === "1"
@@ -2855,7 +3104,7 @@ export async function POST(req: NextRequest) {
   // Parse JSON with an actual byte limit (stream-safe)
 let raw: any
 try {
-  raw = await readJsonWithLimit<any>(req, 40_000)
+  raw = await readJsonWithLimit<any>(req, 12_000_000)
 } catch (e: any) {
   if (e?.status === 413) {
     return jsonError(413, "BODY_TOO_LARGE", "Request too large.")
@@ -2935,9 +3184,33 @@ if (cacheEligible && requestId && normalizedEmail) {
     )
   }
     const measurements = body.measurements ?? null
+const rawPhotos = (body.photos ?? null) as PhotoInput[] | null
+const photos = rawPhotos ? sanitizePhotoInputs(rawPhotos) : null
 
-    type PaintScope = "walls" | "walls_ceilings" | "full"
-    type EffectivePaintScope = PaintScope | "doors_only"
+if (rawPhotos && Array.isArray(rawPhotos) && rawPhotos.length > MAX_PHOTOS) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "TOO_MANY_PHOTOS",
+      message: `You can upload up to ${MAX_PHOTOS} photos per request.`,
+    },
+    { status: 400 }
+  )
+}
+
+if (rawPhotos && Array.isArray(rawPhotos) && rawPhotos.length > 0 && (!photos || photos.length === 0)) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "INVALID_PHOTOS",
+      message: "Uploaded photos were invalid, unsupported, or too large.",
+    },
+    { status: 400 }
+  )
+}
+
+type PaintScope = "walls" | "walls_ceilings" | "full"
+type EffectivePaintScope = PaintScope | "doors_only"
 
 const paintScope: PaintScope | null =
   body.paintScope === "walls" ||
@@ -3053,8 +3326,47 @@ const complexityProfile = buildComplexityProfile({
   trade,
 })
 
+const photoAnalysis =
+  photos && photos.length > 0
+    ? await analyzeJobPhotos({
+        photos,
+        scopeText: scopeChange,
+        trade,
+      })
+    : null
+
+const photoImpact = derivePhotoPricingImpact({
+  analysis: photoAnalysis,
+  trade,
+  scopeText: scopeChange,
+})    
+
 // Start with raw scope
 let effectiveScopeChange = scopeChange
+
+if (photoAnalysis?.summary) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO SUMMARY:
+${photoAnalysis.summary}`.trim()
+}
+
+if (photoAnalysis?.observations?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO OBSERVATIONS:
+${photoAnalysis.observations.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (photoAnalysis?.suggestedScopeNotes?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO-BASED SCOPE NOTES:
+${photoAnalysis.suggestedScopeNotes.map((x) => `- ${x}`).join("\n")}`.trim()
+}
 
 // Parse quantities from the raw scope (before we append extra lines)
 const rooms = parseRoomCount(scopeChange)
@@ -3255,13 +3567,13 @@ const effectivePaintScope: EffectivePaintScope =
 // Paint scope normalization (so description matches dropdown)
 if (looksLikePainting) {
   if (effectivePaintScope === "doors_only") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: doors only (includes door slabs + frames/casing).`
+    effectiveScopeChange = `${effectiveScopeChange}\n\nPaint scope selected: doors only (includes door slabs + frames/casing).`
   } else if (effectivePaintScope === "walls_ceilings") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls and ceilings.`
+    effectiveScopeChange = `${effectiveScopeChange}\n\nPaint scope selected: walls and ceilings.`
   } else if (effectivePaintScope === "full") {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls, ceilings, trim, and doors.`
+    effectiveScopeChange = `${effectiveScopeChange}\n\nPaint scope selected: walls, ceilings, trim, and doors.`
   } else {
-    effectiveScopeChange = `${scopeChange}\n\nPaint scope selected: walls only.`
+    effectiveScopeChange = `${effectiveScopeChange}\n\nPaint scope selected: walls only.`
   }
 }
 
@@ -3354,6 +3666,8 @@ INPUTS:
 - Stack Signals: ${tradeStack.signals.slice(0, 5).join(" | ") || "N/A"}
 - Job State: ${jobState}
 - Paint Scope: ${looksLikePainting ? effectivePaintScope : "N/A"}
+- Photo Count: ${photos?.length ?? 0}
+- Photo Summary: ${photoAnalysis?.summary ?? "N/A"}
 
 COMPLEXITY PROFILE (SYSTEM-LOCKED — FOLLOW STRICTLY):
 - class: ${complexityProfile.class}
@@ -3484,6 +3798,12 @@ MEASUREMENT USAGE RULE (STRICT):
 - If measurements are provided, reference the total square footage and (briefly) the labeled areas in the description.
 - Use the square footage to influence pricing realism (larger sqft → higher labor/materials).
 - If measurements are NOT provided, do NOT mention square footage, dimensions, or area estimates. Do not guess numbers.
+
+PHOTO USAGE RULE (STRICT):
+- If photo observations are present, use them only for visible conditions, access, prep, damage, demolition, finish complexity, and sequencing.
+- Do NOT invent hidden conditions from photos.
+- Do NOT let photos override explicit user-entered quantities.
+- Use photos to refine scope wording and realism, not to hallucinate unseen work.
 
 TRADE PRICING GUIDANCE:
 Use the "PRICING ANCHORS" section below to choose realistic units, production rates, and allowances per trade.
@@ -3751,6 +4071,33 @@ Return corrected JSON using the SAME schema, and make estimateBasis match the pr
 
 normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
+if (
+  photoImpact.extraCrewDays > 0 &&
+  normalized.estimateBasis &&
+  isValidEstimateBasis(normalized.estimateBasis) &&
+  normalized.estimateBasis.units.includes("days")
+) {
+  const currentCrewDays = Number(
+    normalized.estimateBasis.crewDays ?? normalized.estimateBasis.quantities?.days ?? 0
+  )
+
+  if (Number.isFinite(currentCrewDays) && currentCrewDays > 0) {
+    const bumpedCrewDays = Math.round((currentCrewDays + photoImpact.extraCrewDays) * 2) / 2
+
+    normalized.estimateBasis = {
+      ...normalized.estimateBasis,
+      crewDays: bumpedCrewDays,
+      quantities: {
+        ...normalized.estimateBasis.quantities,
+        days: bumpedCrewDays,
+      },
+      assumptions: Array.isArray(normalized.estimateBasis.assumptions)
+        ? [...normalized.estimateBasis.assumptions, "Photo-visible conditions increased schedule allowance."]
+        : ["Photo-visible conditions increased schedule allowance."],
+    }
+  }
+}
+
 const v3 = validateAiMath({
   pricing: normalized.pricing,
   basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
@@ -3950,6 +4297,24 @@ if (minResult.applied) {
   })
 }
 
+if (photoImpact.reasons.length > 0) {
+  const nextLabor = Math.round(Number(pricingFinal.labor || 0) + photoImpact.laborDelta)
+  const nextMaterials = Math.round(Number(pricingFinal.materials || 0) + photoImpact.materialsDelta)
+  const nextSubs = Math.round(Number(pricingFinal.subs || 0) + photoImpact.subsDelta)
+  const nextMarkup = Number(pricingFinal.markup || 20)
+
+  const nextBase = nextLabor + nextMaterials + nextSubs
+  const nextTotal = Math.round(nextBase * (1 + nextMarkup / 100))
+
+  pricingFinal = clampPricing({
+    labor: nextLabor,
+    materials: nextMaterials,
+    subs: nextSubs,
+    markup: nextMarkup,
+    total: nextTotal,
+  })
+}
+
   const safePricing = clampPricing(pricingFinal)
 
   const priceGuardProtected = true
@@ -4019,6 +4384,11 @@ if (minResult.applied) {
     usedNationalBaseline,
   })
 
+  if (photoImpact.reasons.length > 0) {
+  pg.appliedRules.push(...photoImpact.reasons.map((r) => `Photo-confirmed: ${r}`))
+  pg.confidence = clampConfidence(pg.confidence + photoImpact.confidenceBoost)
+}
+
     if (minResult.applied) {
     pg.appliedRules.push(
       `Minimum service charge applied for ${trade}: $${minResult.minimum}`
@@ -4031,18 +4401,21 @@ if (minResult.applied) {
 
   // ✅ BUILD PAYLOAD ONCE
   const payload = {
-    documentType: normalized.documentType,
-    trade: normalized.trade || trade,
-    text: normalized.description,
-    pricing: safePricing,
-    scopeSignals,
-    schedule: buildScheduleBlock({
+  documentType: normalized.documentType,
+  trade: normalized.trade || trade,
+  text: normalized.description,
+  pricing: safePricing,
+  scopeSignals,
+  photoAnalysis,
+  photoImpact,
+  schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
     trade: outTrade,
     tradeStack,
     scopeText: scopeChange,
     workDaysPerWeek,
+    photoImpact,
     scopeSignals,
   }),
 
@@ -4294,6 +4667,24 @@ if (minResult.applied) {
   })
 }
 
+if (photoImpact.reasons.length > 0) {
+  const nextLabor = Math.round(Number(pricingFinal.labor || 0) + photoImpact.laborDelta)
+  const nextMaterials = Math.round(Number(pricingFinal.materials || 0) + photoImpact.materialsDelta)
+  const nextSubs = Math.round(Number(pricingFinal.subs || 0) + photoImpact.subsDelta)
+  const nextMarkup = Number(pricingFinal.markup || 20)
+
+  const nextBase = nextLabor + nextMaterials + nextSubs
+  const nextTotal = Math.round(nextBase * (1 + nextMarkup / 100))
+
+  pricingFinal = clampPricing({
+    labor: nextLabor,
+    materials: nextMaterials,
+    subs: nextSubs,
+    markup: nextMarkup,
+    total: nextTotal,
+  })
+}
+
 const safePricing = clampPricing(pricingFinal)
 
 const priceGuardProtected = (["merged", "deterministic"] as readonly string[]).includes(
@@ -4315,6 +4706,11 @@ const pg = buildPriceGuardReport({
   detSource,
   usedNationalBaseline,
 })
+
+if (photoImpact.reasons.length > 0) {
+  pg.appliedRules.push(...photoImpact.reasons.map((r) => `Photo-confirmed: ${r}`))
+  pg.confidence = clampConfidence(pg.confidence + photoImpact.confidenceBoost)
+}
 
 if (minResult.applied) {
   pg.appliedRules.push(
@@ -4366,6 +4762,8 @@ const payload = {
   text: normalized.description,
   pricing: safePricing,
   scopeSignals,
+  photoAnalysis,
+  photoImpact,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
@@ -4373,6 +4771,7 @@ const payload = {
     tradeStack,
     scopeText: scopeChange,
     workDaysPerWeek,
+    photoImpact,
     scopeSignals,
   }),
 
