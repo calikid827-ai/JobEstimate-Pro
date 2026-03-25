@@ -174,6 +174,12 @@ export type EstimateHistoryItem = {
   state: string
   scopeChange: string
   result: string
+    explanation?: {
+    priceReasons?: string[]
+    scheduleReasons?: string[]
+    photoReasons?: string[]
+    protectionReasons?: string[]
+  } | null
   pricing: {
     labor: number
     materials: number
@@ -209,4 +215,12 @@ export type WeekLoad = {
     jobName: string
     crewDays: number
   }[]
+}
+
+export type ExplainChangesReport = {
+  summary: string[]
+  scopeChanges: string[]
+  pricingChanges: string[]
+  scheduleChanges: string[]
+  adminChanges: string[]
 }

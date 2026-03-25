@@ -41,6 +41,7 @@ import {
   computeDepositFromEstimateTotal,
   computeTaxAmountFromEstimate,
   estimateTotalWithTax,
+  estimateSubtotalBeforeTax,
   startOfWeek,
   addDays,
   isoDay,
@@ -51,11 +52,22 @@ import {
   toISODate,
   computeDueDateISO,
   buildActualsPatch,
+  explainEstimateChanges,
+  computeProfitProtection,
+  estimateDirectCost,
+  computeProfitProtectionFromTotals,
+  nextChangeOrderNumber,
 } from "./lib/estimate-utils"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
 import { checkScopeQuality } from "./lib/scope-quality-check"
+import SavedEstimatesSection from "./components/SavedEstimatesSection"
+import JobsDashboardSection from "./components/JobsDashboardSection"
+import EstimateBuilderSection from "./components/EstimateBuilderSection"
+import InvoicesSection from "./components/InvoicesSection"
+import PricingSummarySection from "./components/PricingSummarySection"
+
 
 export default function Home() {
 
@@ -113,6 +125,333 @@ const picked = Array.from(files).slice(0, remainingSlots)
 
 function removeJobPhoto(id: string) {
   setJobPhotos((prev) => prev.filter((p) => p.id !== id))
+}
+
+function buildEstimateBreakdown({
+  pricing,
+  schedule,
+  trade,
+  state,
+  scopeSignals,
+  minimumSafeStatus,
+}: {
+  pricing: {
+    labor: number
+    materials: number
+    subs: number
+    markup: number
+    total: number
+  }
+  schedule: Schedule | null
+  trade: UiTrade
+  state: string
+  scopeSignals: {
+    needsReturnVisit?: boolean
+    reason?: string
+  } | null
+  minimumSafeStatus:
+    | {
+        label: string
+        tone: string
+        color: string
+        bg: string
+        border: string
+        message: string
+      }
+    | null
+}) {
+  const items: string[] = []
+
+  if (pricing.labor > 0) {
+    items.push(
+      `Labor reflects expected crew time, trade difficulty, and the work required to complete this ${trade || "project"} scope.`
+    )
+  }
+
+  if (pricing.materials > 0) {
+    items.push(
+      "Materials include the expected supplies, install materials, and standard job-use items needed for this scope."
+    )
+  }
+
+  if (pricing.subs > 0) {
+    items.push(
+      "Other / Mobilization covers setup, protection, cleanup, travel, staging, and general job preparation."
+    )
+  }
+
+  if (Number(pricing.markup || 0) > 0) {
+    items.push(
+      `A ${Number(pricing.markup)}% markup is included for overhead, business operations, risk, and profit.`
+    )
+  }
+
+  if (schedule?.crewDays || schedule?.visits || schedule?.calendarDays) {
+    items.push(
+      "Schedule timing is based on estimated crew time, visit count, and the expected sequencing of the work."
+    )
+  }
+
+  if (scopeSignals?.needsReturnVisit) {
+    items.push(
+      "This scope likely requires multiple visits, which increases coordination and labor planning."
+    )
+  }
+
+  if (minimumSafeStatus?.tone === "danger") {
+    items.push(
+      "The current total is below your minimum safe price threshold, which may leave the job underpriced."
+    )
+  }
+
+  if (minimumSafeStatus?.tone === "warning") {
+    items.push(
+      "The current total is close to your minimum safe price threshold, so margin is tighter than usual."
+    )
+  }
+
+  if (state) {
+    items.push(`Regional pricing was adjusted for ${state}.`)
+  }
+
+  return items
+}
+
+function buildAssumptionsList({
+  trade,
+  state,
+  scopeSignals,
+}: {
+  trade: string
+  state: string
+  scopeSignals: {
+    needsReturnVisit?: boolean
+    reason?: string
+  } | null
+}) {
+  const notes: string[] = []
+
+  notes.push(
+    "Pricing assumes normal site access and standard working conditions."
+  )
+
+  notes.push(
+    "Final pricing may adjust if concealed conditions or unforeseen issues are discovered."
+  )
+
+  notes.push(
+    "Permit fees, engineering, or specialty inspections are excluded unless specifically stated."
+  )
+
+  notes.push(
+    "Material pricing assumes standard mid-range selections unless otherwise noted."
+  )
+
+  if (scopeSignals?.needsReturnVisit) {
+    notes.push(
+      "Multiple site visits are assumed based on project sequencing requirements."
+    )
+  }
+
+  if (trade) {
+    notes.push(
+      `Work scope assumptions are based on typical ${trade.replace(
+        "_",
+        " "
+      )} project conditions.`
+    )
+  }
+
+  if (state) {
+    notes.push(
+      `Regional labor and material expectations are based on typical ${state} construction conditions.`
+    )
+  }
+
+  return notes
+}
+
+function buildEstimateConfidence({
+  scopeChange,
+  trade,
+  state,
+  measureEnabled,
+  totalSqft,
+  jobPhotosCount,
+  scopeQualityScore,
+  priceGuardVerified,
+  photoAnalysis,
+}: {
+  scopeChange: string
+  trade: string
+  state: string
+  measureEnabled: boolean
+  totalSqft: number
+  jobPhotosCount: number
+  scopeQualityScore: number
+  priceGuardVerified: boolean
+  photoAnalysis: {
+    quantitySignals?: {
+      estimatedWallSqftMin?: number | null
+      estimatedWallSqftMax?: number | null
+      estimatedCeilingSqftMin?: number | null
+      estimatedCeilingSqftMax?: number | null
+      estimatedFloorSqftMin?: number | null
+      estimatedFloorSqftMax?: number | null
+      doors?: number | null
+      windows?: number | null
+      vanities?: number | null
+      toilets?: number | null
+      sinks?: number | null
+      outlets?: number | null
+      switches?: number | null
+      recessedLights?: number | null
+    }
+    confidence?: "low" | "medium" | "high"
+  } | null
+}) {
+  let score = 0
+  const reasons: string[] = []
+  const warnings: string[] = []
+
+  const text = (scopeChange || "").trim()
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0
+
+  if (wordCount >= 20) {
+    score += 25
+    reasons.push("Detailed scope description provided")
+  } else if (wordCount >= 10) {
+    score += 15
+    reasons.push("Moderate scope detail provided")
+  } else if (wordCount >= 5) {
+    score += 8
+    reasons.push("Basic scope description provided")
+  } else {
+    warnings.push("Scope description is very short")
+  }
+
+  if (trade) {
+    score += 10
+    reasons.push("Trade type selected")
+  } else {
+    warnings.push("Trade type was inferred or not selected")
+  }
+
+  if (state) {
+    score += 10
+    reasons.push("Regional pricing context included")
+  } else {
+    warnings.push("State-based regional pricing not provided")
+  }
+
+ const photoHasQuantitySignals =
+    !!photoAnalysis?.quantitySignals &&
+    (
+      Number(photoAnalysis.quantitySignals.estimatedWallSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedWallSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.doors || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.windows || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.vanities || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.toilets || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.sinks || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.outlets || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.switches || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.recessedLights || 0) > 0
+    )
+
+  if (measureEnabled && totalSqft > 0) {
+    score += 20
+    reasons.push("Measurements were included")
+  } else if (photoHasQuantitySignals) {
+    warnings.push("No manual measurements were included")
+  } else {
+    warnings.push("No measurements were included")
+  }
+
+  if (!measureEnabled && photoHasQuantitySignals) {
+    if (photoAnalysis?.confidence === "high") {
+      score += 14
+      reasons.push("Photo-derived quantity ranges strengthened estimate confidence")
+    } else if (photoAnalysis?.confidence === "medium") {
+      score += 8
+      reasons.push("Photo-derived quantity ranges helped support estimate confidence")
+    } else {
+      score += 3
+      reasons.push("Photo quantity hints were available")
+    }
+  }
+
+  if (jobPhotosCount > 0) {
+    score += 15
+    reasons.push("Job photos were included")
+  }
+
+  if (scopeQualityScore >= 85) {
+    score += 15
+    reasons.push("Scope quality is strong")
+  } else if (scopeQualityScore >= 70) {
+    score += 10
+    reasons.push("Scope quality is acceptable")
+  } else if (scopeQualityScore >= 50) {
+    score += 5
+    warnings.push("Scope quality is limited")
+  } else {
+    warnings.push("Scope quality is weak")
+  }
+
+  if (priceGuardVerified) {
+    score += 5
+    reasons.push("PriceGuard verification passed")
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)))
+
+  let level: "high" | "medium" | "review" | "low" = "low"
+  let label = "Low Confidence"
+  let tone = {
+    bg: "#fef2f2",
+    border: "#fecaca",
+    color: "#991b1b",
+  }
+
+  if (score >= 80) {
+    level = "high"
+    label = "High Confidence"
+    tone = {
+      bg: "#ecfdf5",
+      border: "#86efac",
+      color: "#065f46",
+    }
+  } else if (score >= 60) {
+    level = "medium"
+    label = "Moderate Confidence"
+    tone = {
+      bg: "#eff6ff",
+      border: "#93c5fd",
+      color: "#1d4ed8",
+    }
+  } else if (score >= 40) {
+    level = "review"
+    label = "Review Recommended"
+    tone = {
+      bg: "#fff7ed",
+      border: "#fdba74",
+      color: "#9a3412",
+    }
+  }
+
+  return {
+    score,
+    level,
+    label,
+    reasons,
+    warnings,
+    ...tone,
+  }
 }
 
   const [measureEnabled, setMeasureEnabled] = useState(false)
@@ -279,23 +618,6 @@ function actualsForJob(jobId: string) {
   return actuals.find((a) => a.jobId === jobId) || null
 }
 
-function computeProfitSummary(jobId: string) {
-  const contract = computeJobContractSummary(jobId)
-  const act = actualsForJob(jobId)
-
-  const budgetTotal = Number(contract.currentContractValue || 0)
-  const actLabor = Number(act?.labor || 0)
-  const actMat = Number(act?.materials || 0)
-  const actSubs = Number(act?.subs || 0)
-  const actTotal = actLabor + actMat + actSubs
-
-  const profit = budgetTotal - actTotal
-  const marginPct =
-    budgetTotal > 0 ? Math.round((profit / budgetTotal) * 100) : 0
-
-  return { budgetTotal, actTotal, profit, marginPct }
-}
-
 function invoiceSummaryForJob(jobId: string) {
   const list = invoices.filter((x) => x.jobId === jobId)
   let paidCount = 0
@@ -411,6 +733,153 @@ function hasBalanceInvoiceForEstimate(estimateId: string) {
   )
 }
 
+function getJobPipelineStatus(jobId: string) {
+  const latest = latestEstimateForJob(jobId)
+  const original = lockedOriginalEstimateForJob(jobId)
+  const source = latest || original
+
+  if (!source) {
+    return {
+      key: "no-estimate" as const,
+      label: "No Estimate",
+      tone: "neutral" as const,
+      message: "No estimate found for this job yet.",
+      primaryAction: null as
+        | null
+        | "create_change_order"
+        | "copy_approval"
+        | "create_deposit_invoice"
+        | "await_deposit_payment"
+        | "create_balance_invoice"
+        | "create_final_invoice"
+        | "await_final_payment"
+        | "paid_closed",
+    }
+  }
+
+  const approvalApproved = source.approval?.status === "approved"
+  const depositRequired = Boolean(source.deposit?.enabled)
+
+  const jobInvoices = invoices.filter((inv) => inv.jobId === jobId)
+
+  const depositInvoice = jobInvoices.find(
+    (inv) =>
+      inv.fromEstimateId === source.id &&
+      inv.deposit?.enabled &&
+      inv.total === inv.deposit.depositDue
+  ) || null
+
+  const balanceInvoice = jobInvoices.find(
+    (inv) =>
+      inv.fromEstimateId === source.id &&
+      inv.deposit?.enabled &&
+      inv.total === inv.deposit.remainingBalance
+  ) || null
+
+  const fullInvoice = jobInvoices.find(
+    (inv) =>
+      inv.fromEstimateId === source.id &&
+      !inv.deposit?.enabled
+  ) || null
+
+  const depositPaid =
+    depositInvoice ? computeLiveInvoiceStatus(depositInvoice) === "paid" : false
+
+  const balancePaid =
+    balanceInvoice ? computeLiveInvoiceStatus(balanceInvoice) === "paid" : false
+
+  const fullInvoicePaid =
+    fullInvoice ? computeLiveInvoiceStatus(fullInvoice) === "paid" : false
+
+  if (!approvalApproved) {
+    return {
+      key: "pending_approval" as const,
+      label: "Pending Approval",
+      tone: "warning" as const,
+      message: "Waiting for customer approval before invoicing.",
+      primaryAction: "copy_approval" as const,
+    }
+  }
+
+  if (depositRequired) {
+    if (!depositInvoice) {
+      return {
+        key: "ready_for_deposit_invoice" as const,
+        label: "Ready for Deposit",
+        tone: "info" as const,
+        message: "Approved and ready for deposit invoice.",
+        primaryAction: "create_deposit_invoice" as const,
+      }
+    }
+
+    if (!depositPaid) {
+      return {
+        key: "awaiting_deposit_payment" as const,
+        label: "Awaiting Deposit Payment",
+        tone: "warning" as const,
+        message: "Deposit invoice created but not paid yet.",
+        primaryAction: "await_deposit_payment" as const,
+      }
+    }
+
+    if (!balanceInvoice) {
+      return {
+        key: "ready_for_balance_invoice" as const,
+        label: "Ready for Balance Invoice",
+        tone: "info" as const,
+        message: "Deposit paid. Ready to create balance invoice.",
+        primaryAction: "create_balance_invoice" as const,
+      }
+    }
+
+    if (!balancePaid) {
+      return {
+        key: "awaiting_final_payment" as const,
+        label: "Awaiting Final Payment",
+        tone: "warning" as const,
+        message: "Balance invoice created but not paid yet.",
+        primaryAction: "await_final_payment" as const,
+      }
+    }
+
+    return {
+      key: "paid_closed" as const,
+      label: "Paid / Closed",
+      tone: "good" as const,
+      message: "Deposit and balance have both been paid.",
+      primaryAction: "paid_closed" as const,
+    }
+  }
+
+  if (!fullInvoice) {
+    return {
+      key: "ready_for_final_invoice" as const,
+      label: "Ready for Final Invoice",
+      tone: "info" as const,
+      message: "Approved and ready for final invoice.",
+      primaryAction: "create_final_invoice" as const,
+    }
+  }
+
+  if (!fullInvoicePaid) {
+    return {
+      key: "awaiting_final_payment" as const,
+      label: "Awaiting Final Payment",
+      tone: "warning" as const,
+      message: "Final invoice created but not paid yet.",
+      primaryAction: "await_final_payment" as const,
+    }
+  }
+
+  return {
+    key: "paid_closed" as const,
+    label: "Paid / Closed",
+    tone: "good" as const,
+    message: "Final invoice has been paid.",
+    primaryAction: "paid_closed" as const,
+  }
+}
+
   function latestInvoiceForJob(jobId: string) {
   const list = invoices
     .filter((x) => x.jobId === jobId)
@@ -442,6 +911,68 @@ function createBalanceInvoiceFromLatestEstimate(jobId: string) {
   }
   createBalanceInvoiceFromEstimate(est)
   selectJobAndJumpToInvoices(jobId)
+}
+
+function startChangeOrderFromJob(jobId: string) {
+  const job = jobs.find((j) => j.id === jobId)
+  if (!job) {
+    setStatus("Job not found.")
+    return
+  }
+
+  const original = lockedOriginalEstimateForJob(jobId)
+  const latest = latestEstimateForJob(jobId)
+
+  const source = latest || original
+
+  setActiveJobId(jobId)
+
+  setJobDetails({
+    clientName: job.clientName || "",
+    jobName: job.jobName || "",
+    changeOrderNo: nextChangeOrderNumber(job, history, jobId),
+    jobAddress: job.jobAddress || "",
+    date: "",
+  })
+
+  setDocumentType("Change Order")
+
+  if (source) {
+    setTrade(source.trade || "")
+    setState(source.state || "")
+    setScopeChange("")
+    setResult(null)
+    setSchedule(source.schedule ?? null)
+
+    setPricing({
+      labor: 0,
+      materials: 0,
+      subs: 0,
+      markup: source.pricing?.markup ?? 20,
+      total: 0,
+    })
+
+    setTaxEnabled(Boolean(source.tax?.enabled))
+    setTaxRate(Number(source.tax?.rate || 0))
+
+    if (source.deposit) {
+      setDepositEnabled(Boolean(source.deposit.enabled))
+      setDepositType(source.deposit.type === "fixed" ? "fixed" : "percent")
+      setDepositValue(Number(source.deposit.value || 0))
+    } else {
+      setDepositEnabled(false)
+      setDepositType("percent")
+      setDepositValue(25)
+    }
+  }
+
+  lastSavedEstimateIdRef.current = null
+  setPricingEdited(false)
+  setPriceGuard(null)
+  setPriceGuardVerified(false)
+  setShowPriceGuardDetails(false)
+
+  setStatus("Change order started. Enter the added or revised scope, then generate.")
 }
 
 function computeWeeklyCrewLoad() {
@@ -533,10 +1064,13 @@ function computeJobContractSummary(jobId?: string) {
   if (!jobId) {
     return {
       originalEstimate: null as EstimateHistoryItem | null,
-      originalEstimateTotal: 0,
+      originalEstimateTotal: 0, // with tax
+      originalEstimateContractValue: 0, // before tax
       changeOrders: [] as EstimateHistoryItem[],
-      changeOrdersTotal: 0,
-      currentContractValue: 0,
+      changeOrdersTotal: 0, // with tax
+      changeOrdersContractValue: 0, // before tax
+      currentContractValue: 0, // with tax
+      currentContractValueBeforeTax: 0, // before tax
     }
   }
 
@@ -546,14 +1080,20 @@ function computeJobContractSummary(jobId?: string) {
     return {
       originalEstimate: null,
       originalEstimateTotal: 0,
+      originalEstimateContractValue: 0,
       changeOrders: [],
       changeOrdersTotal: 0,
+      changeOrdersContractValue: 0,
       currentContractValue: 0,
+      currentContractValueBeforeTax: 0,
     }
   }
 
+  // original estimate
   const originalEstimateTotal = estimateTotalWithTax(originalEstimate)
+  const originalEstimateContractValue = estimateSubtotalBeforeTax(originalEstimate)
 
+  // all later change orders / estimates tied to same job
   const changeOrders = history
     .filter((h) => h.jobId === jobId && h.id !== originalEstimate.id)
     .sort((a, b) => a.createdAt - b.createdAt)
@@ -563,14 +1103,24 @@ function computeJobContractSummary(jobId?: string) {
     0
   )
 
+  const changeOrdersContractValue = changeOrders.reduce(
+    (sum, h) => sum + estimateSubtotalBeforeTax(h),
+    0
+  )
+
   const currentContractValue = originalEstimateTotal + changeOrdersTotal
+  const currentContractValueBeforeTax =
+    originalEstimateContractValue + changeOrdersContractValue
 
   return {
     originalEstimate,
     originalEstimateTotal,
+    originalEstimateContractValue,
     changeOrders,
     changeOrdersTotal,
+    changeOrdersContractValue,
     currentContractValue,
+    currentContractValueBeforeTax,
   }
 }
 
@@ -703,6 +1253,7 @@ useEffect(() => {
     state: String(x?.state ?? ""),
     scopeChange: String(x?.scopeChange ?? ""),
     result: String(x?.result ?? ""),
+    explanation: x?.explanation ?? null,
     pricing: {
       labor: Number(x?.pricing?.labor ?? 0),
       materials: Number(x?.pricing?.materials ?? 0),
@@ -762,7 +1313,15 @@ approval: x?.approval
   // App state
   // -------------------------
   const [scopeChange, setScopeChange] = useState("")
-  const [result, setResult] = useState("")
+  const [result, setResult] = useState<{
+  text: string
+  explanation?: {
+    priceReasons?: string[]
+    scheduleReasons?: string[]
+    photoReasons?: string[]
+    protectionReasons?: string[]
+  } | null
+} | null>(null)
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [scopeSignals, setScopeSignals] = useState<{
   needsReturnVisit?: boolean
@@ -781,6 +1340,40 @@ const [photoAnalysis, setPhotoAnalysis] = useState<{
   summary?: string
   observations?: string[]
   suggestedScopeNotes?: string[]
+
+  detectedRoomTypes?: string[]
+  detectedTrades?: string[]
+  detectedMaterials?: string[]
+  detectedConditions?: string[]
+  detectedFixtures?: string[]
+  detectedAccessIssues?: string[]
+  detectedDemoNeeds?: string[]
+
+  quantitySignals?: {
+    doors?: number | null
+    windows?: number | null
+    vanities?: number | null
+    toilets?: number | null
+    sinks?: number | null
+    outlets?: number | null
+    switches?: number | null
+    recessedLights?: number | null
+    ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+    estimatedWallSqftMin?: number | null
+    estimatedWallSqftMax?: number | null
+    estimatedCeilingSqftMin?: number | null
+    estimatedCeilingSqftMax?: number | null
+    estimatedFloorSqftMin?: number | null
+    estimatedFloorSqftMax?: number | null
+  }
+
+  scopeCompletenessFlags?: string[]
+  confidence?: "low" | "medium" | "high"
+} | null>(null)
+
+const [photoScopeAssist, setPhotoScopeAssist] = useState<{
+  missingScopeFlags: string[]
+  suggestedAdditions: string[]
 } | null>(null)
   
 const completionWindow = useMemo(() => {
@@ -985,7 +1578,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     trade,
     state,
     scopeChange,
-    result,
+    result: result?.text || "",
     pricing: {
       labor: Number(pricing.labor || 0),
       materials: Number(pricing.materials || 0),
@@ -1029,6 +1622,15 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
 const changeOrderSummary = useMemo(() => {
   return computeChangeOrderSummary(currentLoadedEstimate)
 }, [currentLoadedEstimate])
+
+const explainChangesReport = useMemo(() => {
+  if (!currentLoadedEstimate?.jobId) return null
+
+  const original = lockedOriginalEstimateForJob(currentLoadedEstimate.jobId)
+  if (!original) return null
+
+  return explainEstimateChanges(original, currentLoadedEstimate)
+}, [currentLoadedEstimate, history, jobs])
 
 const pricingMemory = getPricingMemory(history, trade, scopeChange)
 const scopeQuality = checkScopeQuality(scopeChange)
@@ -1117,6 +1719,49 @@ const minimumSafeStatus = useMemo(() => {
     message: "This estimate is safely above your minimum safe price.",
   }
 }, [minimumSafePrice, pricing.total])
+
+const estimateBreakdown = useMemo(() => {
+  return buildEstimateBreakdown({
+    pricing,
+    schedule,
+    trade,
+    state,
+    scopeSignals,
+    minimumSafeStatus,
+  })
+}, [pricing, schedule, trade, state, scopeSignals, minimumSafeStatus])
+
+const estimateAssumptions = useMemo(() => {
+  return buildAssumptionsList({
+    trade,
+    state,
+    scopeSignals,
+  })
+}, [trade, state, scopeSignals])
+
+const estimateConfidence = useMemo(() => {
+  return buildEstimateConfidence({
+    scopeChange,
+    trade,
+    state,
+    measureEnabled,
+    totalSqft,
+    jobPhotosCount: jobPhotos.length,
+    scopeQualityScore: scopeQuality.score,
+    priceGuardVerified,
+    photoAnalysis,
+  })
+}, [
+  scopeChange,
+  trade,
+  state,
+  measureEnabled,
+  totalSqft,
+  jobPhotos.length,
+  scopeQuality.score,
+  priceGuardVerified,
+  photoAnalysis,
+])
 
     const smartSuggestedPrice = useMemo(() => {
   if (!pricingMemory) return null
@@ -1413,6 +2058,7 @@ useEffect(() => {
             state: String(x?.state ?? ""),
             scopeChange: String(x?.scopeChange ?? ""),
             result: String(x?.result ?? ""),
+            explanation: x?.explanation ?? null,
             pricing: {
               labor: Number(x?.pricing?.labor ?? 0),
               materials: Number(x?.pricing?.materials ?? 0),
@@ -1688,8 +2334,7 @@ async function generate() {
 
     setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
-  setResult("")
-  setDocumentType("Change Order / Estimate")
+  setResult(null)
   setPricingSource("ai")
   setShowPriceGuardDetails(false)
   setPriceGuard(null)
@@ -1698,6 +2343,7 @@ async function generate() {
   setSchedule(null)
   setScopeSignals(null)
   setPhotoAnalysis(null)
+  setPhotoScopeAssist(null)
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -1814,10 +2460,14 @@ const normalizedSchedule =
       }
     : null
 
-setResult(nextResult)
+setResult({
+  text: nextResult,
+  explanation: data?.explanation || null,
+})
 setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
+setPhotoScopeAssist(data?.photoScopeAssist ?? null)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 
@@ -1838,6 +2488,7 @@ const estItem: EstimateHistoryItem = {
   state: state || "",
   scopeChange: scopeChange || "",
   result: nextResult,
+  explanation: data?.explanation || null,
   pricing: {
     labor: Number(nextPricing.labor || 0),
     materials: Number(nextPricing.materials || 0),
@@ -2059,7 +2710,10 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setState(item.state || "")
   setScopeChange(item.scopeChange || "")
   setPricingEdited(false)
-  setResult(item.result || "")
+  setResult({
+  text: item.result || "",
+  explanation: item.explanation || null,
+})
   setPricing(item.pricing)
   setSchedule(item.schedule ?? null)
 
@@ -2140,7 +2794,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;")
 
-    const safeResult = esc(result || "")
+    const safeResult = esc(result?.text || "")
 
     const scheduleHtml = (s: Schedule | null) => {
   if (!s) return ""
@@ -3005,6 +3659,423 @@ const pdfPriceGuardLabel =
   priceGuard?.status === "deterministic" ? "PriceGuard™ Deterministic" :
   "PriceGuard™"
 
+  function hasItems(arr?: string[] | null) {
+  return Array.isArray(arr) && arr.length > 0
+}
+
+function getPhotoConfidenceTone(conf?: "low" | "medium" | "high") {
+  if (conf === "high") {
+    return {
+      label: "High",
+      bg: "#ecfdf5",
+      border: "#86efac",
+      color: "#166534",
+    }
+  }
+
+  if (conf === "medium") {
+    return {
+      label: "Medium",
+      bg: "#eff6ff",
+      border: "#93c5fd",
+      color: "#1d4ed8",
+    }
+  }
+
+  if (conf === "low") {
+    return {
+      label: "Low",
+      bg: "#fff7ed",
+      border: "#fdba74",
+      color: "#9a3412",
+    }
+  }
+
+  return null
+}
+
+function InfoChip({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "6px 10px",
+        borderRadius: 999,
+        background: "#f3f4f6",
+        color: "#374151",
+        fontSize: 12,
+        fontWeight: 600,
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
+function InsightListBlock({
+  title,
+  items,
+  tone = "neutral",
+}: {
+  title: string
+  items?: string[]
+  tone?: "neutral" | "warning" | "info"
+}) {
+  if (!items || items.length === 0) return null
+
+  const styles =
+    tone === "warning"
+      ? {
+          bg: "#fff7ed",
+          border: "#fdba74",
+        }
+      : tone === "info"
+      ? {
+          bg: "#eff6ff",
+          border: "#93c5fd",
+        }
+      : {
+          bg: "#fafafa",
+          border: "#e5e7eb",
+        }
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: "#374151",
+          marginBottom: 6,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          padding: 12,
+          border: `1px solid ${styles.border}`,
+          borderRadius: 12,
+          background: styles.bg,
+        }}
+      >
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.55 }}>
+          {items.map((item, i) => (
+            <li key={`${title}-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function PhotoInsightsCard({
+  photoAnalysis,
+  photoScopeAssist,
+}: {
+  photoAnalysis: {
+    summary?: string
+    observations?: string[]
+    suggestedScopeNotes?: string[]
+    detectedRoomTypes?: string[]
+    detectedTrades?: string[]
+    detectedMaterials?: string[]
+    detectedConditions?: string[]
+    detectedFixtures?: string[]
+    detectedAccessIssues?: string[]
+    detectedDemoNeeds?: string[]
+    quantitySignals?: {
+      doors?: number | null
+      windows?: number | null
+      vanities?: number | null
+      toilets?: number | null
+      sinks?: number | null
+      outlets?: number | null
+      switches?: number | null
+      recessedLights?: number | null
+      ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+      estimatedWallSqftMin?: number | null
+      estimatedWallSqftMax?: number | null
+      estimatedCeilingSqftMin?: number | null
+      estimatedCeilingSqftMax?: number | null
+      estimatedFloorSqftMin?: number | null
+      estimatedFloorSqftMax?: number | null
+    }
+    scopeCompletenessFlags?: string[]
+    confidence?: "low" | "medium" | "high"
+  } | null
+  photoScopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  } | null
+}) {
+  if (!photoAnalysis && !photoScopeAssist) return null
+
+  const confidenceTone = getPhotoConfidenceTone(photoAnalysis?.confidence)
+
+  const materials = photoAnalysis?.detectedMaterials ?? []
+  const fixtures = photoAnalysis?.detectedFixtures ?? []
+  const conditions = photoAnalysis?.detectedConditions ?? []
+  const accessIssues = photoAnalysis?.detectedAccessIssues ?? []
+  const demoNeeds = photoAnalysis?.detectedDemoNeeds ?? []
+  const missingScopeFlags = photoScopeAssist?.missingScopeFlags ?? []
+  const suggestedAdditions = photoScopeAssist?.suggestedAdditions ?? []
+
+  const q = photoAnalysis?.quantitySignals
+  const quantityChips: string[] = []
+
+  if (q?.doors) quantityChips.push(`${q.doors} door${q.doors === 1 ? "" : "s"}`)
+  if (q?.windows) quantityChips.push(`${q.windows} window${q.windows === 1 ? "" : "s"}`)
+  if (q?.vanities) quantityChips.push(`${q.vanities} ${q.vanities === 1 ? "vanity" : "vanities"}`)
+  if (q?.toilets) quantityChips.push(`${q.toilets} toilet${q.toilets === 1 ? "" : "s"}`)
+  if (q?.sinks) quantityChips.push(`${q.sinks} sink${q.sinks === 1 ? "" : "s"}`)
+  if (q?.outlets) quantityChips.push(`${q.outlets} outlet${q.outlets === 1 ? "" : "s"}`)
+  if (q?.switches) quantityChips.push(`${q.switches} switch${q.switches === 1 ? "" : "es"}`)
+  if (q?.recessedLights) quantityChips.push(`${q.recessedLights} recessed light${q.recessedLights === 1 ? "" : "s"}`)
+  if (q?.ceilingHeightCategory) quantityChips.push(`${q.ceilingHeightCategory} ceilings`)
+
+  const wallRange =
+    q?.estimatedWallSqftMin != null && q?.estimatedWallSqftMax != null
+      ? `${q.estimatedWallSqftMin}–${q.estimatedWallSqftMax} wall sqft`
+      : null
+
+  const ceilingRange =
+    q?.estimatedCeilingSqftMin != null && q?.estimatedCeilingSqftMax != null
+      ? `${q.estimatedCeilingSqftMin}–${q.estimatedCeilingSqftMax} ceiling sqft`
+      : null
+
+  const floorRange =
+    q?.estimatedFloorSqftMin != null && q?.estimatedFloorSqftMax != null
+      ? `${q.estimatedFloorSqftMin}–${q.estimatedFloorSqftMax} floor sqft`
+      : null
+
+  const hasContent =
+    !!photoAnalysis?.summary ||
+    hasItems(materials) ||
+    hasItems(fixtures) ||
+    hasItems(conditions) ||
+    hasItems(accessIssues) ||
+    hasItems(demoNeeds) ||
+    hasItems(photoAnalysis?.observations) ||
+    hasItems(photoAnalysis?.suggestedScopeNotes) ||
+    hasItems(missingScopeFlags) ||
+    hasItems(suggestedAdditions) ||
+    quantityChips.length > 0 ||
+    !!wallRange ||
+    !!ceilingRange ||
+    !!floorRange ||
+    !!confidenceTone
+
+  if (!hasContent) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #dbeafe",
+        borderRadius: 14,
+        background: "#ffffff",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+            Photo Insights
+          </div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            Visible jobsite details pulled from uploaded photos
+          </div>
+        </div>
+
+        {confidenceTone && (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "7px 12px",
+              borderRadius: 999,
+              border: `1px solid ${confidenceTone.border}`,
+              background: confidenceTone.bg,
+              color: confidenceTone.color,
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            Confidence: {confidenceTone.label}
+          </div>
+        )}
+      </div>
+
+      {photoAnalysis?.summary && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 12,
+            background: "#f8fafc",
+            border: "1px solid #e5e7eb",
+            fontSize: 14,
+            lineHeight: 1.55,
+            color: "#1f2937",
+          }}
+        >
+          {photoAnalysis.summary}
+        </div>
+      )}
+
+            <InsightListBlock
+        title="Observations"
+        items={photoAnalysis?.observations}
+      />
+
+      <InsightListBlock
+        title="Suggested scope notes"
+        items={photoAnalysis?.suggestedScopeNotes}
+        tone="info"
+      />
+
+      {quantityChips.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#374151",
+              marginBottom: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Detected quantities
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {quantityChips.map((item, i) => (
+              <InfoChip key={`qty-${i}`} label={item} />
+            ))}
+            {wallRange && <InfoChip label={wallRange} />}
+            {ceilingRange && <InfoChip label={ceilingRange} />}
+            {floorRange && <InfoChip label={floorRange} />}
+          </div>
+        </div>
+      )}
+
+            {(photoAnalysis?.detectedRoomTypes?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#374151",
+              marginBottom: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Detected room types
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {photoAnalysis!.detectedRoomTypes!.map((item, i) => (
+              <InfoChip key={`roomtype-${i}`} label={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {materials.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#374151",
+              marginBottom: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Detected materials
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {materials.map((item, i) => (
+              <InfoChip key={`material-${i}`} label={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {fixtures.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#374151",
+              marginBottom: 6,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Detected fixtures
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {fixtures.map((item, i) => (
+              <InfoChip key={`fixture-${i}`} label={item} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <InsightListBlock
+        title="Scope flags"
+        items={missingScopeFlags}
+        tone="warning"
+      />
+
+      <InsightListBlock
+        title="Suggested additions"
+        items={suggestedAdditions}
+        tone="info"
+      />
+
+      <InsightListBlock
+        title="Detected conditions"
+        items={conditions}
+      />
+
+      <InsightListBlock
+        title="Access issues"
+        items={accessIssues}
+      />
+
+      <InsightListBlock
+        title="Demo needs"
+        items={demoNeeds}
+      />
+    </div>
+  )
+}
+
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
 
@@ -3648,1253 +4719,38 @@ function ScheduleEditor({
   </div>
 </details>
      
-      <p style={{ marginTop: 12, fontWeight: 600 }}>Trade Type</p>
-<select
-  value={trade}
-  onChange={(e) => setTrade(normalizeTrade(e.target.value))}
-  style={{ width: "100%", padding: 10, marginTop: 6 }}
->
-  <option value="">Auto-detect</option>
-  <option value="painting">Painting</option>
-  <option value="drywall">Drywall</option>
-  <option value="flooring">Flooring</option>
-  <option value="electrical">Electrical</option>
-  <option value="plumbing">Plumbing</option>
-  <option value="bathroom_tile">Bathroom / Tile</option>
-  <option value="carpentry">Carpentry</option>
-  <option value="general_renovation">General Renovation</option>
-</select>
-
-{showPaintScope && (
-  <div style={{ marginTop: 12 }}>
-    <p style={{ marginTop: 0, fontWeight: 600 }}>
-      {effectivePaintScope === "doors_only"
-        ? "Paint Scope: Doors only (auto-detected)"
-        : "Paint Scope"}
-    </p>
-
-    <select
-      value={effectivePaintScope === "doors_only" ? "walls" : paintScope}
-      disabled={effectivePaintScope === "doors_only"}
-      onChange={(e) => setPaintScope(e.target.value as any)}
-      style={{
-        width: "100%",
-        padding: 10,
-        marginTop: 6,
-        opacity: effectivePaintScope === "doors_only" ? 0.6 : 1,
-        cursor: effectivePaintScope === "doors_only" ? "not-allowed" : "pointer",
-      }}
-    >
-      {PAINT_SCOPE_OPTIONS.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-
-    {effectivePaintScope === "doors_only" ? (
-      <p style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-        Scope was automatically detected as doors-only based on your description.
-      </p>
-    ) : (
-      <p style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-        This controls whether ceilings / trim / doors are included.
-      </p>
-    )}
-  </div>
-)}
-
-
-      <p style={{ marginTop: 12, fontWeight: 600 }}>Job State</p>
-<select
-  value={state}
-  onChange={(e) => setState(e.target.value)}
-  style={{
-    width: "100%",
-    padding: 10,
-    marginTop: 6,
-    borderRadius: 6,
-    border: "1px solid #ccc",
-  }}
->
-  <option value="">Select state</option>
-  <option value="AL">Alabama</option>
-  <option value="AK">Alaska</option>
-  <option value="AZ">Arizona</option>
-  <option value="AR">Arkansas</option>
-  <option value="CA">California</option>
-  <option value="CO">Colorado</option>
-  <option value="CT">Connecticut</option>
-  <option value="DE">Delaware</option>
-  <option value="FL">Florida</option>
-  <option value="GA">Georgia</option>
-  <option value="HI">Hawaii</option>
-  <option value="ID">Idaho</option>
-  <option value="IL">Illinois</option>
-  <option value="IN">Indiana</option>
-  <option value="IA">Iowa</option>
-  <option value="KS">Kansas</option>
-  <option value="KY">Kentucky</option>
-  <option value="LA">Louisiana</option>
-  <option value="ME">Maine</option>
-  <option value="MD">Maryland</option>
-  <option value="MA">Massachusetts</option>
-  <option value="MI">Michigan</option>
-  <option value="MN">Minnesota</option>
-  <option value="MS">Mississippi</option>
-  <option value="MO">Missouri</option>
-  <option value="MT">Montana</option>
-  <option value="NE">Nebraska</option>
-  <option value="NV">Nevada</option>
-  <option value="NH">New Hampshire</option>
-  <option value="NJ">New Jersey</option>
-  <option value="NM">New Mexico</option>
-  <option value="NY">New York</option>
-  <option value="NC">North Carolina</option>
-  <option value="ND">North Dakota</option>
-  <option value="OH">Ohio</option>
-  <option value="OK">Oklahoma</option>
-  <option value="OR">Oregon</option>
-  <option value="PA">Pennsylvania</option>
-  <option value="RI">Rhode Island</option>
-  <option value="SC">South Carolina</option>
-  <option value="SD">South Dakota</option>
-  <option value="TN">Tennessee</option>
-  <option value="TX">Texas</option>
-  <option value="UT">Utah</option>
-  <option value="VT">Vermont</option>
-  <option value="VA">Virginia</option>
-  <option value="WA">Washington</option>
-  <option value="WV">West Virginia</option>
-  <option value="WI">Wisconsin</option>
-  <option value="WY">Wyoming</option>
-  <option value="DC">District of Columbia</option>
-</select>
-
-{/* -------------------------
-    Invoices
-------------------------- */}
-{filteredInvoices.length > 0 && (
-  <div
-    ref={invoicesSectionRef}
-    style={{
-      marginTop: 18,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      background: "#fff",
-    }}
-  >
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <h3 style={{ margin: 0 }}>Invoices</h3>
-      <button
-        type="button"
-        onClick={() => {
-  setInvoices([])
-  localStorage.setItem(INVOICE_KEY, JSON.stringify([]))
-  setStatus("All invoices cleared.")
-}}
-        style={{ fontSize: 12 }}
-      >
-        Clear all
-      </button>
-    </div>
-
-    <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-      {filteredInvoices.map((inv) => (
-        <div
-          key={inv.id}
-          style={{
-            padding: 10,
-            border: "1px solid #eee",
-            borderRadius: 10,
-            background: "#fafafa",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-  <div style={{ fontWeight: 700 }}>{inv.invoiceNo}</div>
-
-  {computeLiveInvoiceStatus(inv) === "paid" && (
-  <span
-    style={{
-      fontSize: 11,
-      fontWeight: 800,
-      padding: "3px 8px",
-      borderRadius: 999,
-      background: "#ecfdf5",
-      border: "1px solid #a7f3d0",
-      color: "#065f46",
-    }}
-  >
-    PAID
-  </span>
-)}
-</div>
-              <div style={{ marginTop: 6 }}>
-  <span
-    style={{
-      display: "inline-block",
-      padding: "3px 8px",
-      borderRadius: 999,
-      fontSize: 11,
-      fontWeight: 800,
-      border: "1px solid #e5e7eb",
-      background:
-        computeLiveInvoiceStatus(inv) === "paid"
-          ? "#ecfdf5"
-          : computeLiveInvoiceStatus(inv) === "overdue"
-          ? "#fff5f5"
-          : "#f3f4f6",
-      color:
-        computeLiveInvoiceStatus(inv) === "paid"
-          ? "#065f46"
-          : computeLiveInvoiceStatus(inv) === "overdue"
-          ? "#9b1c1c"
-          : "#111827",
-    }}
-  >
-    {computeLiveInvoiceStatus(inv).toUpperCase()}
-  </span>
-</div>
-              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-  {inv.billToName} • Due {new Date(inv.dueDate).toLocaleDateString()}
-</div>
-
-{computeLiveInvoiceStatus(inv) === "paid" && inv.paidAt && (
-  <div style={{ fontSize: 12, color: "#065f46", marginTop: 4 }}>
-    Paid on {new Date(inv.paidAt).toLocaleDateString()}
-  </div>
-)}
-              <div style={{ fontSize: 12, color: "#333", marginTop: 6 }}>
-                Total Due: <strong>${Number(inv.total || 0).toLocaleString()}</strong>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <button type="button" onClick={() => downloadInvoicePDF(inv)}>
-                Download Invoice PDF
-              </button>
-
-              <button
-  type="button"
-  onClick={() => {
-    const live = computeLiveInvoiceStatus(inv)
-    if (live === "paid") {
-      updateInvoice(inv.id, { status: "sent", paidAt: undefined })
-      setStatus(`Marked unpaid: ${inv.invoiceNo}`)
-    } else {
-      updateInvoice(inv.id, { status: "paid", paidAt: Date.now() })
-      setStatus(`Marked paid: ${inv.invoiceNo}`)
-    }
-  }}
-  style={{ fontSize: 12 }}
->
-  {computeLiveInvoiceStatus(inv) === "paid" ? "Mark Unpaid" : "Mark Paid"}
-</button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setInvoices((prev) => {
-  const next = prev.filter((x) => x.id !== inv.id)
-  localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
-  return next
-})
-                }
-                style={{ fontSize: 12 }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-     </div>
-  </div>
-)}
-
-      <textarea
-        placeholder="Describe the scope change…"
-        value={scopeChange}
-        onChange={(e) => setScopeChange(e.target.value)}
-        style={{ width: "100%", height: 120, marginTop: 12 }}
-      />
-
-      <div
-  style={{
-    marginTop: 12,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    background: "#fff",
-  }}
->
-  <div style={{ fontWeight: 700, marginBottom: 6 }}>
-    Job Photos (optional)
-  </div>
-
-  <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
-    Upload up to 5 photos to help detect materials, conditions, access issues, and scope details.
-  </div>
-
-  <input
-    type="file"
-    accept="image/*"
-    multiple
-    onChange={(e) => {
-      handlePhotoUpload(e.target.files)
-      e.currentTarget.value = ""
-    }}
-    style={{ width: "100%" }}
-  />
-
-  {jobPhotos.length > 0 && (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 10,
-        marginTop: 12,
-      }}
-    >
-      {jobPhotos.map((photo) => (
-        <div
-          key={photo.id}
-          style={{
-            border: "1px solid #e5e7eb",
-            borderRadius: 10,
-            padding: 8,
-            background: "#fafafa",
-          }}
-        >
-          <img
-            src={photo.dataUrl}
-            alt={photo.name}
-            style={{
-              width: "100%",
-              height: 140,
-              objectFit: "cover",
-              borderRadius: 8,
-              display: "block",
-            }}
-          />
-
-          <div
-            style={{
-              fontSize: 12,
-              color: "#444",
-              marginTop: 8,
-              wordBreak: "break-word",
-            }}
-          >
-            {photo.name}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => removeJobPhoto(photo.id)}
-            style={{ marginTop: 8, fontSize: 12 }}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-    </div>
-  )}
-</div>
-
-      {scopeQuality.score < 70 && (
-  <div className="mt-3 rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm">
-    <div className="font-semibold">⚠ Scope may be incomplete</div>
-
-    <ul className="mt-1 list-disc pl-5">
-      {scopeQuality.warnings.map((w, i) => (
-        <li key={i}>{w}</li>
-      ))}
-    </ul>
-  </div>
-)}
-
-      <div
-  style={{
-    marginTop: 16,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    overflow: "visible",   // ✅ THIS LINE FIXES IT
-  }}
->
-  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-    <input
-      type="checkbox"
-      checked={measureEnabled}
-      onChange={(e) => setMeasureEnabled(e.target.checked)}
-    />
-    <span style={{ fontWeight: 600 }}>Optional Measurements</span>
-    <span style={{ fontSize: 12, color: "#666" }}>(helps pricing + detail)</span>
-  </label>
-
-  {measureEnabled && (
-  <div
-  style={{
-    marginTop: 12,
-    overflowX: "auto",
-    overflowY: "visible",
-    padding: 4,
-  }}
->
-      {measureRows.map((r, idx) => (
-        <div
-  key={idx}
-  style={{
-    display: "grid",
-    gridTemplateColumns:
-      "minmax(120px,1.2fr) minmax(90px,1fr) minmax(90px,1fr) minmax(70px,0.8fr) minmax(80px,auto)",
-    gap: 10,           // ⬅️ slightly larger gap
-    alignItems: "center",
-    marginBottom: 12,
-  }}
->
-          <input
-            value={r.label}
-            onChange={(e) => {
-              const next = [...measureRows]
-              next[idx] = { ...next[idx], label: e.target.value }
-              setMeasureRows(next)
-            }}
-            placeholder="Label (e.g., Wall A)"
-            style={{ padding: 8, outlineOffset: 2 }}
-          />
-
-          <input
-            type="number"
-            value={r.lengthFt === 0 ? "" : r.lengthFt}
-            onChange={(e) => {
-              const val = e.target.value === "" ? 0 : Number(e.target.value)
-              const next = [...measureRows]
-              next[idx] = { ...next[idx], lengthFt: val }
-              setMeasureRows(next)
-            }}
-            placeholder="Length (ft)"
-            style={{ padding: 8, outlineOffset: 2 }}
-          />
-
-          <input
-            type="number"
-            value={r.heightFt === 0 ? "" : r.heightFt}
-            onChange={(e) => {
-              const val = e.target.value === "" ? 0 : Number(e.target.value)
-              const next = [...measureRows]
-              next[idx] = { ...next[idx], heightFt: val }
-              setMeasureRows(next)
-            }}
-            placeholder="Height (ft)"
-            style={{ padding: 8, outlineOffset: 2 }}
-          />
-
-          <input
-            type="number"
-            value={r.qty}
-            min={1}
-            onChange={(e) => {
-              const val = e.target.value === "" ? 1 : Number(e.target.value)
-              const next = [...measureRows]
-              next[idx] = { ...next[idx], qty: Math.max(1, val) }
-              setMeasureRows(next)
-            }}
-            placeholder="Qty"
-            style={{ padding: 8, outlineOffset: 2 }}
-          />
-
-          <div style={{ fontSize: 13, color: "#333", textAlign: "right" }}>
-            <strong>{rowSqft(r)}</strong> sqft
-          </div>
-
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
-            {measureRows.length > 1 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const next = measureRows.filter((_, i) => i !== idx)
-                  setMeasureRows(next)
-                }}
-                style={{ fontSize: 12 }}
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: 8,
-        }}
-      >
-        <button
-          type="button"
-          onClick={() =>
-            setMeasureRows((rows) => [
-              ...rows,
-              {
-                label: `Area ${rows.length + 1}`,
-                lengthFt: 0,
-                heightFt: 0,
-                qty: 1,
-              },
-            ])
-          }
-        >
-          + Add another area
-        </button>
-
-        <div style={{ fontSize: 13 }}>
-          Total: <strong>{totalSqft}</strong> sqft
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
-      <button
-  type="button"
-  onClick={generate}
-  disabled={loading}
-  style={{
-    width: "100%",
-    padding: 12,
-    marginTop: 12,
-    fontSize: 16,
-    background: loading ? "#555" : "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    cursor: loading ? "not-allowed" : "pointer",
-  }}
->
-  {loading ? "Generating…" : "Generate"}
-</button>
-{status && (
-  <p style={{ marginTop: 10, fontSize: 13, color: "#c53030" }}>
-    {status}
-  </p>
-)}
+      <EstimateBuilderSection
+  trade={trade}
+  setTrade={setTrade}
+  normalizeTrade={normalizeTrade}
+  showPaintScope={showPaintScope}
+  effectivePaintScope={effectivePaintScope}
+  paintScope={paintScope}
+  setPaintScope={setPaintScope}
+  PAINT_SCOPE_OPTIONS={PAINT_SCOPE_OPTIONS}
+  state={state}
+  setState={setState}
+  scopeChange={scopeChange}
+  setScopeChange={setScopeChange}
+  handlePhotoUpload={handlePhotoUpload}
+  jobPhotos={jobPhotos}
+  removeJobPhoto={removeJobPhoto}
+  scopeQuality={scopeQuality}
+  measureEnabled={measureEnabled}
+  setMeasureEnabled={setMeasureEnabled}
+  measureRows={measureRows}
+  setMeasureRows={setMeasureRows}
+  rowSqft={rowSqft}
+  totalSqft={totalSqft}
+  generate={generate}
+  loading={loading}
+  status={status}
+/>
 
 {loading && (
   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
     Generating professional document…
   </p>
-)}
-
-{/* -------------------------
-    Jobs Dashboard
-------------------------- */}
-<div
-  style={{
-    marginTop: 14,
-    marginBottom: 16,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#fff",
-  }}
->
-  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-    <div>
-      <h3 style={{ margin: 0 }}>Jobs</h3>
-      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-        Select a job to keep estimates + invoices organized.
-      </div>
-    </div>
-
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <button
-        type="button"
-        onClick={() => setActiveJobId("")}
-        style={{ fontSize: 12 }}
-      >
-        View All
-      </button>
-
-      <button
-        type="button"
-        onClick={() => {
-          const id = getOrCreateJobIdFromDetails()
-          setActiveJobId(id)
-          setStatus("Job selected.")
-        }}
-        style={{ fontSize: 12 }}
-      >
-        Create / Select from Job Details
-      </button>
-    </div>
-  </div>
-
-  <div style={{ marginTop: 10 }}>
-    <label style={{ fontSize: 12, color: "#444", fontWeight: 700 }}>
-      Active Job
-    </label>
-
-    <select
-      value={activeJobId}
-      onChange={(e) => setActiveJobId(e.target.value)}
-      style={{
-        width: "100%",
-        padding: 10,
-        marginTop: 6,
-        borderRadius: 10,
-        border: "1px solid #ddd",
-      }}
-    >
-      <option value="">All jobs</option>
-      {jobs
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map((j) => (
-          <option key={j.id} value={j.id}>
-            {(j.jobName || "Untitled Job") +
-              (j.clientName ? ` — ${j.clientName}` : "")}
-          </option>
-        ))}
-    </select>
-  </div>
-
-  <div
-  style={{
-    marginTop: 10,
-    padding: 10,
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#fff",
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  }}
->
-  <div>
-    <div style={{ fontSize: 12, fontWeight: 800, color: "#111" }}>
-      Crew Capacity Settings
-    </div>
-    <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-      Set how many crews you can run in parallel.
-    </div>
-  </div>
-
-  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-    <span style={{ fontSize: 12, color: "#444", fontWeight: 700 }}>
-      Crews:
-    </span>
-
-    <input
-  type="number"
-  min={1}
-  max={5}
-  value={crewCount}
-  onChange={(e) => {
-    const raw = Number(e.target.value || 1)
-    const next = Math.max(1, Math.min(5, Math.round(raw)))
-    setCrewCount(next)
-  }}
-  style={{ width: 90, padding: 8 }}
-/>
-
-    <div style={{ fontSize: 12, color: "#111" }}>
-      Weekly capacity: <strong>{crewCount * 6}</strong> crew-days
-    </div>
-  </div>
-</div>
-
-{(() => {
-  const weeks = computeWeeklyCrewLoad()
-  if (weeks.length === 0) return null
-
-  const capacity = crewCount * 6
-
-  return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ fontWeight: 900, fontSize: 14 }}>
-        Crew Loading Dashboard
-      </div>
-
-      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-        Weekly demand vs capacity using each job’s latest schedule start date and crew-days.
-      </div>
-
-      <div style={{ fontSize: 12, color: "#444", marginTop: 6 }}>
-        Capacity: <strong>{crewCount}</strong> crew{crewCount > 1 ? "s" : ""} × 6 days
-        = <strong> {capacity}</strong> crew-days/week
-      </div>
-
-      <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-        {weeks.map((w) => {
-          const over = w.demandCrewDays > capacity
-          const utilization =
-            capacity > 0 ? Math.round((w.demandCrewDays / capacity) * 100) : 0
-
-          return (
-            <div
-              key={w.weekStartISO}
-              style={{
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #eee",
-                background: over ? "#fff5f5" : "#f9fafb",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 800 }}>
-                  Week of {new Date(w.weekStartISO + "T00:00:00").toLocaleDateString()}
-                </div>
-
-                <div style={{ fontSize: 12 }}>
-                  Demand: <strong>{w.demandCrewDays}</strong> / Capacity:{" "}
-                  <strong>{capacity}</strong> • Utilization:{" "}
-                  <strong>{utilization}%</strong>{" "}
-                  {over ? (
-                    <span style={{ color: "#9b1c1c", fontWeight: 900 }}>
-                      • OVERLOADED
-                    </span>
-                  ) : (
-                    <span style={{ color: "#065f46", fontWeight: 900 }}>
-                      • OK
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-                {w.jobs.map((job, idx) => (
-                  <div
-                    key={`${w.weekStartISO}_${job.jobId}_${idx}`}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      fontSize: 12,
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      background: "#fff",
-                      border: "1px solid #f0f0f0",
-                    }}
-                  >
-                    <div style={{ color: "#111" }}>{job.jobName}</div>
-                    <div style={{ fontWeight: 700 }}>{job.crewDays} crew-day{job.crewDays !== 1 ? "s" : ""}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-})()}
-
-  {jobs.length === 0 ? (
-    <div style={{ marginTop: 10, fontSize: 12, color: "#666" }}>
-      No jobs yet. Fill out Job Details and click <strong>Create / Select from Job Details</strong>.
-    </div>
-  ) : (
-    <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-      {jobs
-        .slice()
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map((j) => {
-  const latest = latestEstimateForJob(j.id)
-  const latestTotal = Number(latest?.pricing?.total || 0)
-  const originalLocked = lockedOriginalEstimateForJob(j.id)
-
-  const contract = computeJobContractSummary(j.id)
-  const originalLockedTotal = contract.originalEstimateTotal
-  const changeOrdersTotal = contract.changeOrdersTotal
-  const currentContractValue = contract.currentContractValue
-          const dep = latest?.deposit
-          const depComputed = computeDepositFromEstimateTotal(latestTotal, dep)
-
-          const invSum = invoiceSummaryForJob(j.id)
-          
-          const latestInv = latestInvoiceForJob(j.id)
-          const profit = computeProfitSummary(j.id)
-          const act = actualsForJob(j.id)
-
-          const isActive = activeJobId === j.id
-
-          return (
-            <div
-              key={j.id}
-              style={{
-                padding: 10,
-                border: "1px solid #eee",
-                borderRadius: 12,
-                background: isActive ? "#f0f9ff" : "#fafafa",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ minWidth: 240, flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 800 }}>
-                      {j.jobName || "Untitled Job"}
-                    </div>
-                    {isActive && (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 800,
-                          padding: "3px 8px",
-                          borderRadius: 999,
-                          background: "#dbeafe",
-                          border: "1px solid #bfdbfe",
-                          color: "#1e3a8a",
-                        }}
-                      >
-                        Active
-                      </span>
-                    )}
-                  </div>
-
-                  <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                    {j.clientName ? `Client: ${j.clientName}` : "Client: —"}
-                    {j.jobAddress ? ` • ${j.jobAddress}` : ""}
-                  </div>
-
-                  <div style={{ fontSize: 12, color: "#333", marginTop: 8, display: "grid", gap: 4 }}>
-                    <div>
-                      Latest Estimate: <strong>{latest ? money(latestTotal) : "—"}</strong>
-                    </div>
-
-                    <div>
-  Original Estimate: <strong>{originalLocked ? money(originalLockedTotal) : "—"}</strong>
-</div>
-
-                    <div>
-  Change Orders Total: <strong>{originalLocked ? money(changeOrdersTotal) : "—"}</strong>
-</div>
-
-<div>
-  Current Contract Value: <strong>{originalLocked ? money(currentContractValue) : "—"}</strong>
-</div>
-
-<div>
-  Budget Remaining (vs Outstanding):{" "}
-  <strong>
-    {originalLocked ? money(Math.max(0, currentContractValue - invSum.outstanding)) : "—"}
-  </strong>
-</div>
-
-                    {latest?.deposit?.enabled ? (
-                      <div>
-                        Deposit / Remaining:{" "}
-                        <strong>{money(depComputed.depositDue)}</strong> /{" "}
-                        <strong>{money(depComputed.remaining)}</strong>
-                      </div>
-                    ) : (
-                      <div>Deposit: <strong>—</strong></div>
-                    )}
-
-                    <div>
-                      Invoices:{" "}
-                      <strong>{invSum.total}</strong>{" "}
-                      <span style={{ fontSize: 12, color: "#666" }}>
-                        ({invSum.draftCount} draft • {invSum.paidCount} paid • {invSum.overdueCount} overdue • {invSum.openCount} open)
-                      </span>
-                    </div>
-
-                    <div style={{ color: invSum.overdueCount > 0 ? "#9b1c1c" : "#111" }}>
-                      Outstanding: <strong>{money(invSum.outstanding)}</strong>
-                      {invSum.overdueCount > 0 ? (
-                        <span style={{ fontSize: 12, color: "#9b1c1c" }}> • overdue</span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div
-  style={{
-    marginTop: 8,
-    padding: 10,
-    border: "1px solid #eee",
-    borderRadius: 10,
-    background: "#fff",
-  }}
->
-  <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>
-    Profit Tracking
-  </div>
-
-  <div style={{ fontSize: 12, marginTop: 6 }}>
-    Budget Total: <strong>{money(profit.budgetTotal)}</strong>
-  </div>
-
-  <div style={{ fontSize: 12 }}>
-    Actual Costs: <strong>{money(profit.actTotal)}</strong>
-  </div>
-
-  <div style={{ fontSize: 12, marginTop: 4 }}>
-    Profit:{" "}
-    <strong
-      style={{
-        color: profit.profit >= 0 ? "#065f46" : "#9b1c1c",
-      }}
-    >
-      {money(profit.profit)}
-    </strong>{" "}
-    <span style={{ color: "#666" }}>({profit.marginPct}% margin)</span>
-  </div>
-
-  <details style={{ marginTop: 8 }}>
-    <summary style={{ cursor: "pointer", fontSize: 12 }}>
-      Edit actual costs
-    </summary>
-
-    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-      <input
-        type="number"
-        placeholder="Labor actual ($)"
-        value={act?.labor ?? 0}
-        onChange={(e) =>
-          upsertActuals(j.id, {
-            labor: e.target.value === "" ? 0 : Number(e.target.value),
-          })
-        }
-        style={{ width: "100%", padding: 8 }}
-      />
-
-      <input
-        type="number"
-        placeholder="Materials actual ($)"
-        value={act?.materials ?? 0}
-        onChange={(e) =>
-          upsertActuals(j.id, {
-            materials: e.target.value === "" ? 0 : Number(e.target.value),
-          })
-        }
-        style={{ width: "100%", padding: 8 }}
-      />
-
-      <input
-        type="number"
-        placeholder="Subs / other actual ($)"
-        value={act?.subs ?? 0}
-        onChange={(e) =>
-          upsertActuals(j.id, {
-            subs: e.target.value === "" ? 0 : Number(e.target.value),
-          })
-        }
-        style={{ width: "100%", padding: 8 }}
-      />
-
-      <textarea
-        placeholder="Notes (optional)"
-        value={act?.notes ?? ""}
-        onChange={(e) => upsertActuals(j.id, { notes: e.target.value })}
-        style={{ width: "100%", padding: 8, height: 60 }}
-      />
-
-      <div style={{ fontSize: 11, color: "#666" }}>
-        Last updated:{" "}
-        <strong>
-          {act?.updatedAt ? new Date(act.updatedAt).toLocaleString() : "—"}
-        </strong>
-      </div>
-    </div>
-  </details>
-</div>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveJobId(j.id)
-                      setStatus("Job selected.")
-                    }}
-                  >
-                    Select Job
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setJobDetails((prev) => ({
-                        ...prev,
-                        clientName: j.clientName || prev.clientName,
-                        jobName: j.jobName || prev.jobName,
-                        jobAddress: j.jobAddress || prev.jobAddress,
-                        changeOrderNo: j.changeOrderNo || prev.changeOrderNo,
-                      }))
-                      setActiveJobId(j.id)
-                      setStatus("Job details loaded into the form.")
-                    }}
-                    style={{ fontSize: 12 }}
-                  >
-                    Load into Form
-                  </button>
-
-                  <div style={{ display: "grid", gap: 6, marginTop: 2 }}>
-                    <button
-                      type="button"
-                      onClick={() => selectJobAndJumpToInvoices(j.id)}
-                      style={{ fontSize: 12 }}
-                    >
-                      View Invoices
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => createInvoiceFromLatestEstimate(j.id)}
-                      style={{ fontSize: 12 }}
-                    >
-                      Create Invoice (Latest Estimate)
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => createBalanceInvoiceFromLatestEstimate(j.id)}
-                      disabled={!latest || !latest?.deposit?.enabled}
-                      style={{
-                        fontSize: 12,
-                        opacity: !latest || !latest?.deposit?.enabled ? 0.6 : 1,
-                        cursor: !latest || !latest?.deposit?.enabled ? "not-allowed" : "pointer",
-                      }}
-                      title={
-                        !latest
-                          ? "No estimate found yet."
-                          : !latest?.deposit?.enabled
-                          ? "Deposit is not enabled on the latest estimate."
-                          : "Create an invoice for the remaining balance after deposit."
-                      }
-                    >
-                      Create Balance Invoice
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!latestInv) {
-                          setStatus("No invoices found for this job yet.")
-                          return
-                        }
-                        downloadInvoicePDF(latestInv)
-                        setStatus("Downloading latest invoice PDF.")
-                      }}
-                      disabled={!latestInv}
-                      style={{
-                        fontSize: 12,
-                        opacity: latestInv ? 1 : 0.6,
-                        cursor: latestInv ? "pointer" : "not-allowed",
-                      }}
-                    >
-                      Download Latest Invoice PDF
-                    </button>
-                  </div>
-
-                  <details style={{ marginTop: 2 }}>
-                    <summary style={{ cursor: "pointer", fontSize: 12 }}>
-                      Edit job
-                    </summary>
-
-                    <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                      <input
-                        placeholder="Client name"
-                        value={j.clientName || ""}
-                        onChange={(e) => updateJob(j.id, { clientName: e.target.value })}
-                        style={{ width: "100%", padding: 8 }}
-                      />
-                      <input
-                        placeholder="Job name"
-                        value={j.jobName || ""}
-                        onChange={(e) => updateJob(j.id, { jobName: e.target.value })}
-                        style={{ width: "100%", padding: 8 }}
-                      />
-                      <input
-                        placeholder="Job address"
-                        value={j.jobAddress || ""}
-                        onChange={(e) => updateJob(j.id, { jobAddress: e.target.value })}
-                        style={{ width: "100%", padding: 8 }}
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          deleteJob(j.id)
-                          setStatus("Job deleted.")
-                        }}
-                        style={{ fontSize: 12 }}
-                      >
-                        Delete Job (and linked estimates/invoices)
-                      </button>
-                    </div>
-                  </details>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-    </div>
-  )}
-</div>
-
-{/* -------------------------
-    Saved History
-------------------------- */}
-{filteredHistory.length > 0 && (
-  <div
-    style={{
-      marginTop: 18,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      background: "#fff",
-    }}
-  >
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <h3 style={{ margin: 0 }}>Saved Estimates</h3>
-      <button type="button" onClick={clearHistory} style={{ fontSize: 12 }}>
-        Clear all
-      </button>
-    </div>
-
-    <p style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: "#666" }}>
-      Click “Load” to restore an estimate and download the PDF again.
-    </p>
-
-    <div style={{ display: "grid", gap: 10 }}>
-      {filteredHistory.map((h) => (
-        <div
-          key={h.id}
-          style={{
-            padding: 10,
-            border: "1px solid #eee",
-            borderRadius: 10,
-            background: "#fafafa",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-  <div style={{ fontWeight: 700 }}>
-    {h.jobDetails.jobName || "Untitled Job"}
-  </div>
-
-  <span
-    style={{
-      fontSize: 11,
-      fontWeight: 800,
-      padding: "3px 8px",
-      borderRadius: 999,
-      background: h.approval?.status === "approved" ? "#ecfdf5" : "#f3f4f6",
-      border: "1px solid #e5e7eb",
-      color: h.approval?.status === "approved" ? "#065f46" : "#444",
-    }}
-  >
-    {h.approval?.status === "approved" ? "APPROVED" : "PENDING APPROVAL"}
-  </span>
-</div>
-             <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-  {h.jobDetails.clientName ? `Client: ${h.jobDetails.clientName} • ` : ""}
-  {h.documentType} • {new Date(h.createdAt).toLocaleString()}
-</div>
-              <div style={{ fontSize: 12, color: "#333", marginTop: 6 }}>
-  Total: <strong>${Number(h.pricing.total || 0).toLocaleString()}</strong>
-</div>
-
-<div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-  Invoice Status:{" "}
-  <strong>
-    {hasAnyInvoiceForEstimate(h.id) ? "Invoice Created" : "No Invoice Yet"}
-  </strong>
-</div>
-              {h.approval?.status === "approved" && (
-  <div style={{ fontSize: 12, color: "#065f46", marginTop: 4 }}>
-    Approved by {h.approval?.approvedBy || "Client"}
-    {h.approval?.approvedAt
-      ? ` on ${new Date(h.approval.approvedAt).toLocaleString()}`
-      : ""}
-  </div>
-)}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-
-<button
-  type="button"
-  onClick={() => {
-    const url = `${window.location.origin}/approve/${h.id}`
-    navigator.clipboard.writeText(url)
-    setStatus("Approval link copied to clipboard.")
-  }}
-  style={{ fontSize: 12 }}
->
-  Copy Approval Link
-</button>
-
-              <button type="button" onClick={() => loadHistoryItem(h)}>
-                Load
-              </button>
-
-              <button
-  type="button"
-  onClick={() => createInvoiceFromEstimate(h)}
-  disabled={hasAnyInvoiceForEstimate(h.id)}
-  style={{
-    fontSize: 12,
-    opacity: hasAnyInvoiceForEstimate(h.id) ? 0.6 : 1,
-    cursor: hasAnyInvoiceForEstimate(h.id) ? "not-allowed" : "pointer",
-  }}
->
-  {hasAnyInvoiceForEstimate(h.id) ? "Invoice Created" : "Create Invoice"}
-</button>
-
-              <button
-  type="button"
-  onClick={() => createBalanceInvoiceFromEstimate(h)}
-  style={{ fontSize: 12 }}
->
-  Create Balance Invoice
-</button>
-              
-              <button
-                type="button"
-                onClick={() => deleteHistoryItem(h.id)}
-                style={{ fontSize: 12 }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
 )}
 
 {result && (
@@ -4923,55 +4779,11 @@ function ScheduleEditor({
   Generated from the scope provided{jobPhotos.length > 0 ? " and uploaded photos" : ""}.
 </p>
 
-{photoAnalysis && (
-  <div
-    style={{
-      marginTop: 12,
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #dbeafe",
-      borderRadius: 10,
-      background: "#eff6ff",
-    }}
-  >
-    <div style={{ fontWeight: 700, color: "#1d4ed8" }}>
-      Photo Analysis
-    </div>
-
-    {photoAnalysis.summary && (
-      <div style={{ marginTop: 6, fontSize: 14, color: "#1e3a8a" }}>
-        {photoAnalysis.summary}
-      </div>
-    )}
-
-    {Array.isArray(photoAnalysis.observations) &&
-      photoAnalysis.observations.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>
-            Observations
-          </div>
-          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
-            {photoAnalysis.observations.map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-    {Array.isArray(photoAnalysis.suggestedScopeNotes) &&
-      photoAnalysis.suggestedScopeNotes.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a" }}>
-            Suggested Scope Notes
-          </div>
-          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
-            {photoAnalysis.suggestedScopeNotes.map((item, i) => (
-              <li key={i}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-  </div>
+{(photoAnalysis || photoScopeAssist) && (
+  <PhotoInsightsCard
+    photoAnalysis={photoAnalysis}
+    photoScopeAssist={photoScopeAssist}
+  />
 )}
 
 {pricingMemory && (
@@ -5169,30 +4981,29 @@ function ScheduleEditor({
 
     <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
       <div>
-  Original Estimate:{" "}
-  <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
-</div>
+        Original Estimate:{" "}
+        <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
+      </div>
 
-{!changeOrderSummary.isOriginalEstimate && (
-  <div>
-    This Change Order:{" "}
-    <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
-  </div>
-)}
+      {!changeOrderSummary.isOriginalEstimate && (
+        <div>
+          This Change Order:{" "}
+          <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
+        </div>
+      )}
 
-<div>
-  Previous Contract Value:{" "}
-  <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
-</div>
+      <div>
+        Previous Contract Value:{" "}
+        <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
+      </div>
 
-<div>
-  New Contract Value:{" "}
-  <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
-</div>
+      <div>
+        New Contract Value:{" "}
+        <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
+      </div>
 
-<div>
-  Cost Change:{" "}
-  
+      <div>
+        Cost Change:{" "}
         <strong
           style={{
             color:
@@ -5213,35 +5024,35 @@ function ScheduleEditor({
       </div>
 
       <div>
-  Schedule Impact:{" "}
-<strong>
-  {(() => {
-  const hasPreviousSchedule = !!changeOrderSummary.originalEnd
-  const hasCurrentSchedule = !!changeOrderSummary.currentEnd
+        Schedule Impact:{" "}
+        <strong>
+          {(() => {
+            const hasPreviousSchedule = !!changeOrderSummary.originalEnd
+            const hasCurrentSchedule = !!changeOrderSummary.currentEnd
 
-  if (!hasPreviousSchedule && !hasCurrentSchedule) {
-    return "Neither estimate has a full schedule"
-  }
+            if (!hasPreviousSchedule && !hasCurrentSchedule) {
+              return "Neither estimate has a full schedule"
+            }
 
-  if (!hasPreviousSchedule) {
-    return "Original estimate had no full schedule"
-  }
+            if (!hasPreviousSchedule) {
+              return "Original estimate had no full schedule"
+            }
 
-  if (!hasCurrentSchedule) {
-    return "Current estimate has no full schedule"
-  }
+            if (!hasCurrentSchedule) {
+              return "Current estimate has no full schedule"
+            }
 
-  return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
-})()}
-</strong>
-</div>
+            return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
+          })()}
+        </strong>
+      </div>
 
       <div>
         Original Completion:{" "}
         <strong>
           {changeOrderSummary.originalEnd
-  ? changeOrderSummary.originalEnd.toLocaleDateString()
-  : "—"}
+            ? changeOrderSummary.originalEnd.toLocaleDateString()
+            : "—"}
         </strong>
       </div>
 
@@ -5257,7 +5068,253 @@ function ScheduleEditor({
   </div>
 )}
 
-      <p>{result}</p>
+{explainChangesReport && (
+  <details
+    style={{
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      background: "#fff",
+    }}
+  >
+    <summary
+      style={{
+        cursor: "pointer",
+        fontWeight: 900,
+        fontSize: 14,
+      }}
+    >
+      Explain Changes
+    </summary>
+
+    <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+      Shows what changed compared with the original estimate for this job.
+    </div>
+
+    {explainChangesReport.summary.length > 0 && (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {explainChangesReport.summary.map((item, i) => (
+            <li key={`summary-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {explainChangesReport.scopeChanges.length > 0 && (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Scope Changes</div>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {explainChangesReport.scopeChanges.map((item, i) => (
+            <li key={`scope-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {explainChangesReport.pricingChanges.length > 0 && (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Pricing Changes</div>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {explainChangesReport.pricingChanges.map((item, i) => (
+            <li key={`pricing-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {explainChangesReport.scheduleChanges.length > 0 && (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule Changes</div>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {explainChangesReport.scheduleChanges.map((item, i) => (
+            <li key={`schedule-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {explainChangesReport.adminChanges.length > 0 && (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Terms / Admin Changes</div>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {explainChangesReport.adminChanges.map((item, i) => (
+            <li key={`admin-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+  </details>
+)}
+
+{estimateBreakdown.length > 0 && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      background: "#fff",
+    }}
+  >
+    <div style={{ fontWeight: 900, fontSize: 14 }}>
+      Explain My Estimate
+    </div>
+
+    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+      Plain-English reasons behind this estimate.
+    </div>
+
+    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+      {estimateBreakdown.map((item, i) => (
+        <li key={`estimate-breakdown-${i}`}>{item}</li>
+      ))}
+    </ul>
+  </div>
+)}
+
+{estimateAssumptions.length > 0 && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      background: "#fafafa",
+    }}
+  >
+    <div style={{ fontWeight: 900, fontSize: 14 }}>
+      Assumptions & Review Notes
+    </div>
+
+    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+      Standard project assumptions used to build this estimate.
+    </div>
+
+    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+      {estimateAssumptions.map((item, i) => (
+        <li key={`estimate-assumption-${i}`}>
+          {item}
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
+
+{estimateConfidence && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: 12,
+      border: `1px solid ${estimateConfidence.border}`,
+      borderRadius: 12,
+      background: estimateConfidence.bg,
+    }}
+  >
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      <div>
+        <div style={{ fontWeight: 900, fontSize: 14, color: estimateConfidence.color }}>
+          Confidence / Review Badge
+        </div>
+
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          How reliable this estimate is based on the details provided.
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 12px",
+          borderRadius: 999,
+          background: "#fff",
+          border: `1px solid ${estimateConfidence.border}`,
+          color: estimateConfidence.color,
+          fontWeight: 800,
+          fontSize: 13,
+        }}
+      >
+        <span>{estimateConfidence.label}</span>
+        <span>{estimateConfidence.score}%</span>
+      </div>
+    </div>
+
+    {estimateConfidence.warnings.length > 0 && (
+      <div style={{ marginTop: 10 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: estimateConfidence.color,
+            marginBottom: 6,
+          }}
+        >
+          Review flags
+        </div>
+
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {estimateConfidence.warnings.map((item, i) => (
+            <li key={`confidence-warning-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {estimateConfidence.reasons.length > 0 && (
+      <div style={{ marginTop: 10 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#333",
+            marginBottom: 6,
+          }}
+        >
+          Confidence drivers
+        </div>
+
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+          {estimateConfidence.reasons.map((item, i) => (
+            <li key={`confidence-reason-${i}`}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {(estimateConfidence.level === "low" ||
+      estimateConfidence.level === "review") && (
+      <div
+        style={{
+          marginTop: 10,
+          padding: 10,
+          borderRadius: 10,
+          background: "#fff",
+          border: `1px solid ${estimateConfidence.border}`,
+          color: estimateConfidence.color,
+          fontSize: 13,
+          lineHeight: 1.45,
+          fontWeight: 700,
+        }}
+      >
+        Review recommended before sending this estimate to a client.
+      </div>
+    )}
+  </div>
+)}
+
+<p>{result?.text}</p>
 
 {scopeSignals?.needsReturnVisit && (
   <div
@@ -5297,6 +5354,93 @@ function ScheduleEditor({
   </div>
 )}
 
+{result && (
+  <PricingSummarySection
+    pricing={pricing}
+    setPricing={setPricing}
+    setPricingEdited={setPricingEdited}
+    applyProfitTarget={applyProfitTarget}
+    depositEnabled={depositEnabled}
+    setDepositEnabled={setDepositEnabled}
+    depositType={depositType}
+    setDepositType={setDepositType}
+    depositValue={depositValue}
+    setDepositValue={setDepositValue}
+    depositDue={depositDue}
+    remainingBalance={remainingBalance}
+    taxEnabled={taxEnabled}
+    setTaxEnabled={setTaxEnabled}
+    taxRate={taxRate}
+    setTaxRate={setTaxRate}
+    taxAmount={taxAmount}
+    minimumSafeStatus={minimumSafeStatus}
+    historicalPriceGuard={historicalPriceGuard}
+    PriceGuardBadge={PriceGuardBadge}
+    pdfShowPriceGuard={pdfShowPriceGuard}
+    pdfPriceGuardLabel={pdfPriceGuardLabel}
+    isUserEdited={isUserEdited}
+    downloadPDF={downloadPDF}
+  />
+)}
+
+<JobsDashboardSection
+  jobs={jobs}
+  activeJobId={activeJobId}
+  setActiveJobId={setActiveJobId}
+  setStatus={setStatus}
+  getOrCreateJobIdFromDetails={getOrCreateJobIdFromDetails}
+  crewCount={crewCount}
+  setCrewCount={setCrewCount}
+  computeWeeklyCrewLoad={computeWeeklyCrewLoad}
+  latestEstimateForJob={latestEstimateForJob}
+  lockedOriginalEstimateForJob={lockedOriginalEstimateForJob}
+  computeJobContractSummary={computeJobContractSummary}
+  computeDepositFromEstimateTotal={computeDepositFromEstimateTotal}
+  invoiceSummaryForJob={invoiceSummaryForJob}
+  latestInvoiceForJob={latestInvoiceForJob}
+  actualsForJob={actualsForJob}
+  getJobPipelineStatus={getJobPipelineStatus}
+  estimateDirectCost={estimateDirectCost}
+  computeProfitProtectionFromTotals={computeProfitProtectionFromTotals}
+  money={money}
+  upsertActuals={upsertActuals}
+  setJobDetails={setJobDetails}
+  startChangeOrderFromJob={startChangeOrderFromJob}
+  createInvoiceFromEstimate={createInvoiceFromEstimate}
+  createBalanceInvoiceFromEstimate={createBalanceInvoiceFromEstimate}
+  selectJobAndJumpToInvoices={selectJobAndJumpToInvoices}
+  downloadInvoicePDF={downloadInvoicePDF}
+  updateJob={updateJob}
+  deleteJob={deleteJob}
+  history={history}
+/>
+
+<InvoicesSection
+  filteredInvoices={filteredInvoices}
+  invoicesSectionRef={invoicesSectionRef}
+  setInvoices={setInvoices}
+  setStatus={setStatus}
+  downloadInvoicePDF={downloadInvoicePDF}
+  computeLiveInvoiceStatus={computeLiveInvoiceStatus}
+  updateInvoice={updateInvoice}
+  INVOICE_KEY={INVOICE_KEY}
+/>
+
+<SavedEstimatesSection
+  filteredHistory={filteredHistory}
+  clearHistory={clearHistory}
+  getJobPipelineStatus={getJobPipelineStatus}
+  latestInvoiceForJob={latestInvoiceForJob}
+  hasAnyInvoiceForEstimate={hasAnyInvoiceForEstimate}
+  loadHistoryItem={loadHistoryItem}
+  createInvoiceFromEstimate={createInvoiceFromEstimate}
+  createBalanceInvoiceFromEstimate={createBalanceInvoiceFromEstimate}
+  selectJobAndJumpToInvoices={selectJobAndJumpToInvoices}
+  downloadInvoicePDF={downloadInvoicePDF}
+  deleteHistoryItem={deleteHistoryItem}
+  setStatus={setStatus}
+/>
+
   {!paid && (showUpgrade || remaining <= 0) && (
   <button
     type="button"
@@ -5305,369 +5449,6 @@ function ScheduleEditor({
   >
     Upgrade for Unlimited Access
   </button>
-)}
-
-      {result && (
-  <>
-    <h3
-  style={{
-    marginTop: 24,
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  }}
->
-    Pricing (Adjustable)
-
-  {pdfShowPriceGuard && !isUserEdited && (
-  <div
-    style={{
-      padding: "4px 8px",
-      fontSize: 12,
-      borderRadius: 999,
-      background: "#ecfdf5",
-      border: "1px solid #a7f3d0",
-      color: "#065f46",
-      fontWeight: 700,
-      lineHeight: 1,
-    }}
-  >
-    {pdfPriceGuardLabel}
-  </div>
-)}
-</h3>
-
-<p style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#666" }}>
-  Adjust as needed for site conditions, selections, or confirmed measurements.
-</p>
-
-    <label>
-      Labor
-      <input
-  type="number"
-  value={pricing.labor === 0 ? "" : pricing.labor}
-  onChange={(e) => {
-    const val = e.target.value
-    setPricing({
-      ...pricing,
-      labor: val === "" ? 0 : Number(val),
-    })
-    setPricingEdited(true)
-  }}
-  style={{ width: "100%", padding: 8, marginBottom: 8 }}
-/>
-    </label>
-
-    <label>
-      Materials
-      <input
-  type="number"
-  value={pricing.materials === 0 ? "" : pricing.materials}
-  onChange={(e) => {
-    const val = e.target.value
-    setPricing({
-      ...pricing,
-      materials: val === "" ? 0 : Number(val),
-    })
-    setPricingEdited(true)
-  }}
-  style={{ width: "100%", padding: 8, marginBottom: 8 }}
-/>
-    </label>
-
-    <label>
-      Other / Mobilization
-      <input
-  type="number"
-  value={pricing.subs === 0 ? "" : pricing.subs}
-  onChange={(e) => {
-    const val = e.target.value
-    setPricing({
-      ...pricing,
-      subs: val === "" ? 0 : Number(val),
-    })
-    setPricingEdited(true)
-  }}
-  style={{ width: "100%", padding: 8, marginBottom: 8 }}
-/>
-    </label>
-
-    <label>
-      Markup (%)
-      <input
-  type="number"
-  value={pricing.markup === 0 ? "" : pricing.markup}
-  onChange={(e) => {
-    const val = e.target.value
-    setPricing({
-      ...pricing,
-      markup: val === "" ? 0 : Number(val),
-    })
-    setPricingEdited(true)
-  }}
-  style={{ width: "100%", padding: 8, marginBottom: 8 }}
-/>
-    </label>
-
-    <div
-  style={{
-    marginTop: 4,
-    marginBottom: 12,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    background: "#fff",
-  }}
->
-  <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-    Profit Target Mode
-  </div>
-
-  <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
-    Set markup automatically based on your desired profit margin.
-  </div>
-
-  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-    <button
-      type="button"
-      onClick={() => applyProfitTarget(20)}
-      style={{ fontSize: 12 }}
-    >
-      Hit 20% Profit
-    </button>
-
-    <button
-      type="button"
-      onClick={() => applyProfitTarget(25)}
-      style={{ fontSize: 12 }}
-    >
-      Hit 25% Profit
-    </button>
-
-    <button
-      type="button"
-      onClick={() => applyProfitTarget(30)}
-      style={{ fontSize: 12 }}
-    >
-      Hit 30% Profit
-    </button>
-  </div>
-</div>
-
-    <div
-  style={{
-    marginTop: 12,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    flexWrap: "wrap",
-  }}
->
-
-{/* -------------------------
-    Deposit (optional)
-------------------------- */}
-<div
-  style={{
-    marginTop: 12,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    background: "#fff",
-  }}
->
-  <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <input
-      type="checkbox"
-      checked={depositEnabled}
-      onChange={(e) => setDepositEnabled(e.target.checked)}
-    />
-    <span style={{ fontWeight: 800 }}>Require deposit</span>
-    <span style={{ fontSize: 12, color: "#666" }}>
-      (shows on PDF + invoices)
-    </span>
-  </label>
-
-  {depositEnabled && (
-    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10 }}>
-        <select
-          value={depositType}
-          onChange={(e) => setDepositType(e.target.value as any)}
-          style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-        >
-          <option value="percent">Percent (%)</option>
-          <option value="fixed">Fixed ($)</option>
-        </select>
-
-        <input
-          type="number"
-          value={depositValue === 0 ? "" : depositValue}
-          onChange={(e) => setDepositValue(e.target.value === "" ? 0 : Number(e.target.value))}
-          placeholder={depositType === "percent" ? "e.g., 25" : "e.g., 500"}
-          style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
-        />
-      </div>
-
-      <div style={{ fontSize: 13, color: "#333", display: "grid", gap: 4 }}>
-        <div>
-          Deposit Due Now: <strong>${Number(depositDue || 0).toLocaleString()}</strong>
-        </div>
-        <div>
-          Remaining Balance: <strong>${Number(remainingBalance || 0).toLocaleString()}</strong>
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
-{/* -------------------------
-    Tax (optional)
-------------------------- */}
-<div
-  style={{
-    marginTop: 12,
-    padding: 12,
-    border: "1px solid #e5e7eb",
-    borderRadius: 10,
-    background: "#fff",
-  }}
->
-  <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <input
-      type="checkbox"
-      checked={taxEnabled}
-      onChange={(e) => setTaxEnabled(e.target.checked)}
-    />
-    <span style={{ fontWeight: 800 }}>Apply Sales Tax</span>
-  </label>
-
-  {taxEnabled && (
-    <div style={{ marginTop: 10 }}>
-      <input
-        type="number"
-        value={taxRate === 0 ? "" : taxRate}
-        onChange={(e) =>
-          setTaxRate(e.target.value === "" ? 0 : Number(e.target.value))
-        }
-        placeholder="Tax rate %"
-        style={{
-          width: "100%",
-          padding: 10,
-          borderRadius: 10,
-          border: "1px solid #ddd",
-        }}
-      />
-    </div>
-  )}
-
-  {taxEnabled && (
-    <div style={{ fontSize: 13, marginTop: 6 }}>
-      Sales Tax: <strong>${Number(taxAmount || 0).toLocaleString()}</strong>
-    </div>
-  )}
-</div>
-
-   <div style={{ fontSize: 16, fontWeight: 800 }}>
-    Total: ${Number(pricing.total || 0).toLocaleString()}
-  </div>
-
-  {minimumSafeStatus?.tone === "danger" && (
-  <div
-    style={{
-      marginTop: 8,
-      padding: 10,
-      borderRadius: 10,
-      background: "#fef2f2",
-      border: "1px solid #fecaca",
-      color: "#9b1c1c",
-      fontSize: 13,
-    }}
-  >
-    ⚠ {minimumSafeStatus.message}
-  </div>
-)}
-
-{minimumSafeStatus?.tone === "warning" && (
-  <div
-    style={{
-      marginTop: 8,
-      padding: 10,
-      borderRadius: 10,
-      background: "#fff7ed",
-      border: "1px solid #fdba74",
-      color: "#92400e",
-      fontSize: 13,
-    }}
-  >
-    ⚠ {minimumSafeStatus.message}
-  </div>
-)}
-
-  {pricing && (() => {
-  const cost = (pricing.labor || 0) + (pricing.materials || 0) + (pricing.subs || 0)
-  const total = pricing.total || 0
-  const margin = total > 0 ? (total - cost) / total : 0
-  const marginPct = Math.round(margin * 100)
-
-    const markupPct =
-    cost > 0 ? Math.round((((total - cost) / cost) * 100) * 10) / 10 : 0
-
-  if (marginPct < 15) {
-    return (
-      <div
-        style={{
-          marginTop: 8,
-          padding: 10,
-          borderRadius: 10,
-          background: "#fff7ed",
-          border: "1px solid #fdba74",
-          color: "#9a3412",
-          fontSize: 13,
-        }}
-      >
-        ⚠ Margin Risk: Estimated margin {marginPct}%. Most contractors target 15–25%.
-      </div>
-    )
-  }
-
-  return (
-    <div
-      style={{
-        marginTop: 8,
-        padding: 10,
-        borderRadius: 10,
-        background: "#ecfdf5",
-        border: "1px solid #6ee7b7",
-        color: "#065f46",
-        fontSize: 13,
-      }}
-    >
-      ✓ Healthy margin: {marginPct}%
-    </div>
-  )
-})()}
-
-  {historicalPriceGuard && historicalPriceGuard.status === "low" && (
-    <div style={{ color: "#b91c1c", fontSize: 13, marginTop: 6 }}>
-      ⚠️ This estimate is {Math.abs(historicalPriceGuard.percentDiff)}% below your typical pricing.
-    </div>
-  )}
-
-  {historicalPriceGuard && historicalPriceGuard.status === "high" && (
-    <div style={{ color: "#92400e", fontSize: 13, marginTop: 6 }}>
-      ⚠️ This estimate is {historicalPriceGuard.percentDiff}% higher than your typical pricing.
-    </div>
-  )}
-
-  <PriceGuardBadge />
-</div>
-
-    <button onClick={downloadPDF} style={{ marginTop: 8 }}>
-      Download PDF
-    </button>
-  </>
 )}
 
       <p style={{ marginTop: 40, fontSize: 12, color: "#888", textAlign: "center" }}>

@@ -312,6 +312,35 @@ type PhotoAnalysis = {
   summary?: string
   observations?: string[]
   suggestedScopeNotes?: string[]
+
+  detectedRoomTypes?: string[]
+  detectedTrades?: string[]
+  detectedMaterials?: string[]
+  detectedConditions?: string[]
+  detectedFixtures?: string[]
+  detectedAccessIssues?: string[]
+  detectedDemoNeeds?: string[]
+
+  quantitySignals?: {
+    doors?: number | null
+    windows?: number | null
+    vanities?: number | null
+    toilets?: number | null
+    sinks?: number | null
+    outlets?: number | null
+    switches?: number | null
+    recessedLights?: number | null
+    ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+    estimatedWallSqftMin?: number | null
+    estimatedWallSqftMax?: number | null
+    estimatedCeilingSqftMin?: number | null
+    estimatedCeilingSqftMax?: number | null
+    estimatedFloorSqftMin?: number | null
+    estimatedFloorSqftMax?: number | null
+  }
+
+  scopeCompletenessFlags?: string[]
+  confidence?: "low" | "medium" | "high"
 }
 
 function getDataUrlMime(dataUrl: string): string | null {
@@ -378,6 +407,9 @@ type AnchorContext = {
   measurements: any | null
   rooms: number | null
   doors: number | null
+  photoWallSqft?: number | null
+  photoCeilingSqft?: number | null
+  photoFloorSqft?: number | null
 }
 
 type PricingAnchor = {
@@ -409,18 +441,62 @@ Return ONLY valid JSON with this exact shape:
 {
   "summary": "<short summary>",
   "observations": ["<observation 1>", "<observation 2>"],
-  "suggestedScopeNotes": ["<scope note 1>", "<scope note 2>"]
+  "suggestedScopeNotes": ["<scope note 1>", "<scope note 2>"],
+
+  "detectedRoomTypes": ["bathroom", "bedroom"],
+  "detectedTrades": ["painting", "drywall"],
+  "detectedMaterials": ["painted drywall", "tile", "baseboard"],
+  "detectedConditions": ["light wall damage", "occupied space"],
+  "detectedFixtures": ["vanity", "toilet", "recessed lights"],
+  "detectedAccessIssues": ["furniture in room", "tight working area"],
+  "detectedDemoNeeds": ["finish removal", "surface prep"],
+
+  "quantitySignals": {
+    "doors": 1,
+    "windows": 2,
+    "vanities": 1,
+    "toilets": 1,
+    "sinks": 1,
+    "outlets": 4,
+    "switches": 2,
+    "recessedLights": 4,
+    "ceilingHeightCategory": "standard",
+    "estimatedWallSqftMin": 250,
+    "estimatedWallSqftMax": 340,
+    "estimatedCeilingSqftMin": 90,
+    "estimatedCeilingSqftMax": 120,
+    "estimatedFloorSqftMin": 90,
+    "estimatedFloorSqftMax": 120
+  },
+
+  "scopeCompletenessFlags": [
+    "photos suggest ceiling work may exist",
+    "visible trim/baseboards may require inclusion",
+    "bathroom fixture protection likely needed"
+  ],
+
+  "confidence": "medium"
 }
 
 Rules:
 - Be practical and contractor-focused.
-- Identify visible materials, site conditions, access issues, demolition, damage, prep needs, finish details, or complexity.
+- Only describe what is reasonably visible.
 - Do not identify people.
-- Do not mention anything not reasonably visible.
-- Keep observations concise.
-- If uncertain, say so briefly.
+- Do not invent hidden conditions.
+- Quantity signals must be conservative estimates only.
+- If uncertain, use null or omit.
+- Use short strings.
 - No markdown.
 - No extra text.
+
+Important estimating priorities:
+- identify room type
+- identify visible materials
+- identify visible finish conditions
+- identify obvious prep/demo needs
+- identify visible fixtures and devices
+- estimate rough quantity ranges only when reasonably inferable
+- flag likely missing scope items visible in photos
 
 Trade: ${args.trade}
 Scope text: ${args.scopeText}
@@ -439,7 +515,7 @@ Scope text: ${args.scopeText}
 
     const resp = await openai.chat.completions.create({
       model: PHOTO_ANALYSIS_MODEL,
-      temperature: 0.2,
+      temperature: 0.15,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -454,15 +530,62 @@ Scope text: ${args.scopeText}
 
     const parsed = JSON.parse(raw)
 
+    const cleanStrings = (value: any, max = 10) =>
+      Array.isArray(value)
+        ? value.filter((x: any) => typeof x === "string" && x.trim()).slice(0, max)
+        : []
+
+    const safeNum = (value: any) =>
+      Number.isFinite(Number(value)) ? Number(value) : null
+
+    const quantitySignalsRaw = parsed?.quantitySignals ?? {}
+
+    const quantitySignals = {
+      doors: safeNum(quantitySignalsRaw?.doors),
+      windows: safeNum(quantitySignalsRaw?.windows),
+      vanities: safeNum(quantitySignalsRaw?.vanities),
+      toilets: safeNum(quantitySignalsRaw?.toilets),
+      sinks: safeNum(quantitySignalsRaw?.sinks),
+      outlets: safeNum(quantitySignalsRaw?.outlets),
+      switches: safeNum(quantitySignalsRaw?.switches),
+      recessedLights: safeNum(quantitySignalsRaw?.recessedLights),
+      ceilingHeightCategory:
+        quantitySignalsRaw?.ceilingHeightCategory === "standard" ||
+        quantitySignalsRaw?.ceilingHeightCategory === "tall" ||
+        quantitySignalsRaw?.ceilingHeightCategory === "vaulted"
+          ? quantitySignalsRaw.ceilingHeightCategory
+          : null,
+      estimatedWallSqftMin: safeNum(quantitySignalsRaw?.estimatedWallSqftMin),
+      estimatedWallSqftMax: safeNum(quantitySignalsRaw?.estimatedWallSqftMax),
+      estimatedCeilingSqftMin: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMin),
+      estimatedCeilingSqftMax: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMax),
+      estimatedFloorSqftMin: safeNum(quantitySignalsRaw?.estimatedFloorSqftMin),
+      estimatedFloorSqftMax: safeNum(quantitySignalsRaw?.estimatedFloorSqftMax),
+    }
+
     return {
       summary:
         typeof parsed?.summary === "string" ? parsed.summary : undefined,
-      observations: Array.isArray(parsed?.observations)
-        ? parsed.observations.filter((x: any) => typeof x === "string").slice(0, 8)
-        : [],
-      suggestedScopeNotes: Array.isArray(parsed?.suggestedScopeNotes)
-        ? parsed.suggestedScopeNotes.filter((x: any) => typeof x === "string").slice(0, 8)
-        : [],
+      observations: cleanStrings(parsed?.observations, 8),
+      suggestedScopeNotes: cleanStrings(parsed?.suggestedScopeNotes, 8),
+
+      detectedRoomTypes: cleanStrings(parsed?.detectedRoomTypes, 6),
+      detectedTrades: cleanStrings(parsed?.detectedTrades, 6),
+      detectedMaterials: cleanStrings(parsed?.detectedMaterials, 10),
+      detectedConditions: cleanStrings(parsed?.detectedConditions, 10),
+      detectedFixtures: cleanStrings(parsed?.detectedFixtures, 10),
+      detectedAccessIssues: cleanStrings(parsed?.detectedAccessIssues, 8),
+      detectedDemoNeeds: cleanStrings(parsed?.detectedDemoNeeds, 8),
+
+      quantitySignals,
+      scopeCompletenessFlags: cleanStrings(parsed?.scopeCompletenessFlags, 8),
+
+      confidence:
+        parsed?.confidence === "low" ||
+        parsed?.confidence === "medium" ||
+        parsed?.confidence === "high"
+          ? parsed.confidence
+          : undefined,
     }
   } catch (err) {
     console.warn("Photo analysis failed:", err)
@@ -479,6 +602,13 @@ type PhotoPricingImpact = {
   reasons: string[]
 }
 
+type EstimateExplanation = {
+  priceReasons: string[]
+  scheduleReasons: string[]
+  photoReasons: string[]
+  protectionReasons: string[]
+}
+
 function derivePhotoPricingImpact(args: {
   analysis: PhotoAnalysis | null
   trade: string
@@ -488,6 +618,10 @@ function derivePhotoPricingImpact(args: {
     args.analysis?.summary || "",
     ...(args.analysis?.observations || []),
     ...(args.analysis?.suggestedScopeNotes || []),
+    ...(args.analysis?.detectedConditions || []),
+    ...(args.analysis?.detectedAccessIssues || []),
+    ...(args.analysis?.detectedDemoNeeds || []),
+    ...(args.analysis?.scopeCompletenessFlags || []),
   ]
     .join(" ")
     .toLowerCase()
@@ -510,42 +644,48 @@ function derivePhotoPricingImpact(args: {
     }
   }
 
-  if (/\b(peeling|flaking|damaged|patch|repair|crack|water damage|stain)\b/.test(text)) {
-    laborDelta += 150
-    materialsDelta += 40
+  if (/\b(peeling|flaking|damaged|patch|repair|crack|water damage|stain|surface damage)\b/.test(text)) {
+    laborDelta += 175
+    materialsDelta += 50
     confidenceBoost += 4
     reasons.push("Visible surface prep or repair conditions")
   }
 
-  if (/\b(masking|protection|occupied|furnished|tight access|limited access|obstruction)\b/.test(text)) {
-    laborDelta += 100
+  if (/\b(masking|protection|occupied|furnished|tight working area|tight access|limited access|obstruction|clutter)\b/.test(text)) {
+    laborDelta += 125
     subsDelta += 75
     extraCrewDays += 0.5
     confidenceBoost += 3
-    reasons.push("Access/protection constraints visible")
+    reasons.push("Access or protection complexity visible")
   }
 
-  if (/\b(debris|demo|demolition|tear-out|haul away|disposal)\b/.test(text)) {
-    subsDelta += 125
+  if (/\b(debris|demo|demolition|tear-out|haul away|disposal|finish removal)\b/.test(text)) {
+    subsDelta += 150
     extraCrewDays += 0.5
     confidenceBoost += 3
-    reasons.push("Debris or demolition handling visible")
+    reasons.push("Demolition or disposal handling visible")
   }
 
-  if (/\b(high ceiling|vaulted|scaffold|ladder work|multi-story)\b/.test(text)) {
-    laborDelta += 175
+  if (/\b(high ceiling|vaulted|tall ceiling|ladder work|multi-story)\b/.test(text)) {
+    laborDelta += 200
     subsDelta += 100
     extraCrewDays += 0.5
     confidenceBoost += 3
-    reasons.push("Height/access complexity visible")
+    reasons.push("Height or access complexity visible")
   }
 
-  if (/\b(tile|waterproof|membrane|wet area|shower pan|curb)\b/.test(text)) {
-    laborDelta += 200
-    materialsDelta += 75
+  if (/\b(tile|waterproof|membrane|wet area|shower pan|curb|wet-area)\b/.test(text)) {
+    laborDelta += 225
+    materialsDelta += 90
     extraCrewDays += 1
     confidenceBoost += 4
-    reasons.push("Wet-area or finish complexity visible")
+    reasons.push("Wet-area or tile finish complexity visible")
+  }
+
+  if (args.analysis?.confidence === "high") {
+    confidenceBoost += 2
+  } else if (args.analysis?.confidence === "medium") {
+    confidenceBoost += 1
   }
 
   return {
@@ -555,6 +695,286 @@ function derivePhotoPricingImpact(args: {
     extraCrewDays,
     confidenceBoost: Math.min(10, confidenceBoost),
     reasons,
+  }
+}
+
+function buildPhotoScopeAssist(args: {
+  photoAnalysis: PhotoAnalysis | null
+  scopeText: string
+  trade: string
+}): {
+  missingScopeFlags: string[]
+  suggestedAdditions: string[]
+} {
+  const scope = (args.scopeText || "").toLowerCase()
+  const photo = args.photoAnalysis
+
+  const missingScopeFlags: string[] = []
+  const suggestedAdditions: string[] = []
+
+  if (!photo) {
+    return { missingScopeFlags, suggestedAdditions }
+  }
+
+  const materials = (photo.detectedMaterials || []).join(" ").toLowerCase()
+  const fixtures = (photo.detectedFixtures || []).join(" ").toLowerCase()
+  const flags = photo.scopeCompletenessFlags || []
+
+  const mentionsCeiling = /\b(ceiling|ceilings)\b/.test(scope)
+  const mentionsTrim = /\b(trim|baseboard|baseboards|casing|casings)\b/.test(scope)
+  const mentionsProtection = /\b(protect|protection|mask|masking|cover)\b/.test(scope)
+  const mentionsDemo = /\b(demo|demolition|remove|tear\s*out)\b/.test(scope)
+
+  if (
+    (flags.some((x) => /ceiling/i.test(x)) || /ceiling/.test(materials)) &&
+    !mentionsCeiling
+  ) {
+    missingScopeFlags.push("Photos suggest ceiling work may exist but scope does not mention it.")
+    suggestedAdditions.push("Add ceiling prep/paint if applicable.")
+  }
+
+  if (
+    (flags.some((x) => /\b(trim|baseboard)\b/i.test(x)) || /\b(baseboard|trim)\b/.test(materials)) &&
+    !mentionsTrim
+  ) {
+    missingScopeFlags.push("Visible trim or baseboards may not be included in the written scope.")
+    suggestedAdditions.push("Add trim/baseboard scope if applicable.")
+  }
+
+  if (
+    (photo.detectedAccessIssues || []).length > 0 &&
+    !mentionsProtection
+  ) {
+    missingScopeFlags.push("Photos show access/protection conditions not clearly addressed in scope.")
+    suggestedAdditions.push("Add masking, furniture protection, or access handling language.")
+  }
+
+  if (
+    (photo.detectedDemoNeeds || []).length > 0 &&
+    !mentionsDemo
+  ) {
+    missingScopeFlags.push("Photos suggest demo or removal work may be needed.")
+    suggestedAdditions.push("Add demolition/removal/disposal scope if applicable.")
+  }
+
+  if (/\b(vanity|toilet|sink)\b/.test(fixtures) && args.trade === "painting") {
+    suggestedAdditions.push("Include fixture masking/protection around visible bathroom or kitchen fixtures.")
+  }
+
+  return {
+    missingScopeFlags: Array.from(new Set(missingScopeFlags)).slice(0, 6),
+    suggestedAdditions: Array.from(new Set(suggestedAdditions)).slice(0, 6),
+  }
+}
+
+function buildPhotoQuantityHints(photoAnalysis: PhotoAnalysis | null): string {
+  if (!photoAnalysis?.quantitySignals) return ""
+
+  const q = photoAnalysis.quantitySignals
+  const lines: string[] = []
+
+  if (q.estimatedWallSqftMin || q.estimatedWallSqftMax) {
+    lines.push(
+      `Estimated wall area: ${q.estimatedWallSqftMin || "?"}–${q.estimatedWallSqftMax || "?"} sqft`
+    )
+  }
+
+  if (q.estimatedCeilingSqftMin || q.estimatedCeilingSqftMax) {
+    lines.push(
+      `Estimated ceiling area: ${q.estimatedCeilingSqftMin || "?"}–${q.estimatedCeilingSqftMax || "?"} sqft`
+    )
+  }
+
+  if (q.estimatedFloorSqftMin || q.estimatedFloorSqftMax) {
+    lines.push(
+      `Estimated floor area: ${q.estimatedFloorSqftMin || "?"}–${q.estimatedFloorSqftMax || "?"} sqft`
+    )
+  }
+
+  if (q.doors) lines.push(`Doors detected: ${q.doors}`)
+  if (q.windows) lines.push(`Windows detected: ${q.windows}`)
+  if (q.outlets) lines.push(`Outlets detected: ${q.outlets}`)
+  if (q.switches) lines.push(`Switches detected: ${q.switches}`)
+  if (q.recessedLights) lines.push(`Recessed lights detected: ${q.recessedLights}`)
+  if (q.vanities) lines.push(`Vanities detected: ${q.vanities}`)
+  if (q.toilets) lines.push(`Toilets detected: ${q.toilets}`)
+  if (q.sinks) lines.push(`Sinks detected: ${q.sinks}`)
+
+  if (lines.length === 0) return ""
+
+  return lines.map((line) => `- ${line}`).join("\n")
+}
+
+function midpoint(min?: number | null, max?: number | null): number | null {
+  const a = Number(min || 0)
+  const b = Number(max || 0)
+
+  if (a > 0 && b > 0) return Math.round((a + b) / 2)
+  if (a > 0) return Math.round(a)
+  if (b > 0) return Math.round(b)
+
+  return null
+}
+
+function getPhotoEstimatedSqft(photoAnalysis: PhotoAnalysis | null): {
+  wallSqft: number | null
+  ceilingSqft: number | null
+  floorSqft: number | null
+} {
+  const q = photoAnalysis?.quantitySignals
+
+  return {
+    wallSqft: midpoint(q?.estimatedWallSqftMin, q?.estimatedWallSqftMax),
+    ceilingSqft: midpoint(q?.estimatedCeilingSqftMin, q?.estimatedCeilingSqftMax),
+    floorSqft: midpoint(q?.estimatedFloorSqftMin, q?.estimatedFloorSqftMax),
+  }
+}
+
+function getEffectiveQuantityInputs(args: {
+  measurements: any | null
+  scopeText: string
+  photoAnalysis: PhotoAnalysis | null
+}) {
+  const parsedSqft = parseSqft(args.scopeText)
+  const photoSqft = getPhotoEstimatedSqft(args.photoAnalysis)
+
+  const userMeasuredSqft =
+    args.measurements?.totalSqft && Number(args.measurements.totalSqft) > 0
+      ? Number(args.measurements.totalSqft)
+      : null
+
+  return {
+    userMeasuredSqft,
+    parsedSqft,
+    photoWallSqft: photoSqft.wallSqft,
+    photoCeilingSqft: photoSqft.ceilingSqft,
+    photoFloorSqft: photoSqft.floorSqft,
+
+    effectiveFloorSqft:
+      userMeasuredSqft ??
+      parsedSqft ??
+      photoSqft.floorSqft ??
+      null,
+
+    effectiveWallSqft:
+      userMeasuredSqft ??
+      parsedSqft ??
+      photoSqft.wallSqft ??
+      null,
+
+    effectivePaintSqft:
+      userMeasuredSqft ??
+      parsedSqft ??
+      photoSqft.wallSqft ??
+      null,
+  }
+}
+
+function buildEstimateExplanation(args: {
+  pricingSource: "ai" | "deterministic" | "merged"
+  detSource: string | null
+  trade: string
+  priceGuardVerified: boolean
+  priceGuardProtected: boolean
+  photoImpact: PhotoPricingImpact | null
+  minApplied: boolean
+  minAmount?: number | null
+  scopeSignals?: {
+    needsReturnVisit?: boolean
+    reason?: string
+  } | null
+  complexityProfile: ComplexityProfile | null
+  priceGuard: PriceGuardReport
+}): EstimateExplanation {
+  const priceReasons: string[] = []
+  const scheduleReasons: string[] = []
+  const photoReasons: string[] = []
+  const protectionReasons: string[] = []
+
+  if (args.pricingSource === "deterministic") {
+  if (args.detSource) {
+    priceReasons.push(
+      `Price was based on fixed contractor pricing rules for ${args.detSource.replaceAll("_", " ")}.`
+    )
+  } else {
+    priceReasons.push("Price was based on fixed contractor pricing rules for this type of job.")
+  }
+  } else if (args.pricingSource === "merged") {
+  priceReasons.push("Initial AI pricing was adjusted upward where needed to keep the estimate in a safer range.")
+} else {
+  priceReasons.push("Price was generated from the written scope and interpreted job conditions.")
+}
+
+  if (args.photoImpact && args.photoImpact.reasons.length > 0) {
+    for (const r of args.photoImpact.reasons) {
+      photoReasons.push(r)
+      priceReasons.push(`Photos affected pricing: ${r}.`)
+    }
+
+    if (args.photoImpact.extraCrewDays > 0) {
+      scheduleReasons.push(
+        `Photos increased schedule allowance by about ${args.photoImpact.extraCrewDays} crew day(s).`
+      )
+    }
+  }
+
+  if (args.scopeSignals?.needsReturnVisit) {
+    scheduleReasons.push(
+      args.scopeSignals.reason || "Scope requires at least one return visit."
+    )
+  }
+
+  if (args.complexityProfile?.permitLikely) {
+    scheduleReasons.push("Permit/inspection coordination may extend total duration.")
+  }
+
+  if (args.complexityProfile?.multiTrade) {
+    scheduleReasons.push("Multiple trades require sequencing and coordination.")
+  }
+
+  if (args.complexityProfile?.multiPhase) {
+    scheduleReasons.push("Work appears to require multiple phases instead of a single trip.")
+  }
+
+  if (args.minApplied) {
+    protectionReasons.push(
+      `Minimum service charge protection applied${args.minAmount ? ` ($${args.minAmount})` : ""}.`
+    )
+  }
+
+  if (args.priceGuardProtected) {
+    protectionReasons.push("PriceGuard protection was active on this estimate.")
+  }
+
+  if (args.priceGuardVerified) {
+    protectionReasons.push("Verified deterministic pricing logic was used.")
+  }
+
+  for (const rule of args.priceGuard.appliedRules || []) {
+    if (
+      /minimum service charge|deterministic pricing engine applied|priceguard safety floor|state labor adjustment applied/i.test(rule)
+    ) {
+      protectionReasons.push(rule)
+    }
+  }
+
+if (priceReasons.length === 0) {
+  priceReasons.push("Pricing was based on the job scope, trade, and typical contractor cost patterns.")
+}
+
+if (scheduleReasons.length === 0 && args.complexityProfile?.class !== "simple") {
+  scheduleReasons.push("Schedule reflects the expected coordination and execution time for this scope.")
+}
+
+if (protectionReasons.length === 0) {
+  protectionReasons.push("Estimate includes built-in pricing safeguards to avoid underpricing.")
+}
+
+  return {
+    priceReasons,
+    scheduleReasons,
+    photoReasons,
+    protectionReasons,
   }
 }
 
@@ -2163,6 +2583,7 @@ function priceBathroomRemodelAnchor(args: {
   scope: string
   stateMultiplier: number
   measurements?: any | null
+  fallbackFloorSqft?: number | null
 }): Pricing | null {
   const s = args.scope.toLowerCase()
 
@@ -2174,11 +2595,14 @@ function priceBathroomRemodelAnchor(args: {
 
   // Prefer user measurements; else parse; else assume small bath floor area
   const bathFloorSqft =
-    (args.measurements?.totalSqft && args.measurements.totalSqft > 0
-      ? Number(args.measurements.totalSqft)
-      : null) ??
-    parseSqft(s) ??
-    60
+  (args.measurements?.totalSqft && args.measurements.totalSqft > 0
+    ? Number(args.measurements.totalSqft)
+    : null) ??
+  parseSqft(s) ??
+  (args.fallbackFloorSqft && args.fallbackFloorSqft > 0
+    ? Number(args.fallbackFloorSqft)
+    : null) ??
+  60
 
   const hasDemo = parseDemo(s)
   const hasWallTile = /\b(tile|wall\s*tile|shower\s*walls?|tub\s*surround)\b/.test(s)
@@ -2250,6 +2674,7 @@ function priceKitchenRefreshAnchor(args: {
   scope: string
   stateMultiplier: number
   measurements?: any | null
+  fallbackFloorSqft?: number | null
 }): Pricing | null {
   const s = args.scope.toLowerCase()
 
@@ -2263,11 +2688,14 @@ function priceKitchenRefreshAnchor(args: {
 
   // Size signal (you said it will usually exist in text or measurements)
   const sqft =
-    (args.measurements?.totalSqft && args.measurements.totalSqft > 0
-      ? Number(args.measurements.totalSqft)
-      : null) ??
-    parseSqft(s) ??
-    225
+  (args.measurements?.totalSqft && args.measurements.totalSqft > 0
+    ? Number(args.measurements.totalSqft)
+    : null) ??
+  parseSqft(s) ??
+  (args.fallbackFloorSqft && args.fallbackFloorSqft > 0
+    ? Number(args.fallbackFloorSqft)
+    : null) ??
+  225
 
   // Cabinet intent
   const newCabinets =
@@ -2359,6 +2787,7 @@ function priceKitchenRemodelAnchor(args: {
   scope: string
   stateMultiplier: number
   measurements?: any | null
+  fallbackFloorSqft?: number | null
 }): Pricing | null {
   const s = args.scope.toLowerCase()
 
@@ -2372,11 +2801,14 @@ function priceKitchenRemodelAnchor(args: {
   if (!remodelSignals) return null
 
   const sqft =
-    (args.measurements?.totalSqft && args.measurements.totalSqft > 0
-      ? Number(args.measurements.totalSqft)
-      : null) ??
-    parseSqft(s) ??
-    225
+  (args.measurements?.totalSqft && args.measurements.totalSqft > 0
+    ? Number(args.measurements.totalSqft)
+    : null) ??
+  parseSqft(s) ??
+  (args.fallbackFloorSqft && args.fallbackFloorSqft > 0
+    ? Number(args.fallbackFloorSqft)
+    : null) ??
+  225
 
   const hasCabinets =
     /\b(cabinets?|cabinetry|install\s+cabinets?|replace\s+cabinets?)\b/.test(s)
@@ -2532,6 +2964,7 @@ function priceFlooringOnlyAnchor(args: {
   scope: string
   stateMultiplier: number
   measurements?: any | null
+  fallbackSqft?: number | null
 }): Pricing | null {
   const s = args.scope.toLowerCase()
 
@@ -2545,11 +2978,12 @@ function priceFlooringOnlyAnchor(args: {
 
   // Sqft: prefer measurements.totalSqft, then parse, then default
   const sqft =
-    (args.measurements?.totalSqft && args.measurements.totalSqft > 0
-      ? Number(args.measurements.totalSqft)
-      : null) ??
-    parseSqft(s) ??
-    180
+  (args.measurements?.totalSqft && args.measurements.totalSqft > 0
+    ? Number(args.measurements.totalSqft)
+    : null) ??
+  parseSqft(s) ??
+  (args.fallbackSqft && args.fallbackSqft > 0 ? Number(args.fallbackSqft) : null) ??
+  180
 
   // Demo signal
   const hasDemo =
@@ -2727,22 +3161,24 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
     return /\b(remodel|renovation|gut|demo|demolition|rebuild|full\s*replace|replace\s+all|new\s+layout)\b/.test(s)
   },
   price: (ctx) =>
-    priceKitchenRemodelAnchor({
-      scope: ctx.scope,
-      stateMultiplier: ctx.stateMultiplier,
-      measurements: ctx.measurements,
-    }),
+  priceKitchenRemodelAnchor({
+    scope: ctx.scope,
+    stateMultiplier: ctx.stateMultiplier,
+    measurements: ctx.measurements,
+    fallbackFloorSqft: ctx.photoFloorSqft ?? null,
+  }),
 },
   
   {
     id: "kitchen_refresh_v1",
     when: (ctx) => /\bkitchen\b/i.test(ctx.scope) || parseKitchenKeyword(ctx.scope),
     price: (ctx) =>
-      priceKitchenRefreshAnchor({
-        scope: ctx.scope,
-        stateMultiplier: ctx.stateMultiplier,
-        measurements: ctx.measurements,
-      }),
+  priceKitchenRefreshAnchor({
+    scope: ctx.scope,
+    stateMultiplier: ctx.stateMultiplier,
+    measurements: ctx.measurements,
+    fallbackFloorSqft: ctx.photoFloorSqft ?? null,
+  }),
   },
 
   // 2) Bathroom remodel
@@ -2750,11 +3186,12 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
     id: "bathroom_remodel_v1",
     when: (ctx) => /\b(bath|bathroom|shower|tub)\b/i.test(ctx.scope),
     price: (ctx) =>
-      priceBathroomRemodelAnchor({
-        scope: ctx.scope,
-        stateMultiplier: ctx.stateMultiplier,
-        measurements: ctx.measurements,
-      }),
+  priceBathroomRemodelAnchor({
+    scope: ctx.scope,
+    stateMultiplier: ctx.stateMultiplier,
+    measurements: ctx.measurements,
+    fallbackFloorSqft: ctx.photoFloorSqft ?? null,
+  }),
   },
 
   // 3) Flooring-only
@@ -2786,11 +3223,12 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
     return !looksLikeKitchenRemodel && !looksLikeBathRemodel
   },
   price: (ctx) =>
-    priceFlooringOnlyAnchor({
-      scope: ctx.scope,
-      stateMultiplier: ctx.stateMultiplier,
-      measurements: ctx.measurements,
-    }),
+  priceFlooringOnlyAnchor({
+    scope: ctx.scope,
+    stateMultiplier: ctx.stateMultiplier,
+    measurements: ctx.measurements,
+    fallbackSqft: ctx.photoFloorSqft ?? null,
+  }),
 },
 
 // 4) Plumbing fixture swaps (strict, count-based)
@@ -3091,6 +3529,51 @@ function pricePaintingDoors(args: {
   return { labor, materials, subs, markup, total }
 }
 
+function pricePaintingByPhotoSqft(args: {
+  wallSqft: number
+  ceilingSqft?: number | null
+  stateMultiplier: number
+  paintScope: "walls" | "walls_ceilings" | "full"
+}): Pricing {
+  const laborRate = 75
+  const markup = 25
+
+  const wallSqft = Math.max(0, Number(args.wallSqft || 0))
+  const ceilingSqft =
+    args.paintScope !== "walls"
+      ? Math.max(0, Number(args.ceilingSqft || 0))
+      : 0
+
+  const totalPaintSqft = wallSqft + ceilingSqft
+
+  const sqftPerLaborHour =
+    args.paintScope === "full" ? 110 :
+    args.paintScope === "walls_ceilings" ? 125 :
+    140
+
+  const laborHours = totalPaintSqft / sqftPerLaborHour + 4
+  let labor = Math.round(laborHours * laborRate)
+  labor = Math.round(labor * args.stateMultiplier)
+
+  const coverageSqftPerGallon = 325
+  const wasteFactor = 1.12
+  const paintCostPerGallon = 28
+  const gallons = (totalPaintSqft / coverageSqftPerGallon) * wasteFactor
+
+  const materials =
+    Math.round(gallons * paintCostPerGallon) + 85
+
+  const subs =
+    totalPaintSqft <= 250 ? 250 :
+    totalPaintSqft <= 600 ? 400 :
+    650
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  return { labor, materials, subs, markup, total }
+}
+
 // -----------------------------
 // API HANDLER
 // -----------------------------
@@ -3339,7 +3822,21 @@ const photoImpact = derivePhotoPricingImpact({
   analysis: photoAnalysis,
   trade,
   scopeText: scopeChange,
-})    
+})
+
+const photoScopeAssist = buildPhotoScopeAssist({
+  photoAnalysis,
+  scopeText: scopeChange,
+  trade,
+})
+
+const quantityInputs = getEffectiveQuantityInputs({
+  measurements,
+  scopeText: scopeChange,
+  photoAnalysis,
+})
+
+const photoQuantityHints = buildPhotoQuantityHints(photoAnalysis)
 
 // Start with raw scope
 let effectiveScopeChange = scopeChange
@@ -3366,6 +3863,30 @@ if (photoAnalysis?.suggestedScopeNotes?.length) {
 
 PHOTO-BASED SCOPE NOTES:
 ${photoAnalysis.suggestedScopeNotes.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (photoQuantityHints) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO QUANTITY HINTS:
+${photoQuantityHints}`.trim()
+}
+
+if (photoScopeAssist.missingScopeFlags.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO SCOPE FLAGS:
+${photoScopeAssist.missingScopeFlags.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (photoScopeAssist.suggestedAdditions.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO SUGGESTED ADDITIONS:
+${photoScopeAssist.suggestedAdditions.map((x) => `- ${x}`).join("\n")}`.trim()
 }
 
 // Parse quantities from the raw scope (before we append extra lines)
@@ -3500,13 +4021,16 @@ const anchorHit =
  (!allowAnchors && !allowBathAnchorInPlumbing)
     ? null
     : runPriceGuardAnchors({
-        scope: scopeChange,
-        trade,
-        stateMultiplier,
-        measurements,
-        rooms,
-        doors,
-      })
+    scope: scopeChange,
+    trade,
+    stateMultiplier,
+    measurements,
+    rooms,
+    doors,
+    photoWallSqft: quantityInputs.photoWallSqft,
+    photoCeilingSqft: quantityInputs.photoCeilingSqft,
+    photoFloorSqft: quantityInputs.photoFloorSqft,
+  })
 
 console.log("PG ANCHOR", { hit: anchorHit?.id ?? null })
 
@@ -3627,6 +4151,21 @@ const doorPricing: Pricing | null =
 
         return { labor, materials, subs, markup, total }
       })()
+    : null
+
+    const photoPaintPricing: Pricing | null =
+  looksLikePainting &&
+  !(typeof rooms === "number" && rooms > 0) &&
+  !(typeof doors === "number" && doors > 0) &&
+  !(measurements?.totalSqft && measurements.totalSqft > 0) &&
+  !!quantityInputs.photoWallSqft &&
+  quantityInputs.photoWallSqft > 0
+    ? pricePaintingByPhotoSqft({
+        wallSqft: quantityInputs.photoWallSqft,
+        ceilingSqft: quantityInputs.photoCeilingSqft,
+        stateMultiplier,
+        paintScope: paintScopeForJob ?? "walls",
+      })
     : null
 
     // -----------------------------
@@ -3969,7 +4508,7 @@ const normalized: any = {
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
 // ✅ EstimateBasis enforcement (AI fallback quality)
-const parsedSqft = parseSqft(scopeChange)
+const parsedSqft = quantityInputs.effectivePaintSqft ?? parseSqft(scopeChange)
 normalized.estimateBasis = normalizeEstimateBasisUnits(
   enforceEstimateBasis({
     trade,
@@ -4399,15 +4938,31 @@ if (photoImpact.reasons.length > 0) {
 
     const outTrade = normalized.trade || trade
 
+    const explanation = buildEstimateExplanation({
+  pricingSource,
+  detSource,
+  trade,
+  priceGuardVerified,
+  priceGuardProtected,
+  photoImpact,
+  minApplied: minResult.applied,
+  minAmount: minResult.applied ? minResult.minimum : null,
+  scopeSignals,
+  complexityProfile,
+  priceGuard: pg,
+})
+
   // ✅ BUILD PAYLOAD ONCE
   const payload = {
   documentType: normalized.documentType,
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+  explanation,
   scopeSignals,
   photoAnalysis,
   photoImpact,
+  photoScopeAssist,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
@@ -4488,15 +5043,16 @@ if (photoImpact.reasons.length > 0) {
 // Only run merge/AI fallback when deterministic did NOT claim ownership.
 if (pricingSource !== "deterministic") {
   const detPickedRaw: Pricing | null =
-    anchorPricing ?? bigJobPricing ?? doorPricing ?? mixedPaintPricing ?? null
+  anchorPricing ?? bigJobPricing ?? doorPricing ?? mixedPaintPricing ?? photoPaintPricing ?? null
 
   // ✅ detSource must be based on the raw winner (reference identity)
   detSource =
-    detPickedRaw === anchorPricing ? `anchor:${anchorHit?.id}` :
-    detPickedRaw === bigJobPricing ? "painting_big_job" :
-    detPickedRaw === doorPricing ? "painting_doors_only" :
-    detPickedRaw === mixedPaintPricing ? "painting_rooms_plus_doors" :
-    null
+  detPickedRaw === anchorPricing ? `anchor:${anchorHit?.id}` :
+  detPickedRaw === bigJobPricing ? "painting_big_job" :
+  detPickedRaw === doorPricing ? "painting_doors_only" :
+  detPickedRaw === mixedPaintPricing ? "painting_rooms_plus_doors" :
+  detPickedRaw === photoPaintPricing ? "painting_photo_sqft" :
+  null
 
   // ✅ safe normalized deterministic baseline used for math
   const detPicked = detPickedRaw ? clampPricing(coercePricing(detPickedRaw)) : null
@@ -4718,6 +5274,20 @@ if (minResult.applied) {
   )
 }
 
+const explanation = buildEstimateExplanation({
+  pricingSource,
+  detSource,
+  trade,
+  priceGuardVerified,
+  priceGuardProtected,
+  photoImpact,
+  minApplied: minResult.applied,
+  minAmount: minResult.applied ? minResult.minimum : null,
+  scopeSignals,
+  complexityProfile,
+  priceGuard: pg,
+})
+
 normalized.trade = trade
 
 normalized.description = appendExecutionPlanSentence({
@@ -4761,9 +5331,11 @@ const payload = {
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+  explanation,
   scopeSignals,
   photoAnalysis,
   photoImpact,
+  photoScopeAssist,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
