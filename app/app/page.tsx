@@ -87,10 +87,20 @@ function scrollToInvoices() {
   }, 50)
 }
 
+const MAX_JOB_PHOTOS = 5
+const MAX_PHOTO_DATAURL_LENGTH = 700_000
+const MAX_TOTAL_PHOTO_PAYLOAD = 1_400_000
+
+function estimatePhotoPayloadLength(
+  photos: { dataUrl: string }[]
+): number {
+  return photos.reduce((sum, p) => sum + (p.dataUrl?.length || 0), 0)
+}
+
 async function compressImageFile(file: File): Promise<string> {
   const imageBitmap = await createImageBitmap(file)
 
-  const maxWidth = 1600
+  const maxWidth = 900
   const scale = Math.min(1, maxWidth / imageBitmap.width)
 
   const width = Math.round(imageBitmap.width * scale)
@@ -105,30 +115,53 @@ async function compressImageFile(file: File): Promise<string> {
 
   ctx.drawImage(imageBitmap, 0, 0, width, height)
 
-  return canvas.toDataURL("image/jpeg", 0.78)
+  return canvas.toDataURL("image/jpeg", 0.48)
 }
 
 async function handlePhotoUpload(files: FileList | null) {
   if (!files || files.length === 0) return
 
-  const remainingSlots = Math.max(0, 5 - jobPhotos.length)
-const picked = Array.from(files).slice(0, remainingSlots)
+  const remainingSlots = Math.max(0, MAX_JOB_PHOTOS - jobPhotos.length)
+  const picked = Array.from(files).slice(0, remainingSlots)
 
   try {
-    const nextPhotos = await Promise.all(
-  picked.map(async (file) => ({
-    id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
-    name: file.name,
-    dataUrl: await compressImageFile(file),
-  }))
-)
+    const compressed = await Promise.all(
+      picked.map(async (file) => ({
+        id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+        name: file.name.replace(/\.[^.]+$/, "") + ".jpg",
+        dataUrl: await compressImageFile(file),
+      }))
+    )
+
+    const sizeFiltered = compressed.filter(
+      (photo) => photo.dataUrl.length <= MAX_PHOTO_DATAURL_LENGTH
+    )
 
     setJobPhotos((prev) => {
-      const merged = [...prev, ...nextPhotos].slice(0, 5)
-      return merged
-    })
+      const merged = [...prev]
+      let skippedForTotalSize = 0
 
-    setStatus("")
+      for (const photo of sizeFiltered) {
+        const next = [...merged, photo]
+        const totalSize = estimatePhotoPayloadLength(next)
+
+        if (totalSize <= MAX_TOTAL_PHOTO_PAYLOAD) {
+          merged.push(photo)
+        } else {
+          skippedForTotalSize += 1
+        }
+      }
+
+      if (compressed.length !== sizeFiltered.length) {
+        setStatus("One or more photos were too large after compression and were skipped.")
+      } else if (skippedForTotalSize > 0) {
+        setStatus("Some photos were skipped to keep upload size within limit.")
+      } else {
+        setStatus("")
+      }
+
+      return merged.slice(0, MAX_JOB_PHOTOS)
+    })
   } catch (err) {
     console.error(err)
     setStatus("Could not load selected photo(s).")
@@ -2372,6 +2405,34 @@ const tradeToSend =
   try {
     const requestId = crypto.randomUUID()
 
+const photosToSend =
+  jobPhotos.length > 0
+    ? (() => {
+        const selected: { name: string; dataUrl: string }[] = []
+        let runningTotal = 0
+
+        for (const p of jobPhotos) {
+          const size = p.dataUrl?.length || 0
+
+          if (size > MAX_PHOTO_DATAURL_LENGTH) continue
+          if (runningTotal + size > MAX_TOTAL_PHOTO_PAYLOAD) continue
+
+          selected.push({
+            name: p.name,
+            dataUrl: p.dataUrl,
+          })
+
+          runningTotal += size
+        }
+
+        return selected.length > 0 ? selected : null
+      })()
+    : null
+
+if (jobPhotos.length > 0 && (!photosToSend || photosToSend.length < jobPhotos.length)) {
+  setStatus("Some photos were skipped automatically to keep upload size within limits.")
+}
+
 const res = await fetch("/api/generate", {
   method: "POST",
   headers: {
@@ -2389,13 +2450,7 @@ const res = await fetch("/api/generate", {
     measurements: measureEnabled
       ? { rows: measureRows, totalSqft, units: "ft" }
       : null,
-    photos:
-      jobPhotos.length > 0
-        ? jobPhotos.map((p) => ({
-            name: p.name,
-            dataUrl: p.dataUrl,
-          }))
-        : null,
+    photos: photosToSend,
   }),
 })
 
