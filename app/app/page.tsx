@@ -88,8 +88,8 @@ function scrollToInvoices() {
 }
 
 const MAX_JOB_PHOTOS = 5
-const MAX_PHOTO_DATAURL_LENGTH = 700_000
-const MAX_TOTAL_PHOTO_PAYLOAD = 1_400_000
+const MAX_PHOTO_DATAURL_LENGTH = 350_000
+const MAX_TOTAL_PHOTO_PAYLOAD = 900_000
 
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
@@ -100,11 +100,17 @@ function estimatePhotoPayloadLength(
 async function compressImageFile(file: File): Promise<string> {
   const imageBitmap = await createImageBitmap(file)
 
-  const maxWidth = 900
-  const scale = Math.min(1, maxWidth / imageBitmap.width)
+  const maxWidth = 700
+  const maxHeight = 700
 
-  const width = Math.round(imageBitmap.width * scale)
-  const height = Math.round(imageBitmap.height * scale)
+  const scale = Math.min(
+    1,
+    maxWidth / imageBitmap.width,
+    maxHeight / imageBitmap.height
+  )
+
+  const width = Math.max(1, Math.round(imageBitmap.width * scale))
+  const height = Math.max(1, Math.round(imageBitmap.height * scale))
 
   const canvas = document.createElement("canvas")
   canvas.width = width
@@ -115,7 +121,17 @@ async function compressImageFile(file: File): Promise<string> {
 
   ctx.drawImage(imageBitmap, 0, 0, width, height)
 
-  return canvas.toDataURL("image/jpeg", 0.48)
+  let dataUrl = canvas.toDataURL("image/jpeg", 0.42)
+
+  if (dataUrl.length > MAX_PHOTO_DATAURL_LENGTH) {
+    dataUrl = canvas.toDataURL("image/jpeg", 0.30)
+  }
+
+  if (dataUrl.length > MAX_PHOTO_DATAURL_LENGTH) {
+    dataUrl = canvas.toDataURL("image/jpeg", 0.22)
+  }
+
+  return dataUrl
 }
 
 async function handlePhotoUpload(files: FileList | null) {
@@ -137,31 +153,30 @@ async function handlePhotoUpload(files: FileList | null) {
       (photo) => photo.dataUrl.length <= MAX_PHOTO_DATAURL_LENGTH
     )
 
-    setJobPhotos((prev) => {
-      const merged = [...prev]
-      let skippedForTotalSize = 0
+    const mergedBase = [...jobPhotos]
+    const merged: typeof compressed = [...mergedBase]
+    let skippedForTotalSize = 0
 
-      for (const photo of sizeFiltered) {
-        const next = [...merged, photo]
-        const totalSize = estimatePhotoPayloadLength(next)
+    for (const photo of sizeFiltered) {
+      const next = [...merged, photo]
+      const totalSize = estimatePhotoPayloadLength(next)
 
-        if (totalSize <= MAX_TOTAL_PHOTO_PAYLOAD) {
-          merged.push(photo)
-        } else {
-          skippedForTotalSize += 1
-        }
-      }
-
-      if (compressed.length !== sizeFiltered.length) {
-        setStatus("One or more photos were too large after compression and were skipped.")
-      } else if (skippedForTotalSize > 0) {
-        setStatus("Some photos were skipped to keep upload size within limit.")
+      if (totalSize <= MAX_TOTAL_PHOTO_PAYLOAD) {
+        merged.push(photo)
       } else {
-        setStatus("")
+        skippedForTotalSize += 1
       }
+    }
 
-      return merged.slice(0, MAX_JOB_PHOTOS)
-    })
+    if (compressed.length !== sizeFiltered.length) {
+      setStatus("One or more photos were still too large after compression and were skipped.")
+    } else if (skippedForTotalSize > 0) {
+      setStatus("Some photos were skipped to keep upload size within limit.")
+    } else {
+      setStatus("")
+    }
+
+    setJobPhotos(merged.slice(0, MAX_JOB_PHOTOS))
   } catch (err) {
     console.error(err)
     setStatus("Could not load selected photo(s).")
@@ -2432,6 +2447,20 @@ const photosToSend =
 if (jobPhotos.length > 0 && (!photosToSend || photosToSend.length < jobPhotos.length)) {
   setStatus("Some photos were skipped automatically to keep upload size within limits.")
 }
+
+console.log("photo count:", jobPhotos.length)
+console.log(
+  "selected photo count:",
+  photosToSend?.length ?? 0
+)
+console.log(
+  "selected photo sizes:",
+  photosToSend?.map((p) => p.dataUrl.length) ?? []
+)
+console.log(
+  "selected total photo payload:",
+  photosToSend?.reduce((sum, p) => sum + p.dataUrl.length, 0) ?? 0
+)
 
 const res = await fetch("/api/generate", {
   method: "POST",
