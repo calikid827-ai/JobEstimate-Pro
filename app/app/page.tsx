@@ -87,13 +87,25 @@ function scrollToInvoices() {
   }, 50)
 }
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ""))
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+async function compressImageFile(file: File): Promise<string> {
+  const imageBitmap = await createImageBitmap(file)
+
+  const maxWidth = 1600
+  const scale = Math.min(1, maxWidth / imageBitmap.width)
+
+  const width = Math.round(imageBitmap.width * scale)
+  const height = Math.round(imageBitmap.height * scale)
+
+  const canvas = document.createElement("canvas")
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext("2d")
+  if (!ctx) throw new Error("Could not create canvas context")
+
+  ctx.drawImage(imageBitmap, 0, 0, width, height)
+
+  return canvas.toDataURL("image/jpeg", 0.78)
 }
 
 async function handlePhotoUpload(files: FileList | null) {
@@ -104,12 +116,12 @@ const picked = Array.from(files).slice(0, remainingSlots)
 
   try {
     const nextPhotos = await Promise.all(
-      picked.map(async (file) => ({
-        id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
-        name: file.name,
-        dataUrl: await fileToDataUrl(file),
-      }))
-    )
+  picked.map(async (file) => ({
+    id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+    name: file.name,
+    dataUrl: await compressImageFile(file),
+  }))
+)
 
     setJobPhotos((prev) => {
       const merged = [...prev, ...nextPhotos].slice(0, 5)

@@ -63,7 +63,7 @@ const PRIMARY_MODEL = "gpt-4.1-mini" as const
 const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
 const PHOTO_ANALYSIS_MODEL = "gpt-4o" as const
-const MAX_PHOTOS = 6
+const MAX_PHOTOS = 5
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // 8 MB decoded size per image
 const ALLOWED_PHOTO_MIME = new Set([
   "image/jpeg",
@@ -3587,7 +3587,7 @@ export async function POST(req: NextRequest) {
   // Parse JSON with an actual byte limit (stream-safe)
 let raw: any
 try {
-  raw = await readJsonWithLimit<any>(req, 12_000_000)
+  raw = await readJsonWithLimit<any>(req, 25_000_000)
 } catch (e: any) {
   if (e?.status === 413) {
     return jsonError(413, "BODY_TOO_LARGE", "Request too large.")
