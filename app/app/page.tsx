@@ -69,7 +69,6 @@ import InvoicesSection from "./components/InvoicesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 
-
 export default function Home() {
 
   const generatingRef = useRef(false)
@@ -1824,6 +1823,28 @@ const estimateConfidence = useMemo(() => {
   photoAnalysis,
 ])
 
+const smartScopePreview = useMemo(() => {
+  const base = (scopeChange || "").trim()
+  if (!base) return null
+
+  const additions = photoScopeAssist?.suggestedAdditions ?? []
+  const notes = photoAnalysis?.suggestedScopeNotes ?? []
+
+  const merged = [...notes, ...additions]
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+  const unique = Array.from(new Set(merged))
+
+  if (unique.length === 0) return null
+
+  return {
+    original: base,
+    suggestions: unique,
+    combined: [base, ...unique].join("\n• "),
+  }
+}, [scopeChange, photoScopeAssist, photoAnalysis])
+
     const smartSuggestedPrice = useMemo(() => {
   if (!pricingMemory) return null
 
@@ -1997,6 +2018,23 @@ function applyProfitTarget(targetMarginPct: number) {
 
   setPricingEdited(true)
   setStatus(`Profit target applied: ${Math.round(targetMarginPct)}% TRUE margin`)
+}
+
+function applySmartScopePreview() {
+  if (!smartScopePreview) return
+  setScopeChange(
+    `${smartScopePreview.original}\n\n• ${smartScopePreview.suggestions.join("\n• ")}`
+  )
+  setStatus("Smart scope additions applied.")
+}
+
+async function regenerateWithSmartScope() {
+  if (!smartScopePreview) return
+
+  const mergedScope =
+    `${smartScopePreview.original}\n\n• ${smartScopePreview.suggestions.join("\n• ")}`
+
+  await generate(mergedScope)
 }
 
 // -------------------------
@@ -2364,7 +2402,7 @@ useEffect(() => {
   // -------------------------
 // Generate AI document
 // -------------------------
-async function generate() {
+async function generate(scopeOverride?: string) {
   if (generatingRef.current) return
   generatingRef.current = true
 
@@ -2380,7 +2418,12 @@ async function generate() {
     return
   }
 
-  if (!scopeChange.trim()) {
+  const finalScopeChange =
+  typeof scopeOverride === "string"
+    ? scopeOverride.trim()
+    : String(scopeChange || "").trim()
+
+    if (!finalScopeChange) {
     setStatus("Please describe the scope change.")
     generatingRef.current = false
     return
@@ -2405,6 +2448,11 @@ async function generate() {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+
+    if (scopeOverride) {
+    setScopeChange(finalScopeChange)
+    setStatus("Regenerating with smart scope suggestions...")
+  }
 
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
@@ -2472,7 +2520,7 @@ const res = await fetch("/api/generate", {
   body: JSON.stringify({
     requestId,
     email: e,
-    scopeChange,
+    scopeChange: finalScopeChange,
     trade: tradeToSend,
     state,
     paintScope: paintScopeToSend,
@@ -2583,7 +2631,7 @@ const estItem: EstimateHistoryItem = {
   documentType: nextDocumentType,
   trade: nextTrade,
   state: state || "",
-  scopeChange: scopeChange || "",
+  scopeChange: finalScopeChange,
   result: nextResult,
   explanation: data?.explanation || null,
   pricing: {
@@ -4005,18 +4053,11 @@ function ScheduleEditor({
   setSchedule: React.Dispatch<React.SetStateAction<Schedule | null>>
 }) {
   return (
-    <div
-      style={{
-        marginTop: 12,
-        padding: 12,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
-        Edit Schedule
-      </div>
+  <div
+    style={{
+      marginTop: 12,
+    }}
+  >
 
       <label style={{ fontSize: 12 }}>Start Date (Optional)</label>
 <input
@@ -4466,6 +4507,73 @@ function ScheduleEditor({
   />
 )}
 
+{smartScopePreview && (
+  <div
+    style={{
+      marginTop: 12,
+      marginBottom: 14,
+      padding: 14,
+      border: "1px solid #c7d2fe",
+      borderRadius: 14,
+      background: "#eef2ff",
+    }}
+  >
+    <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
+      Smart Scope Assist
+    </div>
+
+    <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
+      Suggested additions based on uploaded photos and missing scope details.
+    </div>
+
+    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
+      {smartScopePreview.suggestions.map((item, i) => (
+        <li key={`smart-scope-${i}`}>{item}</li>
+      ))}
+    </ul>
+
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+  <button
+  type="button"
+  onClick={regenerateWithSmartScope}
+  disabled={loading}
+  style={{
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "none",
+    background: loading ? "#a5b4fc" : "#312e81",
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: loading ? "not-allowed" : "pointer",
+    opacity: loading ? 0.8 : 1,
+  }}
+>
+  {loading ? "Regenerating..." : "Regenerate with Suggestions"}
+</button>
+
+  <button
+  type="button"
+  onClick={applySmartScopePreview}
+  disabled={loading}
+  style={{
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #c7d2fe",
+    background: "#fff",
+    color: "#312e81",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: loading ? "not-allowed" : "pointer",
+    opacity: loading ? 0.7 : 1,
+  }}
+>
+  Apply to Scope Only
+</button>
+</div>
+  </div>
+)}
+
 {pricingMemory && (
   <div
     style={{
@@ -4641,120 +4749,18 @@ function ScheduleEditor({
   </div>
 )}
 
-{changeOrderSummary && (
-  <div
-    style={{
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 12,
-      background: "#fff",
-    }}
-  >
-    <div style={{ fontWeight: 900, fontSize: 14 }}>
-      Smart Change Order Summary
-    </div>
-
-    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-      Compared against the original estimate for this job.
-    </div>
-
-    <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
-      <div>
-        Original Estimate:{" "}
-        <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
-      </div>
-
-      {!changeOrderSummary.isOriginalEstimate && (
-        <div>
-          This Change Order:{" "}
-          <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
-        </div>
-      )}
-
-      <div>
-        Previous Contract Value:{" "}
-        <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
-      </div>
-
-      <div>
-        New Contract Value:{" "}
-        <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
-      </div>
-
-      <div>
-        Cost Change:{" "}
-        <strong
-          style={{
-            color:
-              changeOrderSummary.costDelta > 0
-                ? "#9b1c1c"
-                : changeOrderSummary.costDelta < 0
-                ? "#065f46"
-                : "#111",
-          }}
-        >
-          {formatDelta(changeOrderSummary.costDelta)}
-        </strong>
-      </div>
-
-      <div>
-        Crew-Day Change:{" "}
-        <strong>{formatSignedNumber(changeOrderSummary.crewDayDelta)}</strong>
-      </div>
-
-      <div>
-        Schedule Impact:{" "}
-        <strong>
-          {(() => {
-            const hasPreviousSchedule = !!changeOrderSummary.originalEnd
-            const hasCurrentSchedule = !!changeOrderSummary.currentEnd
-
-            if (!hasPreviousSchedule && !hasCurrentSchedule) {
-              return "Neither estimate has a full schedule"
-            }
-
-            if (!hasPreviousSchedule) {
-              return "Original estimate had no full schedule"
-            }
-
-            if (!hasCurrentSchedule) {
-              return "Current estimate has no full schedule"
-            }
-
-            return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
-          })()}
-        </strong>
-      </div>
-
-      <div>
-        Original Completion:{" "}
-        <strong>
-          {changeOrderSummary.originalEnd
-            ? changeOrderSummary.originalEnd.toLocaleDateString()
-            : "—"}
-        </strong>
-      </div>
-
-      <div>
-        New Completion:{" "}
-        <strong>
-          {changeOrderSummary.currentEnd
-            ? changeOrderSummary.currentEnd.toLocaleDateString()
-            : "—"}
-        </strong>
-      </div>
-    </div>
-  </div>
-)}
-
-{explainChangesReport && (
+{(changeOrderSummary ||
+  explainChangesReport ||
+  estimateBreakdown.length > 0 ||
+  estimateAssumptions.length > 0 ||
+  estimateConfidence) && (
   <details
     style={{
+      marginTop: 14,
       marginBottom: 14,
       padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 12,
+      border: "1px solid #d1d5db",
+      borderRadius: 14,
       background: "#fff",
     }}
   >
@@ -4762,66 +4768,360 @@ function ScheduleEditor({
       style={{
         cursor: "pointer",
         fontWeight: 900,
-        fontSize: 14,
+        fontSize: 15,
       }}
     >
-      Explain Changes
+      Review & Insights
     </summary>
 
     <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-      Shows what changed compared with the original estimate for this job.
+      Review pricing logic, change impacts, assumptions, and confidence before sending.
     </div>
 
-    {explainChangesReport.summary.length > 0 && (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {explainChangesReport.summary.map((item, i) => (
-            <li key={`summary-${i}`}>{item}</li>
+    {estimateConfidence && (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: `1px solid ${estimateConfidence.border}`,
+          borderRadius: 12,
+          background: estimateConfidence.bg,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 14,
+                color: estimateConfidence.color,
+              }}
+            >
+              Confidence / Review Badge
+            </div>
+
+            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+              How reliable this estimate is based on the details provided.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: "#fff",
+              border: `1px solid ${estimateConfidence.border}`,
+              color: estimateConfidence.color,
+              fontWeight: 800,
+              fontSize: 13,
+            }}
+          >
+            <span>{estimateConfidence.label}</span>
+            <span>{estimateConfidence.score}%</span>
+          </div>
+        </div>
+
+        {estimateConfidence.warnings.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: estimateConfidence.color,
+                marginBottom: 6,
+              }}
+            >
+              Review flags
+            </div>
+
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {estimateConfidence.warnings.map((item, i) => (
+                <li key={`confidence-warning-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {estimateConfidence.reasons.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#333",
+                marginBottom: 6,
+              }}
+            >
+              Confidence drivers
+            </div>
+
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {estimateConfidence.reasons.map((item, i) => (
+                <li key={`confidence-reason-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(estimateConfidence.level === "low" ||
+          estimateConfidence.level === "review") && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 10,
+              background: "#fff",
+              border: `1px solid ${estimateConfidence.border}`,
+              color: estimateConfidence.color,
+              fontSize: 13,
+              lineHeight: 1.45,
+              fontWeight: 700,
+            }}
+          >
+            Review recommended before sending this estimate to a client.
+          </div>
+        )}
+      </div>
+    )}
+
+    {changeOrderSummary && (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14 }}>
+          Smart Change Order Summary
+        </div>
+
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          Compared against the original estimate for this job.
+        </div>
+
+        <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
+          <div>
+            Original Estimate:{" "}
+            <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
+          </div>
+
+          {!changeOrderSummary.isOriginalEstimate && (
+            <div>
+              This Change Order:{" "}
+              <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
+            </div>
+          )}
+
+          <div>
+            Previous Contract Value:{" "}
+            <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
+          </div>
+
+          <div>
+            New Contract Value:{" "}
+            <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
+          </div>
+
+          <div>
+            Cost Change:{" "}
+            <strong
+              style={{
+                color:
+                  changeOrderSummary.costDelta > 0
+                    ? "#9b1c1c"
+                    : changeOrderSummary.costDelta < 0
+                    ? "#065f46"
+                    : "#111",
+              }}
+            >
+              {formatDelta(changeOrderSummary.costDelta)}
+            </strong>
+          </div>
+
+          <div>
+            Crew-Day Change:{" "}
+            <strong>{formatSignedNumber(changeOrderSummary.crewDayDelta)}</strong>
+          </div>
+
+          <div>
+            Schedule Impact:{" "}
+            <strong>
+              {(() => {
+                const hasPreviousSchedule = !!changeOrderSummary.originalEnd
+                const hasCurrentSchedule = !!changeOrderSummary.currentEnd
+
+                if (!hasPreviousSchedule && !hasCurrentSchedule) {
+                  return "Neither estimate has a full schedule"
+                }
+
+                if (!hasPreviousSchedule) {
+                  return "Original estimate had no full schedule"
+                }
+
+                if (!hasCurrentSchedule) {
+                  return "Current estimate has no full schedule"
+                }
+
+                return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
+              })()}
+            </strong>
+          </div>
+
+          <div>
+            Original Completion:{" "}
+            <strong>
+              {changeOrderSummary.originalEnd
+                ? changeOrderSummary.originalEnd.toLocaleDateString()
+                : "—"}
+            </strong>
+          </div>
+
+          <div>
+            New Completion:{" "}
+            <strong>
+              {changeOrderSummary.currentEnd
+                ? changeOrderSummary.currentEnd.toLocaleDateString()
+                : "—"}
+            </strong>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {explainChangesReport && (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14 }}>Explain Changes</div>
+
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          Shows what changed compared with the original estimate for this job.
+        </div>
+
+        {explainChangesReport.summary.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.summary.map((item, i) => (
+                <li key={`summary-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {explainChangesReport.scopeChanges.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Scope Changes</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.scopeChanges.map((item, i) => (
+                <li key={`scope-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {explainChangesReport.pricingChanges.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Pricing Changes</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.pricingChanges.map((item, i) => (
+                <li key={`pricing-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {explainChangesReport.scheduleChanges.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule Changes</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.scheduleChanges.map((item, i) => (
+                <li key={`schedule-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {explainChangesReport.adminChanges.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Terms / Admin Changes</div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.adminChanges.map((item, i) => (
+                <li key={`admin-${i}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    )}
+
+    {estimateBreakdown.length > 0 && (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14 }}>
+          Explain My Estimate
+        </div>
+
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          Plain-English reasons behind this estimate.
+        </div>
+
+        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+          {estimateBreakdown.map((item, i) => (
+            <li key={`estimate-breakdown-${i}`}>{item}</li>
           ))}
         </ul>
       </div>
     )}
 
-    {explainChangesReport.scopeChanges.length > 0 && (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Scope Changes</div>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {explainChangesReport.scopeChanges.map((item, i) => (
-            <li key={`scope-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
+    {estimateAssumptions.length > 0 && (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14 }}>
+          Assumptions & Review Notes
+        </div>
 
-    {explainChangesReport.pricingChanges.length > 0 && (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Pricing Changes</div>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {explainChangesReport.pricingChanges.map((item, i) => (
-            <li key={`pricing-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          Standard project assumptions used to build this estimate.
+        </div>
 
-    {explainChangesReport.scheduleChanges.length > 0 && (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule Changes</div>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {explainChangesReport.scheduleChanges.map((item, i) => (
-            <li key={`schedule-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {explainChangesReport.adminChanges.length > 0 && (
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Terms / Admin Changes</div>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {explainChangesReport.adminChanges.map((item, i) => (
-            <li key={`admin-${i}`}>{item}</li>
+        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+          {estimateAssumptions.map((item, i) => (
+            <li key={`estimate-assumption-${i}`}>{item}</li>
           ))}
         </ul>
       </div>
@@ -4829,172 +5129,34 @@ function ScheduleEditor({
   </details>
 )}
 
-{estimateBreakdown.length > 0 && (
-  <div
-    style={{
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 12,
-      background: "#fff",
-    }}
-  >
-    <div style={{ fontWeight: 900, fontSize: 14 }}>
-      Explain My Estimate
-    </div>
+  <PricingSummarySection
+    pricing={pricing}
+    setPricing={setPricing}
+    setPricingEdited={setPricingEdited}
+    applyProfitTarget={applyProfitTarget}
+    depositEnabled={depositEnabled}
+    setDepositEnabled={setDepositEnabled}
+    depositType={depositType}
+    setDepositType={setDepositType}
+    depositValue={depositValue}
+    setDepositValue={setDepositValue}
+    depositDue={depositDue}
+    remainingBalance={remainingBalance}
+    taxEnabled={taxEnabled}
+    setTaxEnabled={setTaxEnabled}
+    taxRate={taxRate}
+    setTaxRate={setTaxRate}
+    taxAmount={taxAmount}
+    minimumSafeStatus={minimumSafeStatus}
+    historicalPriceGuard={historicalPriceGuard}
+    PriceGuardBadge={PriceGuardBadge}
+    pdfShowPriceGuard={pdfShowPriceGuard}
+    pdfPriceGuardLabel={pdfPriceGuardLabel}
+    isUserEdited={isUserEdited}
+    downloadPDF={downloadPDF}
+  />
 
-    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-      Plain-English reasons behind this estimate.
-    </div>
-
-    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
-      {estimateBreakdown.map((item, i) => (
-        <li key={`estimate-breakdown-${i}`}>{item}</li>
-      ))}
-    </ul>
-  </div>
-)}
-
-{estimateAssumptions.length > 0 && (
-  <div
-    style={{
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 12,
-      background: "#fafafa",
-    }}
-  >
-    <div style={{ fontWeight: 900, fontSize: 14 }}>
-      Assumptions & Review Notes
-    </div>
-
-    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-      Standard project assumptions used to build this estimate.
-    </div>
-
-    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
-      {estimateAssumptions.map((item, i) => (
-        <li key={`estimate-assumption-${i}`}>
-          {item}
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-
-{estimateConfidence && (
-  <div
-    style={{
-      marginBottom: 14,
-      padding: 12,
-      border: `1px solid ${estimateConfidence.border}`,
-      borderRadius: 12,
-      background: estimateConfidence.bg,
-    }}
-  >
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        gap: 10,
-        flexWrap: "wrap",
-        alignItems: "center",
-      }}
-    >
-      <div>
-        <div style={{ fontWeight: 900, fontSize: 14, color: estimateConfidence.color }}>
-          Confidence / Review Badge
-        </div>
-
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-          How reliable this estimate is based on the details provided.
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "8px 12px",
-          borderRadius: 999,
-          background: "#fff",
-          border: `1px solid ${estimateConfidence.border}`,
-          color: estimateConfidence.color,
-          fontWeight: 800,
-          fontSize: 13,
-        }}
-      >
-        <span>{estimateConfidence.label}</span>
-        <span>{estimateConfidence.score}%</span>
-      </div>
-    </div>
-
-    {estimateConfidence.warnings.length > 0 && (
-      <div style={{ marginTop: 10 }}>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            color: estimateConfidence.color,
-            marginBottom: 6,
-          }}
-        >
-          Review flags
-        </div>
-
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {estimateConfidence.warnings.map((item, i) => (
-            <li key={`confidence-warning-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {estimateConfidence.reasons.length > 0 && (
-      <div style={{ marginTop: 10 }}>
-        <div
-          style={{
-            fontSize: 12,
-            fontWeight: 800,
-            color: "#333",
-            marginBottom: 6,
-          }}
-        >
-          Confidence drivers
-        </div>
-
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-          {estimateConfidence.reasons.map((item, i) => (
-            <li key={`confidence-reason-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {(estimateConfidence.level === "low" ||
-      estimateConfidence.level === "review") && (
-      <div
-        style={{
-          marginTop: 10,
-          padding: 10,
-          borderRadius: 10,
-          background: "#fff",
-          border: `1px solid ${estimateConfidence.border}`,
-          color: estimateConfidence.color,
-          fontSize: 13,
-          lineHeight: 1.45,
-          fontWeight: 700,
-        }}
-      >
-        Review recommended before sending this estimate to a client.
-      </div>
-    )}
-  </div>
-)}
-
-<p>{result?.text}</p>
+<p style={{ marginTop: 14 }}>{result?.text}</p>
 
 {scopeSignals?.needsReturnVisit && (
   <div
@@ -5028,39 +5190,30 @@ function ScheduleEditor({
       </div>
     )}
 
-    <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
+    <details
+      style={{
+        marginTop: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+        padding: 12,
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 800,
+          fontSize: 13,
+        }}
+      >
+        Edit Schedule
+      </summary>
+
+      <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
+    </details>
   </>
 )}
   </div>
-)}
-
-{result && (
-  <PricingSummarySection
-    pricing={pricing}
-    setPricing={setPricing}
-    setPricingEdited={setPricingEdited}
-    applyProfitTarget={applyProfitTarget}
-    depositEnabled={depositEnabled}
-    setDepositEnabled={setDepositEnabled}
-    depositType={depositType}
-    setDepositType={setDepositType}
-    depositValue={depositValue}
-    setDepositValue={setDepositValue}
-    depositDue={depositDue}
-    remainingBalance={remainingBalance}
-    taxEnabled={taxEnabled}
-    setTaxEnabled={setTaxEnabled}
-    taxRate={taxRate}
-    setTaxRate={setTaxRate}
-    taxAmount={taxAmount}
-    minimumSafeStatus={minimumSafeStatus}
-    historicalPriceGuard={historicalPriceGuard}
-    PriceGuardBadge={PriceGuardBadge}
-    pdfShowPriceGuard={pdfShowPriceGuard}
-    pdfPriceGuardLabel={pdfPriceGuardLabel}
-    isUserEdited={isUserEdited}
-    downloadPDF={downloadPDF}
-  />
 )}
 
 <JobsDashboardSection
