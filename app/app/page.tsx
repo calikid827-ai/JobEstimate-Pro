@@ -2674,6 +2674,7 @@ upsertBudgetFromEstimate(estItem)
 lastSavedEstimateIdRef.current = newId
 
 await checkEntitlementNow()
+setStatus("")
   } catch (err) {
     console.error(err)
     setStatus("Error generating document.")
