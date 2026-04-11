@@ -68,9 +68,14 @@ function sumMatches(text: string, re: RegExp): number {
 }
 
 function parseSqftFromText(scopeText: string): number | null {
-  const t = scopeText.toLowerCase()
-  const m = t.match(/(\d{1,6})\s*(sq\s*ft|sqft|square\s*feet|sf)\b/)
+  const t = scopeText.toLowerCase().replace(/,/g, "")
+
+  const m = t.match(
+    /(\d{1,6}(?:\.\d{1,2})?)\s*(sq\.?\s*ft|sqft|sf|square\s*feet|square\s*foot)\b/i
+  )
+
   if (!m?.[1]) return null
+
   const n = Number(m[1])
   return Number.isFinite(n) && n > 0 ? n : null
 }
@@ -483,26 +488,30 @@ function pricePaintingInterior(args: {
 
   let sqft = args.sqft
 
-  // fallback room-to-sqft assumptions if sqft missing
+  // Fallback room-to-sqft assumptions if sqft missing
   if ((!sqft || sqft <= 0) && args.rooms && args.rooms > 0) {
-    sqft = args.rooms <= 2
-      ? args.rooms * 220
-      : args.rooms <= 4
-      ? args.rooms * 300
-      : args.rooms * 325
+    sqft =
+      args.rooms <= 2
+        ? args.rooms * 250
+        : args.rooms <= 4
+        ? args.rooms * 325
+        : args.rooms * 350
   }
 
-  sqft = Math.max(100, Number(sqft || 0))
+  sqft = Math.max(150, Number(sqft || 0))
 
-  // production base: floor sqft converted into paintable scope multiplier
-  let scopeMultiplier = 1.0
-  if (args.paintScope === "walls") scopeMultiplier = 1.0
-  if (args.paintScope === "walls_ceilings") scopeMultiplier = 1.35
-  if (args.paintScope === "full") scopeMultiplier = 1.65
+  // Convert floor sqft into estimated paintable surface area
+  // These multipliers are intentionally more realistic for interior residential repainting
+  let scopeMultiplier =
+    args.paintScope === "walls"
+      ? 1.75
+      : args.paintScope === "walls_ceilings"
+      ? 2.15
+      : 2.45
 
   let effectivePaintArea = sqft * scopeMultiplier
 
-  // coats
+  // Coat factor
   const coatFactor =
     args.coats <= 1 ? 0.78 :
     args.coats === 2 ? 1.0 :
@@ -510,55 +519,80 @@ function pricePaintingInterior(args: {
 
   effectivePaintArea *= coatFactor
 
-  // productivity
+  // Base production rates (sqft of paintable area per labor hour)
+  // Tuned slower than before to better reflect real residential interiors
   let sqftPerLaborHour =
-    args.paintScope === "walls" ? 165 :
-    args.paintScope === "walls_ceilings" ? 135 :
-    110
+    args.paintScope === "walls"
+      ? 115
+      : args.paintScope === "walls_ceilings"
+      ? 95
+      : 80
 
-  if (args.isVacant) sqftPerLaborHour *= 1.08
-  else sqftPerLaborHour *= 0.94
+  // Vacancy / occupancy adjustment
+  if (args.isVacant) {
+    sqftPerLaborHour *= 1.05
+  } else {
+    sqftPerLaborHour *= 0.82
+  }
 
+  // Prep adjustment
   if (args.prepLevel === "light") sqftPerLaborHour *= 1.08
   if (args.prepLevel === "heavy") sqftPerLaborHour *= 0.72
 
+  // Setup / masking / cleanup / cut-in / handling time
   const setupHrs =
-    sqft <= 700 ? 4.5 :
-    sqft <= 1400 ? 7.5 :
-    10.5
+    sqft <= 700
+      ? 6
+      : sqft <= 1400
+      ? 10
+      : 14
 
   const laborHrs = effectivePaintArea / sqftPerLaborHour + setupHrs
 
   let labor = Math.round(laborHrs * laborRate)
   labor = Math.round(labor * args.stateMultiplier)
 
-  // materials
+  // Materials
   const coverageSqftPerGallon = 325
-  const gallons = effectivePaintArea / coverageSqftPerGallon * 1.12
+  const wasteFactor = 1.12
+  const gallons = (effectivePaintArea / coverageSqftPerGallon) * wasteFactor
 
   const paintCostPerGallon =
-    args.paintScope === "full" ? 34 :
-    args.paintScope === "walls_ceilings" ? 30 :
-    28
+    args.paintScope === "full"
+      ? 34
+      : args.paintScope === "walls_ceilings"
+      ? 30
+      : 28
 
   let materials =
     Math.round(gallons * paintCostPerGallon) +
-    (sqft <= 700 ? 110 : sqft <= 1400 ? 185 : 260)
+    (
+      sqft <= 700
+        ? 140
+        : sqft <= 1400
+        ? 235
+        : 325
+    )
 
-  if (args.prepLevel === "medium") materials += 75
-  if (args.prepLevel === "heavy") materials += 175
+  if (args.prepLevel === "medium") materials += 100
+  if (args.prepLevel === "heavy") materials += 225
 
-  // subs / mobilization
+  // Mobilization / overhead
   const mobilization =
-    sqft <= 500 ? 250 :
-    sqft <= 1000 ? 400 :
-    sqft <= 1600 ? 575 :
-    800
+    sqft <= 500
+      ? 325
+      : sqft <= 1000
+      ? 525
+      : sqft <= 1600
+      ? 750
+      : 950
 
   const supervisionPct =
-    sqft <= 1000 ? 0.05 :
-    sqft <= 2000 ? 0.06 :
-    0.08
+    sqft <= 1000
+      ? 0.06
+      : sqft <= 2000
+      ? 0.07
+      : 0.08
 
   const supervision = Math.round((labor + materials) * supervisionPct)
   const subs = mobilization + supervision
@@ -566,24 +600,37 @@ function pricePaintingInterior(args: {
   const base = labor + materials + subs
   const total = Math.round(base * (1 + markup / 100))
 
-  // crew-days realism
+  // Crew-day realism
   let crewDays =
-    laborHrs <= 8 ? 1 :
-    laborHrs <= 16 ? 2 :
-    laborHrs <= 24 ? 3 :
-    laborHrs <= 32 ? 4 :
-    Math.ceil(laborHrs / 8)
+    laborHrs <= 8
+      ? 1
+      : laborHrs <= 16
+      ? 2
+      : laborHrs <= 24
+      ? 3
+      : laborHrs <= 32
+      ? 4
+      : Math.ceil(laborHrs / 8)
 
-  if (sqft >= 1200 && args.paintScope === "walls_ceilings") {
+  // Minimum duration floors for more realistic condo / house repaint schedules
+  if (sqft >= 900 && args.paintScope === "walls") {
+    crewDays = Math.max(crewDays, 2)
+  }
+
+  if (sqft >= 1100 && args.paintScope === "walls") {
     crewDays = Math.max(crewDays, 2.5)
   }
 
-  if (sqft >= 1400 && args.paintScope === "walls_ceilings") {
+  if (sqft >= 1100 && args.paintScope === "walls_ceilings") {
     crewDays = Math.max(crewDays, 3)
   }
 
-  if (args.paintScope === "full" && sqft >= 1200) {
+  if (args.paintScope === "full" && sqft >= 1100) {
     crewDays = Math.max(crewDays, 4)
+  }
+
+  if (args.prepLevel === "heavy" && sqft >= 900) {
+    crewDays = Math.max(crewDays, 3)
   }
 
   crewDays = Math.round(crewDays * 2) / 2

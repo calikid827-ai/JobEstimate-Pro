@@ -24,6 +24,7 @@ import { computeDrywallDeterministic } from "./lib/priceguard/drywallEngine"
 import { computePaintingDeterministic } from "./lib/priceguard/paintingEngine"
 import { applyMinimumCharge } from "./lib/priceguard/minimumCharges"
 import { detectScopeSignals } from "./lib/priceguard/scopeSignals"
+import { splitScopeByTrade, isMultiTradeScope } from "./lib/priceguard/scopeSplitter"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -90,6 +91,34 @@ type ScheduleBlock = {
   calendarDays: { min: number; max: number } | null
   workDaysPerWeek: 5 | 6 | 7
   rationale: string[]
+}
+
+type PaintScope = "walls" | "walls_ceilings" | "full"
+type EffectivePaintScope = PaintScope | "doors_only"
+
+type SplitScopeItem = {
+  trade: string
+  scope: string
+  signals?: string[]
+}
+
+type MultiTradeDetTradeResult = {
+  trade: string
+  scope: string
+  pricing: Pricing
+  laborRate: number
+  crewDays: number
+  source: string
+  notes: string[]
+}
+
+type MultiTradeDeterministicResult = {
+  okForDeterministic: boolean
+  okForVerified: boolean
+  pricing: Pricing | null
+  estimateBasis: EstimateBasis | null
+  perTrade: MultiTradeDetTradeResult[]
+  notes: string[]
 }
 
 function buildScheduleBlock(args: {
@@ -1929,26 +1958,74 @@ function inferPhaseVisitsFromSignals(args: {
     /\b(permit|inspection|inspector|code|required|city)\b/.test(s) ||
     /\b(panel|service\s*upgrade|meter|subpanel)\b/.test(s)
 
+  // Finish-trade sequencing signals
+  const hasFlooring =
+    /\b(floor|flooring|lvp|vinyl\s*plank|laminate|hardwood|engineered\s*wood|carpet|tile\s+floor)\b/.test(s)
+
+  const hasBaseboardOrTrim =
+    /\b(baseboard|baseboards|base\s*board|trim|shoe\s*mold|quarter\s*round|casing)\b/.test(s)
+
+  const hasTextureOrPatch =
+    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/.test(s)
+
+  const hasPaint =
+    /\b(paint|painting|prime|primer|repaint)\b/.test(s)
+
+  const flooringBaseboardSequence = hasFlooring && hasBaseboardOrTrim
+  const texturePaintSequence = hasTextureOrPatch && hasPaint
+  const flooringPaintSequence = hasFlooring && hasPaint
+
   if (hasDemo) phases.push("demolition/removal")
   if (hasRoughOrRelocate) phases.push("rough-in/relocation")
   if (hasPermit) phases.push("permit/inspection coordination")
   if (hasWetArea) phases.push("wet-area sequencing/cure time")
 
-  // Base visits:
-  // - 1 visit: simple single-trip work
-  // - 2 visits: demo + return, or rough-in + return, or permits
-  // - 3 visits: demo + rough-in + return (common remodel pattern), or wet-area cure
+  if (flooringBaseboardSequence) {
+    phases.push("flooring before trim/baseboard")
+  }
+
+  if (texturePaintSequence) {
+    phases.push("patch/texture dry time before paint")
+  } else if (flooringPaintSequence) {
+    phases.push("finish protection / flooring-paint coordination")
+  }
+
   let visits = 1
 
-  const signals = [hasDemo, hasRoughOrRelocate, hasPermit, hasWetArea].filter(Boolean).length
+  const hardSignals = [hasDemo, hasRoughOrRelocate, hasPermit, hasWetArea].filter(Boolean).length
+  const finishSequencing =
+    flooringBaseboardSequence || texturePaintSequence || flooringPaintSequence
 
-  if (signals >= 1) visits = 2
-  if ((hasDemo && hasRoughOrRelocate) || (hasWetArea && (hasDemo || hasRoughOrRelocate))) visits = 3
+  // Any meaningful sequencing at all should usually be at least 2 visits
+  if (hardSignals >= 1 || finishSequencing) {
+    visits = 2
+  }
 
-  // Respect CP minimums (if provided)
-  if (cp?.minPhaseVisits) visits = Math.max(visits, cp.minPhaseVisits)
+  // Stronger multi-step sequencing patterns should be 3 visits
+  if (
+    (hasDemo && hasRoughOrRelocate) ||
+    (hasWetArea && (hasDemo || hasRoughOrRelocate)) ||
+    (flooringBaseboardSequence && texturePaintSequence) ||
+    (hasFlooring && hasBaseboardOrTrim && hasTextureOrPatch) ||
+    (hasFlooring && hasTextureOrPatch && hasPaint)
+  ) {
+    visits = 3
+  }
 
-  return { visits, phases }
+  // Permit + other phase almost always means another return
+  if (hasPermit && (hasDemo || hasRoughOrRelocate || hasWetArea)) {
+    visits = Math.max(visits, 3)
+  }
+
+  // Respect complexity profile minimums
+  if (cp?.minPhaseVisits) {
+    visits = Math.max(visits, cp.minPhaseVisits)
+  }
+
+  return {
+    visits,
+    phases: Array.from(new Set(phases)),
+  }
 }
 
 function validateCrewAndSequencing(args: {
@@ -3574,6 +3651,449 @@ function pricePaintingByPhotoSqft(args: {
   return { labor, materials, subs, markup, total }
 }
 
+function parseLinearFt(text: string): number | null {
+  const t = String(text || "").toLowerCase()
+
+  const m =
+    t.match(/(\d{1,5})\s*(linear\s*ft|linear\s*feet|lin\s*ft|lf)\b/) ||
+    t.match(/(\d{1,5})\s*(ft|feet)\s+of\s+(?:base|baseboard|trim)\b/)
+
+  if (!m?.[1]) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function estimateBaseboardLfFromFloorSqft(floorSqft: number | null): number | null {
+  if (!floorSqft || floorSqft <= 0) return null
+
+  // Practical fallback for average residential perimeter coverage
+  const estimated = Math.round(floorSqft * 0.38)
+
+  return Math.max(120, Math.min(900, estimated))
+}
+
+function priceBaseboardCarpentrySimple(args: {
+  scopeText: string
+  stateMultiplier: number
+  floorSqft: number | null
+}): {
+  pricing: Pricing
+  laborRate: number
+  crewDays: number
+  mobilization: number
+  notes: string[]
+} | null {
+  const s = (args.scopeText || "").toLowerCase()
+
+  if (!/\b(baseboard|baseboards|base board|trim)\b/.test(s)) {
+    return null
+  }
+
+  const lf =
+    parseLinearFt(args.scopeText) ??
+    estimateBaseboardLfFromFloorSqft(args.floorSqft)
+
+  if (!lf || lf <= 0) return null
+
+  const laborRate = 90
+  const markup = 25
+
+  const installHrsPerLf = 0.045
+  const setupHrs = lf <= 200 ? 2.5 : lf <= 450 ? 4 : 5.5
+
+  const laborHrs = lf * installHrsPerLf + setupHrs
+
+  let labor = Math.round(laborHrs * laborRate)
+  labor = Math.round(labor * args.stateMultiplier)
+
+  const materialsPerLf = 1.75
+  const misc = lf <= 250 ? 85 : 140
+  const materials = Math.round(lf * materialsPerLf + misc)
+
+  const mobilization =
+    lf <= 200 ? 275 :
+    lf <= 450 ? 425 :
+    575
+
+  const supervision = Math.round((labor + materials) * 0.05)
+  const subs = mobilization + supervision
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  let crewDays =
+    laborHrs <= 8 ? 1 :
+    laborHrs <= 16 ? 2 :
+    Math.ceil(laborHrs / 8)
+
+  crewDays = Math.round(crewDays * 2) / 2
+
+  return {
+    pricing: clampPricing({ labor, materials, subs, markup, total }),
+    laborRate,
+    crewDays,
+    mobilization,
+    notes: [
+      `Baseboard scope priced from ${lf} LF.`,
+    ],
+  }
+}
+
+function priceTexturePatchSimple(args: {
+  scopeText: string
+  stateMultiplier: number
+  wholeJobSqft: number | null
+}): {
+  pricing: Pricing
+  laborRate: number
+  crewDays: number
+  mobilization: number
+  notes: string[]
+} | null {
+  const s = (args.scopeText || "").toLowerCase()
+
+  if (!/\b(texture|orange\s*peel|knockdown|patch\s*texture|retexture)\b/.test(s)) {
+    return null
+  }
+
+  const explicitSqft = parseSqft(args.scopeText)
+
+  const patchSqft =
+    explicitSqft ??
+    (args.wholeJobSqft && args.wholeJobSqft > 0
+      ? Math.max(100, Math.min(350, Math.round(args.wholeJobSqft * 0.12)))
+      : 150)
+
+  const laborRate = 70
+  const markup = 25
+
+  const hrsPerSqft = 0.08
+  const setupHrs = 2.5
+  const laborHrs = patchSqft * hrsPerSqft + setupHrs
+
+  let labor = Math.round(laborHrs * laborRate)
+  labor = Math.round(labor * args.stateMultiplier)
+
+  const materialsPerSqft = 1.1
+  const materials = Math.round(patchSqft * materialsPerSqft + 60)
+
+  const mobilization =
+    patchSqft <= 150 ? 225 :
+    patchSqft <= 250 ? 325 :
+    425
+
+  const supervision = Math.round((labor + materials) * 0.05)
+  const subs = mobilization + supervision
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  let crewDays =
+    laborHrs <= 8 ? 1 :
+    laborHrs <= 16 ? 2 :
+    Math.ceil(laborHrs / 8)
+
+  crewDays = Math.round(crewDays * 2) / 2
+
+  return {
+    pricing: clampPricing({ labor, materials, subs, markup, total }),
+    laborRate,
+    crewDays,
+    mobilization,
+    notes: [
+      explicitSqft
+        ? `Texture scope priced from explicit ${patchSqft} sqft.`
+        : `Texture scope priced from estimated ${patchSqft} sqft patch area.`,
+    ],
+  }
+}
+
+function buildCombinedEstimateBasisFromTrades(
+  perTrade: MultiTradeDetTradeResult[]
+): EstimateBasis | null {
+  if (!perTrade.length) return null
+
+  let totalLabor = 0
+  let totalHours = 0
+  let totalCrewDays = 0
+  let totalSubs = 0
+
+  for (const item of perTrade) {
+    totalLabor += Number(item.pricing.labor || 0)
+    totalCrewDays += Number(item.crewDays || 0)
+    totalSubs += Number(item.pricing.subs || 0)
+
+    if (item.laborRate > 0) {
+      totalHours += Number(item.pricing.labor || 0) / item.laborRate
+    }
+  }
+
+  const laborRate =
+    totalHours > 0
+      ? Math.round(totalLabor / totalHours)
+      : 95
+
+  const crewDays = Math.max(1, Math.round(totalCrewDays * 2) / 2)
+
+  return {
+    units: ["days"],
+    quantities: {
+      days: crewDays,
+    },
+    laborRate,
+    hoursPerUnit: 0,
+    crewDays,
+    mobilization: Math.round(totalSubs),
+    assumptions: [
+      "Multi-trade estimate combined from split scope pricing.",
+      ...perTrade.map((x) => `${x.trade}: ${x.source}`),
+    ],
+  }
+}
+
+function computeMultiTradeDeterministic(args: {
+  splitScopes: SplitScopeItem[]
+  fullScopeText: string
+  stateMultiplier: number
+  measurements?: any | null
+  paintScope?: PaintScope | null
+}): MultiTradeDeterministicResult {
+  const pieces = (args.splitScopes || []).filter(
+    (x) => x && typeof x.scope === "string" && x.scope.trim()
+  )
+
+  if (pieces.length < 2) {
+    return {
+      okForDeterministic: false,
+      okForVerified: false,
+      pricing: null,
+      estimateBasis: null,
+      perTrade: [],
+      notes: ["Not enough split scopes for multi-trade pricing."],
+    }
+  }
+
+  const overallSqft =
+    (args.measurements?.totalSqft && Number(args.measurements.totalSqft) > 0
+      ? Number(args.measurements.totalSqft)
+      : null) ??
+    parseSqft(args.fullScopeText)
+
+  const perTrade: MultiTradeDetTradeResult[] = []
+  const notes: string[] = []
+  let pricedCount = 0
+
+  for (const piece of pieces) {
+    const trade = String(piece.trade || "").toLowerCase().trim()
+    const scope = String(piece.scope || "").trim()
+
+    if (!trade || !scope) continue
+
+        if (trade === "flooring") {
+      const det = computeFlooringDeterministic({
+        scopeText: scope,
+        stateMultiplier: args.stateMultiplier,
+        measurements:
+          overallSqft && overallSqft > 0
+            ? { totalSqft: overallSqft }
+            : args.measurements ?? null,
+      })
+
+      if (det?.okForDeterministic && det.pricing) {
+        const flooringPricing = clampPricing(coercePricing(det.pricing))
+        const flooringLaborRate = 85
+        const flooringLaborHours =
+          flooringLaborRate > 0 ? Number(flooringPricing.labor || 0) / flooringLaborRate : 0
+
+        let flooringCrewDays =
+          flooringLaborHours <= 8 ? 1 :
+          flooringLaborHours <= 16 ? 2 :
+          flooringLaborHours <= 24 ? 3 :
+          Math.ceil(flooringLaborHours / 8)
+
+        flooringCrewDays = Math.max(1, Math.round(flooringCrewDays * 2) / 2)
+
+        perTrade.push({
+          trade,
+          scope,
+          pricing: flooringPricing,
+          laborRate: flooringLaborRate,
+          crewDays: flooringCrewDays,
+          source: det.okForVerified ? "flooring_engine_v1_verified" : "flooring_engine_v1",
+          notes: det.notes || [],
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price flooring split: ${scope}`)
+      continue
+    }
+
+    if (trade === "painting") {
+      const det = computePaintingDeterministic({
+        scopeText:
+          overallSqft && !parseSqft(scope)
+            ? `${scope} ${overallSqft} square feet`
+            : scope,
+        stateMultiplier: args.stateMultiplier,
+        measurements:
+          overallSqft && overallSqft > 0
+            ? { totalSqft: overallSqft }
+            : args.measurements ?? null,
+        paintScope: args.paintScope ?? "walls",
+      })
+
+      if (det?.okForDeterministic && det.pricing) {
+        perTrade.push({
+          trade,
+          scope,
+          pricing: clampPricing(coercePricing(det.pricing)),
+          laborRate: Number(det.estimateBasis?.laborRate || 75),
+          crewDays: Number(det.estimateBasis?.crewDays ?? det.estimateBasis?.quantities?.days ?? 1),
+          source: det.okForVerified ? "painting_engine_v1_verified" : "painting_engine_v1",
+          notes: det.notes || [],
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price painting split: ${scope}`)
+      continue
+    }
+
+        if (trade === "drywall") {
+      const det = computeDrywallDeterministic({
+        scopeText: scope,
+        stateMultiplier: args.stateMultiplier,
+        measurements:
+          overallSqft && overallSqft > 0
+            ? { totalSqft: overallSqft }
+            : args.measurements ?? null,
+      })
+
+      if (det?.okForDeterministic && det.pricing) {
+        const drywallPricing = clampPricing(coercePricing(det.pricing))
+        const drywallLaborRate = 70
+        const drywallLaborHours =
+          drywallLaborRate > 0
+            ? Number(drywallPricing.labor || 0) / drywallLaborRate
+            : 0
+
+        let drywallCrewDays =
+          drywallLaborHours <= 8 ? 1 :
+          drywallLaborHours <= 16 ? 2 :
+          drywallLaborHours <= 24 ? 3 :
+          Math.ceil(drywallLaborHours / 8)
+
+        drywallCrewDays = Math.max(1, Math.round(drywallCrewDays * 2) / 2)
+
+        perTrade.push({
+          trade,
+          scope,
+          pricing: drywallPricing,
+          laborRate: drywallLaborRate,
+          crewDays: drywallCrewDays,
+          source: det.okForVerified ? "drywall_engine_v1_verified" : "drywall_engine_v1",
+          notes: det.notes || [],
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price drywall split: ${scope}`)
+      continue
+    }
+
+    if (trade === "carpentry") {
+      const det = priceBaseboardCarpentrySimple({
+        scopeText: scope,
+        stateMultiplier: args.stateMultiplier,
+        floorSqft: overallSqft ?? null,
+      })
+
+      if (det?.pricing) {
+        perTrade.push({
+          trade,
+          scope,
+          pricing: det.pricing,
+          laborRate: det.laborRate,
+          crewDays: det.crewDays,
+          source: "carpentry_baseboard_simple_v1",
+          notes: det.notes,
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price carpentry split: ${scope}`)
+      continue
+    }
+
+    if (trade === "texture") {
+      const det = priceTexturePatchSimple({
+        scopeText: scope,
+        stateMultiplier: args.stateMultiplier,
+        wholeJobSqft: overallSqft ?? null,
+      })
+
+      if (det?.pricing) {
+        perTrade.push({
+          trade,
+          scope,
+          pricing: det.pricing,
+          laborRate: det.laborRate,
+          crewDays: det.crewDays,
+          source: "texture_patch_simple_v1",
+          notes: det.notes,
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price texture split: ${scope}`)
+      continue
+    }
+
+    notes.push(`No deterministic handler for split trade: ${trade}`)
+  }
+
+  if (!perTrade.length) {
+    return {
+      okForDeterministic: false,
+      okForVerified: false,
+      pricing: null,
+      estimateBasis: null,
+      perTrade: [],
+      notes: ["No split scopes were priced deterministically.", ...notes],
+    }
+  }
+
+  const labor = perTrade.reduce((sum, x) => sum + Number(x.pricing.labor || 0), 0)
+  const materials = perTrade.reduce((sum, x) => sum + Number(x.pricing.materials || 0), 0)
+  const subs = perTrade.reduce((sum, x) => sum + Number(x.pricing.subs || 0), 0)
+  const markup = 25
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  const estimateBasis = buildCombinedEstimateBasisFromTrades(perTrade)
+
+  const allPiecesPriced = pricedCount === pieces.length
+
+  return {
+    okForDeterministic: allPiecesPriced,
+    okForVerified: allPiecesPriced,
+    pricing: clampPricing({ labor, materials, subs, markup, total }),
+    estimateBasis,
+    perTrade,
+    notes: [
+      `Priced ${pricedCount}/${pieces.length} split scopes deterministically.`,
+      ...notes,
+      ...perTrade.flatMap((x) => x.notes || []),
+    ],
+  }
+}
+
 // -----------------------------
 // API HANDLER
 // -----------------------------
@@ -3692,9 +4212,6 @@ if (rawPhotos && Array.isArray(rawPhotos) && rawPhotos.length > 0 && (!photos ||
   )
 }
 
-type PaintScope = "walls" | "walls_ceilings" | "full"
-type EffectivePaintScope = PaintScope | "doors_only"
-
 const paintScope: PaintScope | null =
   body.paintScope === "walls" ||
   body.paintScope === "walls_ceilings" ||
@@ -3792,15 +4309,24 @@ if (trade === "painting" && isMixedRenovation(scopeChange)) {
   trade = "general renovation"
 }
 
+const splitScopes = splitScopeByTrade(scopeChange)
+const splitMultiTrade = splitScopes.length >= 2 || isMultiTradeScope(scopeChange)
+
+// If splitter found multiple trades, force the overall trade bucket to general renovation
+if (splitMultiTrade) {
+  trade = "general renovation"
+}
+
 const tradeStack = detectTradeStack({
   scopeText: scopeChange,
   primaryTrade: trade,
 })
 
+console.log("PG SPLIT SCOPES", splitScopes)
+console.log("PG IS MULTI TRADE", splitMultiTrade)
 console.log("PG TRADE STACK", tradeStack)
 
-const paintScopeForJob: PaintScope | null =
-  trade === "painting" ? paintScope : null
+const paintScopeForJob: PaintScope | null = paintScope ?? null
 
 const intentHint = detectIntent(scopeChange)
 
@@ -3896,6 +4422,30 @@ const doors = parseDoorCount(scopeChange)
 const stateAbbrev = getStateAbbrev(rawState)
 const usedNationalBaseline = !(typeof stateAbbrev === "string" && stateAbbrev.length === 2)
 const stateMultiplier = getStateLaborMultiplier(stateAbbrev)
+
+const multiTradeDet =
+  splitMultiTrade
+    ? computeMultiTradeDeterministic({
+        splitScopes,
+        fullScopeText: scopeChange,
+        stateMultiplier,
+        measurements,
+        paintScope: paintScopeForJob ?? "walls",
+      })
+    : null
+
+console.log("PG MULTI TRADE DET", {
+  okForDeterministic: multiTradeDet?.okForDeterministic ?? null,
+  okForVerified: multiTradeDet?.okForVerified ?? null,
+  pricing: multiTradeDet?.pricing ?? null,
+  perTrade: multiTradeDet?.perTrade?.map((x) => ({
+    trade: x.trade,
+    scope: x.scope,
+    total: x.pricing.total,
+    source: x.source,
+    crewDays: x.crewDays,
+  })) ?? [],
+})
 
 // -----------------------------
 // Flooring deterministic engine (PriceGuard™)
@@ -4677,15 +5227,37 @@ let priceGuardVerified = false
 let pricingFinal: Pricing = normalized.pricing
 let detSource: string | null = null
 
+// ✅ Multi-trade deterministic combiner takes priority when all split scopes were priced
+if (
+  multiTradeDet?.okForDeterministic &&
+  multiTradeDet.pricing &&
+  multiTradeDet.estimateBasis
+) {
+  pricingFinal = clampPricing(coercePricing(multiTradeDet.pricing))
+  pricingSource = "deterministic"
+  priceGuardVerified = !!multiTradeDet.okForVerified
+  detSource = "multi_trade_combiner_v1"
+  normalized.estimateBasis = multiTradeDet.estimateBasis
+  normalized.trade = "general renovation"
+}
+
 // ✅ Treat kitchen remodel anchor as deterministic-owned (no merge)
-if (anchorHit?.id === "kitchen_remodel_v1" && anchorPricing) {
+if (
+  pricingSource !== "deterministic" &&
+  anchorHit?.id === "kitchen_remodel_v1" &&
+  anchorPricing
+) {
   pricingFinal = clampPricing(coercePricing(anchorPricing))
   pricingSource = "deterministic"
   detSource = `anchor:${anchorHit.id}`
   priceGuardVerified = true
 }
 
-if (anchorHit?.id === "bathroom_remodel_v1" && anchorPricing) {
+if (
+  pricingSource !== "deterministic" &&
+  anchorHit?.id === "bathroom_remodel_v1" &&
+  anchorPricing
+) {
   pricingFinal = clampPricing(coercePricing(anchorPricing))
   pricingSource = "deterministic"
   detSource = `anchor:${anchorHit.id}`
@@ -4963,6 +5535,23 @@ if (photoImpact.reasons.length > 0) {
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  splitScopes,
+  multiTrade: multiTradeDet
+    ? {
+        okForDeterministic: multiTradeDet.okForDeterministic,
+        okForVerified: multiTradeDet.okForVerified,
+        perTrade: multiTradeDet.perTrade.map((x) => ({
+          trade: x.trade,
+          scope: x.scope,
+          pricing: x.pricing,
+          laborRate: x.laborRate,
+          crewDays: x.crewDays,
+          source: x.source,
+          notes: x.notes,
+        })),
+        notes: multiTradeDet.notes,
+      }
+    : null,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
@@ -5336,6 +5925,23 @@ const payload = {
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  splitScopes,
+    multiTrade: multiTradeDet
+    ? {
+        okForDeterministic: multiTradeDet.okForDeterministic,
+        okForVerified: multiTradeDet.okForVerified,
+        perTrade: multiTradeDet.perTrade.map((x) => ({
+          trade: x.trade,
+          scope: x.scope,
+          pricing: x.pricing,
+          laborRate: x.laborRate,
+          crewDays: x.crewDays,
+          source: x.source,
+          notes: x.notes,
+        })),
+        notes: multiTradeDet.notes,
+      }
+    : null,
   schedule: buildScheduleBlock({
     basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
     cp: complexityProfile,
