@@ -1363,6 +1363,59 @@ function normalizeEstimateBasisUnits(basis: EstimateBasis): EstimateBasis {
   }
 }
 
+function syncEstimateBasisMath(args: {
+  pricing: Pricing
+  basis: EstimateBasis | null
+}): EstimateBasis | null {
+  const raw = args.basis
+  if (!raw || !isValidEstimateBasis(raw)) return raw
+
+  const b = normalizeEstimateBasisUnits(raw)
+  const labor = Number(args.pricing?.labor ?? 0)
+  const laborRate = Number(b.laborRate ?? 0)
+
+  if (!Number.isFinite(laborRate) || laborRate <= 0) {
+    return b
+  }
+
+  // Days-based jobs: crewDays is the real driver, so hoursPerUnit should stay 0
+  if (b.units.includes("days")) {
+    const crewDaysRaw = Number(b.crewDays ?? b.quantities?.days ?? 0)
+    const crewDays =
+      Number.isFinite(crewDaysRaw) && crewDaysRaw > 0
+        ? Math.round(crewDaysRaw * 2) / 2
+        : 1
+
+    return {
+      ...b,
+      crewDays,
+      quantities: {
+        ...(b.quantities || {}),
+        days: crewDays,
+      },
+      hoursPerUnit: 0,
+    }
+  }
+
+  const primaryUnit = b.units[0]
+  const qty = Number(b.quantities?.[primaryUnit] ?? 0)
+
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return {
+      ...b,
+      hoursPerUnit: 0,
+    }
+  }
+
+  const impliedLaborHours = labor / laborRate
+  const hoursPerUnit = Math.round((impliedLaborHours / qty) * 1000) / 1000
+
+  return {
+    ...b,
+    hoursPerUnit,
+  }
+}
+
 function normalizeBasisSafe(basis: any): any {
   return basis && isValidEstimateBasis(basis)
     ? normalizeEstimateBasisUnits(basis)
@@ -5059,15 +5112,18 @@ normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
 // ✅ EstimateBasis enforcement (AI fallback quality)
 const parsedSqft = quantityInputs.effectivePaintSqft ?? parseSqft(scopeChange)
-normalized.estimateBasis = normalizeEstimateBasisUnits(
-  enforceEstimateBasis({
-    trade,
-    pricing: normalized.pricing,
-    basis: normalized.estimateBasis,
-    parsed: { rooms, doors, sqft: parsedSqft },
-    complexity: complexityProfile,
-  })
-)
+normalized.estimateBasis = syncEstimateBasisMath({
+  pricing: normalized.pricing,
+  basis: normalizeEstimateBasisUnits(
+    enforceEstimateBasis({
+      trade,
+      pricing: normalized.pricing,
+      basis: normalized.estimateBasis,
+      parsed: { rooms, doors, sqft: parsedSqft },
+      complexity: complexityProfile,
+    })
+  ),
+})
 
 const aiBasis = (normalized.estimateBasis ?? null) as EstimateBasis | null
 
@@ -5108,15 +5164,18 @@ Return corrected JSON using the SAME schema, and make estimateBasis match the pr
         normalized.pricing = clampPricing(coercePricing(repaired.pricing))
         normalized.estimateBasis = repaired.estimateBasis ?? normalized.estimateBasis
 
-        normalized.estimateBasis = normalizeEstimateBasisUnits(
-  enforceEstimateBasis({
-    trade,
-    pricing: normalized.pricing,
-    basis: normalized.estimateBasis,
-    parsed: { rooms, doors, sqft: parsedSqft },
-    complexity: complexityProfile,
-  })
-)
+normalized.estimateBasis = syncEstimateBasisMath({
+  pricing: normalized.pricing,
+  basis: normalizeEstimateBasisUnits(
+    enforceEstimateBasis({
+      trade,
+      pricing: normalized.pricing,
+      basis: normalized.estimateBasis,
+      parsed: { rooms, doors, sqft: parsedSqft },
+      complexity: complexityProfile,
+    })
+  ),
+})
       } catch {
         console.warn("AI repair returned invalid JSON; continuing with original output.")
       }
@@ -5186,6 +5245,11 @@ if (
     }
   }
 }
+
+normalized.estimateBasis = syncEstimateBasisMath({
+  pricing: normalized.pricing,
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+})
 
 const v3 = validateAiMath({
   pricing: normalized.pricing,
@@ -5507,6 +5571,11 @@ if (photoImpact.reasons.length > 0) {
   }
 
     normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
+
+    normalized.estimateBasis = syncEstimateBasisMath({
+  pricing: safePricing,
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+})
 
     const outTrade = normalized.trade || trade
 
@@ -5912,6 +5981,11 @@ normalized.description = await polishDescriptionWith4o({
 normalized.description = cleanupDocumentTypeLead(normalized.description)
 
   normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
+
+  normalized.estimateBasis = syncEstimateBasisMath({
+  pricing: safePricing,
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+})
 
   const outTrade = normalized.trade || trade
 
