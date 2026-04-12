@@ -31,6 +31,11 @@ import type {
   UiTrade,
   EstimateHistoryItem,
   WeekLoad,
+  ScopeSignals,
+  PhotoAnalysis,
+  PhotoScopeAssist,
+  ScopeXRay,
+  ChangeOrderDetection,
 } from "./lib/types"
 
 import {
@@ -68,6 +73,7 @@ import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import InvoicesSection from "./components/InvoicesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
+import { detectChangeOrder } from "./lib/change-order-detector"
 
 export default function Home() {
 
@@ -205,10 +211,7 @@ function buildEstimateBreakdown({
   schedule: Schedule | null
   trade: UiTrade
   state: string
-  scopeSignals: {
-    needsReturnVisit?: boolean
-    reason?: string
-  } | null
+  scopeSignals: ScopeSignals
   minimumSafeStatus:
     | {
         label: string
@@ -284,10 +287,7 @@ function buildAssumptionsList({
 }: {
   trade: string
   state: string
-  scopeSignals: {
-    needsReturnVisit?: boolean
-    reason?: string
-  } | null
+  scopeSignals: ScopeSignals
 }) {
   const notes: string[] = []
 
@@ -350,25 +350,7 @@ function buildEstimateConfidence({
   jobPhotosCount: number
   scopeQualityScore: number
   priceGuardVerified: boolean
-  photoAnalysis: {
-    quantitySignals?: {
-      estimatedWallSqftMin?: number | null
-      estimatedWallSqftMax?: number | null
-      estimatedCeilingSqftMin?: number | null
-      estimatedCeilingSqftMax?: number | null
-      estimatedFloorSqftMin?: number | null
-      estimatedFloorSqftMax?: number | null
-      doors?: number | null
-      windows?: number | null
-      vanities?: number | null
-      toilets?: number | null
-      sinks?: number | null
-      outlets?: number | null
-      switches?: number | null
-      recessedLights?: number | null
-    }
-    confidence?: "low" | "medium" | "high"
-  } | null
+  photoAnalysis: PhotoAnalysis
 }) {
   let score = 0
   const reasons: string[] = []
@@ -982,7 +964,6 @@ function startChangeOrderFromJob(jobId: string) {
 
   const original = lockedOriginalEstimateForJob(jobId)
   const latest = latestEstimateForJob(jobId)
-
   const source = latest || original
 
   setActiveJobId(jobId)
@@ -1025,6 +1006,13 @@ function startChangeOrderFromJob(jobId: string) {
       setDepositValue(25)
     }
   }
+
+  setScopeSignals(null)
+  setPhotoAnalysis(null)
+  setPhotoScopeAssist(null)
+  setScopeXRay(null)
+  setChangeOrderDetection(null)
+  setJobPhotos([])
 
   lastSavedEstimateIdRef.current = null
   setPricingEdited(false)
@@ -1115,9 +1103,18 @@ function lockedOriginalEstimateForJob(jobId?: string) {
   if (!jobId) return null
 
   const job = jobs.find((j) => j.id === jobId)
-  if (!job?.originalEstimateId) return null
 
-  return history.find((h) => h.id === job.originalEstimateId) || null
+  const jobHistory = history
+    .filter((h) => h.jobId === jobId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+
+  if (job?.originalEstimateId) {
+    const locked = jobHistory.find((h) => h.id === job.originalEstimateId)
+    if (locked) return locked
+  }
+
+  // fallback: use earliest estimate for this job
+  return jobHistory[0] || null
 }
 
 function computeJobContractSummary(jobId?: string) {
@@ -1298,10 +1295,9 @@ useEffect(() => {
     createdAt: Number(x?.createdAt ?? Date.now()),
     documentType:
   x?.documentType === "Change Order" ||
-  x?.documentType === "Estimate" ||
-  x?.documentType === "Change Order / Estimate"
+  x?.documentType === "Estimate"
     ? x.documentType
-    : "Change Order / Estimate",
+    : "Estimate",
     jobDetails: {
       clientName: String(x?.jobDetails?.clientName ?? ""),
       jobName: String(x?.jobDetails?.jobName ?? ""),
@@ -1314,7 +1310,7 @@ useEffect(() => {
     scopeChange: String(x?.scopeChange ?? ""),
     result: String(x?.result ?? ""),
     explanation: x?.explanation ?? null,
-    pricing: {
+        pricing: {
       labor: Number(x?.pricing?.labor ?? 0),
       materials: Number(x?.pricing?.materials ?? 0),
       subs: Number(x?.pricing?.subs ?? 0),
@@ -1323,8 +1319,13 @@ useEffect(() => {
     },
 
     schedule: x?.schedule ?? undefined,
+    scopeSignals: x?.scopeSignals ?? null,
+    photoAnalysis: x?.photoAnalysis ?? null,
+    photoScopeAssist: x?.photoScopeAssist ?? null,
+    scopeXRay: x?.scopeXRay ?? null,
+    changeOrderDetection: x?.changeOrderDetection ?? null,
 
-        tax: x?.tax
+    tax: x?.tax
       ? {
           enabled: Boolean(x.tax.enabled),
           rate: Number(x.tax.rate || 0),
@@ -1383,10 +1384,7 @@ approval: x?.approval
   } | null
 } | null>(null)
   const [schedule, setSchedule] = useState<Schedule | null>(null)
-  const [scopeSignals, setScopeSignals] = useState<{
-  needsReturnVisit?: boolean
-  reason?: string
-} | null>(null)
+  const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 
 const [jobPhotos, setJobPhotos] = useState<
   {
@@ -1396,45 +1394,10 @@ const [jobPhotos, setJobPhotos] = useState<
   }[]
 >([])
 
-const [photoAnalysis, setPhotoAnalysis] = useState<{
-  summary?: string
-  observations?: string[]
-  suggestedScopeNotes?: string[]
-
-  detectedRoomTypes?: string[]
-  detectedTrades?: string[]
-  detectedMaterials?: string[]
-  detectedConditions?: string[]
-  detectedFixtures?: string[]
-  detectedAccessIssues?: string[]
-  detectedDemoNeeds?: string[]
-
-  quantitySignals?: {
-    doors?: number | null
-    windows?: number | null
-    vanities?: number | null
-    toilets?: number | null
-    sinks?: number | null
-    outlets?: number | null
-    switches?: number | null
-    recessedLights?: number | null
-    ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
-    estimatedWallSqftMin?: number | null
-    estimatedWallSqftMax?: number | null
-    estimatedCeilingSqftMin?: number | null
-    estimatedCeilingSqftMax?: number | null
-    estimatedFloorSqftMin?: number | null
-    estimatedFloorSqftMax?: number | null
-  }
-
-  scopeCompletenessFlags?: string[]
-  confidence?: "low" | "medium" | "high"
-} | null>(null)
-
-const [photoScopeAssist, setPhotoScopeAssist] = useState<{
-  missingScopeFlags: string[]
-  suggestedAdditions: string[]
-} | null>(null)
+const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
+const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
+const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
+const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
   
 const completionWindow = useMemo(() => {
   const start =
@@ -1478,7 +1441,7 @@ const completionWindow = useMemo(() => {
   schedule?.crewDays,
 ])
   
-  const [documentType, setDocumentType] = useState<DocumentType>("Change Order / Estimate")
+  const [documentType, setDocumentType] = useState<DocumentType>("Estimate")
   const [trade, setTrade] = useState<UiTrade>("")
   const [state, setState] = useState("")
   const [paintScope, setPaintScope] = useState<PaintScope>("walls")
@@ -1647,6 +1610,11 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
       total: Number(pricing.total || 0),
     },
     schedule: schedule ?? null,
+    scopeSignals: scopeSignals ?? null,
+    photoAnalysis: photoAnalysis ?? null,
+    photoScopeAssist: photoScopeAssist ?? null,
+    scopeXRay: scopeXRay ?? null,
+    changeOrderDetection: changeOrderDetection ?? null,
     tax: {
       enabled: taxEnabled,
       rate: Number(taxRate || 0),
@@ -1672,6 +1640,11 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   pricing.markup,
   pricing.total,
   schedule,
+  scopeSignals,
+  photoAnalysis,
+  photoScopeAssist,
+  scopeXRay,
+  changeOrderDetection,
   taxEnabled,
   taxRate,
   depositEnabled,
@@ -2142,8 +2115,7 @@ useEffect(() => {
             createdAt: Number(x?.createdAt ?? Date.now()),
             documentType:
               x?.documentType === "Change Order" ||
-              x?.documentType === "Estimate" ||
-              x?.documentType === "Change Order / Estimate"
+              x?.documentType === "Estimate"
                 ? x.documentType
                 : "Change Order / Estimate",
             jobDetails: {
@@ -2158,7 +2130,7 @@ useEffect(() => {
             scopeChange: String(x?.scopeChange ?? ""),
             result: String(x?.result ?? ""),
             explanation: x?.explanation ?? null,
-            pricing: {
+                        pricing: {
               labor: Number(x?.pricing?.labor ?? 0),
               materials: Number(x?.pricing?.materials ?? 0),
               subs: Number(x?.pricing?.subs ?? 0),
@@ -2166,6 +2138,11 @@ useEffect(() => {
               total: Number(x?.pricing?.total ?? 0),
             },
             schedule: x?.schedule ?? undefined,
+            scopeSignals: x?.scopeSignals ?? null,
+            photoAnalysis: x?.photoAnalysis ?? null,
+            photoScopeAssist: x?.photoScopeAssist ?? null,
+            scopeXRay: x?.scopeXRay ?? null,
+            changeOrderDetection: x?.changeOrderDetection ?? null,
             tax: x?.tax
               ? {
                   enabled: Boolean(x.tax.enabled),
@@ -2448,6 +2425,8 @@ async function generate(scopeOverride?: string) {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+  setScopeXRay(null)
+  setChangeOrderDetection(null)
 
     if (scopeOverride) {
     setScopeChange(finalScopeChange)
@@ -2563,14 +2542,11 @@ const res = await fetch("/api/generate", {
     setPriceGuardVerified(nextVerified)
     setPriceGuard(data?.priceGuard ?? null)
 
-    const nextDocumentType =
-     data?.documentType === "Change Order" ||
-     data?.documentType === "Estimate" ||
-     data?.documentType === "Change Order / Estimate"
-      ? data.documentType
-      : "Change Order / Estimate"
-
-    setDocumentType(nextDocumentType)
+    const nextDocumentType: DocumentType =
+  data?.documentType === "Change Order" ||
+  data?.documentType === "Estimate"
+    ? data.documentType
+    : "Estimate"
 
 const nextResult = data.text || data.description || ""
 const nextPricing = data.pricing ? data.pricing : pricing
@@ -2613,6 +2589,53 @@ setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
 setPhotoScopeAssist(data?.photoScopeAssist ?? null)
+const normalizedScopeXRay = data?.scopeXRay
+  ? {
+      detectedScope: {
+        primaryTrade: String(data.scopeXRay?.detectedScope?.primaryTrade ?? ""),
+        splitScopes: Array.isArray(data.scopeXRay?.detectedScope?.splitScopes)
+          ? data.scopeXRay.detectedScope.splitScopes
+          : [],
+        paintScope: data.scopeXRay?.detectedScope?.paintScope ?? null,
+        state: String(data.scopeXRay?.detectedScope?.state ?? ""),
+      },
+      quantities: Array.isArray(data.scopeXRay?.quantities)
+        ? data.scopeXRay.quantities
+        : [],
+      pricingMethod: {
+        pricingSource:
+          data.scopeXRay?.pricingMethod?.pricingSource === "deterministic" ||
+          data.scopeXRay?.pricingMethod?.pricingSource === "merged"
+            ? data.scopeXRay.pricingMethod.pricingSource
+            : "ai",
+        detSource: data.scopeXRay?.pricingMethod?.detSource ?? null,
+        anchorId: data.scopeXRay?.pricingMethod?.anchorId ?? null,
+        verified: data.scopeXRay?.pricingMethod?.verified === true,
+        stateAdjusted: data.scopeXRay?.pricingMethod?.stateAdjusted === true,
+      },
+      scheduleLogic: {
+        crewDays:
+          data.scopeXRay?.scheduleLogic?.crewDays == null
+            ? null
+            : Number(data.scopeXRay.scheduleLogic.crewDays),
+        visits:
+          data.scopeXRay?.scheduleLogic?.visits == null
+            ? null
+            : Number(data.scopeXRay.scheduleLogic.visits),
+        reasons: Array.isArray(data.scopeXRay?.scheduleLogic?.reasons)
+          ? data.scopeXRay.scheduleLogic.reasons
+          : [],
+      },
+      riskFlags: Array.isArray(data.scopeXRay?.riskFlags)
+        ? data.scopeXRay.riskFlags
+        : [],
+      needsConfirmation: Array.isArray(data.scopeXRay?.needsConfirmation)
+        ? data.scopeXRay.needsConfirmation
+        : [],
+    }
+  : null
+
+setScopeXRay(normalizedScopeXRay)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 
@@ -2623,12 +2646,37 @@ const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
 
 const jobId = getOrCreateJobIdFromDetails()
 
+const originalEstimate = lockedOriginalEstimateForJob(jobId)
+
+const changeOrderDetection = detectChangeOrder({
+  documentType: nextDocumentType,
+  scopeChange: finalScopeChange,
+  currentSchedule: normalizedSchedule,
+  originalEstimate,
+  changeOrderNo: jobDetails.changeOrderNo,
+})
+
+setChangeOrderDetection(changeOrderDetection)
+
+const finalDocumentType: DocumentType =
+  changeOrderDetection.isChangeOrder ? "Change Order" : nextDocumentType
+
+setDocumentType(finalDocumentType)
+
+const normalizedJobDetails = {
+  clientName: jobDetails.clientName?.trim() || "Client",
+  jobName: jobDetails.jobName?.trim() || "Job",
+  changeOrderNo: jobDetails.changeOrderNo?.trim() || "",
+  jobAddress: jobDetails.jobAddress?.trim() || "",
+  date: jobDetails.date || "",
+}
+
 const estItem: EstimateHistoryItem = {
   id: newId,
   createdAt: Date.now(),
-  jobDetails: { ...jobDetails },
+  jobDetails: normalizedJobDetails,
   jobId,
-  documentType: nextDocumentType,
+  documentType: finalDocumentType,
   trade: nextTrade,
   state: state || "",
   scopeChange: finalScopeChange,
@@ -2642,6 +2690,13 @@ const estItem: EstimateHistoryItem = {
     total: Number(nextPricing.total || 0),
   },
   schedule: normalizedSchedule,
+
+  scopeSignals: data?.scopeSignals ?? null,
+  photoAnalysis: data?.photoAnalysis ?? null,
+  photoScopeAssist: data?.photoScopeAssist ?? null,
+  scopeXRay: normalizedScopeXRay,
+  changeOrderDetection,
+
   pricingSource: nextPricingSource,
   priceGuardVerified: nextVerified,
   tax: {
@@ -2655,9 +2710,9 @@ const estItem: EstimateHistoryItem = {
         value: Number(depositValue || 0),
       }
     : undefined,
-    approval: {
-      status: "pending",
-    },
+  approval: {
+    status: "pending",
+  },
 }
 
 saveToHistory(estItem)
@@ -2851,17 +2906,26 @@ function clearHistory() {
 // ✅ Load history item back into the form
 function loadHistoryItem(item: EstimateHistoryItem) {
   setJobDetails(item.jobDetails)
-  setDocumentType(item.documentType || "Change Order / Estimate")
+  setDocumentType(item.documentType || "Estimate")
   setTrade(item.trade || "")
   setState(item.state || "")
   setScopeChange(item.scopeChange || "")
   setPricingEdited(false)
+  setPriceGuard(null)
+  setPriceGuardVerified(Boolean(item.priceGuardVerified))
   setResult({
   text: item.result || "",
   explanation: item.explanation || null,
 })
   setPricing(item.pricing)
   setSchedule(item.schedule ?? null)
+
+  setScopeSignals(item.scopeSignals ?? null)
+  setPhotoAnalysis(item.photoAnalysis ?? null)
+  setPhotoScopeAssist(item.photoScopeAssist ?? null)
+  setScopeXRay(item.scopeXRay ?? null)
+  setChangeOrderDetection(item.changeOrderDetection ?? null)
+  setJobPhotos([])
 
     // restore tax settings (if present)
   if (item.tax) {
@@ -2924,6 +2988,14 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     const approvedSignature = approval?.signatureDataUrl?.trim() || ""
     const showPriceGuardNote =
     pdfShowPriceGuard && documentType !== "Change Order"
+
+    const pdfDocumentTypeLabel = getChangeOrderDisplayLabel(
+  documentType,
+  changeOrderDetection
+)
+
+   const pdfChangeOrderNote = getChangeOrderClientNote(changeOrderDetection)
+   const pdfScheduleImpactNote = getChangeOrderScheduleNote(changeOrderDetection)
 
     const win = window.open("", "", "width=900,height=1100")
     if (!win) {
@@ -3026,7 +3098,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     win.document.write(`
       <html>
         <head>
-          <title>${esc(brandName)} — ${esc(documentType || "Change Order / Estimate")} — ${esc(jobName || "")}</title>
+          <title>${esc(brandName)} — ${esc(pdfDocumentTypeLabel || "Estimate")} — ${esc(jobName || "")}</title>
           <meta charset="utf-8" />
           <style>
             @page { margin: 22mm 18mm; }
@@ -3229,7 +3301,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 </div>
           </div>
 
-          <h1>${esc(documentType || "Change Order / Estimate")}
+          <h1>${esc(pdfDocumentTypeLabel || "Estimate")}
             ${
               pdfShowPriceGuard
                 ? `<span class="badge">${esc(pdfPriceGuardLabel)}</span>`
@@ -3255,9 +3327,29 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 <div class="muted" style="margin-top:6px;">Generated by ${esc(brandName)}</div>
 
           <div class="section">
-            <div class="muted" style="margin-bottom:6px;">Scope / Description</div>
-            <div class="box">${safeResult}</div>
-          </div>
+  <div class="muted" style="margin-bottom:6px;">Scope / Description</div>
+  <div class="box">${safeResult}</div>
+
+  ${
+    pdfChangeOrderNote
+      ? `
+        <div class="muted" style="margin-top:8px; line-height:1.45;">
+          <strong>Change Order Classification:</strong> ${esc(pdfChangeOrderNote)}
+        </div>
+      `
+      : ""
+  }
+
+  ${
+    pdfScheduleImpactNote
+      ? `
+        <div class="muted" style="margin-top:6px; line-height:1.45;">
+          <strong>Schedule Impact:</strong> ${esc(pdfScheduleImpactNote)}
+        </div>
+      `
+      : ""
+  }
+</div>
 
           ${scheduleHtml(schedule)}
 
@@ -3805,6 +3897,15 @@ const pdfPriceGuardLabel =
   priceGuard?.status === "deterministic" ? "PriceGuard™ Deterministic" :
   "PriceGuard™"
 
+  const displayedDocumentType = getChangeOrderDisplayLabel(
+  documentType,
+  changeOrderDetection
+)
+
+const displayedChangeOrderNote = getChangeOrderClientNote(changeOrderDetection)
+
+const displayedScheduleImpactNote = getChangeOrderScheduleNote(changeOrderDetection)
+
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
 
@@ -4199,6 +4300,396 @@ function ScheduleEditor({
   )
 }
 
+function ScopeXRayCard({
+  scopeXRay,
+}: {
+  scopeXRay: ScopeXRay
+}) {
+  if (!scopeXRay) return null
+
+  const sourceTone =
+    scopeXRay.pricingMethod.pricingSource === "deterministic"
+      ? { bg: "#ecfdf5", border: "#86efac", color: "#065f46" }
+      : scopeXRay.pricingMethod.pricingSource === "merged"
+      ? { bg: "#fffbeb", border: "#fcd34d", color: "#92400e" }
+      : { bg: "#eff6ff", border: "#93c5fd", color: "#1d4ed8" }
+
+  return (
+    <details
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+      open
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Scope-to-Price X-Ray
+      </summary>
+
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+        See exactly what the app detected, what quantities it used, how pricing was built,
+        and what still needs review.
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: `1px solid ${sourceTone.border}`,
+          borderRadius: 12,
+          background: sourceTone.bg,
+        }}
+      >
+        <div style={{ fontWeight: 800, color: sourceTone.color, fontSize: 14 }}>
+          Pricing Method
+        </div>
+
+        <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
+          <div>
+            <strong>Source:</strong> {scopeXRay.pricingMethod.pricingSource}
+          </div>
+          {scopeXRay.pricingMethod.detSource && (
+            <div>
+              <strong>Engine:</strong> {scopeXRay.pricingMethod.detSource}
+            </div>
+          )}
+          {scopeXRay.pricingMethod.anchorId && (
+            <div>
+              <strong>Anchor:</strong> {scopeXRay.pricingMethod.anchorId}
+            </div>
+          )}
+          <div>
+            <strong>Verified:</strong>{" "}
+            {scopeXRay.pricingMethod.verified ? "Yes" : "No"}
+          </div>
+          <div>
+            <strong>State adjusted:</strong>{" "}
+            {scopeXRay.pricingMethod.stateAdjusted ? "Yes" : "No"}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Detected Scope</div>
+
+        <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
+          <div>
+            <strong>Primary trade:</strong> {scopeXRay.detectedScope.primaryTrade || "—"}
+          </div>
+          <div>
+            <strong>Paint scope:</strong> {scopeXRay.detectedScope.paintScope || "—"}
+          </div>
+          <div>
+            <strong>State:</strong> {scopeXRay.detectedScope.state || "—"}
+          </div>
+        </div>
+
+        {scopeXRay.detectedScope.splitScopes.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+              Split scopes
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
+              {scopeXRay.detectedScope.splitScopes.map((item, i) => (
+                <li key={`split-${i}`}>
+                  <strong>{item.trade}:</strong> {item.scope}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Quantities Used</div>
+
+        {scopeXRay.quantities.length > 0 ? (
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {scopeXRay.quantities.map((q, i) => (
+              <li key={`qty-${i}`}>
+                <strong>{q.label}:</strong> {q.value}{" "}
+                <span style={{ color: "#666" }}>({q.source})</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 13, color: "#666" }}>
+            No hard quantities were detected.
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Schedule Logic</div>
+
+        <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6 }}>
+          <div>
+            <strong>Crew days:</strong> {scopeXRay.scheduleLogic.crewDays ?? "—"}
+          </div>
+          <div>
+            <strong>Visits:</strong> {scopeXRay.scheduleLogic.visits ?? "—"}
+          </div>
+        </div>
+
+        {scopeXRay.scheduleLogic.reasons.length > 0 && (
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {scopeXRay.scheduleLogic.reasons.map((r, i) => (
+              <li key={`sched-${i}`}>{r}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {scopeXRay.riskFlags.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #fdba74",
+            borderRadius: 12,
+            background: "#fff7ed",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#9a3412" }}>
+            Risk Flags
+          </div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {scopeXRay.riskFlags.map((r, i) => (
+              <li key={`risk-${i}`}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {scopeXRay.needsConfirmation.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #fcd34d",
+            borderRadius: 12,
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+            Needs Confirmation
+          </div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {scopeXRay.needsConfirmation.map((r, i) => (
+              <li key={`confirm-${i}`}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </details>
+  )
+}
+
+function getChangeOrderDisplayLabel(
+  documentType: DocumentType,
+  detection: ChangeOrderDetection | null
+) {
+  const treatAsChangeOrder =
+    documentType === "Change Order" || detection?.isChangeOrder === true
+
+  if (!treatAsChangeOrder) return documentType
+
+  switch (detection?.mode) {
+    case "add":
+      return "Added Work Change Order"
+    case "deduct":
+      return "Deductive Change Order"
+    case "mixed":
+      return "Mixed Change Order"
+    default:
+      return "Change Order"
+  }
+}
+
+function getChangeOrderClientNote(detection: ChangeOrderDetection | null) {
+  if (!detection?.isChangeOrder) return ""
+
+  switch (detection.mode) {
+    case "add":
+      return "This change order adds work beyond the original contract scope."
+    case "deduct":
+      return "This change order reflects a deductive change or credit to the original contract scope."
+    case "mixed":
+      return "This change order includes both added and deductive scope adjustments."
+    default:
+      return "This document reflects a change to the original contract scope."
+  }
+}
+
+function getChangeOrderScheduleNote(detection: ChangeOrderDetection | null) {
+  if (!detection?.scheduleImpact?.likelyChanged) return ""
+
+  const added = detection.scheduleImpact.addedDays
+
+  if (added == null) {
+    return "This change may affect the project schedule."
+  }
+
+  if (added > 0) {
+    return `This change is expected to add about ${added} crew day${added === 1 ? "" : "s"} to the schedule.`
+  }
+
+  if (added < 0) {
+    const days = Math.abs(added)
+    return `This change is expected to reduce the schedule by about ${days} crew day${days === 1 ? "" : "s"}.`
+  }
+
+  return ""
+}
+
+function ChangeOrderDetectorCard({
+  detection,
+}: {
+  detection: ChangeOrderDetection | null
+}) {
+  if (!detection?.isChangeOrder) return null
+
+  const modeLabel =
+    detection.mode === "add"
+      ? "Added Work"
+      : detection.mode === "deduct"
+      ? "Deductive / Credit"
+      : detection.mode === "mixed"
+      ? "Mixed"
+      : "Unclear"
+
+  const scheduleNote = getChangeOrderScheduleNote(detection)
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #c7d2fe",
+        borderRadius: 12,
+        background: "#eef2ff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14, color: "#1e1b4b" }}>
+          Change Order Detector
+        </div>
+
+        <div
+          style={{
+            display: "inline-flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: "#fff",
+              border: "1px solid #c7d2fe",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#312e81",
+            }}
+          >
+            {modeLabel}
+          </span>
+
+          <span
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: "#fff",
+              border: "1px solid #c7d2fe",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#312e81",
+            }}
+          >
+            {detection.confidence.toUpperCase()} confidence
+          </span>
+        </div>
+      </div>
+
+      {detection.reasons.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#4338ca" }}>
+            Why it was classified this way
+          </div>
+          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
+            {detection.reasons.map((reason, i) => (
+              <li key={`co-reason-${i}`}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {scheduleNote && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 10,
+            borderRadius: 10,
+            background: "#fff",
+            border: "1px solid #c7d2fe",
+            color: "#1e3a8a",
+            fontSize: 13,
+            lineHeight: 1.45,
+            fontWeight: 700,
+          }}
+        >
+          {scheduleNote}
+        </div>
+      )}
+    </div>
+  )
+}
+
   // -------------------------
   // UI
   // -------------------------
@@ -4488,10 +4979,10 @@ function ScheduleEditor({
     }}
   >
     <h3 style={{ marginBottom: 8 }}>
-      Generated {documentType}
-    </h3>
+  Generated {displayedDocumentType}
+</h3>
 
-        <p
+<p
   style={{
     fontSize: 13,
     color: "#666",
@@ -4501,12 +4992,75 @@ function ScheduleEditor({
   Generated from the scope provided{jobPhotos.length > 0 ? " and uploaded photos" : ""}.
 </p>
 
+<div
+  style={{
+    marginBottom: 14,
+    padding: 14,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    background: "#fff",
+  }}
+>
+  <div
+    style={{
+      fontWeight: 900,
+      fontSize: 14,
+      marginBottom: 8,
+      color: "#111827",
+    }}
+  >
+    AI Scope Description
+  </div>
+
+  <div
+    style={{
+      whiteSpace: "pre-wrap",
+      lineHeight: 1.6,
+      fontSize: 14,
+      color: "#111",
+    }}
+  >
+    {result.text}
+  </div>
+</div>
+
+{(displayedChangeOrderNote || displayedScheduleImpactNote) && (
+  <div
+    style={{
+      marginBottom: 12,
+      padding: 12,
+      border: "1px solid #bfdbfe",
+      borderRadius: 12,
+      background: "#eff6ff",
+      color: "#1e3a8a",
+      fontSize: 13,
+      lineHeight: 1.5,
+    }}
+  >
+    {displayedChangeOrderNote && (
+      <div>
+        <strong>Classification:</strong> {displayedChangeOrderNote}
+      </div>
+    )}
+
+    {displayedScheduleImpactNote && (
+      <div style={{ marginTop: displayedChangeOrderNote ? 6 : 0 }}>
+        <strong>Schedule Impact:</strong> {displayedScheduleImpactNote}
+      </div>
+    )}
+  </div>
+)}
+
+<ChangeOrderDetectorCard detection={changeOrderDetection} />
+
 {(photoAnalysis || photoScopeAssist) && (
   <PhotoIntelligenceCard
     photoAnalysis={photoAnalysis}
     photoScopeAssist={photoScopeAssist}
   />
 )}
+
+{scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
 
 {smartScopePreview && (
   <div
@@ -5156,8 +5710,6 @@ function ScheduleEditor({
     isUserEdited={isUserEdited}
     downloadPDF={downloadPDF}
   />
-
-<p style={{ marginTop: 14 }}>{result?.text}</p>
 
 {scopeSignals?.needsReturnVisit && (
   <div

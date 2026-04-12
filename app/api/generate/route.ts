@@ -121,6 +121,179 @@ type MultiTradeDeterministicResult = {
   notes: string[]
 }
 
+type ScopeXRay = {
+  detectedScope: {
+    primaryTrade: string
+    splitScopes: Array<{
+      trade: string
+      scope: string
+    }>
+    paintScope: string | null
+    state: string
+  }
+  quantities: Array<{
+    label: string
+    value: string
+    source: "user" | "parsed" | "photo" | "estimated"
+  }>
+  pricingMethod: {
+    pricingSource: "ai" | "deterministic" | "merged"
+    detSource: string | null
+    anchorId: string | null
+    verified: boolean
+    stateAdjusted: boolean
+  }
+  scheduleLogic: {
+    crewDays: number | null
+    visits: number | null
+    reasons: string[]
+  }
+  riskFlags: string[]
+  needsConfirmation: string[]
+}
+
+function buildScopeXRay(args: {
+  trade: string
+  splitScopes: SplitScopeItem[]
+  effectivePaintScope: string | null
+  rawState: string
+  stateAbbrev: string
+  pricingSource: "ai" | "deterministic" | "merged"
+  detSource: string | null
+  anchorId: string | null
+  priceGuardVerified: boolean
+  usedNationalBaseline: boolean
+  rooms: number | null
+  doors: number | null
+  quantityInputs: {
+    userMeasuredSqft: number | null
+    parsedSqft: number | null
+    photoWallSqft: number | null
+    photoCeilingSqft: number | null
+    photoFloorSqft: number | null
+    effectiveFloorSqft: number | null
+    effectiveWallSqft: number | null
+    effectivePaintSqft: number | null
+  }
+  photoScopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+  photoAnalysis: PhotoAnalysis | null
+  scopeSignals?: {
+    needsReturnVisit?: boolean
+    reason?: string
+  } | null
+  complexityProfile: ComplexityProfile | null
+  tradeStack: TradeStack | null
+  schedule: ScheduleBlock
+}): ScopeXRay {
+  const quantities: ScopeXRay["quantities"] = []
+
+  if (args.quantityInputs.userMeasuredSqft) {
+    quantities.push({
+      label: "Measured area",
+      value: `${args.quantityInputs.userMeasuredSqft} sqft`,
+      source: "user",
+    })
+  } else if (args.quantityInputs.parsedSqft) {
+    quantities.push({
+      label: "Parsed area",
+      value: `${args.quantityInputs.parsedSqft} sqft`,
+      source: "parsed",
+    })
+  }
+
+  if (typeof args.rooms === "number" && args.rooms > 0) {
+    quantities.push({
+      label: "Rooms",
+      value: String(args.rooms),
+      source: "parsed",
+    })
+  }
+
+  if (typeof args.doors === "number" && args.doors > 0) {
+    quantities.push({
+      label: "Doors",
+      value: String(args.doors),
+      source: "parsed",
+    })
+  }
+
+  if (args.quantityInputs.photoFloorSqft) {
+    quantities.push({
+      label: "Photo-estimated floor area",
+      value: `${args.quantityInputs.photoFloorSqft} sqft`,
+      source: "photo",
+    })
+  }
+
+  if (args.quantityInputs.photoWallSqft) {
+    quantities.push({
+      label: "Photo-estimated wall area",
+      value: `${args.quantityInputs.photoWallSqft} sqft`,
+      source: "photo",
+    })
+  }
+
+  const riskFlags = Array.from(
+    new Set([
+      ...(args.photoScopeAssist.missingScopeFlags || []),
+      ...(args.photoAnalysis?.scopeCompletenessFlags || []),
+      ...(args.complexityProfile?.permitLikely ? ["Permit/inspection coordination may affect cost and timing."] : []),
+      ...(args.tradeStack?.isMultiTrade ? ["Multiple trades require coordination and sequencing."] : []),
+    ])
+  ).slice(0, 8)
+
+  const needsConfirmation: string[] = []
+
+  if (!args.quantityInputs.userMeasuredSqft && !args.quantityInputs.parsedSqft) {
+    needsConfirmation.push("Confirm exact measured quantities before final approval.")
+  }
+
+  if (
+    args.splitScopes.some((x) => x.trade === "carpentry") &&
+    !/(\d{1,5})\s*(linear\s*ft|lf|feet)\b/i.test(args.splitScopes.map((x) => x.scope).join(" "))
+  ) {
+    needsConfirmation.push("Confirm exact baseboard/trim linear footage.")
+  }
+
+  if (args.splitScopes.some((x) => /patch|texture|drywall/i.test(x.scope))) {
+    needsConfirmation.push("Confirm exact patch/texture extent.")
+  }
+
+  if (args.scopeSignals?.needsReturnVisit) {
+    needsConfirmation.push("Schedule assumes return visits/phase sequencing.")
+  }
+
+  return {
+    detectedScope: {
+      primaryTrade: args.trade,
+      splitScopes: (args.splitScopes || []).map((x) => ({
+        trade: x.trade,
+        scope: x.scope,
+      })),
+      paintScope: args.effectivePaintScope,
+      state: args.rawState || args.stateAbbrev || "N/A",
+    },
+    quantities,
+    pricingMethod: {
+      pricingSource: args.pricingSource,
+      detSource: args.detSource,
+      anchorId: args.anchorId,
+      verified: args.priceGuardVerified,
+      stateAdjusted: !args.usedNationalBaseline,
+    },
+    scheduleLogic: {
+      crewDays: args.schedule.crewDays,
+      visits: args.schedule.visits,
+      reasons: args.schedule.rationale || [],
+    },
+    riskFlags,
+    needsConfirmation: Array.from(new Set(needsConfirmation)).slice(0, 8),
+  }
+}
+
 function buildScheduleBlock(args: {
   basis: EstimateBasis | null
   cp: ComplexityProfile | null
@@ -1221,9 +1394,9 @@ Return ONLY the rewritten paragraph.
     if (!out || out.length < 20) return d
 
     // Final safety: preserve opening token
-    if (!/^This\s+(Change Order|Estimate|Change Order \/ Estimate)/i.test(out)) {
-      return d
-    }
+    if (!/^This\s+(Change Order \/ Estimate|Change Order|Estimate)/i.test(out)) {
+  return d
+}
 
     return out
   } catch (e) {
@@ -1274,6 +1447,21 @@ function cleanupDocumentTypeLead(text: string) {
       "This Change Order / Estimate"
     )
     .trim()
+}
+
+function syncDescriptionLeadToDocumentType(
+  text: string,
+  documentType: "Change Order" | "Estimate" | "Change Order / Estimate"
+) {
+  let d = String(text || "").trim()
+  if (!d) return d
+
+  d = d.replace(
+    /^This\s+(?:Change Order \/ Estimate|Change Order|Estimate)(?:\s*\/\s*(?:Change Order \/ Estimate|Change Order|Estimate))?\b/i,
+    `This ${documentType}`
+  )
+
+  return cleanupDocumentTypeLead(d)
 }
 
 function isValidPricing(p: any): p is Pricing {
@@ -2362,7 +2550,11 @@ function appendExecutionPlanSentence(args: {
 }): string {
   let d = (args.description || "").trim()
   if (!d) return d
-  if (/\bEstimated duration:\b/i.test(d)) return d
+
+  d = syncDescriptionLeadToDocumentType(
+    d,
+    args.documentType as "Change Order" | "Estimate" | "Change Order / Estimate"
+  )
 
   const cp = args.cp
   const b = args.basis
@@ -2397,11 +2589,7 @@ const calText =
 
 const sentence =
   ` Estimated duration: approximately ${rounded} crew-${dayWord}${visitText} (typically ${calText}${scheduleText})${phaseText}.`
-  d = d.replace(
-    /^This (Change Order|Estimate|Change Order \/ Estimate)\b/,
-    `This ${args.documentType}`
-  )
-
+  
   return (d + sentence).trim()
 }
 
@@ -5282,7 +5470,10 @@ if (typeof normalized.description !== "string" || normalized.description.trim().
 
 // Clean up duplicated document type tokens in the first sentence
 if (typeof normalized.description === "string") {
-  normalized.description = cleanupDocumentTypeLead(normalized.description)
+  normalized.description = syncDescriptionLeadToDocumentType(
+    normalized.description,
+    normalized.documentType
+  )
 }
 
 // Start from AI as default
@@ -5499,10 +5690,10 @@ if (photoImpact.reasons.length > 0) {
   // --- Description sync when deterministic owns pricing (prevents wrong narrative) ---
   if (trade === "electrical" && electricalDet?.jobType) {
     if (electricalDet.jobType === "device_work") {
-      normalized.description = normalized.description.replace(
-        /^This (Change Order|Estimate|Change Order \/ Estimate)\b/,
-        `This ${normalized.documentType}`
-      )
+      normalized.description = syncDescriptionLeadToDocumentType(
+  normalized.description,
+  normalized.documentType
+)
       if (!/outlet|switch|recessed|fixture/i.test(normalized.description)) {
         normalized.description +=
           " Work covers device-level electrical installation/replacement as described, including protection, testing, and cleanup."
@@ -5543,7 +5734,10 @@ if (photoImpact.reasons.length > 0) {
 
   normalized.description = appendPermitCoordinationSentence(normalized.description, complexityProfile)
 
-  normalized.description = cleanupDocumentTypeLead(normalized.description)
+  normalized.description = syncDescriptionLeadToDocumentType(
+  normalized.description,
+  normalized.documentType
+)
 
   const pg = buildPriceGuardReport({
     pricingSource,
@@ -5579,6 +5773,39 @@ if (photoImpact.reasons.length > 0) {
 
     const outTrade = normalized.trade || trade
 
+    const scheduleBlock = buildScheduleBlock({
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+  cp: complexityProfile,
+  trade: outTrade,
+  tradeStack,
+  scopeText: scopeChange,
+  workDaysPerWeek,
+  photoImpact,
+  scopeSignals,
+})
+
+const scopeXRay = buildScopeXRay({
+  trade: normalized.trade || trade,
+  splitScopes,
+  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
+  rawState,
+  stateAbbrev,
+  pricingSource,
+  detSource,
+  anchorId: anchorHit?.id ?? null,
+  priceGuardVerified,
+  usedNationalBaseline,
+  rooms,
+  doors,
+  quantityInputs,
+  photoScopeAssist,
+  photoAnalysis,
+  scopeSignals,
+  complexityProfile,
+  tradeStack,
+  schedule: scheduleBlock,
+})
+
     const explanation = buildEstimateExplanation({
   pricingSource,
   detSource,
@@ -5599,6 +5826,8 @@ if (photoImpact.reasons.length > 0) {
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+  schedule: scheduleBlock,
+  scopeXRay,
   explanation,
   scopeSignals,
   photoAnalysis,
@@ -5621,17 +5850,7 @@ if (photoImpact.reasons.length > 0) {
         notes: multiTradeDet.notes,
       }
     : null,
-  schedule: buildScheduleBlock({
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    cp: complexityProfile,
-    trade: outTrade,
-    tradeStack,
-    scopeText: scopeChange,
-    workDaysPerWeek,
-    photoImpact,
-    scopeSignals,
-  }),
-
+  
     // debug-only: expose estimateBasis for terminal tests
     ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),
 
@@ -5978,7 +6197,10 @@ normalized.description = await polishDescriptionWith4o({
   trade,
 })
 
-normalized.description = cleanupDocumentTypeLead(normalized.description)
+normalized.description = syncDescriptionLeadToDocumentType(
+  normalized.description,
+  normalized.documentType
+)
 
   normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
 
@@ -5989,11 +6211,46 @@ normalized.description = cleanupDocumentTypeLead(normalized.description)
 
   const outTrade = normalized.trade || trade
 
+  const scheduleBlock = buildScheduleBlock({
+  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
+  cp: complexityProfile,
+  trade: outTrade,
+  tradeStack,
+  scopeText: scopeChange,
+  workDaysPerWeek,
+  photoImpact,
+  scopeSignals,
+})
+
+const scopeXRay = buildScopeXRay({
+  trade: normalized.trade || trade,
+  splitScopes,
+  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
+  rawState,
+  stateAbbrev,
+  pricingSource,
+  detSource,
+  anchorId: anchorHit?.id ?? null,
+  priceGuardVerified,
+  usedNationalBaseline,
+  rooms,
+  doors,
+  quantityInputs,
+  photoScopeAssist,
+  photoAnalysis,
+  scopeSignals,
+  complexityProfile,
+  tradeStack,
+  schedule: scheduleBlock,
+})
+
 const payload = {
   documentType: normalized.documentType,
   trade: normalized.trade || trade,
   text: normalized.description,
   pricing: safePricing,
+  schedule: scheduleBlock,
+  scopeXRay, 
   explanation,
   scopeSignals,
   photoAnalysis,
@@ -6016,16 +6273,6 @@ const payload = {
         notes: multiTradeDet.notes,
       }
     : null,
-  schedule: buildScheduleBlock({
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    cp: complexityProfile,
-    trade: outTrade,
-    tradeStack,
-    scopeText: scopeChange,
-    workDaysPerWeek,
-    photoImpact,
-    scopeSignals,
-  }),
 
   // debug-only: expose estimateBasis for terminal tests
     ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),

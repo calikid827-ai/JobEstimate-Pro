@@ -158,6 +158,79 @@ export type UiTrade =
   | "carpentry"
   | "general_renovation"
 
+  export type ScopeSignals = {
+  needsReturnVisit?: boolean
+  reason?: string
+} | null
+
+export type PhotoAnalysis = {
+  summary?: string
+  observations?: string[]
+  suggestedScopeNotes?: string[]
+  detectedRoomTypes?: string[]
+  detectedTrades?: string[]
+  detectedMaterials?: string[]
+  detectedConditions?: string[]
+  detectedFixtures?: string[]
+  detectedAccessIssues?: string[]
+  detectedDemoNeeds?: string[]
+  quantitySignals?: {
+    doors?: number | null
+    windows?: number | null
+    vanities?: number | null
+    toilets?: number | null
+    sinks?: number | null
+    outlets?: number | null
+    switches?: number | null
+    recessedLights?: number | null
+    ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+    estimatedWallSqftMin?: number | null
+    estimatedWallSqftMax?: number | null
+    estimatedCeilingSqftMin?: number | null
+    estimatedCeilingSqftMax?: number | null
+    estimatedFloorSqftMin?: number | null
+    estimatedFloorSqftMax?: number | null
+  }
+  scopeCompletenessFlags?: string[]
+  confidence?: "low" | "medium" | "high"
+} | null
+
+export type PhotoScopeAssist = {
+  missingScopeFlags: string[]
+  suggestedAdditions: string[]
+} | null
+
+export type ScopeXRay = {
+  detectedScope: {
+    primaryTrade: string
+    splitScopes: {
+      trade: string
+      scope: string
+    }[]
+    paintScope: string | null
+    state: string
+  }
+  quantities: {
+    label: string
+    value: string
+    source: "user" | "parsed" | "photo" | "estimated"
+  }[]
+  pricingMethod: {
+    pricingSource: "ai" | "deterministic" | "merged"
+    detSource: string | null
+    anchorId: string | null
+    verified: boolean
+    stateAdjusted: boolean
+  }
+  scheduleLogic: {
+    crewDays: number | null
+    visits: number | null
+    reasons: string[]
+  }
+  riskFlags: string[]
+  needsConfirmation: string[]
+} | null
+
 export type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -174,7 +247,7 @@ export type EstimateHistoryItem = {
   state: string
   scopeChange: string
   result: string
-    explanation?: {
+  explanation?: {
     priceReasons?: string[]
     scheduleReasons?: string[]
     photoReasons?: string[]
@@ -188,6 +261,11 @@ export type EstimateHistoryItem = {
     total: number
   }
   schedule?: Schedule | null
+  scopeSignals?: ScopeSignals
+  photoAnalysis?: PhotoAnalysis
+  photoScopeAssist?: PhotoScopeAssist
+  scopeXRay?: ScopeXRay
+  changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
   priceGuardVerified?: boolean
   tax?: {
@@ -223,4 +301,16 @@ export type ExplainChangesReport = {
   pricingChanges: string[]
   scheduleChanges: string[]
   adminChanges: string[]
+}
+
+export type ChangeOrderDetection = {
+  isChangeOrder: boolean
+  mode: "add" | "deduct" | "mixed" | "unknown"
+  confidence: "low" | "medium" | "high"
+  reasons: string[]
+  scheduleImpact: {
+    likelyChanged: boolean
+    addedDays: number | null
+    notes: string[]
+  }
 }
