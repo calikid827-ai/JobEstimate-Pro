@@ -2,10 +2,42 @@ import { z } from "zod"
 
 const PhotoInputSchema = z.object({
   name: z.string().max(120),
+
   dataUrl: z
     .string()
-    .max(8_000_000) // protects request size
+    .max(8_000_000)
     .regex(/^data:image\/(png|jpeg|jpg|webp);base64,/, "Invalid image data URL"),
+
+  roomTag: z.string().trim().max(40).optional().default(""),
+
+  shotType: z
+    .enum([
+      "overview",
+      "corner",
+      "wall",
+      "ceiling",
+      "floor",
+      "fixture",
+      "damage",
+      "measurement",
+    ])
+    .optional()
+    .default("overview"),
+
+  note: z.string().trim().max(240).optional().default(""),
+
+  reference: z
+    .object({
+      kind: z.enum(["none", "custom"]).optional().default("none"),
+      label: z.string().trim().max(40).optional().default(""),
+      realWidthIn: z.number().min(0).max(200).nullable().optional().default(null),
+    })
+    .optional()
+    .default({
+      kind: "none",
+      label: "",
+      realWidthIn: null,
+    }),
 })
 
 export const GenerateSchema = z.object({
@@ -16,6 +48,7 @@ export const GenerateSchema = z.object({
   trade: z
     .enum([
       "",
+      "auto-detect",
       "painting",
       "drywall",
       "flooring",

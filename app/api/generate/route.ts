@@ -950,6 +950,22 @@ type AIResponse = {
 type PhotoInput = {
   name: string
   dataUrl: string
+  roomTag?: string
+  shotType?:
+    | "overview"
+    | "corner"
+    | "wall"
+    | "ceiling"
+    | "floor"
+    | "fixture"
+    | "damage"
+    | "measurement"
+  note?: string
+  reference?: {
+    kind?: "none" | "custom"
+    label?: string
+    realWidthIn?: number | null
+  }
 }
 
 type PhotoAnalysis = {
@@ -1033,7 +1049,63 @@ function sanitizePhotoInputs(photos: unknown): PhotoInput[] {
     const bytes = estimateBase64DecodedBytes(dataUrl)
     if (!Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_PHOTO_BYTES) continue
 
-    cleaned.push({ name, dataUrl })
+    const roomTag =
+      typeof (raw as any)?.roomTag === "string"
+        ? (raw as any).roomTag.trim().slice(0, 40)
+        : ""
+
+    const shotTypeRaw =
+      typeof (raw as any)?.shotType === "string"
+        ? (raw as any).shotType.trim()
+        : "overview"
+
+    const shotType: PhotoInput["shotType"] =
+      shotTypeRaw === "overview" ||
+      shotTypeRaw === "corner" ||
+      shotTypeRaw === "wall" ||
+      shotTypeRaw === "ceiling" ||
+      shotTypeRaw === "floor" ||
+      shotTypeRaw === "fixture" ||
+      shotTypeRaw === "damage" ||
+      shotTypeRaw === "measurement"
+        ? shotTypeRaw
+        : "overview"
+
+    const note =
+      typeof (raw as any)?.note === "string"
+        ? (raw as any).note.trim().slice(0, 240)
+        : ""
+
+    const refRaw = (raw as any)?.reference
+
+const reference: NonNullable<PhotoInput["reference"]> =
+  refRaw && typeof refRaw === "object"
+    ? {
+        kind: refRaw.kind === "custom" ? "custom" : "none",
+        label:
+          typeof refRaw.label === "string"
+            ? refRaw.label.trim().slice(0, 40)
+            : "",
+        realWidthIn:
+          Number.isFinite(Number(refRaw.realWidthIn)) &&
+          Number(refRaw.realWidthIn) > 0
+            ? Number(refRaw.realWidthIn)
+            : null,
+      }
+    : {
+        kind: "none",
+        label: "",
+        realWidthIn: null,
+      }
+
+    cleaned.push({
+      name,
+      dataUrl,
+      roomTag,
+      shotType,
+      note,
+      reference,
+    })
   }
 
   return cleaned
@@ -1148,14 +1220,28 @@ Scope text: ${args.scopeText}
       },
     ]
 
-    for (const photo of safePhotos) {
-      content.push({
-        type: "image_url",
-        image_url: {
-          url: photo.dataUrl,
-        },
-      })
-    }
+    for (const [index, photo] of safePhotos.entries()) {
+  content.push({
+    type: "text",
+    text: `
+PHOTO ${index + 1} METADATA
+- name: ${photo.name || "photo"}
+- roomTag: ${photo.roomTag || "unknown"}
+- shotType: ${photo.shotType || "overview"}
+- note: ${photo.note || "none"}
+- referenceKind: ${photo.reference?.kind || "none"}
+- referenceLabel: ${photo.reference?.label || "none"}
+- referenceRealWidthIn: ${photo.reference?.realWidthIn ?? "unknown"}
+    `.trim(),
+  })
+
+  content.push({
+    type: "image_url",
+    image_url: {
+      url: photo.dataUrl,
+    },
+  })
+}
 
     const resp = await openai.chat.completions.create({
       model: PHOTO_ANALYSIS_MODEL,
@@ -1251,6 +1337,85 @@ type EstimateExplanation = {
   scheduleReasons: string[]
   photoReasons: string[]
   protectionReasons: string[]
+}
+
+type PhotoPacketScore = {
+  score: number
+  strengths: string[]
+  missingShots: string[]
+}
+
+function scorePhotoPacket(photos: PhotoInput[]): PhotoPacketScore {
+  if (!photos.length) {
+    return {
+      score: 0,
+      strengths: [],
+      missingShots: ["No photos uploaded"],
+    }
+  }
+
+  const shotTypes = new Set(photos.map((p) => p.shotType || "overview"))
+  const roomTags = new Set(
+    photos.map((p) => (p.roomTag || "").trim().toLowerCase()).filter(Boolean)
+  )
+
+  let score = 40
+  const strengths: string[] = []
+  const missingShots: string[] = []
+
+  if (shotTypes.has("overview")) {
+    score += 15
+    strengths.push("Has overview photo")
+  } else {
+    missingShots.push("Add at least 1 overview photo")
+  }
+
+  if (shotTypes.has("wall") || shotTypes.has("corner")) {
+    score += 15
+    strengths.push("Has wall/corner coverage")
+  } else {
+    missingShots.push("Add wall or corner shots")
+  }
+
+  if (shotTypes.has("floor")) {
+    score += 8
+    strengths.push("Has floor coverage")
+  }
+
+  if (shotTypes.has("ceiling")) {
+    score += 8
+    strengths.push("Has ceiling coverage")
+  }
+
+  if (shotTypes.has("fixture")) {
+    score += 8
+    strengths.push("Has fixture/detail coverage")
+  }
+
+  if (shotTypes.has("damage")) {
+    score += 6
+    strengths.push("Has condition/damage closeups")
+  }
+
+  if (shotTypes.has("measurement")) {
+    score += 10
+    strengths.push("Has measurement-oriented shot")
+  } else {
+    missingShots.push("Add a measurement/reference shot")
+  }
+
+  if (roomTags.size >= 1) {
+    score += 5
+    strengths.push("Rooms are tagged")
+  } else {
+    missingShots.push("Tag each photo to a room")
+  }
+
+  return {
+    score: Math.max(0, Math.min(100, score)),
+    strengths,
+    missingShots: missingShots.slice(0, 6),
+  }
 }
 
 function derivePhotoPricingImpact(args: {
@@ -5027,6 +5192,8 @@ const photoAnalysis =
       })
     : null
 
+const photoPacketScore = scorePhotoPacket(photos ?? [])    
+
 const photoImpact = derivePhotoPricingImpact({
   analysis: photoAnalysis,
   trade,
@@ -5133,12 +5300,19 @@ console.log("PG MULTI TRADE DET", {
 // -----------------------------
 // Flooring deterministic engine (PriceGuard™)
 // -----------------------------
+const flooringDetMeasurements =
+  measurements?.totalSqft && Number(measurements.totalSqft) > 0
+    ? measurements
+    : quantityInputs.photoFloorSqft && quantityInputs.photoFloorSqft > 0
+      ? { ...(measurements || {}), totalSqft: quantityInputs.photoFloorSqft }
+      : measurements
+
 const flooringDet =
   trade === "flooring"
     ? computeFlooringDeterministic({
         scopeText: scopeChange,
         stateMultiplier,
-        measurements,
+        measurements: flooringDetMeasurements,
       })
     : null
 
@@ -5193,12 +5367,19 @@ console.log("PG PLUMBING CONFLICT", {
 })
 
     // Drywall deterministic engine (PriceGuard™)
+const drywallDetMeasurements =
+  measurements?.totalSqft && Number(measurements.totalSqft) > 0
+    ? measurements
+    : quantityInputs.photoWallSqft && quantityInputs.photoWallSqft > 0
+      ? { ...(measurements || {}), totalSqft: quantityInputs.photoWallSqft }
+      : measurements
+
 const drywallDet =
   trade === "drywall"
     ? computeDrywallDeterministic({
         scopeText: scopeChange,
         stateMultiplier,
-        measurements,
+        measurements: drywallDetMeasurements,
       })
     : null
 
@@ -5207,12 +5388,19 @@ const drywallDetPricing: Pricing | null =
     ? clampPricing(coercePricing(drywallDet.pricing))
     : null
 
-    const paintingDet =
+    const paintingDetMeasurements =
+  measurements?.totalSqft && Number(measurements.totalSqft) > 0
+    ? measurements
+    : quantityInputs.photoWallSqft && quantityInputs.photoWallSqft > 0
+      ? { ...(measurements || {}), totalSqft: quantityInputs.photoWallSqft }
+      : measurements
+
+const paintingDet =
   trade === "painting"
     ? computePaintingDeterministic({
         scopeText: scopeChange,
         stateMultiplier,
-        measurements,
+        measurements: paintingDetMeasurements,
         paintScope: paintScopeForJob ?? "walls",
       })
     : null
@@ -6299,6 +6487,7 @@ const scopeXRay = buildScopeXRay({
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  photoPacketScore,
   materialsList,
   areaScopeBreakdown,
   splitScopes,

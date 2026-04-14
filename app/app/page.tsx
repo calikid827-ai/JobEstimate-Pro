@@ -82,16 +82,64 @@ import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
 
+type ShotType =
+  | "overview"
+  | "corner"
+  | "wall"
+  | "ceiling"
+  | "floor"
+  | "fixture"
+  | "damage"
+  | "measurement"
+
+type PhotoReferenceKind = "none" | "custom"
+
+type JobPhoto = {
+  id: string
+  name: string
+  dataUrl: string
+  roomTag: string
+  shotType: ShotType
+  note: string
+  reference: {
+    kind: PhotoReferenceKind
+    label: string
+    realWidthIn: number | null
+  }
+}
+
+const SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }> = [
+  { value: "overview", label: "Overview" },
+  { value: "corner", label: "Corner" },
+  { value: "wall", label: "Wall" },
+  { value: "ceiling", label: "Ceiling" },
+  { value: "floor", label: "Floor" },
+  { value: "fixture", label: "Fixture / Detail" },
+  { value: "damage", label: "Damage / Problem Area" },
+  { value: "measurement", label: "Measurement Reference" },
+]
+
+const ROOM_TAG_SUGGESTIONS = [
+  "Living room",
+  "Kitchen",
+  "Bathroom",
+  "Primary bathroom",
+  "Bedroom",
+  "Primary bedroom",
+  "Hallway",
+  "Laundry",
+  "Entry",
+  "Closet",
+  "Exterior",
+] as const
+
 export default function Home() {
-
-  const generatingRef = useRef(false)
-
-// Prevent out-of-order entitlement responses from overwriting newer state
+const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
-
 const lastSavedEstimateIdRef = useRef<string | null>(null)
-
 const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
+
+const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
 
 function scrollToInvoices() {
   // small delay so UI can render filtered invoices after setting activeJobId
@@ -154,20 +202,28 @@ async function handlePhotoUpload(files: FileList | null) {
   const picked = Array.from(files).slice(0, remainingSlots)
 
   try {
-    const compressed = await Promise.all(
+    const compressed: JobPhoto[] = await Promise.all(
       picked.map(async (file) => ({
         id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
         name: file.name.replace(/\.[^.]+$/, "") + ".jpg",
         dataUrl: await compressImageFile(file),
+        roomTag: "",
+        shotType: "overview",
+        note: "",
+        reference: {
+          kind: "none",
+          label: "",
+          realWidthIn: null,
+        },
       }))
     )
 
-    const sizeFiltered = compressed.filter(
+    const sizeFiltered: JobPhoto[] = compressed.filter(
       (photo) => photo.dataUrl.length <= MAX_PHOTO_DATAURL_LENGTH
     )
 
-    const mergedBase = [...jobPhotos]
-    const merged: typeof compressed = [...mergedBase]
+    const mergedBase: JobPhoto[] = [...jobPhotos]
+    const merged: JobPhoto[] = [...mergedBase]
     let skippedForTotalSize = 0
 
     for (const photo of sizeFiltered) {
@@ -198,6 +254,41 @@ async function handlePhotoUpload(files: FileList | null) {
 
 function removeJobPhoto(id: string) {
   setJobPhotos((prev) => prev.filter((p) => p.id !== id))
+}
+
+function updateJobPhoto(id: string, patch: Partial<JobPhoto>) {
+  setJobPhotos((prev) =>
+    prev.map((photo) =>
+      photo.id === id
+        ? {
+            ...photo,
+            ...patch,
+            reference: patch.reference
+              ? { ...photo.reference, ...patch.reference }
+              : photo.reference,
+          }
+        : photo
+    )
+  )
+}
+
+function updateJobPhotoReference(
+  id: string,
+  patch: Partial<JobPhoto["reference"]>
+) {
+  setJobPhotos((prev) =>
+    prev.map((photo) =>
+      photo.id === id
+        ? {
+            ...photo,
+            reference: {
+              ...photo.reference,
+              ...patch,
+            },
+          }
+        : photo
+    )
+  )
 }
 
   const [measureEnabled, setMeasureEnabled] = useState(false)
@@ -1024,14 +1115,6 @@ const [result, setResult] = useState<{
 } | null>(null)
 const [schedule, setSchedule] = useState<Schedule | null>(null)
 const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
-
-const [jobPhotos, setJobPhotos] = useState<
-  {
-    id: string
-    name: string
-    dataUrl: string
-  }[]
->([])
 
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
@@ -2066,7 +2149,27 @@ const tradeToSend =
 const photosToSend =
   jobPhotos.length > 0
     ? (() => {
-        const selected: { name: string; dataUrl: string }[] = []
+        const selected: {
+          name: string
+          dataUrl: string
+          roomTag: string
+          shotType:
+            | "overview"
+            | "corner"
+            | "wall"
+            | "ceiling"
+            | "floor"
+            | "fixture"
+            | "damage"
+            | "measurement"
+          note: string
+          reference: {
+            kind: "none" | "custom"
+            label: string
+            realWidthIn: number | null
+          }
+        }[] = []
+
         let runningTotal = 0
 
         for (const p of jobPhotos) {
@@ -2078,6 +2181,14 @@ const photosToSend =
           selected.push({
             name: p.name,
             dataUrl: p.dataUrl,
+            roomTag: p.roomTag || "",
+            shotType: p.shotType || "overview",
+            note: p.note || "",
+            reference: p.reference ?? {
+              kind: "none",
+              label: "",
+              realWidthIn: null,
+            },
           })
 
           runningTotal += size
@@ -5255,6 +5366,10 @@ function ChangeOrderDetectorCard({
   handlePhotoUpload={handlePhotoUpload}
   jobPhotos={jobPhotos}
   removeJobPhoto={removeJobPhoto}
+  updateJobPhoto={updateJobPhoto}
+  updateJobPhotoReference={updateJobPhotoReference}
+  SHOT_TYPE_OPTIONS={SHOT_TYPE_OPTIONS}
+  ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
   scopeQuality={scopeQuality}
   measureEnabled={measureEnabled}
   setMeasureEnabled={setMeasureEnabled}
