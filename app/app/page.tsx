@@ -148,7 +148,7 @@ function scrollToInvoices() {
   }, 50)
 }
 
-const MAX_JOB_PHOTOS = 5
+const MAX_JOB_PHOTOS = 8
 const MAX_PHOTO_DATAURL_LENGTH = 350_000
 const MAX_TOTAL_PHOTO_PAYLOAD = 900_000
 
