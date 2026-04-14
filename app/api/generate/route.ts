@@ -121,6 +121,321 @@ type MultiTradeDeterministicResult = {
   notes: string[]
 }
 
+type MaterialsList = {
+  items: Array<{
+    label: string
+    quantity: string
+    category: "material" | "consumable" | "hardware" | "protection"
+    confidence?: "low" | "medium" | "high"
+  }>
+  confirmItems: string[]
+  notes: string[]
+} | null
+
+type AreaScopeBreakdown = {
+  detectedArea: {
+    floorSqft: number | null
+    wallSqft: number | null
+    paintSqft: number | null
+    trimLf: number | null
+  }
+  allowances: {
+    prepDemo: string[]
+    protectionSetup: string[]
+    materialsDrivers: string[]
+    scheduleDrivers: string[]
+  }
+  missingConfirmations: string[]
+}
+
+function buildMaterialsList(args: {
+  trade: string
+  scopeText: string
+  splitScopes: SplitScopeItem[]
+  effectivePaintScope: EffectivePaintScope | null
+  rooms: number | null
+  doors: number | null
+  quantityInputs: ReturnType<typeof getEffectiveQuantityInputs>
+  photoAnalysis: PhotoAnalysis | null
+  photoScopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+  anchorId?: string | null
+}): MaterialsList {
+  
+  const items: NonNullable<MaterialsList>["items"] = []
+  const confirmItems: string[] = []
+  const notes: string[] = []
+
+  const s = (args.scopeText || "").toLowerCase()
+
+  const addItem = (
+    label: string,
+    quantity: string,
+    category: "material" | "consumable" | "hardware" | "protection",
+    confidence?: "low" | "medium" | "high"
+  ) => {
+    const cleanLabel = String(label || "").trim()
+    const cleanQty = String(quantity || "").trim()
+    if (!cleanLabel || !cleanQty) return
+
+    const exists = items.some(
+      (x) =>
+        x.label.toLowerCase() === cleanLabel.toLowerCase() &&
+        x.quantity.toLowerCase() === cleanQty.toLowerCase() &&
+        x.category === category
+    )
+    if (exists) return
+
+    items.push({
+      label: cleanLabel,
+      quantity: cleanQty,
+      category,
+      confidence,
+    })
+  }
+
+  const paintSqft =
+    args.quantityInputs.effectivePaintSqft ??
+    args.quantityInputs.effectiveWallSqft
+
+  const floorSqft = args.quantityInputs.effectiveFloorSqft
+
+  if (args.anchorId === "kitchen_remodel_v1") {
+  const sqft = args.quantityInputs.effectiveFloorSqft ?? 200
+
+  addItem("Cabinets / cabinetry package", "allowance", "material", "medium")
+  addItem("Countertop material", "allowance", "material", "medium")
+  addItem("Sink / faucet set", "allowance", "material", "medium")
+
+  if (/\b(backsplash|tile)\b/.test(s)) {
+    addItem("Backsplash tile", "allowance", "material", "medium")
+    addItem("Thinset / mortar", "allowance", "material", "medium")
+    addItem("Grout", "allowance", "material", "medium")
+  }
+
+  if (/\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|tile floor)\b/.test(s)) {
+    addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
+
+    if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+      addItem("Thinset / mortar", "allowance", "material", "medium")
+      addItem("Grout", "allowance", "material", "medium")
+    } else {
+      addItem("Underlayment", `~${Math.ceil(sqft)} sqft`, "material", "medium")
+    }
+
+    addItem("Transitions / reducers", "allowance", "hardware", "medium")
+  }
+
+  if (/\b(paint|painting|prime|primer)\b/.test(s)) {
+    addItem("Primer / paint", "allowance", "material", "medium")
+  }
+
+  if (/\b(demo|demolition|tear\s*out|remove)\b/.test(s)) {
+    addItem("Demo bags / disposal supplies", "1 lot", "consumable", "high")
+    addItem("Dust containment materials", "1 lot", "protection", "high")
+  }
+
+  addItem("Fasteners / screws / anchors / adhesive", "1 lot", "hardware", "high")
+  addItem("Masking / floor / adjacent finish protection", "1 lot", "protection", "high")
+
+  confirmItems.push(
+    "Confirm cabinet count / layout before ordering.",
+    "Confirm countertop material and edge selection.",
+    "Confirm backsplash extent and final tile selections.",
+    "Confirm sink / faucet / appliance scope before buying."
+  )
+}
+
+if (args.anchorId === "bathroom_remodel_v1") {
+  const floorSqft = args.quantityInputs.effectiveFloorSqft ?? 60
+
+  addItem("Vanity / sink / faucet allowance", "allowance", "material", "medium")
+  addItem("Toilet / plumbing trim allowance", "allowance", "material", "medium")
+  addItem("Waterproofing materials", "allowance", "material", "high")
+  addItem("Tile / setting materials", "allowance", "material", "medium")
+  addItem("Thinset / mortar", "allowance", "material", "medium")
+  addItem("Grout / sealant / caulk", "allowance", "consumable", "high")
+  addItem("Protection / masking materials", "1 lot", "protection", "high")
+  addItem("Demo / disposal supplies", "1 lot", "consumable", "high")
+
+  if (floorSqft > 0) {
+    addItem("Bathroom flooring allowance", `~${Math.ceil(floorSqft * 1.1)} sqft`, "material", "medium")
+  }
+
+  confirmItems.push(
+    "Confirm shower wall tile extent.",
+    "Confirm valve / drain / plumbing relocation scope.",
+    "Confirm fixture finish level before buying."
+  )
+}
+
+if (args.anchorId === "flooring_only_v1") {
+  const sqft = args.quantityInputs.effectiveFloorSqft ?? 180
+
+  addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
+
+  if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+    addItem("Thinset / mortar", "allowance", "material", "medium")
+    addItem("Grout", "allowance", "material", "medium")
+  } else {
+    addItem("Underlayment", `~${Math.ceil(sqft)} sqft`, "material", "medium")
+  }
+
+  addItem("Transitions / reducers", "allowance", "hardware", "medium")
+  addItem("Base / quarter round", "confirm quantity", "material", "medium")
+  addItem("Caulk / adhesive / misc install supplies", "1 lot", "consumable", "high")
+  addItem("Floor protection", "1 lot", "protection", "high")
+
+  confirmItems.push("Confirm exact transition count and trim footage.")
+}
+
+if (args.anchorId === "kitchen_refresh_v1") {
+  const sqft = args.quantityInputs.effectiveFloorSqft ?? 200
+
+  addItem("Cabinets / cabinet finish materials", "allowance", "material", "medium")
+  addItem("Countertop allowance", "allowance", "material", "medium")
+  addItem("Sink / faucet set", "allowance", "material", "medium")
+
+  if (/\b(backsplash|tile)\b/.test(s)) {
+    addItem("Backsplash tile", "allowance", "material", "medium")
+    addItem("Thinset / mortar", "allowance", "material", "medium")
+    addItem("Grout", "allowance", "material", "medium")
+  }
+
+  if (/\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|tile floor)\b/.test(s)) {
+    addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
+    addItem("Underlayment", `~${Math.ceil(sqft)} sqft`, "material", "medium")
+    addItem("Transitions / reducers", "allowance", "hardware", "medium")
+  }
+
+  addItem("Masking / adjacent finish protection", "1 lot", "protection", "high")
+  addItem("Fasteners / adhesive / misc install supplies", "1 lot", "hardware", "medium")
+
+  confirmItems.push(
+    "Confirm cabinet scope is repaint, replace, or install.",
+    "Confirm countertop and backsplash selections before buying.",
+    "Confirm appliance scope before ordering materials."
+  )
+}
+
+  if (args.trade === "painting") {
+    const estimatedSqft =
+      paintSqft ??
+      (args.rooms
+        ? args.rooms * (args.effectivePaintScope === "walls" ? 380 : 460)
+        : null)
+
+    if (estimatedSqft && estimatedSqft > 0) {
+      const gallons = Math.max(1, Math.ceil((estimatedSqft * 2) / 325))
+      addItem(
+        "Interior paint / primer",
+        `~${gallons} gal`,
+        "material",
+        args.quantityInputs.userMeasuredSqft ? "high" : "medium"
+      )
+    }
+
+    if (args.doors && args.doors > 0) {
+      addItem("Door / trim enamel", `for ${args.doors} door(s)`, "material", "medium")
+    }
+
+    addItem("Caulk / spackle / filler", "1 lot", "consumable", "medium")
+    addItem("Masking plastic / tape / paper", "1 lot", "protection", "high")
+    addItem("Roller covers / brushes / sanding supplies", "1 lot", "consumable", "high")
+  }
+
+  if (args.trade === "flooring") {
+    if (floorSqft && floorSqft > 0) {
+      addItem("Flooring material", `~${Math.ceil(floorSqft * 1.1)} sqft`, "material", "high")
+      addItem("Underlayment", `~${Math.ceil(floorSqft)} sqft`, "material", "medium")
+    }
+
+    addItem("Transitions / reducers", "allowance", "hardware", "medium")
+    addItem("Floor protection", "1 lot", "protection", "high")
+
+    if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+      addItem("Thinset / mortar", "allowance", "material", "medium")
+      addItem("Grout", "allowance", "material", "medium")
+      addItem("Spacers / wedges", "1 lot", "consumable", "medium")
+    }
+  }
+
+  if (args.trade === "drywall") {
+    addItem("Drywall / patch material", "allowance", "material", "medium")
+    addItem("Joint compound", "allowance", "material", "high")
+    addItem("Drywall tape", "1 lot", "consumable", "high")
+    addItem("Sanding supplies", "1 lot", "consumable", "high")
+
+    if (/\b(texture|orange\s*peel|knockdown)\b/.test(s)) {
+      addItem("Texture material", "allowance", "material", "medium")
+    }
+
+    if (/\b(prime|primer|paint)\b/.test(s)) {
+      addItem("Primer", "allowance", "material", "medium")
+    }
+  }
+
+  if (args.trade === "electrical") {
+    const breakdown = parseElectricalDeviceBreakdown(args.scopeText)
+    if (breakdown?.total) {
+      addItem("Electrical devices / fixtures", `${breakdown.total} total`, "material", "high")
+    }
+
+    addItem("Wire nuts / connectors / misc electrical hardware", "1 lot", "hardware", "medium")
+    addItem("Protection / masking", "1 lot", "protection", "medium")
+  }
+
+  if (args.trade === "plumbing" && args.anchorId !== "bathroom_remodel_v1") {
+    const breakdown = parsePlumbingFixtureBreakdown(args.scopeText)
+    if (breakdown?.total) {
+      addItem("Plumbing fixture supplies", `${breakdown.total} fixture set(s)`, "material", "high")
+    }
+
+    addItem("Supply lines / stops / seals / misc plumbing hardware", "1 lot", "hardware", "medium")
+    addItem("Protection / cleanup materials", "1 lot", "protection", "medium")
+  }
+
+  if (args.trade === "carpentry") {
+    addItem("Fasteners / adhesive / shims", "1 lot", "hardware", "medium")
+    addItem("Surface protection", "1 lot", "protection", "medium")
+
+    const lf = parseLinearFt(args.scopeText)
+    if (lf && lf > 0) {
+      addItem("Trim / base material", `~${lf} LF`, "material", "high")
+    }
+  }
+
+  const hasSpecializedItems = items.length > 0
+
+if (args.trade === "general renovation" && !hasSpecializedItems) {
+  addItem("General protection materials", "1 lot", "protection", "high")
+  addItem("Consumables / misc install materials", "1 lot", "consumable", "medium")
+  addItem("Fasteners / misc hardware", "1 lot", "hardware", "medium")
+}
+
+  for (const flag of args.photoScopeAssist.missingScopeFlags || []) {
+    confirmItems.push(flag)
+  }
+
+  if (args.photoAnalysis?.detectedAccessIssues?.length) {
+    notes.push("Visible access/protection conditions may affect final shopping list.")
+  }
+
+  if (args.splitScopes.length > 1) {
+    notes.push("List combines materials implied across split scopes. Verify final selections by trade.")
+  }
+
+  return items.length || confirmItems.length || notes.length
+    ? {
+        items,
+        confirmItems: Array.from(new Set(confirmItems)),
+        notes: Array.from(new Set(notes)),
+      }
+    : null
+}
+
 type ScopeXRay = {
   detectedScope: {
     primaryTrade: string
@@ -291,6 +606,133 @@ function buildScopeXRay(args: {
     },
     riskFlags,
     needsConfirmation: Array.from(new Set(needsConfirmation)).slice(0, 8),
+  }
+}
+
+function buildAreaScopeBreakdown(args: {
+  trade: string
+  scopeText: string
+  splitScopes: SplitScopeItem[]
+  effectivePaintScope: EffectivePaintScope | null
+  quantityInputs: ReturnType<typeof getEffectiveQuantityInputs>
+  photoAnalysis: PhotoAnalysis | null
+  photoScopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+  complexityProfile: ComplexityProfile | null
+}): AreaScopeBreakdown {
+  const s = (args.scopeText || "").toLowerCase()
+
+  const trimLf =
+    parseLinearFt(args.scopeText) ??
+    (/\b(baseboard|trim|casing|quarter round|shoe mold)\b/.test(s)
+      ? estimateBaseboardLfFromFloorSqft(args.quantityInputs.effectiveFloorSqft)
+      : null)
+
+  const prepDemo: string[] = []
+  const protectionSetup: string[] = []
+  const materialsDrivers: string[] = []
+  const scheduleDrivers: string[] = []
+  const missingConfirmations: string[] = []
+
+  if (/\b(demo|demolition|tear\s*out|remove|haul\s*away|dispose)\b/.test(s)) {
+    prepDemo.push("Demolition / removal work detected")
+  }
+
+  if (/\b(patch|repair|texture|skim|orange peel|knockdown|surface prep|prep)\b/.test(s)) {
+    prepDemo.push("Surface prep / patch / finish prep detected")
+  }
+
+  if (
+    /\b(mask|masking|protect|protection|cover|containment)\b/.test(s) ||
+    (args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0
+  ) {
+    protectionSetup.push("Protection / masking / occupied-space setup likely required")
+  }
+
+  if (/\b(furniture|occupied|tight access|limited access|clutter)\b/.test(
+    [
+      ...(args.photoAnalysis?.detectedConditions || []),
+      ...(args.photoAnalysis?.detectedAccessIssues || []),
+    ].join(" ").toLowerCase()
+  )) {
+    protectionSetup.push("Access conditions may increase setup/protection time")
+  }
+
+  if (args.quantityInputs.effectiveFloorSqft) {
+    materialsDrivers.push(`Floor area influencing material quantities: ${args.quantityInputs.effectiveFloorSqft} sqft`)
+  }
+
+  if (args.quantityInputs.effectiveWallSqft) {
+    materialsDrivers.push(`Wall area influencing material quantities: ${args.quantityInputs.effectiveWallSqft} sqft`)
+  }
+
+  if (args.quantityInputs.effectivePaintSqft && args.trade === "painting") {
+    materialsDrivers.push(`Paintable area influencing coating quantities: ${args.quantityInputs.effectivePaintSqft} sqft`)
+  }
+
+  if (trimLf) {
+    materialsDrivers.push(`Trim/base footage influencing material quantities: ${trimLf} LF`)
+  }
+
+  if (args.effectivePaintScope === "doors_only") {
+    materialsDrivers.push("Doors-only paint scope detected")
+  } else if (args.effectivePaintScope === "walls_ceilings") {
+    materialsDrivers.push("Walls + ceilings paint scope detected")
+  } else if (args.effectivePaintScope === "full") {
+    materialsDrivers.push("Full interior paint scope detected")
+  }
+
+  if (args.complexityProfile?.multiPhase) {
+    scheduleDrivers.push("Multi-phase sequencing likely")
+  }
+
+  if (args.complexityProfile?.multiTrade) {
+    scheduleDrivers.push("Multi-trade coordination likely")
+  }
+
+  if (args.complexityProfile?.permitLikely) {
+    scheduleDrivers.push("Permit / inspection coordination may affect duration")
+  }
+
+  if ((args.photoAnalysis?.detectedDemoNeeds?.length ?? 0) > 0) {
+    scheduleDrivers.push("Photo-visible demo / prep conditions may affect production speed")
+  }
+
+  if ((args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0) {
+    scheduleDrivers.push("Photo-visible access constraints may affect schedule")
+  }
+
+  if (!args.quantityInputs.userMeasuredSqft && !args.quantityInputs.parsedSqft) {
+    missingConfirmations.push("Confirm measured square footage")
+  }
+
+  if (
+    /\b(baseboard|trim|casing|quarter round|shoe mold)\b/.test(s) &&
+    !trimLf
+  ) {
+    missingConfirmations.push("Confirm exact trim / baseboard linear footage")
+  }
+
+  for (const flag of args.photoScopeAssist.missingScopeFlags || []) {
+    missingConfirmations.push(flag)
+  }
+
+  return {
+    detectedArea: {
+      floorSqft: args.quantityInputs.effectiveFloorSqft ?? null,
+      wallSqft: args.quantityInputs.effectiveWallSqft ?? null,
+      paintSqft: args.quantityInputs.effectivePaintSqft ?? null,
+      trimLf: trimLf ?? null,
+    },
+    allowances: {
+      prepDemo: Array.from(new Set(prepDemo)),
+      protectionSetup: Array.from(new Set(protectionSetup)),
+      materialsDrivers: Array.from(new Set(materialsDrivers)),
+      scheduleDrivers: Array.from(new Set(scheduleDrivers)),
+    },
+    missingConfirmations: Array.from(new Set(missingConfirmations)).slice(0, 8),
   }
 }
 
@@ -4879,6 +5321,30 @@ const effectivePaintScope: EffectivePaintScope =
   scope: scopeChange,
 })
 
+const materialsList = buildMaterialsList({
+  trade,
+  scopeText: scopeChange, // use raw scope, not effectiveScopeChange
+  splitScopes,
+  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
+  rooms,
+  doors,
+  quantityInputs,
+  photoAnalysis,
+  photoScopeAssist,
+  anchorId: anchorHit?.id ?? null,
+})
+
+const areaScopeBreakdown = buildAreaScopeBreakdown({
+  trade,
+  scopeText: scopeChange,
+  splitScopes,
+  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
+  quantityInputs,
+  photoAnalysis,
+  photoScopeAssist,
+  complexityProfile,
+})
+
 // Paint scope normalization (so description matches dropdown)
 if (looksLikePainting) {
   if (effectivePaintScope === "doors_only") {
@@ -5833,6 +6299,8 @@ const scopeXRay = buildScopeXRay({
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  materialsList,
+  areaScopeBreakdown,
   splitScopes,
   multiTrade: multiTradeDet
     ? {
@@ -6256,6 +6724,8 @@ const payload = {
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  materialsList,
+  areaScopeBreakdown,
   splitScopes,
     multiTrade: multiTradeDet
     ? {

@@ -200,6 +200,25 @@ export type PhotoScopeAssist = {
   suggestedAdditions: string[]
 } | null
 
+export type MaterialsListCategory =
+  | "material"
+  | "consumable"
+  | "hardware"
+  | "protection"
+
+export type MaterialsListItem = {
+  label: string
+  quantity: string
+  category: MaterialsListCategory
+  confidence?: "low" | "medium" | "high"
+}
+
+export type MaterialsList = {
+  items: MaterialsListItem[]
+  confirmItems: string[]
+  notes: string[]
+} | null
+
 export type ScopeXRay = {
   detectedScope: {
     primaryTrade: string
@@ -264,6 +283,8 @@ export type EstimateHistoryItem = {
   scopeSignals?: ScopeSignals
   photoAnalysis?: PhotoAnalysis
   photoScopeAssist?: PhotoScopeAssist
+  materialsList?: MaterialsList
+  areaScopeBreakdown?: AreaScopeBreakdown
   scopeXRay?: ScopeXRay
   changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
@@ -302,6 +323,22 @@ export type ExplainChangesReport = {
   scheduleChanges: string[]
   adminChanges: string[]
 }
+
+export type AreaScopeBreakdown = {
+  detectedArea: {
+    floorSqft: number | null
+    wallSqft: number | null
+    paintSqft: number | null
+    trimLf: number | null
+  }
+  allowances: {
+    prepDemo: string[]
+    protectionSetup: string[]
+    materialsDrivers: string[]
+    scheduleDrivers: string[]
+  }
+  missingConfirmations: string[]
+} | null
 
 export type ChangeOrderDetection = {
   isChangeOrder: boolean

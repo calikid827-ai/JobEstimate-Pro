@@ -34,6 +34,8 @@ import type {
   ScopeSignals,
   PhotoAnalysis,
   PhotoScopeAssist,
+  MaterialsList,
+  AreaScopeBreakdown,
   ScopeXRay,
   ChangeOrderDetection,
 } from "./lib/types"
@@ -1010,6 +1012,8 @@ function startChangeOrderFromJob(jobId: string) {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+  setMaterialsList(null)
+  setAreaScopeBreakdown(null)
   setScopeXRay(null)
   setChangeOrderDetection(null)
   setJobPhotos([])
@@ -1322,6 +1326,8 @@ useEffect(() => {
     scopeSignals: x?.scopeSignals ?? null,
     photoAnalysis: x?.photoAnalysis ?? null,
     photoScopeAssist: x?.photoScopeAssist ?? null,
+    materialsList: x?.materialsList ?? null,
+    areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
     scopeXRay: x?.scopeXRay ?? null,
     changeOrderDetection: x?.changeOrderDetection ?? null,
 
@@ -1396,8 +1402,10 @@ const [jobPhotos, setJobPhotos] = useState<
 
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
+const [materialsList, setMaterialsList] = useState<MaterialsList>(null)
 const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
 const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
+const [areaScopeBreakdown, setAreaScopeBreakdown] = useState<AreaScopeBreakdown>(null)
   
 const completionWindow = useMemo(() => {
   const start =
@@ -1613,6 +1621,8 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     scopeSignals: scopeSignals ?? null,
     photoAnalysis: photoAnalysis ?? null,
     photoScopeAssist: photoScopeAssist ?? null,
+    materialsList: materialsList ?? null,
+    areaScopeBreakdown: areaScopeBreakdown ?? null,
     scopeXRay: scopeXRay ?? null,
     changeOrderDetection: changeOrderDetection ?? null,
     tax: {
@@ -1643,6 +1653,8 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   scopeSignals,
   photoAnalysis,
   photoScopeAssist,
+  materialsList,
+  areaScopeBreakdown,
   scopeXRay,
   changeOrderDetection,
   taxEnabled,
@@ -2141,6 +2153,8 @@ useEffect(() => {
             scopeSignals: x?.scopeSignals ?? null,
             photoAnalysis: x?.photoAnalysis ?? null,
             photoScopeAssist: x?.photoScopeAssist ?? null,
+            materialsList: x?.materialsList ?? null,
+            areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
             scopeXRay: x?.scopeXRay ?? null,
             changeOrderDetection: x?.changeOrderDetection ?? null,
             tax: x?.tax
@@ -2413,7 +2427,7 @@ async function generate(scopeOverride?: string) {
     return
   }
 
-    setLoading(true)
+  setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
   setResult(null)
   setPricingSource("ai")
@@ -2425,6 +2439,8 @@ async function generate(scopeOverride?: string) {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+  setMaterialsList(null)
+  setAreaScopeBreakdown(null)
   setScopeXRay(null)
   setChangeOrderDetection(null)
 
@@ -2560,9 +2576,9 @@ const normalizedSchedule =
         startDate:
           data.schedule.startDate ?? new Date().toISOString().slice(0, 10),
         crewDays:
-          data.schedule.crewDays == null ? 1 : Number(data.schedule.crewDays),
+          data.schedule.crewDays == null ? null : Number(data.schedule.crewDays),
         visits:
-          data.schedule.visits == null ? 1 : Number(data.schedule.visits),
+          data.schedule.visits == null ? null : Number(data.schedule.visits),
         workDaysPerWeek:
           data.schedule.workDaysPerWeek == null
             ? 5
@@ -2589,6 +2605,85 @@ setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
 setPhotoScopeAssist(data?.photoScopeAssist ?? null)
+
+const normalizedMaterialsList: MaterialsList =
+  data?.materialsList
+    ? {
+        items: Array.isArray(data.materialsList?.items)
+          ? data.materialsList.items
+              .map((item: any) => ({
+                label: String(item?.label ?? "").trim(),
+                quantity: String(item?.quantity ?? "").trim(),
+                category:
+                  item?.category === "material" ||
+                  item?.category === "consumable" ||
+                  item?.category === "hardware" ||
+                  item?.category === "protection"
+                    ? item.category
+                    : "material",
+                confidence:
+                  item?.confidence === "low" ||
+                  item?.confidence === "medium" ||
+                  item?.confidence === "high"
+                    ? item.confidence
+                    : undefined,
+              }))
+              .filter((item: any) => item.label && item.quantity)
+          : [],
+        confirmItems: Array.isArray(data.materialsList?.confirmItems)
+          ? data.materialsList.confirmItems.map((x: any) => String(x))
+          : [],
+        notes: Array.isArray(data.materialsList?.notes)
+          ? data.materialsList.notes.map((x: any) => String(x))
+          : [],
+      }
+    : null
+
+setMaterialsList(normalizedMaterialsList)
+
+const normalizedAreaScopeBreakdown: AreaScopeBreakdown =
+  data?.areaScopeBreakdown
+    ? {
+        detectedArea: {
+          floorSqft:
+            data.areaScopeBreakdown?.detectedArea?.floorSqft == null
+              ? null
+              : Number(data.areaScopeBreakdown.detectedArea.floorSqft),
+          wallSqft:
+            data.areaScopeBreakdown?.detectedArea?.wallSqft == null
+              ? null
+              : Number(data.areaScopeBreakdown.detectedArea.wallSqft),
+          paintSqft:
+            data.areaScopeBreakdown?.detectedArea?.paintSqft == null
+              ? null
+              : Number(data.areaScopeBreakdown.detectedArea.paintSqft),
+          trimLf:
+            data.areaScopeBreakdown?.detectedArea?.trimLf == null
+              ? null
+              : Number(data.areaScopeBreakdown.detectedArea.trimLf),
+        },
+        allowances: {
+          prepDemo: Array.isArray(data.areaScopeBreakdown?.allowances?.prepDemo)
+            ? data.areaScopeBreakdown.allowances.prepDemo.map((x: any) => String(x))
+            : [],
+          protectionSetup: Array.isArray(data.areaScopeBreakdown?.allowances?.protectionSetup)
+            ? data.areaScopeBreakdown.allowances.protectionSetup.map((x: any) => String(x))
+            : [],
+          materialsDrivers: Array.isArray(data.areaScopeBreakdown?.allowances?.materialsDrivers)
+            ? data.areaScopeBreakdown.allowances.materialsDrivers.map((x: any) => String(x))
+            : [],
+          scheduleDrivers: Array.isArray(data.areaScopeBreakdown?.allowances?.scheduleDrivers)
+            ? data.areaScopeBreakdown.allowances.scheduleDrivers.map((x: any) => String(x))
+            : [],
+        },
+        missingConfirmations: Array.isArray(data.areaScopeBreakdown?.missingConfirmations)
+          ? data.areaScopeBreakdown.missingConfirmations.map((x: any) => String(x))
+          : [],
+      }
+    : null
+
+setAreaScopeBreakdown(normalizedAreaScopeBreakdown)
+
 const normalizedScopeXRay = data?.scopeXRay
   ? {
       detectedScope: {
@@ -2694,6 +2789,8 @@ const estItem: EstimateHistoryItem = {
   scopeSignals: data?.scopeSignals ?? null,
   photoAnalysis: data?.photoAnalysis ?? null,
   photoScopeAssist: data?.photoScopeAssist ?? null,
+  materialsList: normalizedMaterialsList,
+  areaScopeBreakdown: normalizedAreaScopeBreakdown,
   scopeXRay: normalizedScopeXRay,
   changeOrderDetection,
 
@@ -2923,6 +3020,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setScopeSignals(item.scopeSignals ?? null)
   setPhotoAnalysis(item.photoAnalysis ?? null)
   setPhotoScopeAssist(item.photoScopeAssist ?? null)
+  setMaterialsList(item.materialsList ?? null)
+  setAreaScopeBreakdown(item.areaScopeBreakdown ?? null)
   setScopeXRay(item.scopeXRay ?? null)
   setChangeOrderDetection(item.changeOrderDetection ?? null)
   setJobPhotos([])
@@ -4519,6 +4618,363 @@ function ScopeXRayCard({
   )
 }
 
+function MaterialsListCard({
+  materialsList,
+}: {
+  materialsList: MaterialsList
+}) {
+  if (!materialsList) return null
+
+  const grouped = {
+    material: materialsList.items.filter((x) => x.category === "material"),
+    consumable: materialsList.items.filter((x) => x.category === "consumable"),
+    hardware: materialsList.items.filter((x) => x.category === "hardware"),
+    protection: materialsList.items.filter((x) => x.category === "protection"),
+  }
+
+  const renderGroup = (
+    title: string,
+    items: typeof materialsList.items
+  ) => {
+    if (!items.length) return null
+
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#374151",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            overflow: "hidden",
+            background: "#fff",
+          }}
+        >
+          {items.map((item, i) => (
+            <div
+              key={`${title}-${item.label}-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                padding: "10px 12px",
+                borderTop: i === 0 ? "none" : "1px solid #f3f4f6",
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>
+                  {item.label}
+                </div>
+
+                {item.confidence && (
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
+                    Confidence: {item.confidence}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: "#1f2937",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {item.quantity}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <details
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+      open
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Materials List
+      </summary>
+
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+        Draft shopping / prep list based on the scope, trade, and visible job conditions.
+      </div>
+
+      {renderGroup("Materials", grouped.material)}
+      {renderGroup("Consumables", grouped.consumable)}
+      {renderGroup("Hardware", grouped.hardware)}
+      {renderGroup("Protection", grouped.protection)}
+
+      {materialsList.confirmItems.length > 0 && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #fcd34d",
+            borderRadius: 12,
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+            Confirm Before Buying
+          </div>
+
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {materialsList.confirmItems.map((item, i) => (
+              <li key={`confirm-item-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {materialsList.notes.length > 0 && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Estimator Notes</div>
+
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {materialsList.notes.map((note, i) => (
+              <li key={`materials-note-${i}`}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </details>
+  )
+}
+
+function AreaScopeBreakdownCard({
+  areaScopeBreakdown,
+}: {
+  areaScopeBreakdown: AreaScopeBreakdown
+}) {
+  if (!areaScopeBreakdown) return null
+
+  const detectedArea = areaScopeBreakdown.detectedArea ?? {
+  floorSqft: null,
+  wallSqft: null,
+  paintSqft: null,
+  trimLf: null,
+}
+
+const allowances = areaScopeBreakdown.allowances ?? {
+  prepDemo: [],
+  protectionSetup: [],
+  materialsDrivers: [],
+  scheduleDrivers: [],
+}
+
+const missingConfirmations = areaScopeBreakdown.missingConfirmations ?? []
+
+  return (
+    <details
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+      open
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Area Scope Breakdown
+      </summary>
+
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+        Detected area quantities, production drivers, and missing confirmations used to shape pricing.
+      </div>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fafafa",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14 }}>Detected Area</div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 10,
+            marginTop: 10,
+          }}
+        >
+          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10, background: "#fff" }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Floor Sq Ft</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              {detectedArea.floorSqft ?? "—"}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10, background: "#fff" }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Wall Sq Ft</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              {detectedArea.wallSqft ?? "—"}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10, background: "#fff" }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Paint Sq Ft</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              {detectedArea.paintSqft ?? "—"}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10, background: "#fff" }}>
+            <div style={{ fontSize: 12, color: "#666" }}>Trim LF</div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>
+              {detectedArea.trimLf ?? "—"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {allowances.prepDemo.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Prep / Demo Allowances</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {allowances.prepDemo.map((item, i) => (
+              <li key={`prep-demo-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {allowances.protectionSetup.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Protection / Setup Drivers</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {allowances.protectionSetup.map((item, i) => (
+              <li key={`protection-setup-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {allowances.materialsDrivers.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Materials Drivers</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {allowances.materialsDrivers.map((item, i) => (
+              <li key={`materials-driver-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {allowances.scheduleDrivers.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Schedule Drivers</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {allowances.scheduleDrivers.map((item, i) => (
+              <li key={`schedule-driver-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {missingConfirmations.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #fcd34d",
+            borderRadius: 12,
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+            Missing Confirmations
+          </div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {missingConfirmations.map((item, i) => (
+              <li key={`missing-confirm-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </details>
+  )
+}
+
 function getChangeOrderDisplayLabel(
   documentType: DocumentType,
   detection: ChangeOrderDetection | null
@@ -5060,6 +5516,10 @@ function ChangeOrderDetectorCard({
   />
 )}
 
+{materialsList && <MaterialsListCard materialsList={materialsList} />}
+{areaScopeBreakdown && (
+  <AreaScopeBreakdownCard areaScopeBreakdown={areaScopeBreakdown} />
+)}
 {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
 
 {smartScopePreview && (
