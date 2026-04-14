@@ -5,6 +5,10 @@ import type {
   InvoiceStatus,
   JobActuals,
   UiTrade,
+  ProfitProtection,
+  Schedule,
+  ScopeSignals,
+  PhotoAnalysis,
 } from "./types"
 
 export function normalizeTrade(t: any): UiTrade {
@@ -474,6 +478,97 @@ export function actualCostTotal(actuals: JobActuals | null | undefined) {
   )
 }
 
+export function buildProfitProtectionFromPricing(args: {
+  labor: number
+  materials: number
+  subs: number
+  markup: number
+}): ProfitProtection {
+  const estimatedCost =
+    Number(args.labor || 0) +
+    Number(args.materials || 0) +
+    Number(args.subs || 0)
+
+  if (estimatedCost <= 0) return null
+
+  // Pre-tax contract value
+  const contractValue = Math.round(
+    estimatedCost * (1 + Number(args.markup || 0) / 100)
+  )
+
+  const grossProfit = contractValue - estimatedCost
+
+  const grossMarginPct =
+    contractValue > 0
+      ? Math.round((grossProfit / contractValue) * 1000) / 10
+      : 0
+
+  const minimumSafePrice = Math.round(estimatedCost / (1 - 0.15))
+  const targetPrice25 = Math.round(estimatedCost / (1 - 0.25))
+  const targetPrice30 = Math.round(estimatedCost / (1 - 0.30))
+
+  const warnings: string[] = []
+  const reasons: string[] = []
+
+  reasons.push(
+    `Direct job cost is estimated at $${estimatedCost.toLocaleString()}.`
+  )
+
+  reasons.push(
+    `Current contract value before tax is $${contractValue.toLocaleString()}.`
+  )
+
+  if (contractValue < minimumSafePrice) {
+    warnings.push(
+      `Current price is below the minimum safe price of $${minimumSafePrice.toLocaleString()}.`
+    )
+  } else {
+    reasons.push(
+      `Current price clears the minimum safe price threshold of $${minimumSafePrice.toLocaleString()}.`
+    )
+  }
+
+  if (contractValue < targetPrice25) {
+    warnings.push(
+      `Current price is below the 25% target price of $${targetPrice25.toLocaleString()}.`
+    )
+  } else {
+    reasons.push(
+      `Current price meets or exceeds the 25% target price of $${targetPrice25.toLocaleString()}.`
+    )
+  }
+
+  if (contractValue < targetPrice30) {
+    warnings.push(
+      `Current price is below the 30% target price of $${targetPrice30.toLocaleString()}.`
+    )
+  } else {
+    reasons.push(
+      `Current price meets or exceeds the 30% target price of $${targetPrice30.toLocaleString()}.`
+    )
+  }
+
+  const status: "danger" | "warning" | "healthy" =
+    contractValue < minimumSafePrice
+      ? "danger"
+      : contractValue < targetPrice25
+      ? "warning"
+      : "healthy"
+
+  return {
+    estimatedCost,
+    contractValue,
+    grossProfit,
+    grossMarginPct,
+    minimumSafePrice,
+    targetPrice25,
+    targetPrice30,
+    status,
+    warnings,
+    reasons,
+  }
+}
+
 export function computeProfitProtectionFromTotals(args: {
   contractValue: number
   estimatedCost: number
@@ -639,6 +734,328 @@ export function computeProfitProtection(
     estimatedCost: estimateDirectCost(est),
     actuals,
   })
+}
+
+export function buildEstimateBreakdown({
+  pricing,
+  schedule,
+  trade,
+  state,
+  scopeSignals,
+  minimumSafeStatus,
+}: {
+  pricing: {
+    labor: number
+    materials: number
+    subs: number
+    markup: number
+    total: number
+  }
+  schedule: Schedule | null
+  trade: UiTrade
+  state: string
+  scopeSignals: ScopeSignals
+  minimumSafeStatus:
+    | {
+        label: string
+        tone: string
+        color: string
+        bg: string
+        border: string
+        message: string
+      }
+    | null
+}) {
+  const items: string[] = []
+
+  if (pricing.labor > 0) {
+    items.push(
+      `Labor reflects expected crew time, trade difficulty, and the work required to complete this ${trade || "project"} scope.`
+    )
+  }
+
+  if (pricing.materials > 0) {
+    items.push(
+      "Materials include the expected supplies, install materials, and standard job-use items needed for this scope."
+    )
+  }
+
+  if (pricing.subs > 0) {
+    items.push(
+      "Other / Mobilization covers setup, protection, cleanup, travel, staging, and general job preparation."
+    )
+  }
+
+  if (Number(pricing.markup || 0) > 0) {
+    items.push(
+      `A ${Number(pricing.markup)}% markup is included for overhead, business operations, risk, and profit.`
+    )
+  }
+
+  if (schedule?.crewDays || schedule?.visits || schedule?.calendarDays) {
+    items.push(
+      "Schedule timing is based on estimated crew time, visit count, and the expected sequencing of the work."
+    )
+  }
+
+  if (scopeSignals?.needsReturnVisit) {
+    items.push(
+      "This scope likely requires multiple visits, which increases coordination and labor planning."
+    )
+  }
+
+  if (minimumSafeStatus?.tone === "danger") {
+    items.push(
+      "The current total is below your minimum safe price threshold, which may leave the job underpriced."
+    )
+  }
+
+  if (minimumSafeStatus?.tone === "warning") {
+    items.push(
+      "The current total is close to your minimum safe price threshold, so margin is tighter than usual."
+    )
+  }
+
+  if (state) {
+    items.push(`Regional pricing was adjusted for ${state}.`)
+  }
+
+  return items
+}
+
+export function buildAssumptionsList({
+  trade,
+  state,
+  scopeSignals,
+}: {
+  trade: string
+  state: string
+  scopeSignals: ScopeSignals
+}) {
+  const notes: string[] = []
+
+  notes.push("Pricing assumes normal site access and standard working conditions.")
+  notes.push(
+    "Final pricing may adjust if concealed conditions or unforeseen issues are discovered."
+  )
+  notes.push(
+    "Permit fees, engineering, or specialty inspections are excluded unless specifically stated."
+  )
+  notes.push(
+    "Material pricing assumes standard mid-range selections unless otherwise noted."
+  )
+
+  if (scopeSignals?.needsReturnVisit) {
+    notes.push(
+      "Multiple site visits are assumed based on project sequencing requirements."
+    )
+  }
+
+  if (trade) {
+    notes.push(
+      `Work scope assumptions are based on typical ${trade.replace("_", " ")} project conditions.`
+    )
+  }
+
+  if (state) {
+    notes.push(
+      `Regional labor and material expectations are based on typical ${state} construction conditions.`
+    )
+  }
+
+  return notes
+}
+
+export function buildEstimateConfidence({
+  scopeChange,
+  trade,
+  state,
+  measureEnabled,
+  totalSqft,
+  jobPhotosCount,
+  scopeQualityScore,
+  priceGuardVerified,
+  photoAnalysis,
+}: {
+  scopeChange: string
+  trade: string
+  state: string
+  measureEnabled: boolean
+  totalSqft: number
+  jobPhotosCount: number
+  scopeQualityScore: number
+  priceGuardVerified: boolean
+  photoAnalysis: PhotoAnalysis
+}) {
+  let score = 0
+  const reasons: string[] = []
+  const warnings: string[] = []
+
+  const text = (scopeChange || "").trim()
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0
+
+  if (wordCount >= 20) {
+    score += 25
+    reasons.push("Detailed scope description provided")
+  } else if (wordCount >= 10) {
+    score += 15
+    reasons.push("Moderate scope detail provided")
+  } else if (wordCount >= 5) {
+    score += 8
+    reasons.push("Basic scope description provided")
+  } else {
+    warnings.push("Scope description is very short")
+  }
+
+  if (trade) {
+    score += 10
+    reasons.push("Trade type selected")
+  } else {
+    warnings.push("Trade type was inferred or not selected")
+  }
+
+  if (state) {
+    score += 10
+    reasons.push("Regional pricing context included")
+  } else {
+    warnings.push("State-based regional pricing not provided")
+  }
+
+  const photoHasQuantitySignals =
+    !!photoAnalysis?.quantitySignals &&
+    (
+      Number(photoAnalysis.quantitySignals.estimatedWallSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedWallSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMin || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMax || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.doors || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.windows || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.vanities || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.toilets || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.sinks || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.outlets || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.switches || 0) > 0 ||
+      Number(photoAnalysis.quantitySignals.recessedLights || 0) > 0
+    )
+
+  if (measureEnabled && totalSqft > 0) {
+    score += 20
+    reasons.push("Measurements were included")
+  } else if (photoHasQuantitySignals) {
+    warnings.push("No manual measurements were included")
+  } else {
+    warnings.push("No measurements were included")
+  }
+
+  if (!measureEnabled && photoHasQuantitySignals) {
+    if (photoAnalysis?.confidence === "high") {
+      score += 14
+      reasons.push("Photo-derived quantity ranges strengthened estimate confidence")
+    } else if (photoAnalysis?.confidence === "medium") {
+      score += 8
+      reasons.push("Photo-derived quantity ranges helped support estimate confidence")
+    } else {
+      score += 3
+      reasons.push("Photo quantity hints were available")
+    }
+  }
+
+  if (jobPhotosCount > 0) {
+    score += 15
+    reasons.push("Job photos were included")
+  }
+
+  if (scopeQualityScore >= 85) {
+    score += 15
+    reasons.push("Scope quality is strong")
+  } else if (scopeQualityScore >= 70) {
+    score += 10
+    reasons.push("Scope quality is acceptable")
+  } else if (scopeQualityScore >= 50) {
+    score += 5
+    warnings.push("Scope quality is limited")
+  } else {
+    warnings.push("Scope quality is weak")
+  }
+
+  if (priceGuardVerified) {
+    score += 5
+    reasons.push("PriceGuard verification passed")
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)))
+
+  let level: "high" | "medium" | "review" | "low" = "low"
+  let label = "Low Confidence"
+  let tone = {
+    bg: "#fef2f2",
+    border: "#fecaca",
+    color: "#991b1b",
+  }
+
+  if (score >= 80) {
+    level = "high"
+    label = "High Confidence"
+    tone = {
+      bg: "#ecfdf5",
+      border: "#86efac",
+      color: "#065f46",
+    }
+  } else if (score >= 60) {
+    level = "medium"
+    label = "Moderate Confidence"
+    tone = {
+      bg: "#eff6ff",
+      border: "#93c5fd",
+      color: "#1d4ed8",
+    }
+  } else if (score >= 40) {
+    level = "review"
+    label = "Review Recommended"
+    tone = {
+      bg: "#fff7ed",
+      border: "#fdba74",
+      color: "#9a3412",
+    }
+  }
+
+  return {
+    score,
+    level,
+    label,
+    reasons,
+    warnings,
+    ...tone,
+  }
+}
+
+export function normalizeProfitProtection(raw: any): ProfitProtection {
+  if (!raw) return null
+
+  return {
+    estimatedCost: Number(raw.estimatedCost || 0),
+    contractValue: Number(raw.contractValue || 0),
+    grossProfit: Number(raw.grossProfit || 0),
+    grossMarginPct: Number(raw.grossMarginPct || 0),
+    minimumSafePrice:
+      raw.minimumSafePrice == null ? null : Number(raw.minimumSafePrice),
+    targetPrice25:
+      raw.targetPrice25 == null ? null : Number(raw.targetPrice25),
+    targetPrice30:
+      raw.targetPrice30 == null ? null : Number(raw.targetPrice30),
+    status:
+      raw.status === "danger" || raw.status === "warning"
+        ? raw.status
+        : "healthy",
+    warnings: Array.isArray(raw.warnings)
+      ? raw.warnings.map((v: any) => String(v))
+      : [],
+    reasons: Array.isArray(raw.reasons)
+      ? raw.reasons.map((v: any) => String(v))
+      : [],
+  }
 }
 
 export function nextChangeOrderNumber(job: {

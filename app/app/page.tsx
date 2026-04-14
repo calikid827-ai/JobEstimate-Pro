@@ -36,6 +36,7 @@ import type {
   PhotoScopeAssist,
   MaterialsList,
   AreaScopeBreakdown,
+  ProfitProtection,
   ScopeXRay,
   ChangeOrderDetection,
 } from "./lib/types"
@@ -60,10 +61,14 @@ import {
   computeDueDateISO,
   buildActualsPatch,
   explainEstimateChanges,
-  computeProfitProtection,
   estimateDirectCost,
   computeProfitProtectionFromTotals,
   nextChangeOrderNumber,
+  buildProfitProtectionFromPricing,
+  buildEstimateBreakdown,
+  buildAssumptionsList,
+  buildEstimateConfidence,
+  normalizeProfitProtection,
 } from "./lib/estimate-utils"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
@@ -193,309 +198,6 @@ async function handlePhotoUpload(files: FileList | null) {
 
 function removeJobPhoto(id: string) {
   setJobPhotos((prev) => prev.filter((p) => p.id !== id))
-}
-
-function buildEstimateBreakdown({
-  pricing,
-  schedule,
-  trade,
-  state,
-  scopeSignals,
-  minimumSafeStatus,
-}: {
-  pricing: {
-    labor: number
-    materials: number
-    subs: number
-    markup: number
-    total: number
-  }
-  schedule: Schedule | null
-  trade: UiTrade
-  state: string
-  scopeSignals: ScopeSignals
-  minimumSafeStatus:
-    | {
-        label: string
-        tone: string
-        color: string
-        bg: string
-        border: string
-        message: string
-      }
-    | null
-}) {
-  const items: string[] = []
-
-  if (pricing.labor > 0) {
-    items.push(
-      `Labor reflects expected crew time, trade difficulty, and the work required to complete this ${trade || "project"} scope.`
-    )
-  }
-
-  if (pricing.materials > 0) {
-    items.push(
-      "Materials include the expected supplies, install materials, and standard job-use items needed for this scope."
-    )
-  }
-
-  if (pricing.subs > 0) {
-    items.push(
-      "Other / Mobilization covers setup, protection, cleanup, travel, staging, and general job preparation."
-    )
-  }
-
-  if (Number(pricing.markup || 0) > 0) {
-    items.push(
-      `A ${Number(pricing.markup)}% markup is included for overhead, business operations, risk, and profit.`
-    )
-  }
-
-  if (schedule?.crewDays || schedule?.visits || schedule?.calendarDays) {
-    items.push(
-      "Schedule timing is based on estimated crew time, visit count, and the expected sequencing of the work."
-    )
-  }
-
-  if (scopeSignals?.needsReturnVisit) {
-    items.push(
-      "This scope likely requires multiple visits, which increases coordination and labor planning."
-    )
-  }
-
-  if (minimumSafeStatus?.tone === "danger") {
-    items.push(
-      "The current total is below your minimum safe price threshold, which may leave the job underpriced."
-    )
-  }
-
-  if (minimumSafeStatus?.tone === "warning") {
-    items.push(
-      "The current total is close to your minimum safe price threshold, so margin is tighter than usual."
-    )
-  }
-
-  if (state) {
-    items.push(`Regional pricing was adjusted for ${state}.`)
-  }
-
-  return items
-}
-
-function buildAssumptionsList({
-  trade,
-  state,
-  scopeSignals,
-}: {
-  trade: string
-  state: string
-  scopeSignals: ScopeSignals
-}) {
-  const notes: string[] = []
-
-  notes.push(
-    "Pricing assumes normal site access and standard working conditions."
-  )
-
-  notes.push(
-    "Final pricing may adjust if concealed conditions or unforeseen issues are discovered."
-  )
-
-  notes.push(
-    "Permit fees, engineering, or specialty inspections are excluded unless specifically stated."
-  )
-
-  notes.push(
-    "Material pricing assumes standard mid-range selections unless otherwise noted."
-  )
-
-  if (scopeSignals?.needsReturnVisit) {
-    notes.push(
-      "Multiple site visits are assumed based on project sequencing requirements."
-    )
-  }
-
-  if (trade) {
-    notes.push(
-      `Work scope assumptions are based on typical ${trade.replace(
-        "_",
-        " "
-      )} project conditions.`
-    )
-  }
-
-  if (state) {
-    notes.push(
-      `Regional labor and material expectations are based on typical ${state} construction conditions.`
-    )
-  }
-
-  return notes
-}
-
-function buildEstimateConfidence({
-  scopeChange,
-  trade,
-  state,
-  measureEnabled,
-  totalSqft,
-  jobPhotosCount,
-  scopeQualityScore,
-  priceGuardVerified,
-  photoAnalysis,
-}: {
-  scopeChange: string
-  trade: string
-  state: string
-  measureEnabled: boolean
-  totalSqft: number
-  jobPhotosCount: number
-  scopeQualityScore: number
-  priceGuardVerified: boolean
-  photoAnalysis: PhotoAnalysis
-}) {
-  let score = 0
-  const reasons: string[] = []
-  const warnings: string[] = []
-
-  const text = (scopeChange || "").trim()
-  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0
-
-  if (wordCount >= 20) {
-    score += 25
-    reasons.push("Detailed scope description provided")
-  } else if (wordCount >= 10) {
-    score += 15
-    reasons.push("Moderate scope detail provided")
-  } else if (wordCount >= 5) {
-    score += 8
-    reasons.push("Basic scope description provided")
-  } else {
-    warnings.push("Scope description is very short")
-  }
-
-  if (trade) {
-    score += 10
-    reasons.push("Trade type selected")
-  } else {
-    warnings.push("Trade type was inferred or not selected")
-  }
-
-  if (state) {
-    score += 10
-    reasons.push("Regional pricing context included")
-  } else {
-    warnings.push("State-based regional pricing not provided")
-  }
-
- const photoHasQuantitySignals =
-    !!photoAnalysis?.quantitySignals &&
-    (
-      Number(photoAnalysis.quantitySignals.estimatedWallSqftMin || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.estimatedWallSqftMax || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMin || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.estimatedCeilingSqftMax || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMin || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.estimatedFloorSqftMax || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.doors || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.windows || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.vanities || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.toilets || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.sinks || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.outlets || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.switches || 0) > 0 ||
-      Number(photoAnalysis.quantitySignals.recessedLights || 0) > 0
-    )
-
-  if (measureEnabled && totalSqft > 0) {
-    score += 20
-    reasons.push("Measurements were included")
-  } else if (photoHasQuantitySignals) {
-    warnings.push("No manual measurements were included")
-  } else {
-    warnings.push("No measurements were included")
-  }
-
-  if (!measureEnabled && photoHasQuantitySignals) {
-    if (photoAnalysis?.confidence === "high") {
-      score += 14
-      reasons.push("Photo-derived quantity ranges strengthened estimate confidence")
-    } else if (photoAnalysis?.confidence === "medium") {
-      score += 8
-      reasons.push("Photo-derived quantity ranges helped support estimate confidence")
-    } else {
-      score += 3
-      reasons.push("Photo quantity hints were available")
-    }
-  }
-
-  if (jobPhotosCount > 0) {
-    score += 15
-    reasons.push("Job photos were included")
-  }
-
-  if (scopeQualityScore >= 85) {
-    score += 15
-    reasons.push("Scope quality is strong")
-  } else if (scopeQualityScore >= 70) {
-    score += 10
-    reasons.push("Scope quality is acceptable")
-  } else if (scopeQualityScore >= 50) {
-    score += 5
-    warnings.push("Scope quality is limited")
-  } else {
-    warnings.push("Scope quality is weak")
-  }
-
-  if (priceGuardVerified) {
-    score += 5
-    reasons.push("PriceGuard verification passed")
-  }
-
-  score = Math.max(0, Math.min(100, Math.round(score)))
-
-  let level: "high" | "medium" | "review" | "low" = "low"
-  let label = "Low Confidence"
-  let tone = {
-    bg: "#fef2f2",
-    border: "#fecaca",
-    color: "#991b1b",
-  }
-
-  if (score >= 80) {
-    level = "high"
-    label = "High Confidence"
-    tone = {
-      bg: "#ecfdf5",
-      border: "#86efac",
-      color: "#065f46",
-    }
-  } else if (score >= 60) {
-    level = "medium"
-    label = "Moderate Confidence"
-    tone = {
-      bg: "#eff6ff",
-      border: "#93c5fd",
-      color: "#1d4ed8",
-    }
-  } else if (score >= 40) {
-    level = "review"
-    label = "Review Recommended"
-    tone = {
-      bg: "#fff7ed",
-      border: "#fdba74",
-      color: "#9a3412",
-    }
-  }
-
-  return {
-    score,
-    level,
-    label,
-    reasons,
-    warnings,
-    ...tone,
-  }
 }
 
   const [measureEnabled, setMeasureEnabled] = useState(false)
@@ -1014,6 +716,7 @@ function startChangeOrderFromJob(jobId: string) {
   setPhotoScopeAssist(null)
   setMaterialsList(null)
   setAreaScopeBreakdown(null)
+  setProfitProtection(null)
   setScopeXRay(null)
   setChangeOrderDetection(null)
   setJobPhotos([])
@@ -1293,85 +996,15 @@ useEffect(() => {
     try {
       const parsed = JSON.parse(saved)
       if (Array.isArray(parsed)) {
-  const cleaned: EstimateHistoryItem[] = parsed.map((x: any) => ({
-    id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
-    jobId: String(x?.jobId ?? ""),
-    createdAt: Number(x?.createdAt ?? Date.now()),
-    documentType:
-  x?.documentType === "Change Order" ||
-  x?.documentType === "Estimate"
-    ? x.documentType
-    : "Estimate",
-    jobDetails: {
-      clientName: String(x?.jobDetails?.clientName ?? ""),
-      jobName: String(x?.jobDetails?.jobName ?? ""),
-      changeOrderNo: String(x?.jobDetails?.changeOrderNo ?? ""),
-      jobAddress: String(x?.jobDetails?.jobAddress ?? ""),
-      date: String(x?.jobDetails?.date ?? ""),
-    },
-    trade: normalizeTrade(x?.trade), // ✅ key fix
-    state: String(x?.state ?? ""),
-    scopeChange: String(x?.scopeChange ?? ""),
-    result: String(x?.result ?? ""),
-    explanation: x?.explanation ?? null,
-        pricing: {
-      labor: Number(x?.pricing?.labor ?? 0),
-      materials: Number(x?.pricing?.materials ?? 0),
-      subs: Number(x?.pricing?.subs ?? 0),
-      markup: Number(x?.pricing?.markup ?? 0),
-      total: Number(x?.pricing?.total ?? 0),
-    },
+        const cleaned: EstimateHistoryItem[] =
+          parsed.map(normalizeEstimateHistoryItem)
 
-    schedule: x?.schedule ?? undefined,
-    scopeSignals: x?.scopeSignals ?? null,
-    photoAnalysis: x?.photoAnalysis ?? null,
-    photoScopeAssist: x?.photoScopeAssist ?? null,
-    materialsList: x?.materialsList ?? null,
-    areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
-    scopeXRay: x?.scopeXRay ?? null,
-    changeOrderDetection: x?.changeOrderDetection ?? null,
-
-    tax: x?.tax
-      ? {
-          enabled: Boolean(x.tax.enabled),
-          rate: Number(x.tax.rate || 0),
-        }
-      : undefined,
-        deposit: x?.deposit
-      ? {
-          enabled: Boolean(x.deposit.enabled),
-          type: x.deposit.type === "fixed" ? "fixed" : "percent",
-          value: Number(x.deposit.value || 0),
-        }
-      : undefined,
-    pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
-priceGuardVerified: Boolean(x?.priceGuardVerified),
-
-approval: x?.approval
-  ? {
-      status: x.approval.status === "approved" ? "approved" : "pending",
-      approvedBy: x.approval.approvedBy
-        ? String(x.approval.approvedBy)
-        : undefined,
-      approvedAt:
-        typeof x.approval.approvedAt === "number"
-          ? x.approval.approvedAt
-          : undefined,
-      signatureDataUrl: x.approval.signatureDataUrl
-        ? String(x.approval.signatureDataUrl)
-        : undefined,
-    }
-  : {
-      status: "pending",
-    },
-}))
-
-  setHistory(cleaned)
-}
+        setHistory(cleaned)
+      }
     } catch {
       // ignore bad data
     }
-   }
+  }
 
   setHistoryHydrated(true)
 }, [])
@@ -1379,8 +1012,8 @@ approval: x?.approval
   // -------------------------
   // App state
   // -------------------------
-  const [scopeChange, setScopeChange] = useState("")
-  const [result, setResult] = useState<{
+const [scopeChange, setScopeChange] = useState("")
+const [result, setResult] = useState<{
   text: string
   explanation?: {
     priceReasons?: string[]
@@ -1389,8 +1022,8 @@ approval: x?.approval
     protectionReasons?: string[]
   } | null
 } | null>(null)
-  const [schedule, setSchedule] = useState<Schedule | null>(null)
-  const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
+const [schedule, setSchedule] = useState<Schedule | null>(null)
+const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 
 const [jobPhotos, setJobPhotos] = useState<
   {
@@ -1406,6 +1039,7 @@ const [materialsList, setMaterialsList] = useState<MaterialsList>(null)
 const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
 const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
 const [areaScopeBreakdown, setAreaScopeBreakdown] = useState<AreaScopeBreakdown>(null)
+const [profitProtection, setProfitProtection] = useState<ProfitProtection>(null)
   
 const completionWindow = useMemo(() => {
   const start =
@@ -1623,6 +1257,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     photoScopeAssist: photoScopeAssist ?? null,
     materialsList: materialsList ?? null,
     areaScopeBreakdown: areaScopeBreakdown ?? null,
+    profitProtection: profitProtection ?? null,
     scopeXRay: scopeXRay ?? null,
     changeOrderDetection: changeOrderDetection ?? null,
     tax: {
@@ -1655,6 +1290,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   photoScopeAssist,
   materialsList,
   areaScopeBreakdown,
+  profitProtection,
   scopeXRay,
   changeOrderDetection,
   taxEnabled,
@@ -2121,75 +1757,8 @@ useEffect(() => {
       if (histRaw) {
         const parsedHist = JSON.parse(histRaw)
         if (Array.isArray(parsedHist)) {
-          const cleanedHistory: EstimateHistoryItem[] = parsedHist.map((x: any) => ({
-            id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
-            jobId: String(x?.jobId ?? ""),
-            createdAt: Number(x?.createdAt ?? Date.now()),
-            documentType:
-              x?.documentType === "Change Order" ||
-              x?.documentType === "Estimate"
-                ? x.documentType
-                : "Change Order / Estimate",
-            jobDetails: {
-              clientName: String(x?.jobDetails?.clientName ?? ""),
-              jobName: String(x?.jobDetails?.jobName ?? ""),
-              changeOrderNo: String(x?.jobDetails?.changeOrderNo ?? ""),
-              jobAddress: String(x?.jobDetails?.jobAddress ?? ""),
-              date: String(x?.jobDetails?.date ?? ""),
-            },
-            trade: normalizeTrade(x?.trade),
-            state: String(x?.state ?? ""),
-            scopeChange: String(x?.scopeChange ?? ""),
-            result: String(x?.result ?? ""),
-            explanation: x?.explanation ?? null,
-                        pricing: {
-              labor: Number(x?.pricing?.labor ?? 0),
-              materials: Number(x?.pricing?.materials ?? 0),
-              subs: Number(x?.pricing?.subs ?? 0),
-              markup: Number(x?.pricing?.markup ?? 0),
-              total: Number(x?.pricing?.total ?? 0),
-            },
-            schedule: x?.schedule ?? undefined,
-            scopeSignals: x?.scopeSignals ?? null,
-            photoAnalysis: x?.photoAnalysis ?? null,
-            photoScopeAssist: x?.photoScopeAssist ?? null,
-            materialsList: x?.materialsList ?? null,
-            areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
-            scopeXRay: x?.scopeXRay ?? null,
-            changeOrderDetection: x?.changeOrderDetection ?? null,
-            tax: x?.tax
-              ? {
-                  enabled: Boolean(x.tax.enabled),
-                  rate: Number(x.tax.rate || 0),
-                }
-              : undefined,
-            deposit: x?.deposit
-              ? {
-                  enabled: Boolean(x.deposit.enabled),
-                  type: x.deposit.type === "fixed" ? "fixed" : "percent",
-                  value: Number(x.deposit.value || 0),
-                }
-              : undefined,
-            pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
-            priceGuardVerified: Boolean(x?.priceGuardVerified),
-            approval: x?.approval
-              ? {
-                  status: x.approval.status === "approved" ? "approved" : "pending",
-                  approvedBy: x.approval.approvedBy
-                    ? String(x.approval.approvedBy)
-                    : undefined,
-                  approvedAt:
-                    typeof x.approval.approvedAt === "number"
-                      ? x.approval.approvedAt
-                      : undefined,
-                  signatureDataUrl: x.approval.signatureDataUrl
-                    ? String(x.approval.signatureDataUrl)
-                    : undefined,
-                }
-              : {
-                  status: "pending",
-                },
-          }))
+          const cleanedHistory: EstimateHistoryItem[] =
+  parsedHist.map(normalizeEstimateHistoryItem)
 
           setHistory(cleanedHistory)
         }
@@ -2390,6 +1959,35 @@ useEffect(() => {
   })
 }, [schedule])
 
+useEffect(() => {
+  const id = lastSavedEstimateIdRef.current
+  if (!id) return
+  if (!result) return
+  if (!pricingEdited) return
+
+  const nextProfitProtection = buildProfitProtectionFromPricing({
+    labor: Number(pricing.labor || 0),
+    materials: Number(pricing.materials || 0),
+    subs: Number(pricing.subs || 0),
+    markup: Number(pricing.markup || 0),
+  })
+
+  if (!nextProfitProtection) return
+
+  setProfitProtection(nextProfitProtection)
+
+  updateHistoryItem(id, {
+    profitProtection: nextProfitProtection,
+  })
+}, [
+  result,
+  pricingEdited,
+  pricing.labor,
+  pricing.materials,
+  pricing.subs,
+  pricing.markup,
+])
+
   // -------------------------
 // Generate AI document
 // -------------------------
@@ -2441,6 +2039,7 @@ async function generate(scopeOverride?: string) {
   setPhotoScopeAssist(null)
   setMaterialsList(null)
   setAreaScopeBreakdown(null)
+  setProfitProtection(null)
   setScopeXRay(null)
   setChangeOrderDetection(null)
 
@@ -2564,7 +2163,7 @@ const res = await fetch("/api/generate", {
     ? data.documentType
     : "Estimate"
 
-const nextResult = data.text || data.description || ""
+const rawResultText = String(data.text || data.description || "").trim()
 const nextPricing = data.pricing ? data.pricing : pricing
 const nextPricingSource =
   (data?.pricingSource as PricingSource) || "ai"
@@ -2597,10 +2196,6 @@ const normalizedSchedule =
       }
     : null
 
-setResult({
-  text: nextResult,
-  explanation: data?.explanation || null,
-})
 setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
@@ -2641,48 +2236,87 @@ const normalizedMaterialsList: MaterialsList =
 
 setMaterialsList(normalizedMaterialsList)
 
+const resolvedAreaTrade = normalizeTrade(data?.trade || trade)
+
 const normalizedAreaScopeBreakdown: AreaScopeBreakdown =
   data?.areaScopeBreakdown
-    ? {
-        detectedArea: {
-          floorSqft:
-            data.areaScopeBreakdown?.detectedArea?.floorSqft == null
-              ? null
-              : Number(data.areaScopeBreakdown.detectedArea.floorSqft),
-          wallSqft:
-            data.areaScopeBreakdown?.detectedArea?.wallSqft == null
-              ? null
-              : Number(data.areaScopeBreakdown.detectedArea.wallSqft),
-          paintSqft:
-            data.areaScopeBreakdown?.detectedArea?.paintSqft == null
-              ? null
-              : Number(data.areaScopeBreakdown.detectedArea.paintSqft),
-          trimLf:
-            data.areaScopeBreakdown?.detectedArea?.trimLf == null
-              ? null
-              : Number(data.areaScopeBreakdown.detectedArea.trimLf),
-        },
-        allowances: {
-          prepDemo: Array.isArray(data.areaScopeBreakdown?.allowances?.prepDemo)
-            ? data.areaScopeBreakdown.allowances.prepDemo.map((x: any) => String(x))
+    ? (() => {
+        const rawDetectedArea = data.areaScopeBreakdown?.detectedArea ?? {}
+        const rawAllowances = data.areaScopeBreakdown?.allowances ?? {}
+
+        const isFlooringTrade = resolvedAreaTrade === "flooring"
+
+        const floorSqft =
+          rawDetectedArea?.floorSqft == null
+            ? null
+            : Number(rawDetectedArea.floorSqft)
+
+        const wallSqft =
+          isFlooringTrade
+            ? null
+            : rawDetectedArea?.wallSqft == null
+            ? null
+            : Number(rawDetectedArea.wallSqft)
+
+        const paintSqft =
+          isFlooringTrade
+            ? null
+            : rawDetectedArea?.paintSqft == null
+            ? null
+            : Number(rawDetectedArea.paintSqft)
+
+        const trimLf =
+          rawDetectedArea?.trimLf == null
+            ? null
+            : Number(rawDetectedArea.trimLf)
+
+        const materialsDrivers = Array.isArray(rawAllowances?.materialsDrivers)
+          ? rawAllowances.materialsDrivers
+              .map((x: any) => String(x))
+              .filter((x: string) =>
+                isFlooringTrade
+                  ? !/wall area|paint sq\s*ft|paint area/i.test(x)
+                  : true
+              )
+          : []
+
+        return {
+          detectedArea: {
+            floorSqft,
+            wallSqft,
+            paintSqft,
+            trimLf,
+          },
+          allowances: {
+            prepDemo: Array.isArray(rawAllowances?.prepDemo)
+              ? rawAllowances.prepDemo.map((x: any) => String(x))
+              : [],
+            protectionSetup: Array.isArray(rawAllowances?.protectionSetup)
+              ? rawAllowances.protectionSetup.map((x: any) => String(x))
+              : [],
+            materialsDrivers,
+            scheduleDrivers: Array.isArray(rawAllowances?.scheduleDrivers)
+              ? rawAllowances.scheduleDrivers.map((x: any) => String(x))
+              : [],
+          },
+          missingConfirmations: Array.isArray(data.areaScopeBreakdown?.missingConfirmations)
+            ? data.areaScopeBreakdown.missingConfirmations.map((x: any) => String(x))
             : [],
-          protectionSetup: Array.isArray(data.areaScopeBreakdown?.allowances?.protectionSetup)
-            ? data.areaScopeBreakdown.allowances.protectionSetup.map((x: any) => String(x))
-            : [],
-          materialsDrivers: Array.isArray(data.areaScopeBreakdown?.allowances?.materialsDrivers)
-            ? data.areaScopeBreakdown.allowances.materialsDrivers.map((x: any) => String(x))
-            : [],
-          scheduleDrivers: Array.isArray(data.areaScopeBreakdown?.allowances?.scheduleDrivers)
-            ? data.areaScopeBreakdown.allowances.scheduleDrivers.map((x: any) => String(x))
-            : [],
-        },
-        missingConfirmations: Array.isArray(data.areaScopeBreakdown?.missingConfirmations)
-          ? data.areaScopeBreakdown.missingConfirmations.map((x: any) => String(x))
-          : [],
-      }
+        }
+      })()
     : null
 
+const normalizedProfitProtection =
+  normalizeProfitProtection(data?.profitProtection) ??
+  buildProfitProtectionFromPricing({
+    labor: Number(nextPricing.labor || 0),
+    materials: Number(nextPricing.materials || 0),
+    subs: Number(nextPricing.subs || 0),
+    markup: Number(nextPricing.markup || 0),
+  })
+
 setAreaScopeBreakdown(normalizedAreaScopeBreakdown)
+setProfitProtection(normalizedProfitProtection)
 
 const normalizedScopeXRay = data?.scopeXRay
   ? {
@@ -2758,6 +2392,43 @@ const finalDocumentType: DocumentType =
 
 setDocumentType(finalDocumentType)
 
+const cleanedResultText = rawResultText
+  .replace(
+    /^This\s+Change\s+Order\s*\/\s*Estimate\s+covers/i,
+    finalDocumentType === "Change Order"
+      ? "This change order covers"
+      : "This estimate covers"
+  )
+  .replace(
+    /^This\s+Estimate\s*\/\s*Change\s+Order\s+covers/i,
+    finalDocumentType === "Change Order"
+      ? "This change order covers"
+      : "This estimate covers"
+  )
+  .replace(
+    /^This\s+Change\s+Order\s+or\s+Estimate\s+covers/i,
+    finalDocumentType === "Change Order"
+      ? "This change order covers"
+      : "This estimate covers"
+  )
+  .replace(
+    /This\s+scope\s+is\s+additive\s+to\s+any\s+existing\s+[^.]+\./i,
+    finalDocumentType === "Change Order"
+      ? "This change is additive to the original contract scope."
+      : "This estimate is based on the scope described above."
+  )
+  .replace(
+    /The\s+work\s+is\s+intended\s+to\s+be\s+additive\s+or\s+corrective\s+to\s+existing\s+contract\s+conditions\s+or\s+proposed\s+as\s+new\s+work\s+depending\s+on\s+project\s+status\./i,
+    finalDocumentType === "Change Order"
+      ? "This change modifies the original contract scope as described above."
+      : "This estimate is for the scope described above."
+  )
+
+setResult({
+  text: cleanedResultText,
+  explanation: data?.explanation || null,
+})
+
 const normalizedJobDetails = {
   clientName: jobDetails.clientName?.trim() || "Client",
   jobName: jobDetails.jobName?.trim() || "Job",
@@ -2775,7 +2446,7 @@ const estItem: EstimateHistoryItem = {
   trade: nextTrade,
   state: state || "",
   scopeChange: finalScopeChange,
-  result: nextResult,
+  result: cleanedResultText,
   explanation: data?.explanation || null,
   pricing: {
     labor: Number(nextPricing.labor || 0),
@@ -2791,6 +2462,7 @@ const estItem: EstimateHistoryItem = {
   photoScopeAssist: data?.photoScopeAssist ?? null,
   materialsList: normalizedMaterialsList,
   areaScopeBreakdown: normalizedAreaScopeBreakdown,
+  profitProtection: normalizedProfitProtection,
   scopeXRay: normalizedScopeXRay,
   changeOrderDetection,
 
@@ -2902,6 +2574,78 @@ function updateInvoice(id: string, patch: Partial<Invoice>) {
 
 function makeJobId() {
   return crypto.randomUUID()
+}
+
+function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
+  return {
+    id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
+    jobId: String(x?.jobId ?? ""),
+    createdAt: Number(x?.createdAt ?? Date.now()),
+    documentType:
+      x?.documentType === "Change Order" || x?.documentType === "Estimate"
+        ? x.documentType
+        : "Estimate",
+    jobDetails: {
+      clientName: String(x?.jobDetails?.clientName ?? ""),
+      jobName: String(x?.jobDetails?.jobName ?? ""),
+      changeOrderNo: String(x?.jobDetails?.changeOrderNo ?? ""),
+      jobAddress: String(x?.jobDetails?.jobAddress ?? ""),
+      date: String(x?.jobDetails?.date ?? ""),
+    },
+    trade: normalizeTrade(x?.trade),
+    state: String(x?.state ?? ""),
+    scopeChange: String(x?.scopeChange ?? ""),
+    result: String(x?.result ?? ""),
+    explanation: x?.explanation ?? null,
+    pricing: {
+      labor: Number(x?.pricing?.labor ?? 0),
+      materials: Number(x?.pricing?.materials ?? 0),
+      subs: Number(x?.pricing?.subs ?? 0),
+      markup: Number(x?.pricing?.markup ?? 0),
+      total: Number(x?.pricing?.total ?? 0),
+    },
+    schedule: x?.schedule ?? undefined,
+    scopeSignals: x?.scopeSignals ?? null,
+    photoAnalysis: x?.photoAnalysis ?? null,
+    photoScopeAssist: x?.photoScopeAssist ?? null,
+    materialsList: x?.materialsList ?? null,
+    areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
+    profitProtection: normalizeProfitProtection(x?.profitProtection),
+    scopeXRay: x?.scopeXRay ?? null,
+    changeOrderDetection: x?.changeOrderDetection ?? null,
+    tax: x?.tax
+      ? {
+          enabled: Boolean(x.tax.enabled),
+          rate: Number(x.tax.rate || 0),
+        }
+      : undefined,
+    deposit: x?.deposit
+      ? {
+          enabled: Boolean(x.deposit.enabled),
+          type: x.deposit.type === "fixed" ? "fixed" : "percent",
+          value: Number(x.deposit.value || 0),
+        }
+      : undefined,
+    pricingSource: (x?.pricingSource as PricingSource) ?? "ai",
+    priceGuardVerified: Boolean(x?.priceGuardVerified),
+    approval: x?.approval
+      ? {
+          status: x.approval.status === "approved" ? "approved" : "pending",
+          approvedBy: x.approval.approvedBy
+            ? String(x.approval.approvedBy)
+            : undefined,
+          approvedAt:
+            typeof x.approval.approvedAt === "number"
+              ? x.approval.approvedAt
+              : undefined,
+          signatureDataUrl: x.approval.signatureDataUrl
+            ? String(x.approval.signatureDataUrl)
+            : undefined,
+        }
+      : {
+          status: "pending",
+        },
+  }
 }
 
 function normalizeJobKey(d: {
@@ -3022,6 +2766,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setPhotoScopeAssist(item.photoScopeAssist ?? null)
   setMaterialsList(item.materialsList ?? null)
   setAreaScopeBreakdown(item.areaScopeBreakdown ?? null)
+  setProfitProtection(item.profitProtection ?? null)
   setScopeXRay(item.scopeXRay ?? null)
   setChangeOrderDetection(item.changeOrderDetection ?? null)
   setJobPhotos([])
@@ -4975,6 +4720,112 @@ const missingConfirmations = areaScopeBreakdown.missingConfirmations ?? []
   )
 }
 
+function ProfitProtectionCard({
+  profitProtection,
+}: {
+  profitProtection: ProfitProtection
+}) {
+  if (!profitProtection) return null
+
+  const tone =
+    profitProtection.status === "danger"
+      ? { bg: "#fef2f2", border: "#fecaca", color: "#991b1b" }
+      : profitProtection.status === "warning"
+      ? { bg: "#fff7ed", border: "#fdba74", color: "#9a3412" }
+      : { bg: "#ecfdf5", border: "#86efac", color: "#065f46" }
+
+  return (
+    <details
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+      open
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Profit Protection
+      </summary>
+
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          border: `1px solid ${tone.border}`,
+          borderRadius: 12,
+          background: tone.bg,
+          color: tone.color,
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14 }}>
+          {profitProtection.status === "danger"
+            ? "Margin Risk"
+            : profitProtection.status === "warning"
+            ? "Tight Margin"
+            : "Healthy Margin"}
+        </div>
+
+        <div style={{ marginTop: 8, lineHeight: 1.6, fontSize: 13 }}>
+          <div><strong>Estimated Cost:</strong> ${profitProtection.estimatedCost.toLocaleString()}</div>
+          <div><strong>Contract Value:</strong> ${profitProtection.contractValue.toLocaleString()}</div>
+          <div><strong>Gross Profit:</strong> ${profitProtection.grossProfit.toLocaleString()}</div>
+          <div><strong>Gross Margin:</strong> {profitProtection.grossMarginPct}%</div>
+          {profitProtection.minimumSafePrice != null && (
+            <div><strong>Minimum Safe Price:</strong> ${profitProtection.minimumSafePrice.toLocaleString()}</div>
+          )}
+          {profitProtection.targetPrice25 != null && (
+            <div><strong>Target Price @ 25%:</strong> ${profitProtection.targetPrice25.toLocaleString()}</div>
+          )}
+          {profitProtection.targetPrice30 != null && (
+            <div><strong>Target Price @ 30%:</strong> ${profitProtection.targetPrice30.toLocaleString()}</div>
+          )}
+        </div>
+      </div>
+
+      {profitProtection.reasons.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Why this price holds</div>
+          <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+            {profitProtection.reasons.map((item, i) => (
+              <li key={`pp-reason-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {profitProtection.warnings.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #fcd34d",
+            borderRadius: 12,
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#92400e" }}>
+            Margin Warnings
+          </div>
+          <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+            {profitProtection.warnings.map((item, i) => (
+              <li key={`pp-warning-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </details>
+  )
+}
+
 function getChangeOrderDisplayLabel(
   documentType: DocumentType,
   detection: ChangeOrderDetection | null
@@ -5519,6 +5370,9 @@ function ChangeOrderDetectorCard({
 {materialsList && <MaterialsListCard materialsList={materialsList} />}
 {areaScopeBreakdown && (
   <AreaScopeBreakdownCard areaScopeBreakdown={areaScopeBreakdown} />
+)}
+{profitProtection && (
+  <ProfitProtectionCard profitProtection={profitProtection} />
 )}
 {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
 

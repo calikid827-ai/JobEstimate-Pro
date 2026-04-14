@@ -285,6 +285,7 @@ export type EstimateHistoryItem = {
   photoScopeAssist?: PhotoScopeAssist
   materialsList?: MaterialsList
   areaScopeBreakdown?: AreaScopeBreakdown
+  profitProtection?: ProfitProtection
   scopeXRay?: ScopeXRay
   changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
@@ -338,6 +339,19 @@ export type AreaScopeBreakdown = {
     scheduleDrivers: string[]
   }
   missingConfirmations: string[]
+} | null
+
+export type ProfitProtection = {
+  estimatedCost: number
+  contractValue: number
+  grossProfit: number
+  grossMarginPct: number
+  minimumSafePrice: number | null
+  targetPrice25: number | null
+  targetPrice30: number | null
+  status: "danger" | "warning" | "healthy"
+  warnings: string[]
+  reasons: string[]
 } | null
 
 export type ChangeOrderDetection = {
