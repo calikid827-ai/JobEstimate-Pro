@@ -1111,6 +1111,65 @@ const reference: NonNullable<PhotoInput["reference"]> =
   return cleaned
 }
 
+function buildPhotoContext(photos: PhotoInput[] | null | undefined): string {
+  if (!photos || photos.length === 0) return ""
+
+  const counts = {
+    overview: 0,
+    corner: 0,
+    ceiling: 0,
+    floor: 0,
+    damage: 0,
+    measurement: 0,
+  }
+
+  for (const photo of photos) {
+    if (photo.shotType === "overview") counts.overview += 1
+    if (photo.shotType === "corner") counts.corner += 1
+    if (photo.shotType === "ceiling") counts.ceiling += 1
+    if (photo.shotType === "floor") counts.floor += 1
+    if (photo.shotType === "damage") counts.damage += 1
+    if (photo.shotType === "measurement") counts.measurement += 1
+  }
+
+  const checklist = [
+    `overview: ${counts.overview >= 1 ? "yes" : "no"}`,
+    `opposite corners: ${counts.corner >= 2 ? "yes" : "no"}`,
+    `ceiling: ${counts.ceiling >= 1 ? "yes" : "no"}`,
+    `floor: ${counts.floor >= 1 ? "yes" : "no"}`,
+    `damage/detail: ${counts.damage >= 1 ? "yes" : "no"}`,
+    `measurement shot: ${counts.measurement >= 1 ? "yes" : "no"}`,
+  ]
+
+  const lines = photos.map((photo, index) => {
+    const roomTag = photo.roomTag?.trim() || "unspecified room"
+    const shotType = photo.shotType || "overview"
+    const note = photo.note?.trim() || ""
+    const ref =
+      photo.reference?.kind === "custom" &&
+      photo.reference?.label?.trim() &&
+      typeof photo.reference?.realWidthIn === "number" &&
+      Number.isFinite(photo.reference.realWidthIn)
+        ? `${photo.reference.label.trim()} = ${photo.reference.realWidthIn} in`
+        : "none"
+
+    return [
+      `Photo ${index + 1}:`,
+      `- room tag: ${roomTag}`,
+      `- shot type: ${shotType}`,
+      `- note: ${note || "none"}`,
+      `- measurement reference: ${ref}`,
+    ].join("\n")
+  })
+
+  return [
+    "PHOTO METADATA",
+    checklist.join(" | "),
+    "",
+    ...lines,
+  ].join("\n")
+}
+
 type AnchorResult = {
   id: string
   pricing: Pricing
@@ -5213,6 +5272,7 @@ const quantityInputs = getEffectiveQuantityInputs({
 })
 
 const photoQuantityHints = buildPhotoQuantityHints(photoAnalysis)
+const photoContext = buildPhotoContext(photos)
 
 // Start with raw scope
 let effectiveScopeChange = scopeChange
@@ -5674,6 +5734,19 @@ ${effectiveScopeChange}
 
 ${measurementSnippet}
 
+${photoContext ? `
+${photoContext}
+
+PHOTO METADATA RULES:
+- Use room tags to separate scope by area when possible.
+- Use shot type to understand what the image is trying to show.
+- Use notes as higher-priority user hints about damage, access, prep, and special conditions.
+- If a custom reference width is provided, treat it as a real-world scaling clue.
+- Do not invent exact measurements from photos.
+- You may infer relative scale, likely fixture size, likely wall span, or tighter review notes when a valid reference is provided.
+- If photo metadata suggests missing scope items, reflect that in the description, schedule realism, material hints, and scope assumptions.
+` : ""}
+
 DOCUMENT RULES (CRITICAL):
 - If modifying existing contract work → "Change Order"
 - If proposing new work → "Estimate"
@@ -5785,9 +5858,13 @@ MEASUREMENT USAGE RULE (STRICT):
 
 PHOTO USAGE RULE (STRICT):
 - If photo observations are present, use them only for visible conditions, access, prep, damage, demolition, finish complexity, and sequencing.
+- Combine visible conditions with photo metadata such as room tags, shot type, notes, and measurement references.
+- Prefer user-entered room tags and notes over weak visual guesses.
 - Do NOT invent hidden conditions from photos.
 - Do NOT let photos override explicit user-entered quantities.
-- Use photos to refine scope wording and realism, not to hallucinate unseen work.
+- A measurement reference like "vanity = 36 in" or "door = 30 in" is a scale anchor, not a guarantee of full-room dimensions.
+- Use photos and metadata to refine scope wording, material hints, missing confirmations, protection/setup notes, and schedule realism.
+- Do not hallucinate unseen work.
 
 TRADE PRICING GUIDANCE:
 Use the "PRICING ANCHORS" section below to choose realistic units, production rates, and allowances per trade.

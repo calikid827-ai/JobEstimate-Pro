@@ -43,6 +43,8 @@ const PhotoInputSchema = z.object({
 export const GenerateSchema = z.object({
   email: z.string().email().max(254),
 
+  requestId: z.string().max(200).optional(),
+
   scopeChange: z.string().min(10).max(4000),
 
   trade: z
