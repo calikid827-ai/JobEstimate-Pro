@@ -64,7 +64,7 @@ const PRIMARY_MODEL = "gpt-4.1-mini" as const
 const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
 const PHOTO_ANALYSIS_MODEL = "gpt-4o" as const
-const MAX_PHOTOS = 5
+const MAX_PHOTOS = 8
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // 8 MB decoded size per image
 const ALLOWED_PHOTO_MIME = new Set([
   "image/jpeg",
@@ -990,13 +990,42 @@ type PhotoAnalysis = {
     outlets?: number | null
     switches?: number | null
     recessedLights?: number | null
+    cabinets?: number | null
+    appliances?: number | null
+
     ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+
     estimatedWallSqftMin?: number | null
     estimatedWallSqftMax?: number | null
     estimatedCeilingSqftMin?: number | null
     estimatedCeilingSqftMax?: number | null
     estimatedFloorSqftMin?: number | null
     estimatedFloorSqftMax?: number | null
+    estimatedTrimLfMin?: number | null
+    estimatedTrimLfMax?: number | null
+  }
+
+  exteriorSignals?: {
+    isExterior?: boolean | null
+    stories?: 1 | 2 | 3 | null
+    substrate?: "stucco" | "siding" | "mixed" | "unknown" | null
+    access?: "low" | "medium" | "high" | null
+    trimComplexity?: "low" | "medium" | "high" | null
+    prepLevel?: "light" | "medium" | "heavy" | null
+    garageDoors?: number | null
+    entryDoors?: number | null
+    windows?: number | null
+    bodyWallSqftMin?: number | null
+    bodyWallSqftMax?: number | null
+  }
+
+  tradeSignals?: {
+    flooringType?: string[]
+    electricalScope?: string[]
+    plumbingScope?: string[]
+    drywallScope?: string[]
+    carpentryScope?: string[]
+    remodelScope?: string[]
   }
 
   scopeCompletenessFlags?: string[]
@@ -1220,10 +1249,10 @@ Return ONLY valid JSON with this exact shape:
 
   "detectedRoomTypes": ["bathroom", "bedroom"],
   "detectedTrades": ["painting", "drywall"],
-  "detectedMaterials": ["painted drywall", "tile", "baseboard"],
-  "detectedConditions": ["light wall damage", "occupied space"],
-  "detectedFixtures": ["vanity", "toilet", "recessed lights"],
-  "detectedAccessIssues": ["furniture in room", "tight working area"],
+  "detectedMaterials": ["painted drywall", "tile", "baseboard", "stucco"],
+  "detectedConditions": ["light wall damage", "occupied space", "minor exterior fading"],
+  "detectedFixtures": ["vanity", "toilet", "recessed lights", "garage door"],
+  "detectedAccessIssues": ["furniture in room", "tight working area", "narrow side yard"],
   "detectedDemoNeeds": ["finish removal", "surface prep"],
 
   "quantitySignals": {
@@ -1235,13 +1264,40 @@ Return ONLY valid JSON with this exact shape:
     "outlets": 4,
     "switches": 2,
     "recessedLights": 4,
+    "cabinets": 10,
+    "appliances": 4,
     "ceilingHeightCategory": "standard",
     "estimatedWallSqftMin": 250,
     "estimatedWallSqftMax": 340,
     "estimatedCeilingSqftMin": 90,
     "estimatedCeilingSqftMax": 120,
     "estimatedFloorSqftMin": 90,
-    "estimatedFloorSqftMax": 120
+    "estimatedFloorSqftMax": 120,
+    "estimatedTrimLfMin": 40,
+    "estimatedTrimLfMax": 70
+  },
+
+  "exteriorSignals": {
+    "isExterior": true,
+    "stories": 2,
+    "substrate": "stucco",
+    "access": "medium",
+    "trimComplexity": "medium",
+    "prepLevel": "medium",
+    "garageDoors": 1,
+    "entryDoors": 1,
+    "windows": 8,
+    "bodyWallSqftMin": 2100,
+    "bodyWallSqftMax": 2500
+  },
+
+  "tradeSignals": {
+    "flooringType": ["lvp", "tile"],
+    "electricalScope": ["devices", "fixtures", "recessed lights"],
+    "plumbingScope": ["vanity", "toilet", "faucet", "shower trim"],
+    "drywallScope": ["patching", "texture repair"],
+    "carpentryScope": ["baseboard", "door casing", "cabinet install"],
+    "remodelScope": ["bath remodel", "kitchen remodel", "multi-trade coordination"]
   },
 
   "scopeCompletenessFlags": [
@@ -1259,19 +1315,20 @@ Rules:
 - Do not identify people.
 - Do not invent hidden conditions.
 - Quantity signals must be conservative estimates only.
-- If uncertain, use null or omit.
+- Use null or omit when uncertain.
 - Use short strings.
 - No markdown.
 - No extra text.
 
-Important estimating priorities:
-- identify room type
-- identify visible materials
-- identify visible finish conditions
-- identify obvious prep/demo needs
-- identify visible fixtures and devices
+Priorities:
+- identify room type or exterior elevation context
+- identify visible materials and finishes
+- identify visible condition/prep issues
+- identify access difficulty
+- identify obvious fixtures/devices
 - estimate rough quantity ranges only when reasonably inferable
 - flag likely missing scope items visible in photos
+- when exterior photos are shown, estimate exterior-specific painting facts conservatively
 
 Trade: ${args.trade}
 Scope text: ${args.scopeText}
@@ -1280,9 +1337,9 @@ Scope text: ${args.scopeText}
     ]
 
     for (const [index, photo] of safePhotos.entries()) {
-  content.push({
-    type: "text",
-    text: `
+      content.push({
+        type: "text",
+        text: `
 PHOTO ${index + 1} METADATA
 - name: ${photo.name || "photo"}
 - roomTag: ${photo.roomTag || "unknown"}
@@ -1291,16 +1348,16 @@ PHOTO ${index + 1} METADATA
 - referenceKind: ${photo.reference?.kind || "none"}
 - referenceLabel: ${photo.reference?.label || "none"}
 - referenceRealWidthIn: ${photo.reference?.realWidthIn ?? "unknown"}
-    `.trim(),
-  })
+        `.trim(),
+      })
 
-  content.push({
-    type: "image_url",
-    image_url: {
-      url: photo.dataUrl,
-    },
-  })
-}
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: photo.dataUrl,
+        },
+      })
+    }
 
     const resp = await openai.chat.completions.create({
       model: PHOTO_ANALYSIS_MODEL,
@@ -1321,60 +1378,142 @@ PHOTO ${index + 1} METADATA
 
     const cleanStrings = (value: any, max = 10) =>
       Array.isArray(value)
-        ? value.filter((x: any) => typeof x === "string" && x.trim()).slice(0, max)
+        ? value
+            .filter((x: any) => typeof x === "string" && x.trim())
+            .map((x: string) => x.trim())
+            .slice(0, max)
         : []
 
     const safeNum = (value: any) =>
       Number.isFinite(Number(value)) ? Number(value) : null
 
+    const safeInt = (value: any) => {
+      const n = Number(value)
+      return Number.isFinite(n) ? Math.round(n) : null
+    }
+
+    const safeBool = (value: any) =>
+      typeof value === "boolean" ? value : null
+
+    const safeConfidence = (
+      value: any
+    ): "low" | "medium" | "high" | undefined =>
+      value === "low" || value === "medium" || value === "high"
+        ? value
+        : undefined
+
+    const safeCeilingHeight = (
+      value: any
+    ): "standard" | "tall" | "vaulted" | null =>
+      value === "standard" || value === "tall" || value === "vaulted"
+        ? value
+        : null
+
+    const safeStories = (value: any): 1 | 2 | 3 | null =>
+      value === 1 || value === 2 || value === 3 ? value : null
+
+    const safeExteriorSubstrate = (
+      value: any
+    ): "stucco" | "siding" | "mixed" | "unknown" | null =>
+      value === "stucco" ||
+      value === "siding" ||
+      value === "mixed" ||
+      value === "unknown"
+        ? value
+        : null
+
+    const safeExteriorAccess = (
+      value: any
+    ): "low" | "medium" | "high" | null =>
+      value === "low" || value === "medium" || value === "high"
+        ? value
+        : null
+
+    const safeTrimComplexity = (
+      value: any
+    ): "low" | "medium" | "high" | null =>
+      value === "low" || value === "medium" || value === "high"
+        ? value
+        : null
+
+    const safePrepLevel = (
+      value: any
+    ): "light" | "medium" | "heavy" | null =>
+      value === "light" || value === "medium" || value === "heavy"
+        ? value
+        : null
+
     const quantitySignalsRaw = parsed?.quantitySignals ?? {}
+    const exteriorSignalsRaw = parsed?.exteriorSignals ?? {}
+    const tradeSignalsRaw = parsed?.tradeSignals ?? {}
 
     const quantitySignals = {
-      doors: safeNum(quantitySignalsRaw?.doors),
-      windows: safeNum(quantitySignalsRaw?.windows),
-      vanities: safeNum(quantitySignalsRaw?.vanities),
-      toilets: safeNum(quantitySignalsRaw?.toilets),
-      sinks: safeNum(quantitySignalsRaw?.sinks),
-      outlets: safeNum(quantitySignalsRaw?.outlets),
-      switches: safeNum(quantitySignalsRaw?.switches),
-      recessedLights: safeNum(quantitySignalsRaw?.recessedLights),
-      ceilingHeightCategory:
-        quantitySignalsRaw?.ceilingHeightCategory === "standard" ||
-        quantitySignalsRaw?.ceilingHeightCategory === "tall" ||
-        quantitySignalsRaw?.ceilingHeightCategory === "vaulted"
-          ? quantitySignalsRaw.ceilingHeightCategory
-          : null,
+      doors: safeInt(quantitySignalsRaw?.doors),
+      windows: safeInt(quantitySignalsRaw?.windows),
+      vanities: safeInt(quantitySignalsRaw?.vanities),
+      toilets: safeInt(quantitySignalsRaw?.toilets),
+      sinks: safeInt(quantitySignalsRaw?.sinks),
+      outlets: safeInt(quantitySignalsRaw?.outlets),
+      switches: safeInt(quantitySignalsRaw?.switches),
+      recessedLights: safeInt(quantitySignalsRaw?.recessedLights),
+      cabinets: safeInt(quantitySignalsRaw?.cabinets),
+      appliances: safeInt(quantitySignalsRaw?.appliances),
+      ceilingHeightCategory: safeCeilingHeight(
+        quantitySignalsRaw?.ceilingHeightCategory
+      ),
       estimatedWallSqftMin: safeNum(quantitySignalsRaw?.estimatedWallSqftMin),
       estimatedWallSqftMax: safeNum(quantitySignalsRaw?.estimatedWallSqftMax),
       estimatedCeilingSqftMin: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMin),
       estimatedCeilingSqftMax: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMax),
       estimatedFloorSqftMin: safeNum(quantitySignalsRaw?.estimatedFloorSqftMin),
       estimatedFloorSqftMax: safeNum(quantitySignalsRaw?.estimatedFloorSqftMax),
+      estimatedTrimLfMin: safeNum(quantitySignalsRaw?.estimatedTrimLfMin),
+      estimatedTrimLfMax: safeNum(quantitySignalsRaw?.estimatedTrimLfMax),
+    }
+
+    const exteriorSignals = {
+      isExterior: safeBool(exteriorSignalsRaw?.isExterior),
+      stories: safeStories(safeInt(exteriorSignalsRaw?.stories)),
+      substrate: safeExteriorSubstrate(exteriorSignalsRaw?.substrate),
+      access: safeExteriorAccess(exteriorSignalsRaw?.access),
+      trimComplexity: safeTrimComplexity(exteriorSignalsRaw?.trimComplexity),
+      prepLevel: safePrepLevel(exteriorSignalsRaw?.prepLevel),
+      garageDoors: safeInt(exteriorSignalsRaw?.garageDoors),
+      entryDoors: safeInt(exteriorSignalsRaw?.entryDoors),
+      windows: safeInt(exteriorSignalsRaw?.windows),
+      bodyWallSqftMin: safeNum(exteriorSignalsRaw?.bodyWallSqftMin),
+      bodyWallSqftMax: safeNum(exteriorSignalsRaw?.bodyWallSqftMax),
+    }
+
+    const tradeSignals = {
+      flooringType: cleanStrings(tradeSignalsRaw?.flooringType, 6),
+      electricalScope: cleanStrings(tradeSignalsRaw?.electricalScope, 6),
+      plumbingScope: cleanStrings(tradeSignalsRaw?.plumbingScope, 6),
+      drywallScope: cleanStrings(tradeSignalsRaw?.drywallScope, 6),
+      carpentryScope: cleanStrings(tradeSignalsRaw?.carpentryScope, 6),
+      remodelScope: cleanStrings(tradeSignalsRaw?.remodelScope, 6),
     }
 
     return {
       summary:
-        typeof parsed?.summary === "string" ? parsed.summary : undefined,
+        typeof parsed?.summary === "string" ? parsed.summary.trim() : undefined,
       observations: cleanStrings(parsed?.observations, 8),
       suggestedScopeNotes: cleanStrings(parsed?.suggestedScopeNotes, 8),
 
       detectedRoomTypes: cleanStrings(parsed?.detectedRoomTypes, 6),
-      detectedTrades: cleanStrings(parsed?.detectedTrades, 6),
-      detectedMaterials: cleanStrings(parsed?.detectedMaterials, 10),
-      detectedConditions: cleanStrings(parsed?.detectedConditions, 10),
-      detectedFixtures: cleanStrings(parsed?.detectedFixtures, 10),
+      detectedTrades: cleanStrings(parsed?.detectedTrades, 8),
+      detectedMaterials: cleanStrings(parsed?.detectedMaterials, 12),
+      detectedConditions: cleanStrings(parsed?.detectedConditions, 12),
+      detectedFixtures: cleanStrings(parsed?.detectedFixtures, 12),
       detectedAccessIssues: cleanStrings(parsed?.detectedAccessIssues, 8),
       detectedDemoNeeds: cleanStrings(parsed?.detectedDemoNeeds, 8),
 
       quantitySignals,
-      scopeCompletenessFlags: cleanStrings(parsed?.scopeCompletenessFlags, 8),
+      exteriorSignals,
+      tradeSignals,
 
-      confidence:
-        parsed?.confidence === "low" ||
-        parsed?.confidence === "medium" ||
-        parsed?.confidence === "high"
-          ? parsed.confidence
-          : undefined,
+      scopeCompletenessFlags: cleanStrings(parsed?.scopeCompletenessFlags, 8),
+      confidence: safeConfidence(parsed?.confidence),
     }
   } catch (err) {
     console.warn("Photo analysis failed:", err)
@@ -1659,6 +1798,12 @@ function buildPhotoQuantityHints(photoAnalysis: PhotoAnalysis | null): string {
     )
   }
 
+  if (q.estimatedTrimLfMin || q.estimatedTrimLfMax) {
+    lines.push(
+      `Estimated trim/base footage: ${q.estimatedTrimLfMin || "?"}–${q.estimatedTrimLfMax || "?"} LF`
+    )
+  }
+
   if (q.doors) lines.push(`Doors detected: ${q.doors}`)
   if (q.windows) lines.push(`Windows detected: ${q.windows}`)
   if (q.outlets) lines.push(`Outlets detected: ${q.outlets}`)
@@ -1667,8 +1812,39 @@ function buildPhotoQuantityHints(photoAnalysis: PhotoAnalysis | null): string {
   if (q.vanities) lines.push(`Vanities detected: ${q.vanities}`)
   if (q.toilets) lines.push(`Toilets detected: ${q.toilets}`)
   if (q.sinks) lines.push(`Sinks detected: ${q.sinks}`)
+  if (q.cabinets) lines.push(`Cabinets detected: ${q.cabinets}`)
+  if (q.appliances) lines.push(`Appliances detected: ${q.appliances}`)
+  if (q.ceilingHeightCategory) {
+    lines.push(`Ceiling height category: ${q.ceilingHeightCategory}`)
+  }
 
   if (lines.length === 0) return ""
+
+  return lines.map((line) => `- ${line}`).join("\n")
+}
+
+function buildExteriorPhotoHints(photoAnalysis: PhotoAnalysis | null): string {
+  const ex = photoAnalysis?.exteriorSignals
+  if (!ex?.isExterior) return ""
+
+  const lines: string[] = []
+
+  lines.push("Exterior job detected from photos.")
+
+  if (ex.stories) lines.push(`Stories: ${ex.stories}`)
+  if (ex.substrate) lines.push(`Exterior substrate: ${ex.substrate}`)
+  if (ex.access) lines.push(`Access difficulty: ${ex.access}`)
+  if (ex.trimComplexity) lines.push(`Trim complexity: ${ex.trimComplexity}`)
+  if (ex.prepLevel) lines.push(`Prep level: ${ex.prepLevel}`)
+  if (typeof ex.garageDoors === "number") lines.push(`Garage doors: ${ex.garageDoors}`)
+  if (typeof ex.entryDoors === "number") lines.push(`Entry doors: ${ex.entryDoors}`)
+  if (typeof ex.windows === "number") lines.push(`Exterior windows: ${ex.windows}`)
+
+  if (ex.bodyWallSqftMin || ex.bodyWallSqftMax) {
+    lines.push(
+      `Estimated exterior body wall area: ${ex.bodyWallSqftMin || "?"}–${ex.bodyWallSqftMax || "?"} sqft`
+    )
+  }
 
   return lines.map((line) => `- ${line}`).join("\n")
 }
@@ -1690,9 +1866,13 @@ function getPhotoEstimatedSqft(photoAnalysis: PhotoAnalysis | null): {
   floorSqft: number | null
 } {
   const q = photoAnalysis?.quantitySignals
+  const ex = photoAnalysis?.exteriorSignals
+
+  const wallFromInterior = midpoint(q?.estimatedWallSqftMin, q?.estimatedWallSqftMax)
+  const wallFromExterior = midpoint(ex?.bodyWallSqftMin, ex?.bodyWallSqftMax)
 
   return {
-    wallSqft: midpoint(q?.estimatedWallSqftMin, q?.estimatedWallSqftMax),
+    wallSqft: wallFromInterior ?? wallFromExterior,
     ceilingSqft: midpoint(q?.estimatedCeilingSqftMin, q?.estimatedCeilingSqftMax),
     floorSqft: midpoint(q?.estimatedFloorSqftMin, q?.estimatedFloorSqftMax),
   }
@@ -5272,6 +5452,7 @@ const quantityInputs = getEffectiveQuantityInputs({
 })
 
 const photoQuantityHints = buildPhotoQuantityHints(photoAnalysis)
+const exteriorPhotoHints = buildExteriorPhotoHints(photoAnalysis)
 const photoContext = buildPhotoContext(photos)
 
 // Start with raw scope
@@ -5307,6 +5488,14 @@ if (photoQuantityHints) {
 
 PHOTO QUANTITY HINTS:
 ${photoQuantityHints}`.trim()
+}
+
+if (exteriorPhotoHints) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PHOTO EXTERIOR SIGNALS:
+${exteriorPhotoHints}`.trim()
 }
 
 if (photoScopeAssist.missingScopeFlags.length) {
@@ -5462,6 +5651,7 @@ const paintingDet =
         stateMultiplier,
         measurements: paintingDetMeasurements,
         paintScope: paintScopeForJob ?? "walls",
+        photoAnalysis,
       })
     : null
 

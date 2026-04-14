@@ -6,6 +6,24 @@ type Pricing = {
   total: number
 }
 
+type ExteriorSubstrate = "stucco" | "siding" | "mixed" | "unknown"
+type ExteriorAccess = "low" | "medium" | "high"
+type ExteriorTrimComplexity = "low" | "medium" | "high"
+
+type PaintingPhotoAnalysis = {
+  summary?: string
+  observations?: string[]
+  detectedMaterials?: string[]
+  detectedConditions?: string[]
+  detectedAccessIssues?: string[]
+  detectedFixtures?: string[]
+  quantitySignals?: {
+    doors?: number | null
+    windows?: number | null
+  }
+  confidence?: "low" | "medium" | "high"
+}
+
 type PaintScope = "walls" | "walls_ceilings" | "full"
 
 export type PaintingDeterministicResult = {
@@ -34,6 +52,7 @@ export type PaintingDeterministicResult = {
     | "full_interior"
     | "doors_only"
     | "mixed_scope"
+    | "exterior_repaint"
     | "unknown"
   signals: {
     sqft?: number | null
@@ -43,6 +62,14 @@ export type PaintingDeterministicResult = {
     isVacant?: boolean
     prepLevel?: "light" | "medium" | "heavy"
     paintScope?: PaintScope | null
+    isExterior?: boolean
+    stories?: 1 | 2 | 3 | null
+    substrate?: ExteriorSubstrate
+    access?: ExteriorAccess
+    trimComplexity?: ExteriorTrimComplexity
+    garageDoors?: number | null
+    entryDoors?: number | null
+    approxBodyWallSqft?: number | null
   }
   notes: string[]
 }
@@ -186,6 +213,183 @@ function isDoorsOnlyIntent(scopeText: string, doors: number | null): boolean {
   return !roomishRe.test(t)
 }
 
+function getPhotoBlob(photoAnalysis?: PaintingPhotoAnalysis | null): string {
+  if (!photoAnalysis) return ""
+
+  return [
+    photoAnalysis.summary || "",
+    ...(photoAnalysis.observations || []),
+    ...(photoAnalysis.detectedMaterials || []),
+    ...(photoAnalysis.detectedConditions || []),
+    ...(photoAnalysis.detectedAccessIssues || []),
+    ...(photoAnalysis.detectedFixtures || []),
+  ]
+    .join(" ")
+    .toLowerCase()
+}
+
+function looksLikeExteriorPainting(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): boolean {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  const exteriorSignals =
+    /\b(exterior|outside|stucco|siding|fascia|soffit|eaves?|garage door|front door|rear elevation|front elevation|side of house|body color|trim color)\b/
+
+  const strongInteriorSignals =
+    /\b(bedroom|bathroom|kitchen|hallway|living room|interior only|inside walls|ceilings inside)\b/
+
+  return exteriorSignals.test(t) && !strongInteriorSignals.test(scopeText.toLowerCase())
+}
+
+function inferExteriorStories(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): 1 | 2 | 3 | null {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`
+
+  if (/\b(three[-\s]?story|3[-\s]?story|third[-\s]?story)\b/i.test(t)) return 3
+  if (/\b(two[-\s]?story|2[-\s]?story|second[-\s]?story)\b/i.test(t)) return 2
+  if (/\b(one[-\s]?story|single[-\s]?story)\b/i.test(t)) return 1
+
+  return null
+}
+
+function inferExteriorSubstrate(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): ExteriorSubstrate {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  const hasStucco = /\bstucco\b/.test(t)
+  const hasSiding = /\b(siding|lap siding|wood siding|t1-11|hardie)\b/.test(t)
+
+  if (hasStucco && hasSiding) return "mixed"
+  if (hasStucco) return "stucco"
+  if (hasSiding) return "siding"
+
+  return "unknown"
+}
+
+function inferExteriorAccess(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): ExteriorAccess {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  if (/\b(very tight|steep|limited access|difficult access|narrow side yard|pool side obstruction|dense landscaping|tree coverage|lift required)\b/.test(t)) {
+    return "high"
+  }
+
+  if (/\b(tight access|narrow|landscaping|shrubs|bushes|tree|meter|conduit|fence line|walkway only)\b/.test(t)) {
+    return "medium"
+  }
+
+  return "low"
+}
+
+function inferExteriorPrepLevel(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): "light" | "medium" | "heavy" {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  if (/\b(peeling|failed paint|wood rot|heavy cracking|major crack|patch stucco|stucco repair|extensive prep|caulk failure|replace wood)\b/.test(t)) {
+    return "heavy"
+  }
+
+  if (/\b(light fade|minor wear|wash only|minimal prep|clean and paint)\b/.test(t)) {
+    return "light"
+  }
+
+  return "medium"
+}
+
+function inferExteriorTrimComplexity(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): ExteriorTrimComplexity {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  if (/\b(multiple gables|heavy trim package|decorative beams|extensive fascia|extensive eaves)\b/.test(t)) {
+    return "high"
+  }
+
+  if (/\b(fascia|eaves|rafter tails|multiple gables|decorative trim|window trim|garage trim|door trim|beams)\b/.test(t)) {
+    return "medium"
+  }
+
+  return "low"
+}
+
+function inferGarageDoorCount(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): number {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  const explicit =
+    t.match(/\b(\d{1,2})\s+garage\s+doors?\b/i) ||
+    t.match(/\bgarage\s+doors?\s*[:\-]\s*(\d{1,2})\b/i)
+
+  if (explicit?.[1]) {
+    const n = Number(explicit[1])
+    if (Number.isFinite(n) && n > 0) return n
+  }
+
+  return /\bgarage\b/.test(t) ? 1 : 0
+}
+
+function inferEntryDoorCount(
+  scopeText: string,
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): number {
+  const t = `${scopeText} ${getPhotoBlob(photoAnalysis)}`.toLowerCase()
+
+  const explicit =
+    t.match(/\b(\d{1,2})\s+(front|entry)\s+doors?\b/i) ||
+    t.match(/\b(front|entry)\s+doors?\s*[:\-]\s*(\d{1,2})\b/i)
+
+  if (explicit?.[2]) {
+    const n = Number(explicit[2])
+    if (Number.isFinite(n) && n > 0) return n
+  }
+
+  return /\b(front door|entry door)\b/.test(t) ? 1 : 0
+}
+
+function inferExteriorWindowCount(
+  photoAnalysis?: PaintingPhotoAnalysis | null
+): number | null {
+  const n = Number(photoAnalysis?.quantitySignals?.windows ?? 0)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function estimateExteriorBodyWallSqft(args: {
+  measuredFloorSqft: number | null
+  textSqft: number | null
+  stories: 1 | 2 | 3 | null
+}): number {
+  const baseFloorSqft = args.measuredFloorSqft ?? args.textSqft ?? null
+
+  if (baseFloorSqft && baseFloorSqft > 0) {
+    const multiplier =
+      args.stories === 3 ? 1.8 :
+      args.stories === 2 ? 1.55 :
+      1.25
+
+    return Math.round((baseFloorSqft * multiplier) / 25) * 25
+  }
+
+  const fallback =
+    args.stories === 3 ? 3000 :
+    args.stories === 2 ? 2200 :
+    1500
+
+  return fallback
+}
+
 function buildEstimateBasis(args: {
   pricing: Pricing
   laborRate: number
@@ -234,6 +438,7 @@ export function computePaintingDeterministic(args: {
   stateMultiplier: number
   measurements?: any | null
   paintScope?: PaintScope | null
+  photoAnalysis?: PaintingPhotoAnalysis | null
 }): PaintingDeterministicResult {
   const notes: string[] = []
   const scope = (args.scopeText || "").trim()
@@ -277,6 +482,93 @@ export function computePaintingDeterministic(args: {
   const prepLevel = parsePrepLevel(scope)
   const finalPaintScope = inferPaintScope(scope, args.paintScope ?? null)
   const doorsOnly = isDoorsOnlyIntent(scope, doors)
+
+    const exteriorJob = looksLikeExteriorPainting(scope, args.photoAnalysis ?? null)
+
+  if (exteriorJob) {
+    const stories = inferExteriorStories(scope, args.photoAnalysis ?? null)
+    const substrate = inferExteriorSubstrate(scope, args.photoAnalysis ?? null)
+    const access = inferExteriorAccess(scope, args.photoAnalysis ?? null)
+    const exteriorPrepLevel = inferExteriorPrepLevel(scope, args.photoAnalysis ?? null)
+    const trimComplexity = inferExteriorTrimComplexity(scope, args.photoAnalysis ?? null)
+    const garageDoors = inferGarageDoorCount(scope, args.photoAnalysis ?? null)
+    const entryDoors = inferEntryDoorCount(scope, args.photoAnalysis ?? null)
+    const windows = inferExteriorWindowCount(args.photoAnalysis ?? null)
+
+    const approxBodyWallSqft = estimateExteriorBodyWallSqft({
+      measuredFloorSqft: measSqft,
+      textSqft,
+      stories,
+    })
+
+    const priced = pricePaintingExterior({
+      approxBodyWallSqft,
+      stateMultiplier: args.stateMultiplier,
+      substrate,
+      stories,
+      access,
+      trimComplexity,
+      prepLevel: exteriorPrepLevel,
+      garageDoors,
+      entryDoors,
+      windows,
+      coats,
+    })
+
+    const estimateBasis = buildEstimateBasis({
+      pricing: priced.pricing,
+      laborRate: priced.laborRate,
+      sqft: approxBodyWallSqft,
+      rooms: null,
+      doors: null,
+      crewDays: priced.crewDays,
+      mobilization: priced.mobilization,
+      preferredUnit: "sqft",
+      assumptions: [
+        measSqft || textSqft
+          ? `${approxBodyWallSqft} exterior body wall sqft derived from provided sqft.`
+          : `${approxBodyWallSqft} exterior body wall sqft estimated from story-count/photo heuristics.`,
+        `Exterior substrate inferred as ${substrate}.`,
+        `Exterior access inferred as ${access}.`,
+        `Trim complexity inferred as ${trimComplexity}.`,
+        `Exterior prep level: ${exteriorPrepLevel}.`,
+        `${coats} coat(s) assumed.`,
+        garageDoors > 0 ? `${garageDoors} garage door(s) included.` : `No garage door allowance added.`,
+        entryDoors > 0 ? `${entryDoors} entry door(s) included.` : `No entry door allowance added.`,
+      ],
+    })
+
+    return {
+      okForDeterministic: true,
+      okForVerified: !!measSqft || !!textSqft,
+      pricing: priced.pricing,
+      estimateBasis,
+      jobType: "exterior_repaint",
+      signals: {
+        sqft: null,
+        rooms: null,
+        doors: null,
+        coats,
+        isVacant: false,
+        prepLevel: exteriorPrepLevel,
+        paintScope: null,
+        isExterior: true,
+        stories,
+        substrate,
+        access,
+        trimComplexity,
+        garageDoors,
+        entryDoors,
+        approxBodyWallSqft,
+      },
+      notes: [
+        "Painting exterior deterministic pricing applied",
+        !measSqft && !textSqft
+          ? "Exterior price is photo-assisted and should be treated as non-verified until dimensions are confirmed."
+          : "Exterior price used supplied sqft input.",
+      ],
+    }
+  }
 
   // doors-only deterministic
   if (doorsOnly && doors && doors > 0) {
@@ -690,6 +982,151 @@ function pricePaintingDoors(args: {
     laborHrs <= 8 ? 1 :
     laborHrs <= 16 ? 2 :
     Math.ceil(laborHrs / 8)
+
+  crewDays = Math.round(crewDays * 2) / 2
+
+  return {
+    pricing: clampPricing({ labor, materials, subs, markup, total }),
+    laborRate,
+    crewDays,
+    mobilization,
+  }
+}
+
+function pricePaintingExterior(args: {
+  approxBodyWallSqft: number
+  stateMultiplier: number
+  substrate: ExteriorSubstrate
+  stories: 1 | 2 | 3 | null
+  access: ExteriorAccess
+  trimComplexity: ExteriorTrimComplexity
+  prepLevel: "light" | "medium" | "heavy"
+  garageDoors: number
+  entryDoors: number
+  windows: number | null
+  coats: number
+}): {
+  pricing: Pricing
+  laborRate: number
+  crewDays: number
+  mobilization: number
+} {
+  const laborRate = 85
+  const markup = 25
+
+  const stories = args.stories ?? 1
+  const bodyWallSqft = Math.max(1200, Number(args.approxBodyWallSqft || 0))
+
+  let bodySqftPerLaborHour =
+    args.substrate === "stucco"
+      ? 70
+      : args.substrate === "siding"
+      ? 58
+      : 64
+
+  if (stories === 2) bodySqftPerLaborHour *= 0.88
+  if (stories === 3) bodySqftPerLaborHour *= 0.76
+
+  if (args.access === "medium") bodySqftPerLaborHour *= 0.9
+  if (args.access === "high") bodySqftPerLaborHour *= 0.78
+
+  if (args.prepLevel === "light") bodySqftPerLaborHour *= 1.05
+  if (args.prepLevel === "heavy") bodySqftPerLaborHour *= 0.75
+
+  const coatFactor =
+    args.coats <= 1 ? 0.74 :
+    args.coats === 2 ? 1.0 :
+    1.24
+
+  const bodyLaborHrs = (bodyWallSqft * coatFactor) / bodySqftPerLaborHour
+
+  const trimLaborHrs =
+    args.trimComplexity === "high"
+      ? 28
+      : args.trimComplexity === "medium"
+      ? 18
+      : 10
+
+  const setupLaborHrs =
+    stories === 3
+      ? 20
+      : stories === 2
+      ? 14
+      : 8
+
+  const garageDoorLaborHrs = args.garageDoors * 3.5
+  const entryDoorLaborHrs = args.entryDoors * 1.75
+  const windowMaskLaborHrs = Math.min(12, Number(args.windows || 0) * 0.2)
+
+  const totalLaborHrs =
+    bodyLaborHrs +
+    trimLaborHrs +
+    setupLaborHrs +
+    garageDoorLaborHrs +
+    entryDoorLaborHrs +
+    windowMaskLaborHrs
+
+  let labor = Math.round(totalLaborHrs * laborRate)
+  labor = Math.round(labor * args.stateMultiplier)
+
+  const bodyCoverageSqftPerGallon =
+    args.substrate === "stucco" ? 250 : 300
+
+  const bodyGallons =
+    ((bodyWallSqft * Math.max(1, args.coats)) / bodyCoverageSqftPerGallon) * 1.15
+
+  const trimGallons =
+    (args.trimComplexity === "high" ? 5 :
+      args.trimComplexity === "medium" ? 3 : 1.5) +
+    args.garageDoors * 1 +
+    args.entryDoors * 0.5
+
+  const bodyPaintCostPerGallon =
+    args.substrate === "stucco" ? 38 : 40
+
+  const trimPaintCostPerGallon = 45
+
+  let materials =
+    Math.round(bodyGallons * bodyPaintCostPerGallon) +
+    Math.round(trimGallons * trimPaintCostPerGallon)
+
+  materials +=
+    stories === 1 ? 225 :
+    stories === 2 ? 350 :
+    500
+
+  if (args.prepLevel === "medium") materials += 125
+  if (args.prepLevel === "heavy") materials += 275
+
+  let mobilization =
+    stories === 1 ? 550 :
+    stories === 2 ? 850 :
+    1150
+
+  if (args.access === "medium") mobilization += 100
+  if (args.access === "high") mobilization += 250
+
+  const equipmentAllowance =
+    stories === 3 || args.access === "high"
+      ? 350
+      : 0
+
+  const supervision = Math.round((labor + materials) * 0.08)
+  const subs = mobilization + equipmentAllowance + supervision
+
+  const base = labor + materials + subs
+  const total = Math.round(base * (1 + markup / 100))
+
+  const crewHoursPerDay =
+    stories >= 2 ? 13 : 14
+
+  let crewDays = totalLaborHrs / crewHoursPerDay
+
+  if (stories === 1) crewDays = Math.max(crewDays, 2)
+  if (stories === 2) crewDays = Math.max(crewDays, 3)
+  if (stories === 3) crewDays = Math.max(crewDays, 4)
+
+  if (args.prepLevel === "heavy") crewDays += 0.5
 
   crewDays = Math.round(crewDays * 2) / 2
 

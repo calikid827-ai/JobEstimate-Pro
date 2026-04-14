@@ -98,7 +98,7 @@ export const GenerateSchema = z.object({
 
   photos: z
     .array(PhotoInputSchema)
-    .max(5)
+    .max(8)
     .nullable()
     .optional()
     .default(null),
