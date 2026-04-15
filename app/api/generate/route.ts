@@ -760,10 +760,6 @@ let crewDays =
     ? Math.round(crewDaysRaw * 2) / 2
     : null
 
-if (crewDays !== null && args.photoImpact?.extraCrewDays) {
-  crewDays = Math.round((crewDays + args.photoImpact.extraCrewDays) * 2) / 2
-}    
-
 if (args.scopeSignals?.needsReturnVisit && crewDays !== null && crewDays < 2) {
   crewDays = 2
 }
@@ -1243,34 +1239,32 @@ function sanitizePhotoInputs(photos: unknown): PhotoInput[] {
 
     const refRaw = (raw as any)?.reference
 
-const reference: NonNullable<PhotoInput["reference"]> =
-  refRaw && typeof refRaw === "object"
-    ? {
-        kind: refRaw.kind === "custom" ? "custom" : "none",
-        label:
-          typeof refRaw.label === "string"
-            ? refRaw.label.trim().slice(0, 40)
-            : "",
-        realWidthIn:
-          Number.isFinite(Number(refRaw.realWidthIn)) &&
-          Number(refRaw.realWidthIn) > 0
-            ? Number(refRaw.realWidthIn)
-            : null,
-      }
-    : {
-        kind: "none",
-        label: "",
-        realWidthIn: null,
-      }
+const hasCustomReference =
+  refRaw &&
+  typeof refRaw === "object" &&
+  refRaw.kind === "custom" &&
+  Number.isFinite(Number(refRaw.realWidthIn)) &&
+  Number(refRaw.realWidthIn) > 0
 
-    cleaned.push({
-      name,
-      dataUrl,
-      roomTag,
-      shotType,
-      note,
-      reference,
-    })
+const reference: PhotoInput["reference"] = hasCustomReference
+  ? {
+      kind: "custom",
+      label:
+        typeof refRaw.label === "string"
+          ? refRaw.label.trim().slice(0, 40)
+          : "",
+      realWidthIn: Number(refRaw.realWidthIn),
+    }
+  : undefined
+
+cleaned.push({
+  name,
+  dataUrl,
+  roomTag,
+  shotType,
+  note,
+  ...(reference ? { reference } : {}),
+})
   }
 
   return cleaned
@@ -1307,25 +1301,33 @@ function buildPhotoContext(photos: PhotoInput[] | null | undefined): string {
   ]
 
   const lines = photos.map((photo, index) => {
-    const roomTag = photo.roomTag?.trim() || "unspecified room"
-    const shotType = photo.shotType || "overview"
-    const note = photo.note?.trim() || ""
-    const ref =
-      photo.reference?.kind === "custom" &&
-      photo.reference?.label?.trim() &&
-      typeof photo.reference?.realWidthIn === "number" &&
-      Number.isFinite(photo.reference.realWidthIn)
-        ? `${photo.reference.label.trim()} = ${photo.reference.realWidthIn} in`
-        : "none"
+  const roomTag = photo.roomTag?.trim() || "unspecified room"
+  const shotType = photo.shotType || "overview"
+  const note = photo.note?.trim() || ""
 
-    return [
-      `Photo ${index + 1}:`,
-      `- room tag: ${roomTag}`,
-      `- shot type: ${shotType}`,
-      `- note: ${note || "none"}`,
-      `- measurement reference: ${ref}`,
-    ].join("\n")
-  })
+  const parts = [
+    `Photo ${index + 1}:`,
+    `- room tag: ${roomTag}`,
+    `- shot type: ${shotType}`,
+  ]
+
+  if (note) {
+    parts.push(`- note: ${note}`)
+  }
+
+  if (
+    photo.reference?.kind === "custom" &&
+    photo.reference?.label?.trim() &&
+    typeof photo.reference.realWidthIn === "number" &&
+    Number.isFinite(photo.reference.realWidthIn)
+  ) {
+    parts.push(
+      `- measurement reference: ${photo.reference.label.trim()} = ${photo.reference.realWidthIn} in`
+    )
+  }
+
+  return parts.join("\n")
+})
 
   return [
     "PHOTO METADATA",
@@ -1672,6 +1674,16 @@ async function analyzeJobPhotos(args: {
       : null
 
   async function analyzeSinglePhoto(photo: PhotoInput): Promise<PhotoFinding> {
+    const referenceMeta =
+  photo.reference?.kind === "custom" &&
+  typeof photo.reference?.realWidthIn === "number" &&
+  Number.isFinite(photo.reference.realWidthIn)
+    ? `
+- referenceKind: custom
+- referenceLabel: ${photo.reference.label || "reference"}
+- referenceRealWidthIn: ${photo.reference.realWidthIn}`
+    : ""
+
     const content: any[] = [
       {
         type: "text",
@@ -1749,10 +1761,7 @@ Photo metadata:
 - name: ${photo.name || "photo"}
 - roomTag: ${photo.roomTag || "unknown"}
 - shotType: ${photo.shotType || "overview"}
-- note: ${photo.note || "none"}
-- referenceKind: ${photo.reference?.kind || "none"}
-- referenceLabel: ${photo.reference?.label || "none"}
-- referenceRealWidthIn: ${photo.reference?.realWidthIn ?? "unknown"}
+- note: ${photo.note?.trim() || "not provided"}${referenceMeta}
         `.trim(),
       },
       {
@@ -2229,17 +2238,24 @@ function buildPhotoScopeAssist(args: {
     suggestedAdditions.push("Add demolition/removal/disposal scope if applicable.")
   }
 
-  if (job.exteriorSummary.isExterior && !mentionsExteriorPrep && args.trade === "painting") {
-    suggestedAdditions.push("Include visible exterior prep such as scraping, sanding, patching, caulking, and masking where applicable.")
-  }
+  const strongExteriorSignal =
+  job.probableArea === "exterior_house" && job.exteriorSummary.isExterior
 
-  for (const flag of job.missingViews || []) {
-    missingScopeFlags.push(flag)
-  }
+if (strongExteriorSignal && !mentionsExteriorPrep && args.trade === "painting") {
+  suggestedAdditions.push(
+    "Include visible exterior prep such as scraping, sanding, patching, caulking, and masking where applicable."
+  )
+}
 
-  for (const driver of job.pricingDrivers || []) {
+for (const flag of job.missingViews || []) {
+  missingScopeFlags.push(flag)
+}
+
+for (const driver of job.pricingDrivers || []) {
+  if (!/exterior/i.test(driver) || strongExteriorSignal) {
     suggestedAdditions.push(driver)
   }
+}
 
   return {
     missingScopeFlags: Array.from(new Set(missingScopeFlags)).slice(0, 8),
