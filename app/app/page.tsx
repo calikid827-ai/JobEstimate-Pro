@@ -5373,6 +5373,7 @@ function ChangeOrderDetectorCard({
   updateJobPhotoReference={updateJobPhotoReference}
   SHOT_TYPE_OPTIONS={SHOT_TYPE_OPTIONS}
   ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
+  maxJobPhotos={MAX_JOB_PHOTOS}
   scopeQuality={scopeQuality}
   measureEnabled={measureEnabled}
   setMeasureEnabled={setMeasureEnabled}

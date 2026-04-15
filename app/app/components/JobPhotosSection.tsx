@@ -35,6 +35,7 @@ type Props = {
   ) => void
   SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }>
   ROOM_TAG_SUGGESTIONS: readonly string[]
+  maxJobPhotos: number
 }
 
 export default function JobPhotosSection({
@@ -45,6 +46,7 @@ export default function JobPhotosSection({
   updateJobPhotoReference,
   SHOT_TYPE_OPTIONS,
   ROOM_TAG_SUGGESTIONS,
+  maxJobPhotos,
 }: Props) {
   const shotCounts = {
     overview: jobPhotos.filter((p) => p.shotType === "overview").length,
@@ -111,8 +113,8 @@ export default function JobPhotosSection({
           lineHeight: 1.4,
         }}
       >
-        Upload up to 5 photos to help detect materials, conditions, access
-        issues, and scope details.
+        Upload up to {maxJobPhotos} photos to help detect materials, conditions, access
+issues, and scope details.
       </div>
 
       <input

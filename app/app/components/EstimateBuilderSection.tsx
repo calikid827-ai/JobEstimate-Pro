@@ -52,6 +52,7 @@ type Props = {
   ) => void
   SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }>
   ROOM_TAG_SUGGESTIONS: readonly string[]
+  maxJobPhotos: number
 
   scopeQuality: any
   measureEnabled: boolean
@@ -97,6 +98,7 @@ export default function EstimateBuilderSection({
   generate,
   loading,
   status,
+  maxJobPhotos,
 }: Props) {
   return (
     <>
@@ -234,14 +236,15 @@ export default function EstimateBuilderSection({
       />
 
       <JobPhotosSection
-        jobPhotos={jobPhotos}
-        handlePhotoUpload={handlePhotoUpload}
-        removeJobPhoto={removeJobPhoto}
-        updateJobPhoto={updateJobPhoto}
-        updateJobPhotoReference={updateJobPhotoReference}
-        SHOT_TYPE_OPTIONS={SHOT_TYPE_OPTIONS}
-        ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
-      />
+  jobPhotos={jobPhotos}
+  handlePhotoUpload={handlePhotoUpload}
+  removeJobPhoto={removeJobPhoto}
+  updateJobPhoto={updateJobPhoto}
+  updateJobPhotoReference={updateJobPhotoReference}
+  SHOT_TYPE_OPTIONS={SHOT_TYPE_OPTIONS}
+  ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
+  maxJobPhotos={maxJobPhotos}
+/>
 
       <MeasurementsSection
         scopeQuality={scopeQuality}
