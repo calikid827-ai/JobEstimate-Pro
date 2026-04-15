@@ -38,8 +38,145 @@ type PhotoScopeAssist = {
   suggestedAdditions: string[]
 } | null
 
+type PhotoQuantitySignals = NonNullable<PhotoAnalysis>["quantitySignals"]
+
 function hasItems(arr?: string[] | null) {
   return Array.isArray(arr) && arr.length > 0
+}
+
+function cleanUiText(value: string) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .replace(/^[•,\-:;]+/, "")
+    .replace(/[,\-:;]+$/, "")
+    .trim()
+}
+
+function isNumericOrMeasurementFragment(value: string) {
+  const v = value.toLowerCase().trim()
+
+  return (
+    /^\d+(\.\d+)?$/.test(v) ||
+    /^\d+(\.\d+)?\s*(in|inch|inches|ft|feet|cm|mm)$/.test(v)
+  )
+}
+
+function sanitizeList(
+  arr?: string[] | null,
+  opts?: {
+    max?: number
+    dropGenericSingles?: boolean
+  }
+) {
+  if (!Array.isArray(arr)) return []
+
+  const max = opts?.max ?? 8
+  const seen = new Set<string>()
+  const out: string[] = []
+
+  const bannedExact = new Set([
+    "unknown",
+    "none",
+    "null",
+    "n/a",
+    "na",
+    "unspecified",
+  ])
+
+  const genericSingles = new Set([
+    "door",
+    "doors",
+    "window",
+    "windows",
+    "wall",
+    "walls",
+    "floor",
+    "floors",
+    "ceiling",
+    "ceilings",
+    "fixture",
+    "fixtures",
+    "material",
+    "materials",
+    "box",
+    "boxes",
+  ])
+
+  for (const raw of arr) {
+    const item = cleanUiText(raw)
+    if (!item) continue
+
+    const lower = item.toLowerCase()
+
+    if (bannedExact.has(lower)) continue
+    if (isNumericOrMeasurementFragment(lower)) continue
+    if (opts?.dropGenericSingles && !lower.includes(" ") && genericSingles.has(lower)) {
+      continue
+    }
+
+    const key = lower.replace(/[^\w\s]/g, "").replace(/\s+/g, " ").trim()
+    if (!key || seen.has(key)) continue
+
+    seen.add(key)
+    out.push(item)
+
+    if (out.length >= max) break
+  }
+
+  return out
+}
+
+function sanitizeRoomTypes(arr?: string[] | null) {
+  const allowed = new Set([
+    "bathroom",
+    "kitchen",
+    "hallway",
+    "bedroom",
+    "living room",
+    "laundry",
+    "closet",
+    "entry",
+    "exterior",
+  ])
+
+  return sanitizeList(arr, { max: 4 })
+    .map((x) => x.toLowerCase())
+    .filter((x) => allowed.has(x))
+}
+
+function removeFixtureDuplicatesFromQuantities(
+  items: string[],
+  q?: PhotoQuantitySignals | null
+) {
+  return items.filter((item) => {
+    const t = item.toLowerCase()
+
+    if (q?.doors && /\bdoor/.test(t)) return false
+    if (q?.windows && /\bwindow/.test(t)) return false
+    if (q?.vanities && /\bvanity/.test(t)) return false
+    if (q?.toilets && /\btoilet\b/.test(t)) return false
+    if (q?.sinks && /\bsink\b/.test(t)) return false
+    if (q?.outlets && /\boutlet\b/.test(t)) return false
+    if (q?.switches && /\bswitch\b/.test(t)) return false
+    if (q?.recessedLights && /(\brecessed\b|\bcan\s*lights?\b)/.test(t)) return false
+
+    return true
+  })
+}
+
+function formatSqftRange(
+  min?: number | null,
+  max?: number | null,
+  label?: string
+) {
+  const a = Number.isFinite(Number(min)) ? Math.round(Number(min)) : null
+  const b = Number.isFinite(Number(max)) ? Math.round(Number(max)) : null
+
+  if (a == null && b == null) return null
+  if (a != null && b != null && a === b) return `${a} ${label}`
+  if (a != null && b != null) return `${a}–${b} ${label}`
+
+  return `${a ?? b} ${label}`
 }
 
 function InfoChip({ label }: { label: string }) {
@@ -155,16 +292,30 @@ export default function PhotoIntelligenceCard({
 
   const confidenceTone = getConfidenceStyle(photoAnalysis?.confidence)
 
-  const materials = photoAnalysis?.detectedMaterials ?? []
-  const fixtures = photoAnalysis?.detectedFixtures ?? []
-  const conditions = photoAnalysis?.detectedConditions ?? []
-  const accessIssues = photoAnalysis?.detectedAccessIssues ?? []
-  const demoNeeds = photoAnalysis?.detectedDemoNeeds ?? []
-  const missingScopeFlags = photoScopeAssist?.missingScopeFlags ?? []
-  const suggestedAdditions = photoScopeAssist?.suggestedAdditions ?? []
-
   const q = photoAnalysis?.quantitySignals
-  const quantityChips: string[] = []
+
+const observations = sanitizeList(photoAnalysis?.observations, { max: 8 })
+const suggestedScopeNotes = sanitizeList(photoAnalysis?.suggestedScopeNotes, { max: 8 })
+
+const roomTypes = sanitizeRoomTypes(photoAnalysis?.detectedRoomTypes)
+
+const materials = sanitizeList(photoAnalysis?.detectedMaterials, { max: 8 })
+const fixtures = removeFixtureDuplicatesFromQuantities(
+  sanitizeList(photoAnalysis?.detectedFixtures, {
+    max: 8,
+    dropGenericSingles: true,
+  }),
+  q
+)
+
+const conditions = sanitizeList(photoAnalysis?.detectedConditions, { max: 8 })
+const accessIssues = sanitizeList(photoAnalysis?.detectedAccessIssues, { max: 6 })
+const demoNeeds = sanitizeList(photoAnalysis?.detectedDemoNeeds, { max: 6 })
+
+const missingScopeFlags = sanitizeList(photoScopeAssist?.missingScopeFlags, { max: 8 })
+const suggestedAdditions = sanitizeList(photoScopeAssist?.suggestedAdditions, { max: 8 })
+
+const quantityChips: string[] = []
 
   if (q?.doors) quantityChips.push(`${q.doors} door${q.doors === 1 ? "" : "s"}`)
   if (q?.windows) quantityChips.push(`${q.windows} window${q.windows === 1 ? "" : "s"}`)
@@ -176,38 +327,41 @@ export default function PhotoIntelligenceCard({
   if (q?.recessedLights) quantityChips.push(`${q.recessedLights} recessed light${q.recessedLights === 1 ? "" : "s"}`)
   if (q?.ceilingHeightCategory) quantityChips.push(`${q.ceilingHeightCategory} ceilings`)
 
-  const wallRange =
-    q?.estimatedWallSqftMin != null && q?.estimatedWallSqftMax != null
-      ? `${q.estimatedWallSqftMin}–${q.estimatedWallSqftMax} wall sqft`
-      : null
+  const wallRange = formatSqftRange(
+  q?.estimatedWallSqftMin,
+  q?.estimatedWallSqftMax,
+  "wall sqft"
+)
 
-  const ceilingRange =
-    q?.estimatedCeilingSqftMin != null && q?.estimatedCeilingSqftMax != null
-      ? `${q.estimatedCeilingSqftMin}–${q.estimatedCeilingSqftMax} ceiling sqft`
-      : null
+const ceilingRange = formatSqftRange(
+  q?.estimatedCeilingSqftMin,
+  q?.estimatedCeilingSqftMax,
+  "ceiling sqft"
+)
 
-  const floorRange =
-    q?.estimatedFloorSqftMin != null && q?.estimatedFloorSqftMax != null
-      ? `${q.estimatedFloorSqftMin}–${q.estimatedFloorSqftMax} floor sqft`
-      : null
+const floorRange = formatSqftRange(
+  q?.estimatedFloorSqftMin,
+  q?.estimatedFloorSqftMax,
+  "floor sqft"
+)
 
-  const hasContent =
-    !!photoAnalysis?.summary ||
-    hasItems(photoAnalysis?.observations) ||
-    hasItems(photoAnalysis?.suggestedScopeNotes) ||
-    hasItems(photoAnalysis?.detectedRoomTypes) ||
-    hasItems(materials) ||
-    hasItems(fixtures) ||
-    hasItems(conditions) ||
-    hasItems(accessIssues) ||
-    hasItems(demoNeeds) ||
-    hasItems(missingScopeFlags) ||
-    hasItems(suggestedAdditions) ||
-    quantityChips.length > 0 ||
-    !!wallRange ||
-    !!ceilingRange ||
-    !!floorRange ||
-    !!confidenceTone
+const hasContent =
+  !!photoAnalysis?.summary ||
+  hasItems(observations) ||
+  hasItems(suggestedScopeNotes) ||
+  hasItems(roomTypes) ||
+  hasItems(materials) ||
+  hasItems(fixtures) ||
+  hasItems(conditions) ||
+  hasItems(accessIssues) ||
+  hasItems(demoNeeds) ||
+  hasItems(missingScopeFlags) ||
+  hasItems(suggestedAdditions) ||
+  quantityChips.length > 0 ||
+  !!wallRange ||
+  !!ceilingRange ||
+  !!floorRange ||
+  !!confidenceTone
 
   if (!hasContent) return null
 
@@ -278,10 +432,10 @@ export default function PhotoIntelligenceCard({
         </div>
       )}
 
-      <SectionList title="Observations" items={photoAnalysis?.observations} />
+      <SectionList title="Observations" items={observations} />
       <SectionList
         title="Suggested scope notes"
-        items={photoAnalysis?.suggestedScopeNotes}
+        items={suggestedScopeNotes}
         tone="info"
       />
 
@@ -311,7 +465,7 @@ export default function PhotoIntelligenceCard({
         </div>
       ) : null}
 
-      {(photoAnalysis?.detectedRoomTypes?.length ?? 0) > 0 && (
+      {roomTypes.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <div
             style={{
@@ -327,7 +481,7 @@ export default function PhotoIntelligenceCard({
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {photoAnalysis!.detectedRoomTypes!.map((item, i) => (
+            {roomTypes.map((item, i) => (
               <InfoChip key={`room-${i}`} label={item} />
             ))}
           </div>
