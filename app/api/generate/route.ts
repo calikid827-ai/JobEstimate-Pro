@@ -321,6 +321,118 @@ if (args.anchorId === "kitchen_refresh_v1") {
 }
 
   if (args.trade === "painting") {
+  const job = args.photoAnalysis?.jobSummary ?? null
+  const exteriorSummary = job?.exteriorSummary ?? null
+
+  const looksExteriorPainting =
+    exteriorSummary?.isExterior === true ||
+    /\b(exterior|outside|stucco|siding|fascia|soffit|eaves?|garage door|front door|rear elevation|front elevation|side of house|body color|trim color)\b/.test(
+      s
+    )
+
+  const coatCount =
+    /\b(three|3)\s+coat/.test(s) || /\b3\s*coats?\b/.test(s)
+      ? 3
+      : /\b(one|1)\s+coat/.test(s) || /\b1\s*coats?\b/.test(s)
+      ? 1
+      : 2
+
+  if (looksExteriorPainting) {
+    const exteriorBodySqft = positiveOrNull(
+      exteriorSummary?.bodyWallSqft ??
+        args.quantityInputs.photoWallSqft ??
+        args.quantityInputs.effectiveWallSqft
+    )
+
+    const substrate = exteriorSummary?.substrate ?? "unknown"
+    const bodyCoverageSqftPerGallon = substrate === "stucco" ? 250 : 300
+
+    const bodyGallons = exteriorBodySqft
+      ? Math.max(
+          2,
+          Math.ceil(
+            ((exteriorBodySqft * Math.max(1, coatCount)) / bodyCoverageSqftPerGallon) * 1.15
+          )
+        )
+      : null
+
+    const garageDoors = positiveOrNull(exteriorSummary?.garageDoors) ?? 0
+    const entryDoors = positiveOrNull(exteriorSummary?.entryDoors) ?? 0
+
+    const trimGallonsBase =
+      exteriorSummary?.trimComplexity === "high"
+        ? 5
+        : exteriorSummary?.trimComplexity === "medium"
+        ? 3
+        : 2
+
+    const trimGallons = Math.max(
+      1,
+      Math.ceil(trimGallonsBase + garageDoors * 1 + entryDoors * 0.5)
+    )
+
+    if (bodyGallons) {
+      addItem(
+        "Exterior body paint / primer",
+        `~${bodyGallons} gal`,
+        "material",
+        args.quantityInputs.userMeasuredSqft || args.quantityInputs.parsedSqft
+          ? "high"
+          : "medium"
+      )
+    } else {
+      addItem("Exterior body paint / primer", "allowance", "material", "medium")
+    }
+
+    addItem("Trim / fascia / eaves paint", `~${trimGallons} gal`, "material", "medium")
+
+    if (garageDoors > 0 || entryDoors > 0) {
+      const enamelGallons = Math.max(1, Math.ceil(garageDoors * 1 + entryDoors * 0.5))
+      addItem(
+        "Door / garage door enamel",
+        `~${enamelGallons} gal`,
+        "material",
+        "medium"
+      )
+    }
+
+    addItem(
+      "Exterior caulk / patch materials",
+      "1 lot",
+      "consumable",
+      exteriorSummary?.prepLevel === "heavy" ? "high" : "medium"
+    )
+    addItem(
+      "Masking plastic / tape / paper / landscaping protection",
+      "1 lot",
+      "protection",
+      "high"
+    )
+    addItem(
+      "Roller covers / brushes / sanding supplies",
+      "1 lot",
+      "consumable",
+      "high"
+    )
+
+    if (
+      exteriorSummary?.access === "medium" ||
+      exteriorSummary?.access === "high" ||
+      (args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0
+    ) {
+      notes.push(
+        "Access / landscaping conditions may change protection, ladder, or masking needs."
+      )
+    }
+
+    if (
+      !args.quantityInputs.userMeasuredSqft &&
+      !args.quantityInputs.parsedSqft &&
+      !exteriorBodySqft
+    ) {
+      confirmItems.push("Confirm exact exterior body wall square footage before buying paint.")
+    }
+  } else {
     const estimatedSqft =
       paintSqft ??
       (args.rooms
@@ -345,6 +457,7 @@ if (args.anchorId === "kitchen_refresh_v1") {
     addItem("Masking plastic / tape / paper", "1 lot", "protection", "high")
     addItem("Roller covers / brushes / sanding supplies", "1 lot", "consumable", "high")
   }
+}
 
   if (args.trade === "flooring") {
     if (floorSqft && floorSqft > 0) {
@@ -505,6 +618,17 @@ function buildScopeXRay(args: {
 }): ScopeXRay {
   const quantities: ScopeXRay["quantities"] = []
 
+  const photoJob = args.photoAnalysis?.jobSummary ?? null
+  const exteriorSummary = photoJob?.exteriorSummary ?? null
+
+  const exteriorBodySqft = positiveOrNull(
+    exteriorSummary?.bodyWallSqft ??
+      midpointFromRange(
+        args.photoAnalysis?.exteriorSignals?.bodyWallSqftMin,
+        args.photoAnalysis?.exteriorSignals?.bodyWallSqftMax
+      )
+  )
+
   if (args.quantityInputs.userMeasuredSqft) {
     quantities.push({
       label: "Measured area",
@@ -535,18 +659,56 @@ function buildScopeXRay(args: {
     })
   }
 
-  if (args.quantityInputs.photoFloorSqft) {
+  if (exteriorBodySqft) {
     quantities.push({
-      label: "Photo-estimated floor area",
-      value: `${args.quantityInputs.photoFloorSqft} sqft`,
+      label: "Photo-estimated exterior body area",
+      value: `${exteriorBodySqft} sqft`,
+      source: "photo",
+    })
+  } else {
+    if (args.quantityInputs.photoFloorSqft) {
+      quantities.push({
+        label: "Photo-estimated floor area",
+        value: `${args.quantityInputs.photoFloorSqft} sqft`,
+        source: "photo",
+      })
+    }
+
+    if (args.quantityInputs.photoWallSqft) {
+      quantities.push({
+        label: "Photo-estimated wall area",
+        value: `${args.quantityInputs.photoWallSqft} sqft`,
+        source: "photo",
+      })
+    }
+  }
+
+  const photoWindows = positiveOrNull(
+    exteriorSummary?.windows ?? args.photoAnalysis?.quantitySignals?.windows
+  )
+  const photoGarageDoors = positiveOrNull(exteriorSummary?.garageDoors)
+  const photoEntryDoors = positiveOrNull(exteriorSummary?.entryDoors)
+
+  if (photoWindows) {
+    quantities.push({
+      label: "Windows visible",
+      value: String(photoWindows),
       source: "photo",
     })
   }
 
-  if (args.quantityInputs.photoWallSqft) {
+  if (photoGarageDoors) {
     quantities.push({
-      label: "Photo-estimated wall area",
-      value: `${args.quantityInputs.photoWallSqft} sqft`,
+      label: "Garage doors visible",
+      value: String(photoGarageDoors),
+      source: "photo",
+    })
+  }
+
+  if (photoEntryDoors) {
+    quantities.push({
+      label: "Entry doors visible",
+      value: String(photoEntryDoors),
       source: "photo",
     })
   }
@@ -555,30 +717,55 @@ function buildScopeXRay(args: {
     new Set([
       ...(args.photoScopeAssist.missingScopeFlags || []),
       ...(args.photoAnalysis?.scopeCompletenessFlags || []),
-      ...(args.complexityProfile?.permitLikely ? ["Permit/inspection coordination may affect cost and timing."] : []),
-      ...(args.tradeStack?.isMultiTrade ? ["Multiple trades require coordination and sequencing."] : []),
+      ...(args.complexityProfile?.permitLikely
+        ? ["Permit/inspection coordination may affect cost and timing."]
+        : []),
+      ...(args.tradeStack?.isMultiTrade
+        ? ["Multiple trades require coordination and sequencing."]
+        : []),
     ])
   ).slice(0, 8)
 
   const needsConfirmation: string[] = []
 
-  if (!args.quantityInputs.userMeasuredSqft && !args.quantityInputs.parsedSqft) {
+  if (
+    !args.quantityInputs.userMeasuredSqft &&
+    !args.quantityInputs.parsedSqft &&
+    !exteriorBodySqft
+  ) {
     needsConfirmation.push("Confirm exact measured quantities before final approval.")
   }
 
-  if (
-    args.splitScopes.some((x) => x.trade === "carpentry") &&
-    !/(\d{1,5})\s*(linear\s*ft|lf|feet)\b/i.test(args.splitScopes.map((x) => x.scope).join(" "))
-  ) {
-    needsConfirmation.push("Confirm exact baseboard/trim linear footage.")
+  const scopeBlob = args.splitScopes.map((x) => x.scope).join(" ").toLowerCase()
+
+  const isExteriorPainting =
+    args.trade === "painting" &&
+    (
+      exteriorSummary?.isExterior === true ||
+      /\b(exterior|outside|stucco|siding|fascia|soffit|eaves?|garage door|front door)\b/.test(
+        scopeBlob
+      )
+    )
+
+  const needsInteriorTrimFootage =
+    !isExteriorPainting &&
+    args.splitScopes.some(
+      (x) =>
+        x.trade === "carpentry" ||
+        /\b(baseboard|trim|casing|quarter round|shoe mold)\b/i.test(x.scope)
+    ) &&
+    !/(\d{1,5})\s*(linear\s*ft|lf|feet)\b/i.test(scopeBlob)
+
+  if (needsInteriorTrimFootage) {
+    needsConfirmation.push("Confirm exact baseboard / trim linear footage.")
   }
 
   if (args.splitScopes.some((x) => /patch|texture|drywall/i.test(x.scope))) {
-    needsConfirmation.push("Confirm exact patch/texture extent.")
+    needsConfirmation.push("Confirm exact patch / texture extent.")
   }
 
   if (args.scopeSignals?.needsReturnVisit) {
-    needsConfirmation.push("Schedule assumes return visits/phase sequencing.")
+    needsConfirmation.push("Schedule assumes return visits / phase sequencing.")
   }
 
   return {
@@ -624,11 +811,36 @@ function buildAreaScopeBreakdown(args: {
 }): AreaScopeBreakdown {
   const s = (args.scopeText || "").toLowerCase()
 
-  const trimLf =
-    parseLinearFt(args.scopeText) ??
-    (/\b(baseboard|trim|casing|quarter round|shoe mold)\b/.test(s)
-      ? estimateBaseboardLfFromFloorSqft(args.quantityInputs.effectiveFloorSqft)
-      : null)
+  const job = args.photoAnalysis?.jobSummary ?? null
+  const exteriorSummary = job?.exteriorSummary ?? null
+
+  const isExteriorPainting =
+    args.trade === "painting" &&
+    (
+      exteriorSummary?.isExterior === true ||
+      /\b(exterior|outside|stucco|siding|fascia|soffit|eaves?|garage door|front door)\b/.test(s)
+    )
+
+  const photoExteriorBodySqft = positiveOrNull(
+    exteriorSummary?.bodyWallSqft ??
+      midpointFromRange(
+        args.photoAnalysis?.exteriorSignals?.bodyWallSqftMin,
+        args.photoAnalysis?.exteriorSignals?.bodyWallSqftMax
+      )
+  )
+
+  const interiorTrimWords =
+    /\b(baseboard|baseboards|base board|casing|casings|quarter round|shoe mold)\b/.test(s)
+
+  const exteriorTrimWords =
+    /\b(eaves?|fascia|soffit|garage door|entry door|front door|window trim|exterior trim)\b/.test(s)
+
+  const trimLf = isExteriorPainting
+    ? null
+    : parseLinearFt(args.scopeText) ??
+      (interiorTrimWords
+        ? estimateBaseboardLfFromFloorSqft(args.quantityInputs.effectiveFloorSqft)
+        : null)
 
   const prepDemo: string[] = []
   const protectionSetup: string[] = []
@@ -640,48 +852,80 @@ function buildAreaScopeBreakdown(args: {
     prepDemo.push("Demolition / removal work detected")
   }
 
-  if (/\b(patch|repair|texture|skim|orange peel|knockdown|surface prep|prep)\b/.test(s)) {
+  if (/\b(patch|repair|texture|skim|orange peel|knockdown|surface prep|prep|scrape|sand|caulk)\b/.test(s)) {
     prepDemo.push("Surface prep / patch / finish prep detected")
   }
 
-  if (
-    /\b(mask|masking|protect|protection|cover|containment)\b/.test(s) ||
-    (args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0
-  ) {
-    protectionSetup.push("Protection / masking / occupied-space setup likely required")
+  if (isExteriorPainting) {
+    protectionSetup.push("Exterior masking / landscaping / access setup likely required")
+
+    if ((args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0) {
+      protectionSetup.push("Visible access conditions may increase setup and masking time")
+    }
+  } else {
+    if (
+      /\b(mask|masking|protect|protection|cover|containment)\b/.test(s) ||
+      (args.photoAnalysis?.detectedAccessIssues?.length ?? 0) > 0
+    ) {
+      protectionSetup.push("Protection / masking / occupied-space setup likely required")
+    }
+
+    if (
+      /\b(furniture|occupied|tight access|limited access|clutter)\b/.test(
+        [
+          ...(args.photoAnalysis?.detectedConditions || []),
+          ...(args.photoAnalysis?.detectedAccessIssues || []),
+        ].join(" ").toLowerCase()
+      )
+    ) {
+      protectionSetup.push("Access conditions may increase setup / protection time")
+    }
   }
 
-  if (/\b(furniture|occupied|tight access|limited access|clutter)\b/.test(
-    [
-      ...(args.photoAnalysis?.detectedConditions || []),
-      ...(args.photoAnalysis?.detectedAccessIssues || []),
-    ].join(" ").toLowerCase()
-  )) {
-    protectionSetup.push("Access conditions may increase setup/protection time")
+  if (!isExteriorPainting && args.quantityInputs.effectiveFloorSqft) {
+    materialsDrivers.push(
+      `Floor area influencing material quantities: ${args.quantityInputs.effectiveFloorSqft} sqft`
+    )
   }
 
-  if (args.quantityInputs.effectiveFloorSqft) {
-    materialsDrivers.push(`Floor area influencing material quantities: ${args.quantityInputs.effectiveFloorSqft} sqft`)
-  }
+  if (isExteriorPainting) {
+    if (photoExteriorBodySqft) {
+      materialsDrivers.push(
+        `Exterior body wall area influencing coating quantities: ${photoExteriorBodySqft} sqft`
+      )
+    }
 
-  if (args.quantityInputs.effectiveWallSqft) {
-    materialsDrivers.push(`Wall area influencing material quantities: ${args.quantityInputs.effectiveWallSqft} sqft`)
-  }
+    if (
+      exteriorTrimWords ||
+      (positiveOrNull(exteriorSummary?.garageDoors) ?? 0) > 0 ||
+      (positiveOrNull(exteriorSummary?.entryDoors) ?? 0) > 0
+    ) {
+      materialsDrivers.push("Exterior trim / eaves / door surfaces included")
+    }
+  } else {
+    if (args.quantityInputs.effectiveWallSqft) {
+      materialsDrivers.push(
+        `Wall area influencing material quantities: ${args.quantityInputs.effectiveWallSqft} sqft`
+      )
+    }
 
-  if (args.quantityInputs.effectivePaintSqft && args.trade === "painting") {
-    materialsDrivers.push(`Paintable area influencing coating quantities: ${args.quantityInputs.effectivePaintSqft} sqft`)
-  }
+    if (args.quantityInputs.effectivePaintSqft && args.trade === "painting") {
+      materialsDrivers.push(
+        `Paintable area influencing coating quantities: ${args.quantityInputs.effectivePaintSqft} sqft`
+      )
+    }
 
-  if (trimLf) {
-    materialsDrivers.push(`Trim/base footage influencing material quantities: ${trimLf} LF`)
-  }
+    if (trimLf) {
+      materialsDrivers.push(`Trim / base footage influencing material quantities: ${trimLf} LF`)
+    }
 
-  if (args.effectivePaintScope === "doors_only") {
-    materialsDrivers.push("Doors-only paint scope detected")
-  } else if (args.effectivePaintScope === "walls_ceilings") {
-    materialsDrivers.push("Walls + ceilings paint scope detected")
-  } else if (args.effectivePaintScope === "full") {
-    materialsDrivers.push("Full interior paint scope detected")
+    if (args.effectivePaintScope === "doors_only") {
+      materialsDrivers.push("Doors-only paint scope detected")
+    } else if (args.effectivePaintScope === "walls_ceilings") {
+      materialsDrivers.push("Walls + ceilings paint scope detected")
+    } else if (args.effectivePaintScope === "full") {
+      materialsDrivers.push("Full interior paint scope detected")
+    }
   }
 
   if (args.complexityProfile?.multiPhase) {
@@ -704,15 +948,22 @@ function buildAreaScopeBreakdown(args: {
     scheduleDrivers.push("Photo-visible access constraints may affect schedule")
   }
 
-  if (!args.quantityInputs.userMeasuredSqft && !args.quantityInputs.parsedSqft) {
-    missingConfirmations.push("Confirm measured square footage")
-  }
+  if (isExteriorPainting) {
+    if (
+      !args.quantityInputs.userMeasuredSqft &&
+      !args.quantityInputs.parsedSqft &&
+      !photoExteriorBodySqft
+    ) {
+      missingConfirmations.push("Confirm exact exterior body wall square footage")
+    }
+  } else {
+    if (!args.quantityInputs.userMeasuredSqft && !args.quantityInputs.parsedSqft) {
+      missingConfirmations.push("Confirm measured square footage")
+    }
 
-  if (
-    /\b(baseboard|trim|casing|quarter round|shoe mold)\b/.test(s) &&
-    !trimLf
-  ) {
-    missingConfirmations.push("Confirm exact trim / baseboard linear footage")
+    if (interiorTrimWords && !trimLf) {
+      missingConfirmations.push("Confirm exact trim / baseboard linear footage")
+    }
   }
 
   for (const flag of args.photoScopeAssist.missingScopeFlags || []) {
@@ -721,10 +972,14 @@ function buildAreaScopeBreakdown(args: {
 
   return {
     detectedArea: {
-      floorSqft: args.quantityInputs.effectiveFloorSqft ?? null,
-      wallSqft: args.quantityInputs.effectiveWallSqft ?? null,
-      paintSqft: args.quantityInputs.effectivePaintSqft ?? null,
-      trimLf: trimLf ?? null,
+      floorSqft: isExteriorPainting ? null : positiveOrNull(args.quantityInputs.effectiveFloorSqft),
+      wallSqft: isExteriorPainting
+        ? photoExteriorBodySqft
+        : positiveOrNull(args.quantityInputs.effectiveWallSqft),
+      paintSqft: isExteriorPainting
+        ? photoExteriorBodySqft
+        : positiveOrNull(args.quantityInputs.effectivePaintSqft),
+      trimLf: isExteriorPainting ? null : positiveOrNull(trimLf),
     },
     allowances: {
       prepDemo: Array.from(new Set(prepDemo)),
@@ -1375,6 +1630,11 @@ function safeMaxInt(...values: Array<number | null | undefined>): number | null 
   return nums.length ? Math.max(...nums.map((x) => Math.round(x))) : null
 }
 
+function positiveOrNull(value: any): number | null {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null
+}
+
 function midpointFromRange(min?: number | null, max?: number | null): number | null {
   const a = Number.isFinite(Number(min)) ? Number(min) : null
   const b = Number.isFinite(Number(max)) ? Number(max) : null
@@ -1924,41 +2184,41 @@ Photo metadata:
       detectedAccessIssues: jobSummary?.detectedAccessIssues || [],
       detectedDemoNeeds: jobSummary?.detectedDemoNeeds || [],
 
-      quantitySignals: {
-        doors: jobSummary?.mergedQuantities.doors ?? null,
-        windows: jobSummary?.mergedQuantities.windows ?? null,
-        vanities: jobSummary?.mergedQuantities.vanities ?? null,
-        toilets: jobSummary?.mergedQuantities.toilets ?? null,
-        sinks: jobSummary?.mergedQuantities.sinks ?? null,
-        outlets: jobSummary?.mergedQuantities.outlets ?? null,
-        switches: jobSummary?.mergedQuantities.switches ?? null,
-        recessedLights: jobSummary?.mergedQuantities.recessedLights ?? null,
-        cabinets: jobSummary?.mergedQuantities.cabinets ?? null,
-        appliances: jobSummary?.mergedQuantities.appliances ?? null,
-        ceilingHeightCategory: null,
-        estimatedWallSqftMin: jobSummary?.mergedQuantities.wallSqft ?? null,
-        estimatedWallSqftMax: jobSummary?.mergedQuantities.wallSqft ?? null,
-        estimatedCeilingSqftMin: jobSummary?.mergedQuantities.ceilingSqft ?? null,
-        estimatedCeilingSqftMax: jobSummary?.mergedQuantities.ceilingSqft ?? null,
-        estimatedFloorSqftMin: jobSummary?.mergedQuantities.floorSqft ?? null,
-        estimatedFloorSqftMax: jobSummary?.mergedQuantities.floorSqft ?? null,
-        estimatedTrimLfMin: jobSummary?.mergedQuantities.trimLf ?? null,
-        estimatedTrimLfMax: jobSummary?.mergedQuantities.trimLf ?? null,
-      },
+     quantitySignals: {
+  doors: positiveOrNull(jobSummary?.mergedQuantities.doors),
+  windows: positiveOrNull(jobSummary?.mergedQuantities.windows),
+  vanities: positiveOrNull(jobSummary?.mergedQuantities.vanities),
+  toilets: positiveOrNull(jobSummary?.mergedQuantities.toilets),
+  sinks: positiveOrNull(jobSummary?.mergedQuantities.sinks),
+  outlets: positiveOrNull(jobSummary?.mergedQuantities.outlets),
+  switches: positiveOrNull(jobSummary?.mergedQuantities.switches),
+  recessedLights: positiveOrNull(jobSummary?.mergedQuantities.recessedLights),
+  cabinets: positiveOrNull(jobSummary?.mergedQuantities.cabinets),
+  appliances: positiveOrNull(jobSummary?.mergedQuantities.appliances),
+  ceilingHeightCategory: null,
+  estimatedWallSqftMin: positiveOrNull(jobSummary?.mergedQuantities.wallSqft),
+  estimatedWallSqftMax: positiveOrNull(jobSummary?.mergedQuantities.wallSqft),
+  estimatedCeilingSqftMin: positiveOrNull(jobSummary?.mergedQuantities.ceilingSqft),
+  estimatedCeilingSqftMax: positiveOrNull(jobSummary?.mergedQuantities.ceilingSqft),
+  estimatedFloorSqftMin: positiveOrNull(jobSummary?.mergedQuantities.floorSqft),
+  estimatedFloorSqftMax: positiveOrNull(jobSummary?.mergedQuantities.floorSqft),
+  estimatedTrimLfMin: positiveOrNull(jobSummary?.mergedQuantities.trimLf),
+  estimatedTrimLfMax: positiveOrNull(jobSummary?.mergedQuantities.trimLf),
+},
 
-      exteriorSignals: {
-        isExterior: jobSummary?.exteriorSummary.isExterior ?? null,
-        stories: jobSummary?.exteriorSummary.stories ?? null,
-        substrate: jobSummary?.exteriorSummary.substrate ?? null,
-        access: jobSummary?.exteriorSummary.access ?? null,
-        trimComplexity: jobSummary?.exteriorSummary.trimComplexity ?? null,
-        prepLevel: jobSummary?.exteriorSummary.prepLevel ?? null,
-        garageDoors: jobSummary?.exteriorSummary.garageDoors ?? null,
-        entryDoors: jobSummary?.exteriorSummary.entryDoors ?? null,
-        windows: jobSummary?.exteriorSummary.windows ?? null,
-        bodyWallSqftMin: jobSummary?.exteriorSummary.bodyWallSqft ?? null,
-        bodyWallSqftMax: jobSummary?.exteriorSummary.bodyWallSqft ?? null,
-      },
+exteriorSignals: {
+  isExterior: jobSummary?.exteriorSummary.isExterior ?? null,
+  stories: jobSummary?.exteriorSummary.stories ?? null,
+  substrate: jobSummary?.exteriorSummary.substrate ?? null,
+  access: jobSummary?.exteriorSummary.access ?? null,
+  trimComplexity: jobSummary?.exteriorSummary.trimComplexity ?? null,
+  prepLevel: jobSummary?.exteriorSummary.prepLevel ?? null,
+  garageDoors: positiveOrNull(jobSummary?.exteriorSummary.garageDoors),
+  entryDoors: positiveOrNull(jobSummary?.exteriorSummary.entryDoors),
+  windows: positiveOrNull(jobSummary?.exteriorSummary.windows),
+  bodyWallSqftMin: positiveOrNull(jobSummary?.exteriorSummary.bodyWallSqft),
+  bodyWallSqftMax: positiveOrNull(jobSummary?.exteriorSummary.bodyWallSqft),
+},
 
       tradeSignals: {
         flooringType: [],
@@ -2233,10 +2493,14 @@ function buildPhotoScopeAssist(args: {
     suggestedAdditions.push("Add masking, furniture protection, landscaping protection, or access handling language.")
   }
 
-  if (job.detectedDemoNeeds.length > 0 && !mentionsDemo) {
-    missingScopeFlags.push("Photos suggest demo/removal work may be needed.")
-    suggestedAdditions.push("Add demolition/removal/disposal scope if applicable.")
-  }
+  const strongDemoSignals = (job.detectedDemoNeeds || []).some((x) =>
+  /\b(demo|demolition|tear[-\s]*out|remove|removal|haul|disposal|replace wood|rot)\b/i.test(x)
+)
+
+if (strongDemoSignals && !mentionsDemo) {
+  missingScopeFlags.push("Photos suggest demo/removal work may be needed.")
+  suggestedAdditions.push("Add demolition/removal/disposal scope if applicable.")
+}
 
   const strongExteriorSignal =
   job.probableArea === "exterior_house" && job.exteriorSummary.isExterior
