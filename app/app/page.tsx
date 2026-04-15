@@ -149,8 +149,8 @@ function scrollToInvoices() {
 }
 
 const MAX_JOB_PHOTOS = 8
-const MAX_PHOTO_DATAURL_LENGTH = 350_000
-const MAX_TOTAL_PHOTO_PAYLOAD = 900_000
+const MAX_PHOTO_DATAURL_LENGTH = 450_000
+const MAX_TOTAL_PHOTO_PAYLOAD = 3_200_000
 
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
@@ -161,8 +161,8 @@ function estimatePhotoPayloadLength(
 async function compressImageFile(file: File): Promise<string> {
   const imageBitmap = await createImageBitmap(file)
 
-  const maxWidth = 700
-  const maxHeight = 700
+  const maxWidth = 900
+  const maxHeight = 900
 
   const scale = Math.min(
     1,
@@ -182,14 +182,14 @@ async function compressImageFile(file: File): Promise<string> {
 
   ctx.drawImage(imageBitmap, 0, 0, width, height)
 
-  let dataUrl = canvas.toDataURL("image/jpeg", 0.42)
+  let dataUrl = canvas.toDataURL("image/jpeg", 0.55)
 
   if (dataUrl.length > MAX_PHOTO_DATAURL_LENGTH) {
-    dataUrl = canvas.toDataURL("image/jpeg", 0.30)
+    dataUrl = canvas.toDataURL("image/jpeg", 0.45)
   }
 
   if (dataUrl.length > MAX_PHOTO_DATAURL_LENGTH) {
-    dataUrl = canvas.toDataURL("image/jpeg", 0.22)
+    dataUrl = canvas.toDataURL("image/jpeg", 0.35)
   }
 
   return dataUrl
@@ -2268,9 +2268,10 @@ const res = await fetch("/api/generate", {
     setPriceGuardVerified(nextVerified)
     setPriceGuard(data?.priceGuard ?? null)
 
-    const nextDocumentType: DocumentType =
+const nextDocumentType: DocumentType =
   data?.documentType === "Change Order" ||
-  data?.documentType === "Estimate"
+  data?.documentType === "Estimate" ||
+  data?.documentType === "Change Order / Estimate"
     ? data.documentType
     : "Estimate"
 
@@ -2693,9 +2694,11 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
     jobId: String(x?.jobId ?? ""),
     createdAt: Number(x?.createdAt ?? Date.now()),
     documentType:
-      x?.documentType === "Change Order" || x?.documentType === "Estimate"
-        ? x.documentType
-        : "Estimate",
+  x?.documentType === "Change Order" ||
+  x?.documentType === "Estimate" ||
+  x?.documentType === "Change Order / Estimate"
+    ? x.documentType
+    : "Estimate",
     jobDetails: {
       clientName: String(x?.jobDetails?.clientName ?? ""),
       jobName: String(x?.jobDetails?.jobName ?? ""),
