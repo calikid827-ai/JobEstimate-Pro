@@ -968,6 +968,138 @@ type PhotoInput = {
   }
 }
 
+type PhotoFinding = {
+  photoName: string
+  roomTag: string
+  shotType:
+    | "overview"
+    | "corner"
+    | "wall"
+    | "ceiling"
+    | "floor"
+    | "fixture"
+    | "damage"
+    | "measurement"
+
+  areaType:
+    | "exterior_front"
+    | "exterior_rear"
+    | "exterior_side"
+    | "interior_room"
+    | "bathroom"
+    | "kitchen"
+    | "hallway"
+    | "ceiling"
+    | "floor"
+    | "detail"
+    | "unknown"
+
+  detectedRoomType: string | null
+  detectedTrade: string | null
+  detectedMaterials: string[]
+  detectedConditions: string[]
+  detectedFixtures: string[]
+  detectedAccessIssues: string[]
+  detectedDemoNeeds: string[]
+  complexityFlags: string[]
+
+  quantitySignals: {
+    doors?: number | null
+    windows?: number | null
+    vanities?: number | null
+    toilets?: number | null
+    sinks?: number | null
+    outlets?: number | null
+    switches?: number | null
+    recessedLights?: number | null
+    cabinets?: number | null
+    appliances?: number | null
+
+    ceilingHeightCategory?: "standard" | "tall" | "vaulted" | null
+
+    estimatedWallSqftMin?: number | null
+    estimatedWallSqftMax?: number | null
+    estimatedCeilingSqftMin?: number | null
+    estimatedCeilingSqftMax?: number | null
+    estimatedFloorSqftMin?: number | null
+    estimatedFloorSqftMax?: number | null
+    estimatedTrimLfMin?: number | null
+    estimatedTrimLfMax?: number | null
+  }
+
+  exteriorSignals?: {
+    isExterior?: boolean | null
+    stories?: 1 | 2 | 3 | null
+    substrate?: "stucco" | "siding" | "mixed" | "unknown" | null
+    access?: "low" | "medium" | "high" | null
+    trimComplexity?: "low" | "medium" | "high" | null
+    prepLevel?: "light" | "medium" | "heavy" | null
+    garageDoors?: number | null
+    entryDoors?: number | null
+    windows?: number | null
+    bodyWallSqftMin?: number | null
+    bodyWallSqftMax?: number | null
+  }
+
+  scopeCompletenessFlags: string[]
+  reasoning: string[]
+  confidence: "low" | "medium" | "high"
+}
+
+type PhotoJobSummary = {
+  probableArea:
+    | "exterior_house"
+    | "interior_room"
+    | "bathroom"
+    | "kitchen"
+    | "mixed"
+    | "unknown"
+
+  detectedTrades: string[]
+  detectedRoomTypes: string[]
+  detectedMaterials: string[]
+  detectedConditions: string[]
+  detectedFixtures: string[]
+  detectedAccessIssues: string[]
+  detectedDemoNeeds: string[]
+  complexityFlags: string[]
+
+  mergedQuantities: {
+    doors: number | null
+    windows: number | null
+    vanities: number | null
+    toilets: number | null
+    sinks: number | null
+    outlets: number | null
+    switches: number | null
+    recessedLights: number | null
+    cabinets: number | null
+    appliances: number | null
+
+    wallSqft: number | null
+    ceilingSqft: number | null
+    floorSqft: number | null
+    trimLf: number | null
+  }
+
+  exteriorSummary: {
+    isExterior: boolean
+    stories: 1 | 2 | 3 | null
+    substrate: "stucco" | "siding" | "mixed" | "unknown" | null
+    access: "low" | "medium" | "high" | null
+    trimComplexity: "low" | "medium" | "high" | null
+    prepLevel: "light" | "medium" | "heavy" | null
+    garageDoors: number | null
+    entryDoors: number | null
+    windows: number | null
+    bodyWallSqft: number | null
+  }
+
+  pricingDrivers: string[]
+  missingViews: string[]
+  confidenceScore: number
+}
+
 type PhotoAnalysis = {
   summary?: string
   observations?: string[]
@@ -1030,6 +1162,10 @@ type PhotoAnalysis = {
 
   scopeCompletenessFlags?: string[]
   confidence?: "low" | "medium" | "high"
+
+  // NEW
+  perPhoto?: PhotoFinding[]
+  jobSummary?: PhotoJobSummary | null
 }
 
 function getDataUrlMime(dataUrl: string): string | null {
@@ -1225,6 +1361,245 @@ type PricingAnchor = {
 // -----------------------------
 // HELPERS
 // -----------------------------
+function uniqStrings(arr: string[], max = 20): string[] {
+  return Array.from(new Set(arr.map((x) => String(x || "").trim()).filter(Boolean))).slice(0, max)
+}
+
+function safeMaxInt(...values: Array<number | null | undefined>): number | null {
+  const nums = values
+    .map((x) => (Number.isFinite(Number(x)) ? Number(x) : null))
+    .filter((x): x is number => x !== null && x > 0)
+
+  return nums.length ? Math.max(...nums.map((x) => Math.round(x))) : null
+}
+
+function midpointFromRange(min?: number | null, max?: number | null): number | null {
+  const a = Number.isFinite(Number(min)) ? Number(min) : null
+  const b = Number.isFinite(Number(max)) ? Number(max) : null
+
+  if (a && b) return Math.round((a + b) / 2)
+  if (a) return Math.round(a)
+  if (b) return Math.round(b)
+  return null
+}
+
+function pickHighestAreaType(findings: PhotoFinding[]): PhotoJobSummary["probableArea"] {
+  if (findings.some((f) => f.exteriorSignals?.isExterior)) return "exterior_house"
+  if (findings.some((f) => f.areaType === "bathroom")) return "bathroom"
+  if (findings.some((f) => f.areaType === "kitchen")) return "kitchen"
+  if (findings.some((f) => f.areaType === "interior_room")) return "interior_room"
+
+  const distinct = new Set(findings.map((f) => f.areaType))
+  if (distinct.size > 1) return "mixed"
+
+  return "unknown"
+}
+
+function mergePhotoFindings(findings: PhotoFinding[]): PhotoJobSummary | null {
+  if (!findings.length) return null
+
+  const detectedTrades = uniqStrings(findings.flatMap((f) => (f.detectedTrade ? [f.detectedTrade] : [])), 8)
+  const detectedRoomTypes = uniqStrings(findings.flatMap((f) => (f.detectedRoomType ? [f.detectedRoomType] : [])), 8)
+  const detectedMaterials = uniqStrings(findings.flatMap((f) => f.detectedMaterials || []), 16)
+  const detectedConditions = uniqStrings(findings.flatMap((f) => f.detectedConditions || []), 16)
+  const detectedFixtures = uniqStrings(findings.flatMap((f) => f.detectedFixtures || []), 16)
+  const detectedAccessIssues = uniqStrings(findings.flatMap((f) => f.detectedAccessIssues || []), 12)
+  const detectedDemoNeeds = uniqStrings(findings.flatMap((f) => f.detectedDemoNeeds || []), 12)
+  const complexityFlags = uniqStrings(findings.flatMap((f) => f.complexityFlags || []), 12)
+
+  const probableArea = pickHighestAreaType(findings)
+
+  const wallSqft = safeMaxInt(
+    ...findings.map((f) =>
+      midpointFromRange(
+        f.quantitySignals?.estimatedWallSqftMin,
+        f.quantitySignals?.estimatedWallSqftMax
+      )
+    ),
+    ...findings.map((f) =>
+      midpointFromRange(
+        f.exteriorSignals?.bodyWallSqftMin,
+        f.exteriorSignals?.bodyWallSqftMax
+      )
+    )
+  )
+
+  const ceilingSqft = safeMaxInt(
+    ...findings.map((f) =>
+      midpointFromRange(
+        f.quantitySignals?.estimatedCeilingSqftMin,
+        f.quantitySignals?.estimatedCeilingSqftMax
+      )
+    )
+  )
+
+  const floorSqft = safeMaxInt(
+    ...findings.map((f) =>
+      midpointFromRange(
+        f.quantitySignals?.estimatedFloorSqftMin,
+        f.quantitySignals?.estimatedFloorSqftMax
+      )
+    )
+  )
+
+  const trimLf = safeMaxInt(
+    ...findings.map((f) =>
+      midpointFromRange(
+        f.quantitySignals?.estimatedTrimLfMin,
+        f.quantitySignals?.estimatedTrimLfMax
+      )
+    )
+  )
+
+  const shotTypes = new Set(findings.map((f) => f.shotType))
+  const missingViews: string[] = []
+
+  if (probableArea === "exterior_house") {
+    if (!findings.some((f) => f.areaType === "exterior_front")) missingViews.push("Front elevation not clearly shown")
+    if (!findings.some((f) => f.areaType === "exterior_rear")) missingViews.push("Rear elevation not clearly shown")
+    if (!findings.some((f) => f.areaType === "exterior_side")) missingViews.push("Side elevation not clearly shown")
+  }
+
+  if (!shotTypes.has("measurement")) {
+    missingViews.push("No measurement reference photo provided")
+  }
+
+  if (!shotTypes.has("damage") && detectedConditions.length > 0) {
+    missingViews.push("Condition closeups could improve confidence")
+  }
+
+  const isExterior = findings.some((f) => f.exteriorSignals?.isExterior === true)
+
+  const exteriorStories = safeMaxInt(...findings.map((f) => f.exteriorSignals?.stories ?? null)) as 1 | 2 | 3 | null
+
+  const exteriorSubstrates = uniqStrings(
+    findings
+      .map((f) => f.exteriorSignals?.substrate)
+      .filter(Boolean) as string[],
+    4
+  )
+
+  const substrate =
+    exteriorSubstrates.length === 0
+      ? null
+      : exteriorSubstrates.length === 1
+      ? (exteriorSubstrates[0] as "stucco" | "siding" | "mixed" | "unknown")
+      : "mixed"
+
+  const accessValues = uniqStrings(
+    findings
+      .map((f) => f.exteriorSignals?.access)
+      .filter(Boolean) as string[],
+    4
+  )
+
+  const trimComplexityValues = uniqStrings(
+    findings
+      .map((f) => f.exteriorSignals?.trimComplexity)
+      .filter(Boolean) as string[],
+    4
+  )
+
+  const prepValues = uniqStrings(
+    findings
+      .map((f) => f.exteriorSignals?.prepLevel)
+      .filter(Boolean) as string[],
+    4
+  )
+
+  const access =
+    accessValues.includes("high") ? "high" :
+    accessValues.includes("medium") ? "medium" :
+    accessValues.includes("low") ? "low" :
+    null
+
+  const trimComplexity =
+    trimComplexityValues.includes("high") ? "high" :
+    trimComplexityValues.includes("medium") ? "medium" :
+    trimComplexityValues.includes("low") ? "low" :
+    null
+
+  const prepLevel =
+    prepValues.includes("heavy") ? "heavy" :
+    prepValues.includes("medium") ? "medium" :
+    prepValues.includes("light") ? "light" :
+    null
+
+  const pricingDrivers: string[] = []
+
+  if (isExterior) pricingDrivers.push("Exterior setup, masking, and elevation access should affect labor")
+  if (exteriorStories && exteriorStories >= 2) pricingDrivers.push("Two-story height likely increases labor and setup")
+  if ((safeMaxInt(...findings.map((f) => f.quantitySignals?.windows ?? null), ...findings.map((f) => f.exteriorSignals?.windows ?? null)) ?? 0) >= 8) {
+    pricingDrivers.push("Higher window count likely increases cut-in and masking time")
+  }
+  if (detectedConditions.length > 0) pricingDrivers.push("Visible condition/prep issues should affect labor")
+  if (detectedAccessIssues.length > 0) pricingDrivers.push("Visible access constraints should affect setup and production speed")
+  if (detectedDemoNeeds.length > 0) pricingDrivers.push("Visible demo/removal needs should affect labor and disposal")
+  if (complexityFlags.length > 0) pricingDrivers.push("Visible complexity should affect labor and schedule")
+
+  const confidenceBase =
+    findings.reduce((sum, f) => {
+      if (f.confidence === "high") return sum + 1
+      if (f.confidence === "medium") return sum + 0.7
+      return sum + 0.4
+    }, 0) / findings.length
+
+  const confidencePenalty = Math.min(0.35, missingViews.length * 0.08)
+  const confidenceScore = Math.max(20, Math.min(98, Math.round((confidenceBase - confidencePenalty) * 100)))
+
+  return {
+    probableArea,
+    detectedTrades,
+    detectedRoomTypes,
+    detectedMaterials,
+    detectedConditions,
+    detectedFixtures,
+    detectedAccessIssues,
+    detectedDemoNeeds,
+    complexityFlags,
+    mergedQuantities: {
+      doors: safeMaxInt(...findings.map((f) => f.quantitySignals?.doors ?? null)),
+      windows: safeMaxInt(
+        ...findings.map((f) => f.quantitySignals?.windows ?? null),
+        ...findings.map((f) => f.exteriorSignals?.windows ?? null)
+      ),
+      vanities: safeMaxInt(...findings.map((f) => f.quantitySignals?.vanities ?? null)),
+      toilets: safeMaxInt(...findings.map((f) => f.quantitySignals?.toilets ?? null)),
+      sinks: safeMaxInt(...findings.map((f) => f.quantitySignals?.sinks ?? null)),
+      outlets: safeMaxInt(...findings.map((f) => f.quantitySignals?.outlets ?? null)),
+      switches: safeMaxInt(...findings.map((f) => f.quantitySignals?.switches ?? null)),
+      recessedLights: safeMaxInt(...findings.map((f) => f.quantitySignals?.recessedLights ?? null)),
+      cabinets: safeMaxInt(...findings.map((f) => f.quantitySignals?.cabinets ?? null)),
+      appliances: safeMaxInt(...findings.map((f) => f.quantitySignals?.appliances ?? null)),
+      wallSqft,
+      ceilingSqft,
+      floorSqft,
+      trimLf,
+    },
+    exteriorSummary: {
+      isExterior,
+      stories: exteriorStories,
+      substrate,
+      access,
+      trimComplexity,
+      prepLevel,
+      garageDoors: safeMaxInt(...findings.map((f) => f.exteriorSignals?.garageDoors ?? null)),
+      entryDoors: safeMaxInt(...findings.map((f) => f.exteriorSignals?.entryDoors ?? null)),
+      windows: safeMaxInt(...findings.map((f) => f.exteriorSignals?.windows ?? null)),
+      bodyWallSqft: safeMaxInt(
+        ...findings.map((f) =>
+          midpointFromRange(
+            f.exteriorSignals?.bodyWallSqftMin,
+            f.exteriorSignals?.bodyWallSqftMax
+          )
+        )
+      ),
+    },
+    pricingDrivers: uniqStrings(pricingDrivers, 10),
+    missingViews: uniqStrings(missingViews, 8),
+    confidenceScore,
+  }
+}
 
 async function analyzeJobPhotos(args: {
   photos: PhotoInput[]
@@ -1234,113 +1609,143 @@ async function analyzeJobPhotos(args: {
   const safePhotos = sanitizePhotoInputs(args.photos)
   if (!safePhotos.length) return null
 
-  try {
+  const cleanStrings = (value: any, max = 10) =>
+    Array.isArray(value)
+      ? value
+          .filter((x: any) => typeof x === "string" && x.trim())
+          .map((x: string) => x.trim())
+          .slice(0, max)
+      : []
+
+  const safeNum = (value: any) =>
+    Number.isFinite(Number(value)) ? Number(value) : null
+
+  const safeInt = (value: any) => {
+    const n = Number(value)
+    return Number.isFinite(n) ? Math.round(n) : null
+  }
+
+  const safeConfidence = (
+    value: any
+  ): "low" | "medium" | "high" =>
+    value === "high" || value === "medium" ? value : "low"
+
+  const safeCeilingHeight = (
+    value: any
+  ): "standard" | "tall" | "vaulted" | null =>
+    value === "standard" || value === "tall" || value === "vaulted"
+      ? value
+      : null
+
+  const safeStories = (value: any): 1 | 2 | 3 | null =>
+    value === 1 || value === 2 || value === 3 ? value : null
+
+  const safeExteriorSubstrate = (
+    value: any
+  ): "stucco" | "siding" | "mixed" | "unknown" | null =>
+    value === "stucco" ||
+    value === "siding" ||
+    value === "mixed" ||
+    value === "unknown"
+      ? value
+      : null
+
+  const safeExteriorAccess = (
+    value: any
+  ): "low" | "medium" | "high" | null =>
+    value === "low" || value === "medium" || value === "high"
+      ? value
+      : null
+
+  const safeTrimComplexity = (
+    value: any
+  ): "low" | "medium" | "high" | null =>
+    value === "low" || value === "medium" || value === "high"
+      ? value
+      : null
+
+  const safePrepLevel = (
+    value: any
+  ): "light" | "medium" | "heavy" | null =>
+    value === "light" || value === "medium" || value === "heavy"
+      ? value
+      : null
+
+  async function analyzeSinglePhoto(photo: PhotoInput): Promise<PhotoFinding> {
     const content: any[] = [
       {
         type: "text",
         text: `
-You are analyzing contractor job site photos for estimating support.
+You are analyzing ONE contractor job site photo for estimating support.
 
 Return ONLY valid JSON with this exact shape:
 {
-  "summary": "<short summary>",
-  "observations": ["<observation 1>", "<observation 2>"],
-  "suggestedScopeNotes": ["<scope note 1>", "<scope note 2>"],
-
-  "detectedRoomTypes": ["bathroom", "bedroom"],
-  "detectedTrades": ["painting", "drywall"],
-  "detectedMaterials": ["painted drywall", "tile", "baseboard", "stucco"],
-  "detectedConditions": ["light wall damage", "occupied space", "minor exterior fading"],
-  "detectedFixtures": ["vanity", "toilet", "recessed lights", "garage door"],
-  "detectedAccessIssues": ["furniture in room", "tight working area", "narrow side yard"],
-  "detectedDemoNeeds": ["finish removal", "surface prep"],
-
+  "areaType": "exterior_front | exterior_rear | exterior_side | interior_room | bathroom | kitchen | hallway | ceiling | floor | detail | unknown",
+  "detectedRoomType": "bathroom | kitchen | hallway | bedroom | living room | exterior | unknown | null",
+  "detectedTrade": "painting | drywall | flooring | carpentry | plumbing | electrical | general renovation | null",
+  "detectedMaterials": ["..."],
+  "detectedConditions": ["..."],
+  "detectedFixtures": ["..."],
+  "detectedAccessIssues": ["..."],
+  "detectedDemoNeeds": ["..."],
+  "complexityFlags": ["..."],
   "quantitySignals": {
-    "doors": 1,
-    "windows": 2,
-    "vanities": 1,
-    "toilets": 1,
-    "sinks": 1,
-    "outlets": 4,
-    "switches": 2,
-    "recessedLights": 4,
-    "cabinets": 10,
-    "appliances": 4,
-    "ceilingHeightCategory": "standard",
-    "estimatedWallSqftMin": 250,
-    "estimatedWallSqftMax": 340,
-    "estimatedCeilingSqftMin": 90,
-    "estimatedCeilingSqftMax": 120,
-    "estimatedFloorSqftMin": 90,
-    "estimatedFloorSqftMax": 120,
-    "estimatedTrimLfMin": 40,
-    "estimatedTrimLfMax": 70
+    "doors": null,
+    "windows": null,
+    "vanities": null,
+    "toilets": null,
+    "sinks": null,
+    "outlets": null,
+    "switches": null,
+    "recessedLights": null,
+    "cabinets": null,
+    "appliances": null,
+    "ceilingHeightCategory": null,
+    "estimatedWallSqftMin": null,
+    "estimatedWallSqftMax": null,
+    "estimatedCeilingSqftMin": null,
+    "estimatedCeilingSqftMax": null,
+    "estimatedFloorSqftMin": null,
+    "estimatedFloorSqftMax": null,
+    "estimatedTrimLfMin": null,
+    "estimatedTrimLfMax": null
   },
-
   "exteriorSignals": {
-    "isExterior": true,
-    "stories": 2,
-    "substrate": "stucco",
-    "access": "medium",
-    "trimComplexity": "medium",
-    "prepLevel": "medium",
-    "garageDoors": 1,
-    "entryDoors": 1,
-    "windows": 8,
-    "bodyWallSqftMin": 2100,
-    "bodyWallSqftMax": 2500
+    "isExterior": null,
+    "stories": null,
+    "substrate": null,
+    "access": null,
+    "trimComplexity": null,
+    "prepLevel": null,
+    "garageDoors": null,
+    "entryDoors": null,
+    "windows": null,
+    "bodyWallSqftMin": null,
+    "bodyWallSqftMax": null
   },
-
-  "tradeSignals": {
-    "flooringType": ["lvp", "tile"],
-    "electricalScope": ["devices", "fixtures", "recessed lights"],
-    "plumbingScope": ["vanity", "toilet", "faucet", "shower trim"],
-    "drywallScope": ["patching", "texture repair"],
-    "carpentryScope": ["baseboard", "door casing", "cabinet install"],
-    "remodelScope": ["bath remodel", "kitchen remodel", "multi-trade coordination"]
-  },
-
-  "scopeCompletenessFlags": [
-    "photos suggest ceiling work may exist",
-    "visible trim/baseboards may require inclusion",
-    "bathroom fixture protection likely needed"
-  ],
-
-  "confidence": "medium"
+  "scopeCompletenessFlags": ["..."],
+  "reasoning": ["..."],
+  "confidence": "low | medium | high"
 }
 
 Rules:
-- Be practical and contractor-focused.
-- Only describe what is reasonably visible.
-- Do not identify people.
+- Analyze ONLY this one photo.
+- Be conservative.
 - Do not invent hidden conditions.
-- Quantity signals must be conservative estimates only.
-- Use null or omit when uncertain.
-- Use short strings.
+- Use the user metadata heavily: roomTag, shotType, note, reference.
+- A custom reference is a scale clue, not a guarantee.
+- Use null instead of guessing when uncertain.
+- Use short contractor-style phrases.
 - No markdown.
 - No extra text.
 
-Priorities:
-- identify room type or exterior elevation context
-- identify visible materials and finishes
-- identify visible condition/prep issues
-- identify access difficulty
-- identify obvious fixtures/devices
-- estimate rough quantity ranges only when reasonably inferable
-- flag likely missing scope items visible in photos
-- when exterior photos are shown, estimate exterior-specific painting facts conservatively
+Global scope:
+${args.scopeText}
 
-Trade: ${args.trade}
-Scope text: ${args.scopeText}
-        `.trim(),
-      },
-    ]
+Primary trade:
+${args.trade}
 
-    for (const [index, photo] of safePhotos.entries()) {
-      content.push({
-        type: "text",
-        text: `
-PHOTO ${index + 1} METADATA
+Photo metadata:
 - name: ${photo.name || "photo"}
 - roomTag: ${photo.roomTag || "unknown"}
 - shotType: ${photo.shotType || "overview"}
@@ -1349,19 +1754,18 @@ PHOTO ${index + 1} METADATA
 - referenceLabel: ${photo.reference?.label || "none"}
 - referenceRealWidthIn: ${photo.reference?.realWidthIn ?? "unknown"}
         `.trim(),
-      })
-
-      content.push({
+      },
+      {
         type: "image_url",
         image_url: {
           url: photo.dataUrl,
         },
-      })
-    }
+      },
+    ]
 
     const resp = await openai.chat.completions.create({
       model: PHOTO_ANALYSIS_MODEL,
-      temperature: 0.15,
+      temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [
         {
@@ -1372,148 +1776,206 @@ PHOTO ${index + 1} METADATA
     })
 
     const raw = resp.choices[0]?.message?.content?.trim()
-    if (!raw) return null
+    const parsed = raw ? JSON.parse(raw) : {}
 
-    const parsed = JSON.parse(raw)
+    const q = parsed?.quantitySignals ?? {}
+    const ex = parsed?.exteriorSignals ?? {}
 
-    const cleanStrings = (value: any, max = 10) =>
-      Array.isArray(value)
-        ? value
-            .filter((x: any) => typeof x === "string" && x.trim())
-            .map((x: string) => x.trim())
-            .slice(0, max)
-        : []
+    return {
+      photoName: photo.name || "photo",
+      roomTag: photo.roomTag || "",
+      shotType: photo.shotType || "overview",
+      areaType:
+        parsed?.areaType === "exterior_front" ||
+        parsed?.areaType === "exterior_rear" ||
+        parsed?.areaType === "exterior_side" ||
+        parsed?.areaType === "interior_room" ||
+        parsed?.areaType === "bathroom" ||
+        parsed?.areaType === "kitchen" ||
+        parsed?.areaType === "hallway" ||
+        parsed?.areaType === "ceiling" ||
+        parsed?.areaType === "floor" ||
+        parsed?.areaType === "detail"
+          ? parsed.areaType
+          : "unknown",
+      detectedRoomType:
+        typeof parsed?.detectedRoomType === "string" && parsed.detectedRoomType.trim()
+          ? parsed.detectedRoomType.trim()
+          : null,
+      detectedTrade:
+        typeof parsed?.detectedTrade === "string" && parsed.detectedTrade.trim()
+          ? parsed.detectedTrade.trim()
+          : null,
+      detectedMaterials: cleanStrings(parsed?.detectedMaterials, 10),
+      detectedConditions: cleanStrings(parsed?.detectedConditions, 10),
+      detectedFixtures: cleanStrings(parsed?.detectedFixtures, 10),
+      detectedAccessIssues: cleanStrings(parsed?.detectedAccessIssues, 8),
+      detectedDemoNeeds: cleanStrings(parsed?.detectedDemoNeeds, 8),
+      complexityFlags: cleanStrings(parsed?.complexityFlags, 8),
+      quantitySignals: {
+        doors: safeInt(q?.doors),
+        windows: safeInt(q?.windows),
+        vanities: safeInt(q?.vanities),
+        toilets: safeInt(q?.toilets),
+        sinks: safeInt(q?.sinks),
+        outlets: safeInt(q?.outlets),
+        switches: safeInt(q?.switches),
+        recessedLights: safeInt(q?.recessedLights),
+        cabinets: safeInt(q?.cabinets),
+        appliances: safeInt(q?.appliances),
+        ceilingHeightCategory: safeCeilingHeight(q?.ceilingHeightCategory),
+        estimatedWallSqftMin: safeNum(q?.estimatedWallSqftMin),
+        estimatedWallSqftMax: safeNum(q?.estimatedWallSqftMax),
+        estimatedCeilingSqftMin: safeNum(q?.estimatedCeilingSqftMin),
+        estimatedCeilingSqftMax: safeNum(q?.estimatedCeilingSqftMax),
+        estimatedFloorSqftMin: safeNum(q?.estimatedFloorSqftMin),
+        estimatedFloorSqftMax: safeNum(q?.estimatedFloorSqftMax),
+        estimatedTrimLfMin: safeNum(q?.estimatedTrimLfMin),
+        estimatedTrimLfMax: safeNum(q?.estimatedTrimLfMax),
+      },
+      exteriorSignals: {
+        isExterior: typeof ex?.isExterior === "boolean" ? ex.isExterior : null,
+        stories: safeStories(safeInt(ex?.stories)),
+        substrate: safeExteriorSubstrate(ex?.substrate),
+        access: safeExteriorAccess(ex?.access),
+        trimComplexity: safeTrimComplexity(ex?.trimComplexity),
+        prepLevel: safePrepLevel(ex?.prepLevel),
+        garageDoors: safeInt(ex?.garageDoors),
+        entryDoors: safeInt(ex?.entryDoors),
+        windows: safeInt(ex?.windows),
+        bodyWallSqftMin: safeNum(ex?.bodyWallSqftMin),
+        bodyWallSqftMax: safeNum(ex?.bodyWallSqftMax),
+      },
+      scopeCompletenessFlags: cleanStrings(parsed?.scopeCompletenessFlags, 8),
+      reasoning: cleanStrings(parsed?.reasoning, 8),
+      confidence: safeConfidence(parsed?.confidence),
+    }
+  }
 
-    const safeNum = (value: any) =>
-      Number.isFinite(Number(value)) ? Number(value) : null
+  try {
+    const perPhoto = await Promise.all(safePhotos.map((photo) => analyzeSinglePhoto(photo)))
+    const jobSummary = mergePhotoFindings(perPhoto)
 
-    const safeInt = (value: any) => {
-      const n = Number(value)
-      return Number.isFinite(n) ? Math.round(n) : null
+    const summaryTextParts: string[] = []
+
+    if (jobSummary?.probableArea && jobSummary.probableArea !== "unknown") {
+      summaryTextParts.push(`Probable job area: ${jobSummary.probableArea.replaceAll("_", " ")}`)
     }
 
-    const safeBool = (value: any) =>
-      typeof value === "boolean" ? value : null
-
-    const safeConfidence = (
-      value: any
-    ): "low" | "medium" | "high" | undefined =>
-      value === "low" || value === "medium" || value === "high"
-        ? value
-        : undefined
-
-    const safeCeilingHeight = (
-      value: any
-    ): "standard" | "tall" | "vaulted" | null =>
-      value === "standard" || value === "tall" || value === "vaulted"
-        ? value
-        : null
-
-    const safeStories = (value: any): 1 | 2 | 3 | null =>
-      value === 1 || value === 2 || value === 3 ? value : null
-
-    const safeExteriorSubstrate = (
-      value: any
-    ): "stucco" | "siding" | "mixed" | "unknown" | null =>
-      value === "stucco" ||
-      value === "siding" ||
-      value === "mixed" ||
-      value === "unknown"
-        ? value
-        : null
-
-    const safeExteriorAccess = (
-      value: any
-    ): "low" | "medium" | "high" | null =>
-      value === "low" || value === "medium" || value === "high"
-        ? value
-        : null
-
-    const safeTrimComplexity = (
-      value: any
-    ): "low" | "medium" | "high" | null =>
-      value === "low" || value === "medium" || value === "high"
-        ? value
-        : null
-
-    const safePrepLevel = (
-      value: any
-    ): "light" | "medium" | "heavy" | null =>
-      value === "light" || value === "medium" || value === "heavy"
-        ? value
-        : null
-
-    const quantitySignalsRaw = parsed?.quantitySignals ?? {}
-    const exteriorSignalsRaw = parsed?.exteriorSignals ?? {}
-    const tradeSignalsRaw = parsed?.tradeSignals ?? {}
-
-    const quantitySignals = {
-      doors: safeInt(quantitySignalsRaw?.doors),
-      windows: safeInt(quantitySignalsRaw?.windows),
-      vanities: safeInt(quantitySignalsRaw?.vanities),
-      toilets: safeInt(quantitySignalsRaw?.toilets),
-      sinks: safeInt(quantitySignalsRaw?.sinks),
-      outlets: safeInt(quantitySignalsRaw?.outlets),
-      switches: safeInt(quantitySignalsRaw?.switches),
-      recessedLights: safeInt(quantitySignalsRaw?.recessedLights),
-      cabinets: safeInt(quantitySignalsRaw?.cabinets),
-      appliances: safeInt(quantitySignalsRaw?.appliances),
-      ceilingHeightCategory: safeCeilingHeight(
-        quantitySignalsRaw?.ceilingHeightCategory
-      ),
-      estimatedWallSqftMin: safeNum(quantitySignalsRaw?.estimatedWallSqftMin),
-      estimatedWallSqftMax: safeNum(quantitySignalsRaw?.estimatedWallSqftMax),
-      estimatedCeilingSqftMin: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMin),
-      estimatedCeilingSqftMax: safeNum(quantitySignalsRaw?.estimatedCeilingSqftMax),
-      estimatedFloorSqftMin: safeNum(quantitySignalsRaw?.estimatedFloorSqftMin),
-      estimatedFloorSqftMax: safeNum(quantitySignalsRaw?.estimatedFloorSqftMax),
-      estimatedTrimLfMin: safeNum(quantitySignalsRaw?.estimatedTrimLfMin),
-      estimatedTrimLfMax: safeNum(quantitySignalsRaw?.estimatedTrimLfMax),
+    if (jobSummary?.detectedTrades?.length) {
+      summaryTextParts.push(`Visible trades/signals: ${jobSummary.detectedTrades.join(", ")}`)
     }
 
-    const exteriorSignals = {
-      isExterior: safeBool(exteriorSignalsRaw?.isExterior),
-      stories: safeStories(safeInt(exteriorSignalsRaw?.stories)),
-      substrate: safeExteriorSubstrate(exteriorSignalsRaw?.substrate),
-      access: safeExteriorAccess(exteriorSignalsRaw?.access),
-      trimComplexity: safeTrimComplexity(exteriorSignalsRaw?.trimComplexity),
-      prepLevel: safePrepLevel(exteriorSignalsRaw?.prepLevel),
-      garageDoors: safeInt(exteriorSignalsRaw?.garageDoors),
-      entryDoors: safeInt(exteriorSignalsRaw?.entryDoors),
-      windows: safeInt(exteriorSignalsRaw?.windows),
-      bodyWallSqftMin: safeNum(exteriorSignalsRaw?.bodyWallSqftMin),
-      bodyWallSqftMax: safeNum(exteriorSignalsRaw?.bodyWallSqftMax),
+    if (jobSummary?.detectedConditions?.length) {
+      summaryTextParts.push(`Visible conditions: ${jobSummary.detectedConditions.slice(0, 4).join(", ")}`)
     }
 
-    const tradeSignals = {
-      flooringType: cleanStrings(tradeSignalsRaw?.flooringType, 6),
-      electricalScope: cleanStrings(tradeSignalsRaw?.electricalScope, 6),
-      plumbingScope: cleanStrings(tradeSignalsRaw?.plumbingScope, 6),
-      drywallScope: cleanStrings(tradeSignalsRaw?.drywallScope, 6),
-      carpentryScope: cleanStrings(tradeSignalsRaw?.carpentryScope, 6),
-      remodelScope: cleanStrings(tradeSignalsRaw?.remodelScope, 6),
+    if (jobSummary?.detectedAccessIssues?.length) {
+      summaryTextParts.push(`Access/setup issues: ${jobSummary.detectedAccessIssues.slice(0, 3).join(", ")}`)
+    }
+
+    if (jobSummary?.probableArea === "exterior_house" && jobSummary.exteriorSummary.isExterior) {
+      const ex = jobSummary.exteriorSummary
+      summaryTextParts.push(
+        `Exterior signals: ${[
+          ex.stories ? `${ex.stories}-story` : null,
+          ex.substrate ? ex.substrate : null,
+          ex.access ? `access ${ex.access}` : null,
+          ex.prepLevel ? `prep ${ex.prepLevel}` : null,
+        ]
+          .filter(Boolean)
+          .join(", ")}`
+      )
     }
 
     return {
-      summary:
-        typeof parsed?.summary === "string" ? parsed.summary.trim() : undefined,
-      observations: cleanStrings(parsed?.observations, 8),
-      suggestedScopeNotes: cleanStrings(parsed?.suggestedScopeNotes, 8),
+      summary: summaryTextParts.join(". "),
+      observations: uniqStrings(perPhoto.flatMap((p) => p.reasoning || []), 10),
+      suggestedScopeNotes: uniqStrings(
+        [
+          ...(jobSummary?.pricingDrivers || []),
+          ...(jobSummary?.detectedConditions?.length
+            ? ["Include visible prep/repair conditions where applicable."]
+            : []),
+          ...(jobSummary?.detectedAccessIssues?.length
+            ? ["Include masking, protection, and access/setup allowances."]
+            : []),
+          ...(jobSummary?.probableArea === "exterior_house"
+            ? ["Include exterior masking, elevation access, and visible prep conditions."]
+            : []),
+        ],
+        10
+      ),
 
-      detectedRoomTypes: cleanStrings(parsed?.detectedRoomTypes, 6),
-      detectedTrades: cleanStrings(parsed?.detectedTrades, 8),
-      detectedMaterials: cleanStrings(parsed?.detectedMaterials, 12),
-      detectedConditions: cleanStrings(parsed?.detectedConditions, 12),
-      detectedFixtures: cleanStrings(parsed?.detectedFixtures, 12),
-      detectedAccessIssues: cleanStrings(parsed?.detectedAccessIssues, 8),
-      detectedDemoNeeds: cleanStrings(parsed?.detectedDemoNeeds, 8),
+      detectedRoomTypes: jobSummary?.detectedRoomTypes || [],
+      detectedTrades: jobSummary?.detectedTrades || [],
+      detectedMaterials: jobSummary?.detectedMaterials || [],
+      detectedConditions: jobSummary?.detectedConditions || [],
+      detectedFixtures: jobSummary?.detectedFixtures || [],
+      detectedAccessIssues: jobSummary?.detectedAccessIssues || [],
+      detectedDemoNeeds: jobSummary?.detectedDemoNeeds || [],
 
-      quantitySignals,
-      exteriorSignals,
-      tradeSignals,
+      quantitySignals: {
+        doors: jobSummary?.mergedQuantities.doors ?? null,
+        windows: jobSummary?.mergedQuantities.windows ?? null,
+        vanities: jobSummary?.mergedQuantities.vanities ?? null,
+        toilets: jobSummary?.mergedQuantities.toilets ?? null,
+        sinks: jobSummary?.mergedQuantities.sinks ?? null,
+        outlets: jobSummary?.mergedQuantities.outlets ?? null,
+        switches: jobSummary?.mergedQuantities.switches ?? null,
+        recessedLights: jobSummary?.mergedQuantities.recessedLights ?? null,
+        cabinets: jobSummary?.mergedQuantities.cabinets ?? null,
+        appliances: jobSummary?.mergedQuantities.appliances ?? null,
+        ceilingHeightCategory: null,
+        estimatedWallSqftMin: jobSummary?.mergedQuantities.wallSqft ?? null,
+        estimatedWallSqftMax: jobSummary?.mergedQuantities.wallSqft ?? null,
+        estimatedCeilingSqftMin: jobSummary?.mergedQuantities.ceilingSqft ?? null,
+        estimatedCeilingSqftMax: jobSummary?.mergedQuantities.ceilingSqft ?? null,
+        estimatedFloorSqftMin: jobSummary?.mergedQuantities.floorSqft ?? null,
+        estimatedFloorSqftMax: jobSummary?.mergedQuantities.floorSqft ?? null,
+        estimatedTrimLfMin: jobSummary?.mergedQuantities.trimLf ?? null,
+        estimatedTrimLfMax: jobSummary?.mergedQuantities.trimLf ?? null,
+      },
 
-      scopeCompletenessFlags: cleanStrings(parsed?.scopeCompletenessFlags, 8),
-      confidence: safeConfidence(parsed?.confidence),
+      exteriorSignals: {
+        isExterior: jobSummary?.exteriorSummary.isExterior ?? null,
+        stories: jobSummary?.exteriorSummary.stories ?? null,
+        substrate: jobSummary?.exteriorSummary.substrate ?? null,
+        access: jobSummary?.exteriorSummary.access ?? null,
+        trimComplexity: jobSummary?.exteriorSummary.trimComplexity ?? null,
+        prepLevel: jobSummary?.exteriorSummary.prepLevel ?? null,
+        garageDoors: jobSummary?.exteriorSummary.garageDoors ?? null,
+        entryDoors: jobSummary?.exteriorSummary.entryDoors ?? null,
+        windows: jobSummary?.exteriorSummary.windows ?? null,
+        bodyWallSqftMin: jobSummary?.exteriorSummary.bodyWallSqft ?? null,
+        bodyWallSqftMax: jobSummary?.exteriorSummary.bodyWallSqft ?? null,
+      },
+
+      tradeSignals: {
+        flooringType: [],
+        electricalScope: [],
+        plumbingScope: [],
+        drywallScope: [],
+        carpentryScope: [],
+        remodelScope: [],
+      },
+
+      scopeCompletenessFlags: uniqStrings(
+        [
+          ...perPhoto.flatMap((p) => p.scopeCompletenessFlags || []),
+          ...(jobSummary?.missingViews || []),
+        ],
+        10
+      ),
+      confidence:
+        (jobSummary?.confidenceScore ?? 0) >= 80
+          ? "high"
+          : (jobSummary?.confidenceScore ?? 0) >= 55
+          ? "medium"
+          : "low",
+
+      perPhoto,
+      jobSummary,
     }
   } catch (err) {
     console.warn("Photo analysis failed:", err)
@@ -1621,14 +2083,18 @@ function derivePhotoPricingImpact(args: {
   trade: string
   scopeText: string
 }): PhotoPricingImpact {
+  const job = args.analysis?.jobSummary
+
   const text = [
     args.analysis?.summary || "",
     ...(args.analysis?.observations || []),
     ...(args.analysis?.suggestedScopeNotes || []),
-    ...(args.analysis?.detectedConditions || []),
-    ...(args.analysis?.detectedAccessIssues || []),
-    ...(args.analysis?.detectedDemoNeeds || []),
-    ...(args.analysis?.scopeCompletenessFlags || []),
+    ...(job?.detectedConditions || []),
+    ...(job?.detectedAccessIssues || []),
+    ...(job?.detectedDemoNeeds || []),
+    ...(job?.complexityFlags || []),
+    ...(job?.pricingDrivers || []),
+    ...(job?.missingViews || []),
   ]
     .join(" ")
     .toLowerCase()
@@ -1651,49 +2117,57 @@ function derivePhotoPricingImpact(args: {
     }
   }
 
-  if (/\b(peeling|flaking|damaged|patch|repair|crack|water damage|stain|surface damage)\b/.test(text)) {
-    laborDelta += 175
-    materialsDelta += 50
-    confidenceBoost += 4
-    reasons.push("Visible surface prep or repair conditions")
-  }
-
-  if (/\b(masking|protection|occupied|furnished|tight working area|tight access|limited access|obstruction|clutter)\b/.test(text)) {
-    laborDelta += 125
-    subsDelta += 75
-    extraCrewDays += 0.5
-    confidenceBoost += 3
-    reasons.push("Access or protection complexity visible")
-  }
-
-  if (/\b(debris|demo|demolition|tear-out|haul away|disposal|finish removal)\b/.test(text)) {
-    subsDelta += 150
-    extraCrewDays += 0.5
-    confidenceBoost += 3
-    reasons.push("Demolition or disposal handling visible")
-  }
-
-  if (/\b(high ceiling|vaulted|tall ceiling|ladder work|multi-story)\b/.test(text)) {
+  if (/\b(peeling|flaking|damaged|patch|repair|crack|water damage|stain|surface damage|failed caulk)\b/.test(text)) {
     laborDelta += 200
+    materialsDelta += 60
+    confidenceBoost += 4
+    reasons.push("Visible prep and surface correction conditions")
+  }
+
+  if (/\b(masking|protection|occupied|furnished|tight working area|tight access|limited access|obstruction|clutter|landscaping|narrow side yard)\b/.test(text)) {
+    laborDelta += 150
     subsDelta += 100
     extraCrewDays += 0.5
     confidenceBoost += 3
-    reasons.push("Height or access complexity visible")
+    reasons.push("Visible access and protection complexity")
   }
 
-  if (/\b(tile|waterproof|membrane|wet area|shower pan|curb|wet-area)\b/.test(text)) {
+  if (/\b(debris|demo|demolition|tear-out|haul away|disposal|finish removal)\b/.test(text)) {
+    subsDelta += 175
+    extraCrewDays += 0.5
+    confidenceBoost += 3
+    reasons.push("Visible demo or disposal handling")
+  }
+
+  if (job?.exteriorSummary?.isExterior) {
+    laborDelta += 150
+    reasons.push("Exterior setup and masking conditions")
+  }
+
+  if ((job?.exteriorSummary?.stories ?? 0) >= 2) {
     laborDelta += 225
-    materialsDelta += 90
-    extraCrewDays += 1
-    confidenceBoost += 4
-    reasons.push("Wet-area or tile finish complexity visible")
+    subsDelta += 100
+    extraCrewDays += 0.5
+    reasons.push("Two-story elevation access")
   }
 
-  if (args.analysis?.confidence === "high") {
-    confidenceBoost += 2
-  } else if (args.analysis?.confidence === "medium") {
-    confidenceBoost += 1
+  if ((job?.exteriorSummary?.windows ?? 0) >= 8) {
+    laborDelta += 100
+    reasons.push("Higher exterior window count increases cut-in and masking time")
   }
+
+  if (job?.exteriorSummary?.prepLevel === "heavy") {
+    laborDelta += 250
+    materialsDelta += 80
+    reasons.push("Heavy visible prep conditions")
+  } else if (job?.exteriorSummary?.prepLevel === "medium") {
+    laborDelta += 125
+    materialsDelta += 40
+    reasons.push("Moderate visible prep conditions")
+  }
+
+  if (job?.confidenceScore && job.confidenceScore >= 80) confidenceBoost += 2
+  else if (job?.confidenceScore && job.confidenceScore >= 55) confidenceBoost += 1
 
   return {
     laborDelta: Math.round(laborDelta),
@@ -1715,138 +2189,108 @@ function buildPhotoScopeAssist(args: {
 } {
   const scope = (args.scopeText || "").toLowerCase()
   const photo = args.photoAnalysis
+  const job = photo?.jobSummary
 
   const missingScopeFlags: string[] = []
   const suggestedAdditions: string[] = []
 
-  if (!photo) {
+  if (!photo || !job) {
     return { missingScopeFlags, suggestedAdditions }
   }
-
-  const materials = (photo.detectedMaterials || []).join(" ").toLowerCase()
-  const fixtures = (photo.detectedFixtures || []).join(" ").toLowerCase()
-  const flags = photo.scopeCompletenessFlags || []
 
   const mentionsCeiling = /\b(ceiling|ceilings)\b/.test(scope)
   const mentionsTrim = /\b(trim|baseboard|baseboards|casing|casings)\b/.test(scope)
   const mentionsProtection = /\b(protect|protection|mask|masking|cover)\b/.test(scope)
   const mentionsDemo = /\b(demo|demolition|remove|tear\s*out)\b/.test(scope)
+  const mentionsExteriorPrep = /\b(scrape|sand|prep|caulk|patch|repair)\b/.test(scope)
 
   if (
-    (flags.some((x) => /ceiling/i.test(x)) || /ceiling/.test(materials)) &&
-    !mentionsCeiling
+    (job.mergedQuantities.ceilingSqft || 0) > 0 &&
+    job.detectedRoomTypes.some((x) => /bathroom|kitchen|bedroom|living|hall/i.test(x)) &&
+    !mentionsCeiling &&
+    args.trade === "painting"
   ) {
     missingScopeFlags.push("Photos suggest ceiling work may exist but scope does not mention it.")
     suggestedAdditions.push("Add ceiling prep/paint if applicable.")
   }
 
-  if (
-    (flags.some((x) => /\b(trim|baseboard)\b/i.test(x)) || /\b(baseboard|trim)\b/.test(materials)) &&
-    !mentionsTrim
-  ) {
-    missingScopeFlags.push("Visible trim or baseboards may not be included in the written scope.")
-    suggestedAdditions.push("Add trim/baseboard scope if applicable.")
+  if ((job.mergedQuantities.trimLf || 0) > 0 && !mentionsTrim) {
+    missingScopeFlags.push("Visible trim/baseboards may not be included in the written scope.")
+    suggestedAdditions.push("Add trim/baseboard/casing scope if applicable.")
   }
 
-  if (
-    (photo.detectedAccessIssues || []).length > 0 &&
-    !mentionsProtection
-  ) {
+  if (job.detectedAccessIssues.length > 0 && !mentionsProtection) {
     missingScopeFlags.push("Photos show access/protection conditions not clearly addressed in scope.")
-    suggestedAdditions.push("Add masking, furniture protection, or access handling language.")
+    suggestedAdditions.push("Add masking, furniture protection, landscaping protection, or access handling language.")
   }
 
-  if (
-    (photo.detectedDemoNeeds || []).length > 0 &&
-    !mentionsDemo
-  ) {
-    missingScopeFlags.push("Photos suggest demo or removal work may be needed.")
+  if (job.detectedDemoNeeds.length > 0 && !mentionsDemo) {
+    missingScopeFlags.push("Photos suggest demo/removal work may be needed.")
     suggestedAdditions.push("Add demolition/removal/disposal scope if applicable.")
   }
 
-  if (/\b(vanity|toilet|sink)\b/.test(fixtures) && args.trade === "painting") {
-    suggestedAdditions.push("Include fixture masking/protection around visible bathroom or kitchen fixtures.")
+  if (job.exteriorSummary.isExterior && !mentionsExteriorPrep && args.trade === "painting") {
+    suggestedAdditions.push("Include visible exterior prep such as scraping, sanding, patching, caulking, and masking where applicable.")
+  }
+
+  for (const flag of job.missingViews || []) {
+    missingScopeFlags.push(flag)
+  }
+
+  for (const driver of job.pricingDrivers || []) {
+    suggestedAdditions.push(driver)
   }
 
   return {
-    missingScopeFlags: Array.from(new Set(missingScopeFlags)).slice(0, 6),
-    suggestedAdditions: Array.from(new Set(suggestedAdditions)).slice(0, 6),
+    missingScopeFlags: Array.from(new Set(missingScopeFlags)).slice(0, 8),
+    suggestedAdditions: Array.from(new Set(suggestedAdditions)).slice(0, 8),
   }
 }
 
 function buildPhotoQuantityHints(photoAnalysis: PhotoAnalysis | null): string {
-  if (!photoAnalysis?.quantitySignals) return ""
+  const job = photoAnalysis?.jobSummary
+  if (!job) return ""
 
-  const q = photoAnalysis.quantitySignals
+  const q = job.mergedQuantities
   const lines: string[] = []
 
-  if (q.estimatedWallSqftMin || q.estimatedWallSqftMax) {
-    lines.push(
-      `Estimated wall area: ${q.estimatedWallSqftMin || "?"}–${q.estimatedWallSqftMax || "?"} sqft`
-    )
-  }
+  if (q.wallSqft) lines.push(`Estimated wall area from photos: ${q.wallSqft} sqft`)
+  if (q.ceilingSqft) lines.push(`Estimated ceiling area from photos: ${q.ceilingSqft} sqft`)
+  if (q.floorSqft) lines.push(`Estimated floor area from photos: ${q.floorSqft} sqft`)
+  if (q.trimLf) lines.push(`Estimated trim/base footage from photos: ${q.trimLf} LF`)
 
-  if (q.estimatedCeilingSqftMin || q.estimatedCeilingSqftMax) {
-    lines.push(
-      `Estimated ceiling area: ${q.estimatedCeilingSqftMin || "?"}–${q.estimatedCeilingSqftMax || "?"} sqft`
-    )
-  }
+  if (q.doors) lines.push(`Doors visible across photo set: ${q.doors}`)
+  if (q.windows) lines.push(`Windows visible across photo set: ${q.windows}`)
+  if (q.outlets) lines.push(`Outlets visible across photo set: ${q.outlets}`)
+  if (q.switches) lines.push(`Switches visible across photo set: ${q.switches}`)
+  if (q.recessedLights) lines.push(`Recessed lights visible across photo set: ${q.recessedLights}`)
+  if (q.vanities) lines.push(`Vanities visible across photo set: ${q.vanities}`)
+  if (q.toilets) lines.push(`Toilets visible across photo set: ${q.toilets}`)
+  if (q.sinks) lines.push(`Sinks visible across photo set: ${q.sinks}`)
+  if (q.cabinets) lines.push(`Cabinets visible across photo set: ${q.cabinets}`)
+  if (q.appliances) lines.push(`Appliances visible across photo set: ${q.appliances}`)
 
-  if (q.estimatedFloorSqftMin || q.estimatedFloorSqftMax) {
-    lines.push(
-      `Estimated floor area: ${q.estimatedFloorSqftMin || "?"}–${q.estimatedFloorSqftMax || "?"} sqft`
-    )
-  }
-
-  if (q.estimatedTrimLfMin || q.estimatedTrimLfMax) {
-    lines.push(
-      `Estimated trim/base footage: ${q.estimatedTrimLfMin || "?"}–${q.estimatedTrimLfMax || "?"} LF`
-    )
-  }
-
-  if (q.doors) lines.push(`Doors detected: ${q.doors}`)
-  if (q.windows) lines.push(`Windows detected: ${q.windows}`)
-  if (q.outlets) lines.push(`Outlets detected: ${q.outlets}`)
-  if (q.switches) lines.push(`Switches detected: ${q.switches}`)
-  if (q.recessedLights) lines.push(`Recessed lights detected: ${q.recessedLights}`)
-  if (q.vanities) lines.push(`Vanities detected: ${q.vanities}`)
-  if (q.toilets) lines.push(`Toilets detected: ${q.toilets}`)
-  if (q.sinks) lines.push(`Sinks detected: ${q.sinks}`)
-  if (q.cabinets) lines.push(`Cabinets detected: ${q.cabinets}`)
-  if (q.appliances) lines.push(`Appliances detected: ${q.appliances}`)
-  if (q.ceilingHeightCategory) {
-    lines.push(`Ceiling height category: ${q.ceilingHeightCategory}`)
-  }
-
-  if (lines.length === 0) return ""
-
-  return lines.map((line) => `- ${line}`).join("\n")
+  return lines.length ? lines.map((x) => `- ${x}`).join("\n") : ""
 }
 
 function buildExteriorPhotoHints(photoAnalysis: PhotoAnalysis | null): string {
-  const ex = photoAnalysis?.exteriorSignals
+  const ex = photoAnalysis?.jobSummary?.exteriorSummary
   if (!ex?.isExterior) return ""
 
   const lines: string[] = []
 
   lines.push("Exterior job detected from photos.")
-
   if (ex.stories) lines.push(`Stories: ${ex.stories}`)
-  if (ex.substrate) lines.push(`Exterior substrate: ${ex.substrate}`)
+  if (ex.substrate) lines.push(`Substrate: ${ex.substrate}`)
   if (ex.access) lines.push(`Access difficulty: ${ex.access}`)
   if (ex.trimComplexity) lines.push(`Trim complexity: ${ex.trimComplexity}`)
   if (ex.prepLevel) lines.push(`Prep level: ${ex.prepLevel}`)
   if (typeof ex.garageDoors === "number") lines.push(`Garage doors: ${ex.garageDoors}`)
   if (typeof ex.entryDoors === "number") lines.push(`Entry doors: ${ex.entryDoors}`)
-  if (typeof ex.windows === "number") lines.push(`Exterior windows: ${ex.windows}`)
+  if (typeof ex.windows === "number") lines.push(`Windows: ${ex.windows}`)
+  if (typeof ex.bodyWallSqft === "number") lines.push(`Estimated exterior body wall area: ${ex.bodyWallSqft} sqft`)
 
-  if (ex.bodyWallSqftMin || ex.bodyWallSqftMax) {
-    lines.push(
-      `Estimated exterior body wall area: ${ex.bodyWallSqftMin || "?"}–${ex.bodyWallSqftMax || "?"} sqft`
-    )
-  }
-
-  return lines.map((line) => `- ${line}`).join("\n")
+  return lines.map((x) => `- ${x}`).join("\n")
 }
 
 function midpoint(min?: number | null, max?: number | null): number | null {
@@ -1865,16 +2309,24 @@ function getPhotoEstimatedSqft(photoAnalysis: PhotoAnalysis | null): {
   ceilingSqft: number | null
   floorSqft: number | null
 } {
+  const job = photoAnalysis?.jobSummary
+  if (job) {
+    return {
+      wallSqft: job.mergedQuantities.wallSqft ?? null,
+      ceilingSqft: job.mergedQuantities.ceilingSqft ?? null,
+      floorSqft: job.mergedQuantities.floorSqft ?? null,
+    }
+  }
+
   const q = photoAnalysis?.quantitySignals
   const ex = photoAnalysis?.exteriorSignals
 
-  const wallFromInterior = midpoint(q?.estimatedWallSqftMin, q?.estimatedWallSqftMax)
-  const wallFromExterior = midpoint(ex?.bodyWallSqftMin, ex?.bodyWallSqftMax)
-
   return {
-    wallSqft: wallFromInterior ?? wallFromExterior,
-    ceilingSqft: midpoint(q?.estimatedCeilingSqftMin, q?.estimatedCeilingSqftMax),
-    floorSqft: midpoint(q?.estimatedFloorSqftMin, q?.estimatedFloorSqftMax),
+    wallSqft:
+      midpointFromRange(q?.estimatedWallSqftMin, q?.estimatedWallSqftMax) ??
+      midpointFromRange(ex?.bodyWallSqftMin, ex?.bodyWallSqftMax),
+    ceilingSqft: midpointFromRange(q?.estimatedCeilingSqftMin, q?.estimatedCeilingSqftMax),
+    floorSqft: midpointFromRange(q?.estimatedFloorSqftMin, q?.estimatedFloorSqftMax),
   }
 }
 
@@ -5550,11 +6002,9 @@ console.log("PG MULTI TRADE DET", {
 // Flooring deterministic engine (PriceGuard™)
 // -----------------------------
 const flooringDetMeasurements =
-  measurements?.totalSqft && Number(measurements.totalSqft) > 0
-    ? measurements
-    : quantityInputs.photoFloorSqft && quantityInputs.photoFloorSqft > 0
-      ? { ...(measurements || {}), totalSqft: quantityInputs.photoFloorSqft }
-      : measurements
+  quantityInputs.effectiveFloorSqft && quantityInputs.effectiveFloorSqft > 0
+    ? { ...(measurements || {}), totalSqft: quantityInputs.effectiveFloorSqft }
+    : measurements
 
 const flooringDet =
   trade === "flooring"
@@ -5617,11 +6067,9 @@ console.log("PG PLUMBING CONFLICT", {
 
     // Drywall deterministic engine (PriceGuard™)
 const drywallDetMeasurements =
-  measurements?.totalSqft && Number(measurements.totalSqft) > 0
-    ? measurements
-    : quantityInputs.photoWallSqft && quantityInputs.photoWallSqft > 0
-      ? { ...(measurements || {}), totalSqft: quantityInputs.photoWallSqft }
-      : measurements
+  quantityInputs.effectiveWallSqft && quantityInputs.effectiveWallSqft > 0
+    ? { ...(measurements || {}), totalSqft: quantityInputs.effectiveWallSqft }
+    : measurements
 
 const drywallDet =
   trade === "drywall"
@@ -5637,12 +6085,10 @@ const drywallDetPricing: Pricing | null =
     ? clampPricing(coercePricing(drywallDet.pricing))
     : null
 
-    const paintingDetMeasurements =
-  measurements?.totalSqft && Number(measurements.totalSqft) > 0
-    ? measurements
-    : quantityInputs.photoWallSqft && quantityInputs.photoWallSqft > 0
-      ? { ...(measurements || {}), totalSqft: quantityInputs.photoWallSqft }
-      : measurements
+const paintingDetMeasurements =
+  quantityInputs.effectivePaintSqft && quantityInputs.effectivePaintSqft > 0
+    ? { ...(measurements || {}), totalSqft: quantityInputs.effectivePaintSqft }
+    : measurements
 
 const paintingDet =
   trade === "painting"
@@ -6220,7 +6666,7 @@ const normalized: any = {
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
 // ✅ EstimateBasis enforcement (AI fallback quality)
-const parsedSqft = quantityInputs.effectivePaintSqft ?? parseSqft(scopeChange)
+const effectiveSqft = quantityInputs.effectivePaintSqft
 normalized.estimateBasis = syncEstimateBasisMath({
   pricing: normalized.pricing,
   basis: normalizeEstimateBasisUnits(
@@ -6228,7 +6674,7 @@ normalized.estimateBasis = syncEstimateBasisMath({
       trade,
       pricing: normalized.pricing,
       basis: normalized.estimateBasis,
-      parsed: { rooms, doors, sqft: parsedSqft },
+      parsed: { rooms, doors, sqft: effectiveSqft },
       complexity: complexityProfile,
     })
   ),
@@ -6239,7 +6685,7 @@ const aiBasis = (normalized.estimateBasis ?? null) as EstimateBasis | null
 const v = validateAiMath({
   pricing: normalized.pricing,
   basis: aiBasis,
-  parsedCounts: { rooms, doors, sqft: parsedSqft },
+  parsedCounts: { rooms, doors, sqft: effectiveSqft },
   complexity: complexityProfile,
   scopeText: scopeChange,
 })
@@ -6280,7 +6726,7 @@ normalized.estimateBasis = syncEstimateBasisMath({
       trade,
       pricing: normalized.pricing,
       basis: normalized.estimateBasis,
-      parsed: { rooms, doors, sqft: parsedSqft },
+      parsed: { rooms, doors, sqft: effectiveSqft },
       complexity: complexityProfile,
     })
   ),
@@ -6297,7 +6743,7 @@ normalized.estimateBasis = syncEstimateBasisMath({
   const v2 = validateAiMath({
   pricing: normalized.pricing,
   basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  parsedCounts: { rooms, doors, sqft: parsedSqft },
+  parsedCounts: { rooms, doors, sqft: effectiveSqft },
   complexity: complexityProfile,
   scopeText: scopeChange,
 })
@@ -6363,7 +6809,7 @@ normalized.estimateBasis = syncEstimateBasisMath({
 const v3 = validateAiMath({
   pricing: normalized.pricing,
   basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  parsedCounts: { rooms, doors, sqft: parsedSqft },
+  parsedCounts: { rooms, doors, sqft: effectiveSqft },
   complexity: complexityProfile,
   scopeText: scopeChange,
 })
@@ -7180,6 +7626,7 @@ const payload = {
   photoAnalysis,
   photoImpact,
   photoScopeAssist,
+  photoPacketScore,
   materialsList,
   areaScopeBreakdown,
   splitScopes,

@@ -2268,12 +2268,10 @@ const res = await fetch("/api/generate", {
     setPriceGuardVerified(nextVerified)
     setPriceGuard(data?.priceGuard ?? null)
 
+const rawDocumentType = String(data?.documentType ?? "").trim()
+
 const nextDocumentType: DocumentType =
-  data?.documentType === "Change Order" ||
-  data?.documentType === "Estimate" ||
-  data?.documentType === "Change Order / Estimate"
-    ? data.documentType
-    : "Estimate"
+  rawDocumentType === "Change Order" ? "Change Order" : "Estimate"
 
 const rawResultText = String(data.text || data.description || "").trim()
 const nextPricing = data.pricing ? data.pricing : pricing
@@ -2694,11 +2692,7 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
     jobId: String(x?.jobId ?? ""),
     createdAt: Number(x?.createdAt ?? Date.now()),
     documentType:
-  x?.documentType === "Change Order" ||
-  x?.documentType === "Estimate" ||
-  x?.documentType === "Change Order / Estimate"
-    ? x.documentType
-    : "Estimate",
+  x?.documentType === "Change Order" ? "Change Order" : "Estimate",
     jobDetails: {
       clientName: String(x?.jobDetails?.clientName ?? ""),
       jobName: String(x?.jobDetails?.jobName ?? ""),
