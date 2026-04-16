@@ -3849,7 +3849,7 @@ const pdfPriceGuardLabel =
   priceGuard?.status === "deterministic" ? "PriceGuard™ Deterministic" :
   "PriceGuard™"
 
-  const displayedDocumentType = getChangeOrderDisplayLabel(
+const displayedDocumentType = getChangeOrderDisplayLabel(
   documentType,
   changeOrderDetection
 )
@@ -3857,6 +3857,39 @@ const pdfPriceGuardLabel =
 const displayedChangeOrderNote = getChangeOrderClientNote(changeOrderDetection)
 
 const displayedScheduleImpactNote = getChangeOrderScheduleNote(changeOrderDetection)
+
+const hasPhotoStatus =
+  jobPhotos.length > 0 ||
+  !!photoAnalysis ||
+  !!photoScopeAssist
+
+const needsMeasurementStatus =
+  (!measureEnabled || totalSqft <= 0) &&
+  ((estimateConfidence?.score ?? 100) < 85 || jobPhotos.length > 0)
+
+const hasEstimateStatus =
+  !!displayedChangeOrderNote ||
+  !!displayedScheduleImpactNote ||
+  !!changeOrderDetection?.isChangeOrder ||
+  !!scopeSignals?.needsReturnVisit ||
+  hasPhotoStatus ||
+  needsMeasurementStatus
+
+const hasReviewInsights =
+  !!changeOrderSummary ||
+  !!explainChangesReport ||
+  estimateBreakdown.length > 0 ||
+  estimateAssumptions.length > 0 ||
+  !!estimateConfidence
+
+const hasAdvancedAnalysis =
+  !!photoAnalysis ||
+  !!photoScopeAssist ||
+  !!materialsList ||
+  !!areaScopeBreakdown ||
+  !!profitProtection ||
+  !!scopeXRay ||
+  hasReviewInsights
 
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
@@ -5105,6 +5138,632 @@ function ChangeOrderDetectorCard({
   )
 }
 
+function EstimateStatusCard({
+  displayedDocumentType,
+  displayedChangeOrderNote,
+  displayedScheduleImpactNote,
+  changeOrderDetection,
+  scopeSignals,
+  jobPhotosCount,
+  photoAnalysis,
+  photoScopeAssist,
+  measureEnabled,
+  totalSqft,
+  estimateConfidence,
+}: {
+  displayedDocumentType: string
+  displayedChangeOrderNote: string
+  displayedScheduleImpactNote: string
+  changeOrderDetection: ChangeOrderDetection | null
+  scopeSignals: ScopeSignals
+  jobPhotosCount: number
+  photoAnalysis: PhotoAnalysis
+  photoScopeAssist: PhotoScopeAssist
+  measureEnabled: boolean
+  totalSqft: number
+  estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
+}) {
+  const hasPhotos = jobPhotosCount > 0
+  const hasPhotoAssist = !!photoAnalysis || !!photoScopeAssist
+  const isPhotoOnly = hasPhotos && !hasPhotoAssist
+
+  const measurementsNeeded =
+    (!measureEnabled || totalSqft <= 0) &&
+    ((estimateConfidence?.score ?? 100) < 85 || hasPhotos)
+
+  const hasMeasurementSignal = measureEnabled && totalSqft > 0
+
+  const hasAnything =
+    !!displayedChangeOrderNote ||
+    !!displayedScheduleImpactNote ||
+    !!changeOrderDetection?.isChangeOrder ||
+    !!scopeSignals?.needsReturnVisit ||
+    isPhotoOnly ||
+    hasPhotoAssist ||
+    measurementsNeeded ||
+    hasMeasurementSignal
+
+  if (!hasAnything) return null
+
+  const modeLabel =
+    changeOrderDetection?.mode === "add"
+      ? "Added Work"
+      : changeOrderDetection?.mode === "deduct"
+      ? "Deductive / Credit"
+      : changeOrderDetection?.mode === "mixed"
+      ? "Mixed"
+      : null
+
+  const showInputSignals =
+    isPhotoOnly ||
+    hasPhotoAssist ||
+    measurementsNeeded ||
+    hasMeasurementSignal
+
+  return (
+    <div
+      style={{
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #dbeafe",
+        borderRadius: 14,
+        background: "#f8fbff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+            Estimate Status
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            What the engine decided about this document and schedule.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: "#fff",
+              border: "1px solid #dbeafe",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#1d4ed8",
+            }}
+          >
+            {displayedDocumentType}
+          </span>
+
+          {modeLabel && (
+            <span
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "#fff",
+                border: "1px solid #c7d2fe",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#4338ca",
+              }}
+            >
+              {modeLabel}
+            </span>
+          )}
+
+          {changeOrderDetection?.confidence && (
+            <span
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "#fff",
+                border: "1px solid #e5e7eb",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#374151",
+              }}
+            >
+              {changeOrderDetection.confidence.toUpperCase()} confidence
+            </span>
+          )}
+
+          {scopeSignals?.needsReturnVisit && (
+            <span
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "#fff7ed",
+                border: "1px solid #fdba74",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#9a3412",
+              }}
+            >
+              Multiple visits likely
+            </span>
+          )}
+        </div>
+      </div>
+
+      {showInputSignals && (
+  <div
+    style={{
+      marginTop: 12,
+      padding: 12,
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      background: "#fff",
+    }}
+  >
+    <div style={{ fontSize: 12, fontWeight: 800, color: "#4b5563", marginBottom: 8 }}>
+      Input Signals
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        gap: 8,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      {isPhotoOnly && (
+        <span
+          style={{
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: "#eff6ff",
+            border: "1px solid #93c5fd",
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#1d4ed8",
+          }}
+        >
+          Photo-only
+        </span>
+      )}
+
+      {hasPhotoAssist && (
+        <span
+          style={{
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: "#ecfeff",
+            border: "1px solid #67e8f9",
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#155e75",
+          }}
+        >
+          Photo-assisted
+        </span>
+      )}
+
+      {measurementsNeeded && (
+        <span
+          style={{
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: "#fff7ed",
+            border: "1px solid #fdba74",
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#9a3412",
+          }}
+        >
+          Measurements needed
+        </span>
+      )}
+
+      {hasMeasurementSignal && (
+        <span
+          style={{
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: "#ecfdf5",
+            border: "1px solid #86efac",
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#065f46",
+          }}
+        >
+          {Math.round(totalSqft)} sq ft added
+        </span>
+      )}
+    </div>
+  </div>
+)}
+
+      {(displayedChangeOrderNote ||
+        displayedScheduleImpactNote ||
+        scopeSignals?.reason) && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "#111827",
+          }}
+        >
+          {displayedChangeOrderNote && (
+            <div>
+              <strong>Classification:</strong> {displayedChangeOrderNote}
+            </div>
+          )}
+
+          {displayedScheduleImpactNote && (
+            <div style={{ marginTop: displayedChangeOrderNote ? 8 : 0 }}>
+              <strong>Schedule Impact:</strong> {displayedScheduleImpactNote}
+            </div>
+          )}
+
+          {scopeSignals?.needsReturnVisit && scopeSignals?.reason && (
+            <div
+              style={{
+                marginTop:
+                  displayedChangeOrderNote || displayedScheduleImpactNote ? 8 : 0,
+              }}
+            >
+              <strong>Visit Logic:</strong> {scopeSignals.reason}
+            </div>
+          )}
+        </div>
+      )}
+
+      {changeOrderDetection?.reasons?.length ? (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#4b5563" }}>
+            Engine signals
+          </div>
+
+          <ul style={{ marginTop: 6, paddingLeft: 18, lineHeight: 1.5 }}>
+            {changeOrderDetection.reasons.map((reason, i) => (
+              <li key={`estimate-status-reason-${i}`}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ReviewInsightsCard({
+  estimateConfidence,
+  changeOrderSummary,
+  explainChangesReport,
+  estimateBreakdown,
+  estimateAssumptions,
+}: {
+  estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
+  changeOrderSummary: ReturnType<typeof computeChangeOrderSummary> | null
+  explainChangesReport: ReturnType<typeof explainEstimateChanges> | null
+  estimateBreakdown: string[]
+  estimateAssumptions: string[]
+}) {
+  const hasAnything =
+    !!estimateConfidence ||
+    !!changeOrderSummary ||
+    !!explainChangesReport ||
+    estimateBreakdown.length > 0 ||
+    estimateAssumptions.length > 0
+
+  if (!hasAnything) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15 }}>Review & Insights</div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        Pricing logic, assumptions, confidence, and change impacts.
+      </div>
+
+      {estimateConfidence && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: `1px solid ${estimateConfidence.border}`,
+            borderRadius: 12,
+            background: estimateConfidence.bg,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontWeight: 900,
+                  fontSize: 14,
+                  color: estimateConfidence.color,
+                }}
+              >
+                Confidence / Review Badge
+              </div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                How reliable this estimate is based on the details provided.
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                borderRadius: 999,
+                background: "#fff",
+                border: `1px solid ${estimateConfidence.border}`,
+                color: estimateConfidence.color,
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              <span>{estimateConfidence.label}</span>
+              <span>{estimateConfidence.score}%</span>
+            </div>
+          </div>
+
+          {estimateConfidence.warnings.length > 0 && (
+            <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+              {estimateConfidence.warnings.map((item, i) => (
+                <li key={`confidence-warning-${i}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+
+          {estimateConfidence.reasons.length > 0 && (
+            <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+              {estimateConfidence.reasons.map((item, i) => (
+                <li key={`confidence-reason-${i}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {changeOrderSummary && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>
+            Smart Change Order Summary
+          </div>
+
+          <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
+            <div>
+              Original Estimate:{" "}
+              <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
+            </div>
+
+            {!changeOrderSummary.isOriginalEstimate && (
+              <div>
+                This Change Order:{" "}
+                <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
+              </div>
+            )}
+
+            <div>
+              Previous Contract Value:{" "}
+              <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
+            </div>
+
+            <div>
+              New Contract Value:{" "}
+              <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
+            </div>
+
+            <div>
+              Cost Change: <strong>{formatDelta(changeOrderSummary.costDelta)}</strong>
+            </div>
+
+            <div>
+              Crew-Day Change:{" "}
+              <strong>{formatSignedNumber(changeOrderSummary.crewDayDelta)}</strong>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {explainChangesReport && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Explain Changes</div>
+
+          {explainChangesReport.summary.length > 0 && (
+            <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+              {explainChangesReport.summary.map((item, i) => (
+                <li key={`summary-${i}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {estimateBreakdown.length > 0 && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Explain My Estimate</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {estimateBreakdown.map((item, i) => (
+              <li key={`estimate-breakdown-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {estimateAssumptions.length > 0 && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14 }}>
+            Assumptions & Review Notes
+          </div>
+
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {estimateAssumptions.map((item, i) => (
+              <li key={`estimate-assumption-${i}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AdvancedAnalysisSection({
+  photoAnalysis,
+  photoScopeAssist,
+  materialsList,
+  areaScopeBreakdown,
+  profitProtection,
+  scopeXRay,
+  estimateConfidence,
+  changeOrderSummary,
+  explainChangesReport,
+  estimateBreakdown,
+  estimateAssumptions,
+}: {
+  photoAnalysis: PhotoAnalysis
+  photoScopeAssist: PhotoScopeAssist
+  materialsList: MaterialsList
+  areaScopeBreakdown: AreaScopeBreakdown
+  profitProtection: ProfitProtection
+  scopeXRay: ScopeXRay
+  estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
+  changeOrderSummary: ReturnType<typeof computeChangeOrderSummary> | null
+  explainChangesReport: ReturnType<typeof explainEstimateChanges> | null
+  estimateBreakdown: string[]
+  estimateAssumptions: string[]
+}) {
+  const hasReviewInsights =
+    !!estimateConfidence ||
+    !!changeOrderSummary ||
+    !!explainChangesReport ||
+    estimateBreakdown.length > 0 ||
+    estimateAssumptions.length > 0
+
+  const hasAnything =
+    !!photoAnalysis ||
+    !!photoScopeAssist ||
+    !!materialsList ||
+    !!areaScopeBreakdown ||
+    !!profitProtection ||
+    !!scopeXRay ||
+    hasReviewInsights
+
+  if (!hasAnything) return null
+
+  return (
+    <details
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Advanced Analysis
+      </summary>
+
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+        Deep-dive diagnostics, scope logic, material planning, and estimator review tools.
+      </div>
+
+      {(photoAnalysis || photoScopeAssist) && (
+        <PhotoIntelligenceCard
+          photoAnalysis={photoAnalysis}
+          photoScopeAssist={photoScopeAssist}
+        />
+      )}
+
+      {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
+      {materialsList && <MaterialsListCard materialsList={materialsList} />}
+      {areaScopeBreakdown && (
+        <AreaScopeBreakdownCard areaScopeBreakdown={areaScopeBreakdown} />
+      )}
+      {profitProtection && (
+        <ProfitProtectionCard profitProtection={profitProtection} />
+      )}
+
+      <ReviewInsightsCard
+        estimateConfidence={estimateConfidence}
+        changeOrderSummary={changeOrderSummary}
+        explainChangesReport={explainChangesReport}
+        estimateBreakdown={estimateBreakdown}
+        estimateAssumptions={estimateAssumptions}
+      />
+    </details>
+  )
+}
+
   // -------------------------
   // UI
   // -------------------------
@@ -5399,800 +6058,216 @@ function ChangeOrderDetectorCard({
     }}
   >
     <h3 style={{ marginBottom: 8 }}>
-  Generated {displayedDocumentType}
-</h3>
+      Generated {displayedDocumentType}
+    </h3>
 
-<p
-  style={{
-    fontSize: 13,
-    color: "#666",
-    marginBottom: 12,
-  }}
->
-  Generated from the scope provided{jobPhotos.length > 0 ? " and uploaded photos" : ""}.
-</p>
+    <p
+      style={{
+        fontSize: 13,
+        color: "#666",
+        marginBottom: 12,
+      }}
+    >
+      Generated from the scope provided
+      {jobPhotos.length > 0 ? " and uploaded photos" : ""}.
+    </p>
 
-<div
-  style={{
-    marginBottom: 14,
-    padding: 14,
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    background: "#fff",
-  }}
->
-  <div
-    style={{
-      fontWeight: 900,
-      fontSize: 14,
-      marginBottom: 8,
-      color: "#111827",
-    }}
-  >
-    AI Scope Description
-  </div>
-
-  <div
-    style={{
-      whiteSpace: "pre-wrap",
-      lineHeight: 1.6,
-      fontSize: 14,
-      color: "#111",
-    }}
-  >
-    {result.text}
-  </div>
-</div>
-
-{(displayedChangeOrderNote || displayedScheduleImpactNote) && (
-  <div
-    style={{
-      marginBottom: 12,
-      padding: 12,
-      border: "1px solid #bfdbfe",
-      borderRadius: 12,
-      background: "#eff6ff",
-      color: "#1e3a8a",
-      fontSize: 13,
-      lineHeight: 1.5,
-    }}
-  >
-    {displayedChangeOrderNote && (
-      <div>
-        <strong>Classification:</strong> {displayedChangeOrderNote}
-      </div>
-    )}
-
-    {displayedScheduleImpactNote && (
-      <div style={{ marginTop: displayedChangeOrderNote ? 6 : 0 }}>
-        <strong>Schedule Impact:</strong> {displayedScheduleImpactNote}
-      </div>
-    )}
-  </div>
-)}
-
-<ChangeOrderDetectorCard detection={changeOrderDetection} />
-
-{(photoAnalysis || photoScopeAssist) && (
-  <PhotoIntelligenceCard
+    {hasEstimateStatus && (
+  <EstimateStatusCard
+    displayedDocumentType={displayedDocumentType}
+    displayedChangeOrderNote={displayedChangeOrderNote}
+    displayedScheduleImpactNote={displayedScheduleImpactNote}
+    changeOrderDetection={changeOrderDetection}
+    scopeSignals={scopeSignals}
+    jobPhotosCount={jobPhotos.length}
     photoAnalysis={photoAnalysis}
     photoScopeAssist={photoScopeAssist}
+    measureEnabled={measureEnabled}
+    totalSqft={totalSqft}
+    estimateConfidence={estimateConfidence}
   />
 )}
 
-{materialsList && <MaterialsListCard materialsList={materialsList} />}
-{areaScopeBreakdown && (
-  <AreaScopeBreakdownCard areaScopeBreakdown={areaScopeBreakdown} />
-)}
-{profitProtection && (
-  <ProfitProtectionCard profitProtection={profitProtection} />
-)}
-{scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
-
-{smartScopePreview && (
-  <div
-    style={{
-      marginTop: 12,
-      marginBottom: 14,
-      padding: 14,
-      border: "1px solid #c7d2fe",
-      borderRadius: 14,
-      background: "#eef2ff",
-    }}
-  >
-    <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
-      Smart Scope Assist
-    </div>
-
-    <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
-      Suggested additions based on uploaded photos and missing scope details.
-    </div>
-
-    <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
-      {smartScopePreview.suggestions.map((item, i) => (
-        <li key={`smart-scope-${i}`}>{item}</li>
-      ))}
-    </ul>
-
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-  <button
-  type="button"
-  onClick={regenerateWithSmartScope}
-  disabled={loading}
-  style={{
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "none",
-    background: loading ? "#a5b4fc" : "#312e81",
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: loading ? "not-allowed" : "pointer",
-    opacity: loading ? 0.8 : 1,
-  }}
->
-  {loading ? "Regenerating..." : "Regenerate with Suggestions"}
-</button>
-
-  <button
-  type="button"
-  onClick={applySmartScopePreview}
-  disabled={loading}
-  style={{
-    padding: "10px 14px",
-    borderRadius: 10,
-    border: "1px solid #c7d2fe",
-    background: "#fff",
-    color: "#312e81",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: loading ? "not-allowed" : "pointer",
-    opacity: loading ? 0.7 : 1,
-  }}
->
-  Apply to Scope Only
-</button>
-</div>
-  </div>
-)}
-
-{pricingMemory && (
-  <div
-    style={{
-      marginTop: 12,
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      background: "#fafafa",
-    }}
-  >
-    <div style={{ fontWeight: 700 }}>
-      Smart Pricing Insight
-    </div>
-
-    <div style={{ fontSize: 14, marginTop: 6 }}>
-      Based on {pricingMemory.jobCount} similar {pricingMemory.trade} jobs
-      you estimated before.
-    </div>
-
-    <div style={{ marginTop: 6 }}>
-      Typical range:{" "}
-      <b>
-        ${pricingMemory.minPrice.toLocaleString()} – ${pricingMemory.maxPrice.toLocaleString()}
-      </b>
-    </div>
-
-    <div style={{ marginTop: 4 }}>
-      Average: <b>${pricingMemory.avgPrice.toLocaleString()}</b>
-    </div>
-
-    {smartSuggestedPrice && (
-  <div
-    style={{
-      marginTop: 10,
-      padding: 10,
-      borderRadius: 10,
-      background: "#eff6ff",
-      border: "1px solid #93c5fd",
-      color: "#1e3a8a",
-      fontSize: 14,
-    }}
-  >
-    <div style={{ fontWeight: 700 }}>Suggested Price</div>
-
-    <div style={{ marginTop: 4 }}>
-      <b>${smartSuggestedPrice.toLocaleString()}</b>
-    </div>
-
-    {smartPricingReasons.length > 0 && (
-      <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
-        {smartPricingReasons.map((reason, i) => (
-          <li key={i}>{reason}</li>
-        ))}
-      </ul>
-    )}
-
-    <button
-      type="button"
-      onClick={applySuggestedPrice}
+    <div
       style={{
-        marginTop: 10,
-        padding: "8px 12px",
-        borderRadius: 8,
-        border: "none",
-        background: "#111827",
-        color: "#fff",
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
       }}
     >
-      Use Suggested Price
-    </button>
-
-    <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>
-      Adjusts markup automatically to match suggested price
-    </div>
-
-    {smartSuggestedStatus && (
       <div
         style={{
-          marginTop: 8,
-          display: "inline-block",
-          padding: "6px 10px",
-          borderRadius: 999,
-          background: smartSuggestedStatus.bg,
-          border: `1px solid ${smartSuggestedStatus.border}`,
-          color: smartSuggestedStatus.color,
-          fontSize: 12,
-          fontWeight: 700,
+          fontWeight: 900,
+          fontSize: 14,
+          marginBottom: 8,
+          color: "#111827",
         }}
       >
-        {smartSuggestedStatus.label}
+        AI Scope Description
       </div>
-    )}
-  </div>
-)}
-  </div>
-)}
 
-{minimumSafePrice && (
-  <div
-    style={{
-      marginTop: 10,
-      padding: 10,
-      borderRadius: 10,
-      background: "#fff7ed",
-      border: "1px solid #fdba74",
-      color: "#9a3412",
-      fontSize: 14,
-    }}
-  >
-    <div style={{ fontWeight: 700 }}>Minimum Safe Price</div>
-
-    <div style={{ marginTop: 4 }}>
-      <b>${minimumSafePrice.toLocaleString()}</b>
-    </div>
-
-    <div style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
-      Protects at least a 15% minimum margin
-      {taxEnabled ? " after tax" : ""}.
-    </div>
-
-    <button
-      type="button"
-      onClick={applyMinimumSafePrice}
-      style={{
-        marginTop: 10,
-        padding: "8px 12px",
-        borderRadius: 8,
-        border: "none",
-        background: "#7c2d12",
-        color: "#fff",
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
-      }}
-    >
-      Use Minimum Safe Price
-    </button>
-
-    {minimumSafeStatus && (
       <div
         style={{
-          marginTop: 8,
-          display: "inline-block",
-          padding: "6px 10px",
-          borderRadius: 999,
-          background: minimumSafeStatus.bg,
-          border: `1px solid ${minimumSafeStatus.border}`,
-          color: minimumSafeStatus.color,
-          fontSize: 12,
-          fontWeight: 700,
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.6,
+          fontSize: 14,
+          color: "#111",
         }}
       >
-        {minimumSafeStatus.label}
+        {result.text}
+      </div>
+    </div>
+
+    {smartScopePreview && (
+      <div
+        style={{
+          marginTop: 12,
+          marginBottom: 14,
+          padding: 14,
+          border: "1px solid #c7d2fe",
+          borderRadius: 14,
+          background: "#eef2ff",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
+          Smart Scope Assist
+        </div>
+
+        <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
+          Suggested additions based on uploaded photos and missing scope details.
+        </div>
+
+        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
+          {smartScopePreview.suggestions.map((item, i) => (
+            <li key={`smart-scope-${i}`}>{item}</li>
+          ))}
+        </ul>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+          <button
+            type="button"
+            onClick={regenerateWithSmartScope}
+            disabled={loading}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "none",
+              background: loading ? "#a5b4fc" : "#312e81",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.8 : 1,
+            }}
+          >
+            {loading ? "Regenerating..." : "Regenerate with Suggestions"}
+          </button>
+
+          <button
+            type="button"
+            onClick={applySmartScopePreview}
+            disabled={loading}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #c7d2fe",
+              background: "#fff",
+              color: "#312e81",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
+          >
+            Apply to Scope Only
+          </button>
+        </div>
       </div>
     )}
 
-    {minimumSafeStatus && (
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          color: minimumSafeStatus.color,
-          lineHeight: 1.45,
-        }}
-      >
-        {minimumSafeStatus.message}
-      </div>
-    )}
-  </div>
-)}
+    <PricingSummarySection
+      pricing={pricing}
+      setPricing={setPricing}
+      setPricingEdited={setPricingEdited}
+      applyProfitTarget={applyProfitTarget}
+      depositEnabled={depositEnabled}
+      setDepositEnabled={setDepositEnabled}
+      depositType={depositType}
+      setDepositType={setDepositType}
+      depositValue={depositValue}
+      setDepositValue={setDepositValue}
+      depositDue={depositDue}
+      remainingBalance={remainingBalance}
+      taxEnabled={taxEnabled}
+      setTaxEnabled={setTaxEnabled}
+      taxRate={taxRate}
+      setTaxRate={setTaxRate}
+      taxAmount={taxAmount}
+      minimumSafeStatus={minimumSafeStatus}
+      historicalPriceGuard={historicalPriceGuard}
+      PriceGuardBadge={PriceGuardBadge}
+      pdfShowPriceGuard={pdfShowPriceGuard}
+      pdfPriceGuardLabel={pdfPriceGuardLabel}
+      isUserEdited={isUserEdited}
+      downloadPDF={downloadPDF}
+    />
 
-{(changeOrderSummary ||
-  explainChangesReport ||
-  estimateBreakdown.length > 0 ||
-  estimateAssumptions.length > 0 ||
-  estimateConfidence) && (
-  <details
-    style={{
-      marginTop: 14,
-      marginBottom: 14,
-      padding: 12,
-      border: "1px solid #d1d5db",
-      borderRadius: 14,
-      background: "#fff",
-    }}
-  >
-    <summary
-      style={{
-        cursor: "pointer",
-        fontWeight: 900,
-        fontSize: 15,
-      }}
-    >
-      Review & Insights
-    </summary>
+    {schedule && (
+      <>
+        <ScheduleBlock schedule={schedule} />
 
-    <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-      Review pricing logic, change impacts, assumptions, and confidence before sending.
-    </div>
+        {completionWindow && (
+          <div style={{ marginTop: 10, fontSize: 13 }}>
+            Estimated Completion:
+            <strong>
+              {" "}
+              {completionWindow.min.toLocaleDateString()} –{" "}
+              {completionWindow.max.toLocaleDateString()}
+            </strong>
+          </div>
+        )}
 
-    {estimateConfidence && (
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: `1px solid ${estimateConfidence.border}`,
-          borderRadius: 12,
-          background: estimateConfidence.bg,
-        }}
-      >
-        <div
+        <details
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
+            marginTop: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
+            padding: 12,
           }}
         >
-          <div>
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 14,
-                color: estimateConfidence.color,
-              }}
-            >
-              Confidence / Review Badge
-            </div>
-
-            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-              How reliable this estimate is based on the details provided.
-            </div>
-          </div>
-
-          <div
+          <summary
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 12px",
-              borderRadius: 999,
-              background: "#fff",
-              border: `1px solid ${estimateConfidence.border}`,
-              color: estimateConfidence.color,
+              cursor: "pointer",
               fontWeight: 800,
               fontSize: 13,
             }}
           >
-            <span>{estimateConfidence.label}</span>
-            <span>{estimateConfidence.score}%</span>
-          </div>
-        </div>
+            Edit Schedule
+          </summary>
 
-        {estimateConfidence.warnings.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: estimateConfidence.color,
-                marginBottom: 6,
-              }}
-            >
-              Review flags
-            </div>
-
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {estimateConfidence.warnings.map((item, i) => (
-                <li key={`confidence-warning-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {estimateConfidence.reasons.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#333",
-                marginBottom: 6,
-              }}
-            >
-              Confidence drivers
-            </div>
-
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {estimateConfidence.reasons.map((item, i) => (
-                <li key={`confidence-reason-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {(estimateConfidence.level === "low" ||
-          estimateConfidence.level === "review") && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 10,
-              borderRadius: 10,
-              background: "#fff",
-              border: `1px solid ${estimateConfidence.border}`,
-              color: estimateConfidence.color,
-              fontSize: 13,
-              lineHeight: 1.45,
-              fontWeight: 700,
-            }}
-          >
-            Review recommended before sending this estimate to a client.
-          </div>
-        )}
-      </div>
+          <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
+        </details>
+      </>
     )}
 
-    {changeOrderSummary && (
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 14 }}>
-          Smart Change Order Summary
-        </div>
-
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-          Compared against the original estimate for this job.
-        </div>
-
-        <div style={{ display: "grid", gap: 6, marginTop: 10, fontSize: 13 }}>
-          <div>
-            Original Estimate:{" "}
-            <strong>${changeOrderSummary.originalEstimateTotal.toLocaleString()}</strong>
-          </div>
-
-          {!changeOrderSummary.isOriginalEstimate && (
-            <div>
-              This Change Order:{" "}
-              <strong>${changeOrderSummary.currentEstimateTotal.toLocaleString()}</strong>
-            </div>
-          )}
-
-          <div>
-            Previous Contract Value:{" "}
-            <strong>${changeOrderSummary.previousContractValue.toLocaleString()}</strong>
-          </div>
-
-          <div>
-            New Contract Value:{" "}
-            <strong>${changeOrderSummary.newContractValue.toLocaleString()}</strong>
-          </div>
-
-          <div>
-            Cost Change:{" "}
-            <strong
-              style={{
-                color:
-                  changeOrderSummary.costDelta > 0
-                    ? "#9b1c1c"
-                    : changeOrderSummary.costDelta < 0
-                    ? "#065f46"
-                    : "#111",
-              }}
-            >
-              {formatDelta(changeOrderSummary.costDelta)}
-            </strong>
-          </div>
-
-          <div>
-            Crew-Day Change:{" "}
-            <strong>{formatSignedNumber(changeOrderSummary.crewDayDelta)}</strong>
-          </div>
-
-          <div>
-            Schedule Impact:{" "}
-            <strong>
-              {(() => {
-                const hasPreviousSchedule = !!changeOrderSummary.originalEnd
-                const hasCurrentSchedule = !!changeOrderSummary.currentEnd
-
-                if (!hasPreviousSchedule && !hasCurrentSchedule) {
-                  return "Neither estimate has a full schedule"
-                }
-
-                if (!hasPreviousSchedule) {
-                  return "Original estimate had no full schedule"
-                }
-
-                if (!hasCurrentSchedule) {
-                  return "Current estimate has no full schedule"
-                }
-
-                return `${formatSignedNumber(changeOrderSummary.scheduleDeltaDays ?? 0)} day(s)`
-              })()}
-            </strong>
-          </div>
-
-          <div>
-            Original Completion:{" "}
-            <strong>
-              {changeOrderSummary.originalEnd
-                ? changeOrderSummary.originalEnd.toLocaleDateString()
-                : "—"}
-            </strong>
-          </div>
-
-          <div>
-            New Completion:{" "}
-            <strong>
-              {changeOrderSummary.currentEnd
-                ? changeOrderSummary.currentEnd.toLocaleDateString()
-                : "—"}
-            </strong>
-          </div>
-        </div>
-      </div>
+    {hasAdvancedAnalysis && (
+      <AdvancedAnalysisSection
+        photoAnalysis={photoAnalysis}
+        photoScopeAssist={photoScopeAssist}
+        materialsList={materialsList}
+        areaScopeBreakdown={areaScopeBreakdown}
+        profitProtection={profitProtection}
+        scopeXRay={scopeXRay}
+        estimateConfidence={estimateConfidence}
+        changeOrderSummary={changeOrderSummary}
+        explainChangesReport={explainChangesReport}
+        estimateBreakdown={estimateBreakdown}
+        estimateAssumptions={estimateAssumptions}
+      />
     )}
-
-    {explainChangesReport && (
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 14 }}>Explain Changes</div>
-
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-          Shows what changed compared with the original estimate for this job.
-        </div>
-
-        {explainChangesReport.summary.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {explainChangesReport.summary.map((item, i) => (
-                <li key={`summary-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {explainChangesReport.scopeChanges.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Scope Changes</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {explainChangesReport.scopeChanges.map((item, i) => (
-                <li key={`scope-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {explainChangesReport.pricingChanges.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Pricing Changes</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {explainChangesReport.pricingChanges.map((item, i) => (
-                <li key={`pricing-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {explainChangesReport.scheduleChanges.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Schedule Changes</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {explainChangesReport.scheduleChanges.map((item, i) => (
-                <li key={`schedule-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {explainChangesReport.adminChanges.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Terms / Admin Changes</div>
-            <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5 }}>
-              {explainChangesReport.adminChanges.map((item, i) => (
-                <li key={`admin-${i}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    )}
-
-    {estimateBreakdown.length > 0 && (
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 14 }}>
-          Explain My Estimate
-        </div>
-
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-          Plain-English reasons behind this estimate.
-        </div>
-
-        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
-          {estimateBreakdown.map((item, i) => (
-            <li key={`estimate-breakdown-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-
-    {estimateAssumptions.length > 0 && (
-      <div
-        style={{
-          marginTop: 14,
-          padding: 12,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
-          background: "#fafafa",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 14 }}>
-          Assumptions & Review Notes
-        </div>
-
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-          Standard project assumptions used to build this estimate.
-        </div>
-
-        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
-          {estimateAssumptions.map((item, i) => (
-            <li key={`estimate-assumption-${i}`}>{item}</li>
-          ))}
-        </ul>
-      </div>
-    )}
-  </details>
-)}
-
-  <PricingSummarySection
-    pricing={pricing}
-    setPricing={setPricing}
-    setPricingEdited={setPricingEdited}
-    applyProfitTarget={applyProfitTarget}
-    depositEnabled={depositEnabled}
-    setDepositEnabled={setDepositEnabled}
-    depositType={depositType}
-    setDepositType={setDepositType}
-    depositValue={depositValue}
-    setDepositValue={setDepositValue}
-    depositDue={depositDue}
-    remainingBalance={remainingBalance}
-    taxEnabled={taxEnabled}
-    setTaxEnabled={setTaxEnabled}
-    taxRate={taxRate}
-    setTaxRate={setTaxRate}
-    taxAmount={taxAmount}
-    minimumSafeStatus={minimumSafeStatus}
-    historicalPriceGuard={historicalPriceGuard}
-    PriceGuardBadge={PriceGuardBadge}
-    pdfShowPriceGuard={pdfShowPriceGuard}
-    pdfPriceGuardLabel={pdfPriceGuardLabel}
-    isUserEdited={isUserEdited}
-    downloadPDF={downloadPDF}
-  />
-
-{scopeSignals?.needsReturnVisit && (
-  <div
-    style={{
-      marginTop: 10,
-      padding: 10,
-      border: "1px solid #fcd34d",
-      borderRadius: 10,
-      background: "#fffbeb",
-      color: "#92400e",
-      fontSize: 13,
-      lineHeight: 1.5,
-    }}
-  >
-    ⚠ This scope likely requires multiple visits: {scopeSignals.reason}
-  </div>
-)}
-
-{schedule && (
-  <>
-    <ScheduleBlock schedule={schedule} />
-
-    {completionWindow && (
-      <div style={{ marginTop: 10, fontSize: 13 }}>
-        Estimated Completion:
-        <strong>
-          {" "}
-          {completionWindow.min.toLocaleDateString()} –{" "}
-          {completionWindow.max.toLocaleDateString()}
-        </strong>
-      </div>
-    )}
-
-    <details
-      style={{
-        marginTop: 12,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fff",
-        padding: 12,
-      }}
-    >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontWeight: 800,
-          fontSize: 13,
-        }}
-      >
-        Edit Schedule
-      </summary>
-
-      <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
-    </details>
-  </>
-)}
   </div>
 )}
 

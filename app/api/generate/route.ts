@@ -73,6 +73,8 @@ const ALLOWED_PHOTO_MIME = new Set([
   "image/webp",
 ])
 
+const ENFORCE_PHOTO_ESTIMATE_DECISION = false
+
 // -----------------------------
 // TYPES
 // -----------------------------
@@ -630,58 +632,40 @@ function buildScopeXRay(args: {
   )
 
   if (args.quantityInputs.userMeasuredSqft) {
-    quantities.push({
-      label: "Measured area",
-      value: `${args.quantityInputs.userMeasuredSqft} sqft`,
-      source: "user",
-    })
-  } else if (args.quantityInputs.parsedSqft) {
-    quantities.push({
-      label: "Parsed area",
-      value: `${args.quantityInputs.parsedSqft} sqft`,
-      source: "parsed",
-    })
-  }
+  quantities.push({
+    label: "Measured area",
+    value: `${args.quantityInputs.userMeasuredSqft} sqft`,
+    source: "user",
+  })
+}
 
-  if (typeof args.rooms === "number" && args.rooms > 0) {
-    quantities.push({
-      label: "Rooms",
-      value: String(args.rooms),
-      source: "parsed",
-    })
-  }
+if (
+  args.quantityInputs.parsedSqft &&
+  args.quantityInputs.parsedSqft !== args.quantityInputs.userMeasuredSqft
+) {
+  quantities.push({
+    label: "Parsed area",
+    value: `${args.quantityInputs.parsedSqft} sqft`,
+    source: "parsed",
+  })
+}
 
-  if (typeof args.doors === "number" && args.doors > 0) {
-    quantities.push({
-      label: "Doors",
-      value: String(args.doors),
-      source: "parsed",
-    })
-  }
+if (args.quantityInputs.photoFloorSqft) {
+  quantities.push({
+    label: "Photo-estimated floor area",
+    value: `${args.quantityInputs.photoFloorSqft} sqft`,
+    source: "photo",
+  })
+}
 
-  if (exteriorBodySqft) {
-    quantities.push({
-      label: "Photo-estimated exterior body area",
-      value: `${exteriorBodySqft} sqft`,
-      source: "photo",
-    })
-  } else {
-    if (args.quantityInputs.photoFloorSqft) {
-      quantities.push({
-        label: "Photo-estimated floor area",
-        value: `${args.quantityInputs.photoFloorSqft} sqft`,
-        source: "photo",
-      })
-    }
-
-    if (args.quantityInputs.photoWallSqft) {
-      quantities.push({
-        label: "Photo-estimated wall area",
-        value: `${args.quantityInputs.photoWallSqft} sqft`,
-        source: "photo",
-      })
-    }
-  }
+if (args.quantityInputs.photoWallSqft) {
+  quantities.push({
+    label: "Photo-estimated wall area",
+    value: `${args.quantityInputs.photoWallSqft} sqft`,
+    source: "photo",
+  })
+}
+  
 
   const photoWindows = positiveOrNull(
     exteriorSummary?.windows ?? args.photoAnalysis?.quantitySignals?.windows
@@ -2274,6 +2258,33 @@ type PhotoPacketScore = {
   missingShots: string[]
 }
 
+type EstimateMode = "photo_only" | "photo_assisted" | "measurement_required"
+
+type PricingPolicy = "allow" | "allow_with_warning" | "block"
+
+type MissingInputKey =
+  | "measurements"
+  | "floor_sqft"
+  | "wall_sqft"
+  | "paint_sqft"
+  | "room_count"
+  | "door_count"
+  | "fixture_count"
+  | "device_count"
+  | "linear_ft"
+  | "one_wall_length"
+
+type PhotoEstimateDecision = {
+  estimateMode: EstimateMode
+  pricingPolicy: PricingPolicy
+  pricingAllowed: boolean
+  confidence: number
+  confidenceBand: "low" | "medium" | "high"
+  missingInputs: MissingInputKey[]
+  reasons: string[]
+  blockers: string[]
+}
+
 function scorePhotoPacket(photos: PhotoInput[]): PhotoPacketScore {
   if (!photos.length) {
     return {
@@ -2647,6 +2658,386 @@ function getEffectiveQuantityInputs(args: {
       parsedSqft ??
       photoSqft.wallSqft ??
       null,
+  }
+}
+
+function clampScore100(n: number) {
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
+function hasAnyPositive(values: Array<number | null | undefined>) {
+  return values.some((v) => Number.isFinite(Number(v)) && Number(v) > 0)
+}
+
+function isPhotoFriendlyTrade(trade: string) {
+  const t = (trade || "").toLowerCase()
+  return (
+    t === "painting" ||
+    t === "flooring" ||
+    t === "drywall" ||
+    t === "carpentry" ||
+    t === "electrical" ||
+    t === "plumbing"
+  )
+}
+
+function isMeasurementHeavyTrade(args: {
+  trade: string
+  scopeText: string
+  complexityProfile: ComplexityProfile | null
+  tradeStack: TradeStack | null
+}) {
+  const t = (args.trade || "").toLowerCase()
+  const s = (args.scopeText || "").toLowerCase()
+  const cp = args.complexityProfile
+
+  if (cp?.class === "remodel" || cp?.class === "complex") return true
+  if (cp?.multiTrade || args.tradeStack?.isMultiTrade) return true
+  if (t === "general renovation") return true
+
+  if (
+    /\b(remodel|renovation|gut|rebuild|rough[-\s]*in|relocat(e|ion|ing)|move\s+(drain|supply|valve|line)|panel|service\s*upgrade)\b/.test(
+      s
+    )
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function hasUsablePhotoQuantities(args: {
+  trade: string
+  scopeText: string
+  rooms: number | null
+  doors: number | null
+  quantityInputs: ReturnType<typeof getEffectiveQuantityInputs>
+  photoAnalysis: PhotoAnalysis | null
+}) {
+  const t = (args.trade || "").toLowerCase()
+  const q = args.quantityInputs
+  const job = args.photoAnalysis?.jobSummary ?? null
+
+  const hasPaintQty =
+    hasAnyPositive([
+      q.effectivePaintSqft,
+      q.effectiveWallSqft,
+      q.userMeasuredSqft,
+      q.parsedSqft,
+      args.rooms,
+      args.doors,
+    ])
+
+  const hasFloorQty = hasAnyPositive([
+    q.effectiveFloorSqft,
+    q.photoFloorSqft,
+    q.userMeasuredSqft,
+    q.parsedSqft,
+  ])
+
+  const hasDrywallQty = hasAnyPositive([
+    q.effectiveWallSqft,
+    q.photoWallSqft,
+    q.userMeasuredSqft,
+    q.parsedSqft,
+  ])
+
+  const hasTrimQty =
+    hasAnyPositive([
+      parseLinearFt(args.scopeText),
+      job?.mergedQuantities.trimLf,
+      q.effectiveFloorSqft,
+    ])
+
+  const hasDeviceQty =
+    !!parseElectricalDeviceBreakdown(args.scopeText)?.total ||
+    hasAnyPositive([
+      job?.mergedQuantities.outlets,
+      job?.mergedQuantities.switches,
+      job?.mergedQuantities.recessedLights,
+    ])
+
+  const hasFixtureQty =
+    !!parsePlumbingFixtureBreakdown(args.scopeText)?.total ||
+    hasAnyPositive([
+      job?.mergedQuantities.toilets,
+      job?.mergedQuantities.sinks,
+      job?.mergedQuantities.vanities,
+    ])
+
+  if (t === "painting") return hasPaintQty
+  if (t === "flooring") return hasFloorQty
+  if (t === "drywall") return hasDrywallQty
+  if (t === "carpentry") return hasTrimQty
+  if (t === "electrical") return hasDeviceQty
+  if (t === "plumbing") return hasFixtureQty
+
+  return hasAnyPositive([
+    q.effectiveFloorSqft,
+    q.effectiveWallSqft,
+    q.effectivePaintSqft,
+    args.rooms,
+    args.doors,
+  ])
+}
+
+function buildPhotoMissingInputs(args: {
+  trade: string
+  scopeText: string
+  rooms: number | null
+  doors: number | null
+  quantityInputs: ReturnType<typeof getEffectiveQuantityInputs>
+  photoAnalysis: PhotoAnalysis | null
+  complexityProfile: ComplexityProfile | null
+  tradeStack: TradeStack | null
+}): MissingInputKey[] {
+  const t = (args.trade || "").toLowerCase()
+  const s = (args.scopeText || "").toLowerCase()
+  const q = args.quantityInputs
+  const job = args.photoAnalysis?.jobSummary ?? null
+
+  const out: MissingInputKey[] = []
+
+  const isExteriorPainting =
+    t === "painting" &&
+    (
+      job?.exteriorSummary?.isExterior === true ||
+      /\b(exterior|outside|stucco|siding|fascia|soffit|eaves?|front door|garage door)\b/.test(
+        s
+      )
+    )
+
+  if (isMeasurementHeavyTrade(args)) {
+    out.push("measurements")
+  }
+
+  if (t === "painting") {
+    if (isExteriorPainting) {
+      if (!hasAnyPositive([job?.exteriorSummary?.bodyWallSqft, q.userMeasuredSqft, q.parsedSqft])) {
+        out.push("wall_sqft")
+      }
+    } else {
+      if (!hasAnyPositive([q.effectivePaintSqft, q.effectiveWallSqft, q.userMeasuredSqft, q.parsedSqft])) {
+        if (args.doors && args.doors > 0) out.push("door_count")
+        else if (args.rooms && args.rooms > 0) out.push("room_count")
+        else out.push("paint_sqft")
+      }
+    }
+  }
+
+  if (t === "flooring") {
+    if (!hasAnyPositive([q.effectiveFloorSqft, q.photoFloorSqft, q.userMeasuredSqft, q.parsedSqft])) {
+      out.push("floor_sqft")
+      out.push("one_wall_length")
+    }
+  }
+
+  if (t === "drywall") {
+    if (!hasAnyPositive([q.effectiveWallSqft, q.photoWallSqft, q.userMeasuredSqft, q.parsedSqft])) {
+      out.push("wall_sqft")
+    }
+  }
+
+  if (t === "carpentry") {
+    const lf = parseLinearFt(args.scopeText)
+    const photoTrimLf = positiveOrNull(job?.mergedQuantities.trimLf)
+
+    if (!hasAnyPositive([lf, photoTrimLf])) {
+      out.push("linear_ft")
+      if (!hasAnyPositive([q.effectiveFloorSqft, q.photoFloorSqft])) {
+        out.push("one_wall_length")
+      }
+    }
+  }
+
+  if (t === "electrical") {
+    const breakdown = parseElectricalDeviceBreakdown(args.scopeText)
+    const hasDevices =
+      !!breakdown?.total ||
+      hasAnyPositive([
+        job?.mergedQuantities.outlets,
+        job?.mergedQuantities.switches,
+        job?.mergedQuantities.recessedLights,
+      ])
+
+    if (!hasDevices) out.push("device_count")
+  }
+
+  if (t === "plumbing") {
+    const breakdown = parsePlumbingFixtureBreakdown(args.scopeText)
+    const hasFixtures =
+      !!breakdown?.total ||
+      hasAnyPositive([
+        job?.mergedQuantities.toilets,
+        job?.mergedQuantities.sinks,
+        job?.mergedQuantities.vanities,
+      ])
+
+    if (!hasFixtures) out.push("fixture_count")
+  }
+
+  return Array.from(new Set(out)).slice(0, 3) as MissingInputKey[]
+}
+
+function buildPhotoEstimateDecision(args: {
+  trade: string
+  scopeText: string
+  rooms: number | null
+  doors: number | null
+  photosCount: number
+  photoPacketScore: PhotoPacketScore
+  photoAnalysis: PhotoAnalysis | null
+  photoScopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+  quantityInputs: ReturnType<typeof getEffectiveQuantityInputs>
+  complexityProfile: ComplexityProfile | null
+  tradeStack: TradeStack | null
+}): PhotoEstimateDecision {
+  const reasons: string[] = []
+  const blockers: string[] = []
+
+  const packetScore = Number(args.photoPacketScore?.score || 0)
+  const jobConfidence = Number(args.photoAnalysis?.jobSummary?.confidenceScore || 0)
+  const missingViews = args.photoAnalysis?.jobSummary?.missingViews?.length ?? 0
+  const missingScopeFlags = args.photoScopeAssist?.missingScopeFlags?.length ?? 0
+
+  const heavyScope = isMeasurementHeavyTrade({
+    trade: args.trade,
+    scopeText: args.scopeText,
+    complexityProfile: args.complexityProfile,
+    tradeStack: args.tradeStack,
+  })
+
+  const usableQuantities = hasUsablePhotoQuantities({
+    trade: args.trade,
+    scopeText: args.scopeText,
+    rooms: args.rooms,
+    doors: args.doors,
+    quantityInputs: args.quantityInputs,
+    photoAnalysis: args.photoAnalysis,
+  })
+
+  const missingInputs = buildPhotoMissingInputs({
+    trade: args.trade,
+    scopeText: args.scopeText,
+    rooms: args.rooms,
+    doors: args.doors,
+    quantityInputs: args.quantityInputs,
+    photoAnalysis: args.photoAnalysis,
+    complexityProfile: args.complexityProfile,
+    tradeStack: args.tradeStack,
+  })
+
+  let confidence =
+    packetScore > 0 && jobConfidence > 0
+      ? Math.round(packetScore * 0.45 + jobConfidence * 0.55)
+      : packetScore || jobConfidence || 0
+
+  if (usableQuantities) confidence += 8
+  else confidence -= 10
+
+  if (isPhotoFriendlyTrade(args.trade)) confidence += 4
+
+  if (args.complexityProfile?.class === "medium") confidence -= 6
+  if (args.complexityProfile?.class === "complex") confidence -= 14
+  if (args.complexityProfile?.class === "remodel") confidence -= 24
+
+  if (args.tradeStack?.isMultiTrade) confidence -= 12
+
+  confidence -= missingViews * 5
+  confidence -= missingScopeFlags * 4
+
+  if (args.photosCount <= 0) confidence = 0
+
+  confidence = clampScore100(confidence)
+
+  if (packetScore >= 80) reasons.push("Photo packet coverage is strong.")
+  else if (packetScore >= 60) reasons.push("Photo packet coverage is usable but not complete.")
+  else if (packetScore > 0) reasons.push("Photo packet coverage is weak.")
+
+  if (usableQuantities) {
+    reasons.push("Photos and scope produced usable quantity signals.")
+  } else {
+    reasons.push("Photos did not produce enough trusted quantities for strong pricing.")
+  }
+
+  if (missingViews > 0) {
+    reasons.push(`Missing photo coverage detected (${missingViews} missing view item(s)).`)
+  }
+
+  if (missingScopeFlags > 0) {
+    reasons.push(`Photo scope review found ${missingScopeFlags} missing scope/clarity flag(s).`)
+  }
+
+  if (args.tradeStack?.isMultiTrade) {
+    reasons.push("Multiple trades were detected, which increases pricing risk.")
+  }
+
+  if (args.complexityProfile?.class === "remodel") {
+    reasons.push("Remodel-level scope increases hidden-condition risk.")
+  }
+
+  if (args.photosCount <= 0) {
+    blockers.push("No photos were uploaded.")
+  }
+
+  if (!args.photoAnalysis?.jobSummary && args.photosCount > 0) {
+    blockers.push("Photos were uploaded but job-level photo analysis was too weak.")
+  }
+
+  if (packetScore < 45 && args.photosCount > 0) {
+    blockers.push("Photo packet is too weak for reliable pricing.")
+  }
+
+  if (heavyScope && !hasAnyPositive([
+    args.quantityInputs.userMeasuredSqft,
+    args.quantityInputs.parsedSqft,
+    args.quantityInputs.effectiveFloorSqft,
+    args.quantityInputs.effectiveWallSqft,
+  ])) {
+    blockers.push("This scope needs measurements because the job is too complex for photo-only pricing.")
+  }
+
+  let estimateMode: EstimateMode = "measurement_required"
+  let pricingPolicy: PricingPolicy = "block"
+
+  if (blockers.length === 0) {
+    if (
+      confidence >= 85 &&
+      missingInputs.length === 0 &&
+      isPhotoFriendlyTrade(args.trade) &&
+      !heavyScope
+    ) {
+      estimateMode = "photo_only"
+      pricingPolicy = "allow"
+    } else if (
+      confidence >= 65 &&
+      missingInputs.length <= 2
+    ) {
+      estimateMode = "photo_assisted"
+      pricingPolicy = "allow_with_warning"
+    } else {
+      estimateMode = "measurement_required"
+      pricingPolicy = "block"
+    }
+  }
+
+  const confidenceBand =
+    confidence >= 85 ? "high" :
+    confidence >= 65 ? "medium" :
+    "low"
+
+  return {
+    estimateMode,
+    pricingPolicy,
+    pricingAllowed: pricingPolicy !== "block",
+    confidence,
+    confidenceBand,
+    missingInputs,
+    reasons: Array.from(new Set(reasons)).slice(0, 8),
+    blockers: Array.from(new Set(blockers)).slice(0, 6),
   }
 }
 
@@ -3930,25 +4321,34 @@ type TradeStack = {
 }
 
 function detectTradeStack(args: { scopeText: string; primaryTrade: string }): TradeStack {
-  const s = (args.scopeText || "").toLowerCase()
-  const primary = (args.primaryTrade || "").toLowerCase()
+const s = (args.scopeText || "").toLowerCase()
+const primary = (args.primaryTrade || "").toLowerCase()
 
-  const trades: string[] = []
-  const activities: string[] = []
-  const signals: string[] = []
+const trades: string[] = []
+const activities: string[] = []
+const signals: string[] = []
 
-  const addTrade = (t: string, why: string) => {
+const addTrade = (t: string, why: string) => {
     if (!trades.includes(t)) trades.push(t)
     if (why && !signals.includes(why)) signals.push(why)
   }
 
-  const addActivity = (a: string, why: string) => {
+const addActivity = (a: string, why: string) => {
     if (!activities.includes(a)) activities.push(a)
     if (why && !signals.includes(why)) signals.push(why)
   }
 
-  // Always include primary trade if present
-  if (primary) trades.push(primary)
+const REAL_TRADES = new Set([
+  "painting",
+  "drywall",
+  "flooring",
+  "carpentry",
+  "plumbing",
+  "electrical",
+  "tile",
+])
+
+if (primary && REAL_TRADES.has(primary)) trades.push(primary)
 
   // --- PHASES/ACTIVITIES (do NOT count as "multi-trade") ---
   const hasDemo = /\b(demo|demolition|tear\s*out|remove\s+existing|haul\s*away|dispose)\b/.test(s)
@@ -4404,10 +4804,13 @@ function isMixedRenovation(scope: string) {
 }
 
 function parseSqft(text: string): number | null {
-  const m = text
+  const t = String(text || "")
     .toLowerCase()
-    .match(/(\d{1,5})\s*(sq\s*ft|sqft|square\s*feet|sf)\b/)
+    .replace(/,/g, "")
+
+  const m = t.match(/(\d{1,7}(?:\.\d+)?)\s*(sq\s*ft|sqft|square\s*feet|sf)\b/)
   if (!m?.[1]) return null
+
   const n = Number(m[1])
   return Number.isFinite(n) && n > 0 ? n : null
 }
@@ -6183,6 +6586,38 @@ const quantityInputs = getEffectiveQuantityInputs({
   photoAnalysis,
 })
 
+const rooms = parseRoomCount(scopeChange)
+const doors = parseDoorCount(scopeChange)
+
+const photoEstimateDecision = buildPhotoEstimateDecision({
+  trade,
+  scopeText: scopeChange,
+  rooms,
+  doors,
+  photosCount: photos?.length ?? 0,
+  photoPacketScore,
+  photoAnalysis,
+  photoScopeAssist,
+  quantityInputs,
+  complexityProfile,
+  tradeStack,
+})
+
+if (
+  ENFORCE_PHOTO_ESTIMATE_DECISION &&
+  photoEstimateDecision.pricingPolicy === "block"
+) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "PHOTO_INPUTS_REQUIRED",
+      message: "More measurements or guided inputs are needed before pricing this job.",
+      photoEstimateDecision,
+    },
+    { status: 422 }
+  )
+}
+
 const photoQuantityHints = buildPhotoQuantityHints(photoAnalysis)
 const exteriorPhotoHints = buildExteriorPhotoHints(photoAnalysis)
 const photoContext = buildPhotoContext(photos)
@@ -6245,10 +6680,6 @@ if (photoScopeAssist.suggestedAdditions.length) {
 PHOTO SUGGESTED ADDITIONS:
 ${photoScopeAssist.suggestedAdditions.map((x) => `- ${x}`).join("\n")}`.trim()
 }
-
-// Parse quantities from the raw scope (before we append extra lines)
-const rooms = parseRoomCount(scopeChange)
-const doors = parseDoorCount(scopeChange)
 
 const stateAbbrev = getStateAbbrev(rawState)
 const usedNationalBaseline = !(typeof stateAbbrev === "string" && stateAbbrev.length === 2)
@@ -6945,8 +7376,12 @@ const normalized: any = {
 
 normalized.pricing = clampPricing(coercePricing(normalized.pricing))
 
-// ✅ EstimateBasis enforcement (AI fallback quality)
-const effectiveSqft = quantityInputs.effectivePaintSqft
+const effectiveSqft =
+  trade === "flooring"
+    ? quantityInputs.effectiveFloorSqft
+    : trade === "drywall"
+    ? quantityInputs.effectiveWallSqft
+    : quantityInputs.effectivePaintSqft
 normalized.estimateBasis = syncEstimateBasisMath({
   pricing: normalized.pricing,
   basis: normalizeEstimateBasisUnits(
@@ -7481,6 +7916,7 @@ const scopeXRay = buildScopeXRay({
   photoImpact,
   photoScopeAssist,
   photoPacketScore,
+  photoEstimateDecision,
   materialsList,
   areaScopeBreakdown,
   splitScopes,
@@ -7907,6 +8343,7 @@ const payload = {
   photoImpact,
   photoScopeAssist,
   photoPacketScore,
+  photoEstimateDecision,
   materialsList,
   areaScopeBreakdown,
   splitScopes,
