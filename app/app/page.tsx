@@ -5768,19 +5768,55 @@ function AdvancedAnalysisSection({
   // UI
   // -------------------------
   return (
-    <main
-      style={{
-        maxWidth: 640,
-        margin: "60px auto",
-        padding: 32,
-        fontFamily: "system-ui",
-        border: "1px solid #e5e7eb",
-        borderRadius: 14,
-        background: "#fff",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-      }}
-    >
-     <h1 style={{ marginBottom: 4 }}>JobEstimate Pro</h1>
+  <main
+    style={{
+      maxWidth: 640,
+      margin: "60px auto",
+      padding: 32,
+      fontFamily: "system-ui",
+      border: "1px solid #e5e7eb",
+      borderRadius: 14,
+      background: "#fff",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+    }}
+  >
+    <style jsx global>{`
+      @media print {
+        [data-no-print] {
+          display: none !important;
+        }
+
+        [data-print-result] {
+          display: block !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          white-space: normal !important;
+        }
+
+        main {
+          max-width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          background: #fff !important;
+        }
+      }
+
+      @media (max-width: 640px) {
+        [data-print-result] {
+          overflow-x: hidden !important;
+        }
+      }
+    `}</style>
+
+    <div data-no-print>
+  <h1 style={{ marginBottom: 4 }}>JobEstimate Pro</h1>
 <p
   style={{
     marginTop: 0,
@@ -6044,9 +6080,11 @@ function AdvancedAnalysisSection({
     Generating professional document…
   </p>
 )}
+</div>
 
 {result && (
   <div
+    data-print-result
     style={{
       marginTop: 24,
       padding: 16,
@@ -6055,6 +6093,7 @@ function AdvancedAnalysisSection({
       whiteSpace: "pre-wrap",
       lineHeight: 1.6,
       fontSize: 15,
+      overflowX: "hidden",
     }}
   >
     <h3 style={{ marginBottom: 8 }}>
@@ -6271,7 +6310,8 @@ function AdvancedAnalysisSection({
   </div>
 )}
 
-<JobsDashboardSection
+<div data-no-print>
+  <JobsDashboardSection
   jobs={jobs}
   activeJobId={activeJobId}
   setActiveJobId={setActiveJobId}
@@ -6339,9 +6379,10 @@ function AdvancedAnalysisSection({
   </button>
 )}
 
-      <p style={{ marginTop: 40, fontSize: 12, color: "#888", textAlign: "center" }}>
-        Secure payments powered by Stripe.
-      </p>
-    </main>
-  )
+  <p style={{ marginTop: 40, fontSize: 12, color: "#888", textAlign: "center" }}>
+    Secure payments powered by Stripe.
+  </p>
+</div>
+</main>
+ )
 }
