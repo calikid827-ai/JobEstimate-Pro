@@ -1503,6 +1503,14 @@ const estimateAssumptions = useMemo(() => {
   })
 }, [trade, state, scopeSignals])
 
+const hasMeasurementReference = useMemo(() => {
+  return jobPhotos.some(
+    (p) =>
+      p.shotType === "measurement" ||
+      (p.reference.kind === "custom" && Number(p.reference.realWidthIn || 0) > 0)
+  )
+}, [jobPhotos])
+
 const estimateConfidence = useMemo(() => {
   return buildEstimateConfidence({
     scopeChange,
@@ -1514,6 +1522,7 @@ const estimateConfidence = useMemo(() => {
     scopeQualityScore: scopeQuality.score,
     priceGuardVerified,
     photoAnalysis,
+    hasMeasurementReference,
   })
 }, [
   scopeChange,
@@ -1525,6 +1534,7 @@ const estimateConfidence = useMemo(() => {
   scopeQuality.score,
   priceGuardVerified,
   photoAnalysis,
+  hasMeasurementReference,
 ])
 
 const smartScopePreview = useMemo(() => {
@@ -3865,6 +3875,7 @@ const hasPhotoStatus =
 
 const needsMeasurementStatus =
   (!measureEnabled || totalSqft <= 0) &&
+  !hasMeasurementReference &&
   ((estimateConfidence?.score ?? 100) < 85 || jobPhotos.length > 0)
 
 const hasEstimateStatus =
@@ -5161,6 +5172,7 @@ function EstimateStatusCard({
   photoScopeAssist: PhotoScopeAssist
   measureEnabled: boolean
   totalSqft: number
+  hasMeasurementReference: boolean
   estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
 }) {
   const hasPhotos = jobPhotosCount > 0
@@ -5168,8 +5180,9 @@ function EstimateStatusCard({
   const isPhotoOnly = hasPhotos && !hasPhotoAssist
 
   const measurementsNeeded =
-    (!measureEnabled || totalSqft <= 0) &&
-    ((estimateConfidence?.score ?? 100) < 85 || hasPhotos)
+  (!measureEnabled || totalSqft <= 0) &&
+  !hasMeasurementReference &&
+  ((estimateConfidence?.score ?? 100) < 85 || hasPhotos)
 
   const hasMeasurementSignal = measureEnabled && totalSqft > 0
 
@@ -6113,18 +6126,19 @@ function AdvancedAnalysisSection({
 
     {hasEstimateStatus && (
   <EstimateStatusCard
-    displayedDocumentType={displayedDocumentType}
-    displayedChangeOrderNote={displayedChangeOrderNote}
-    displayedScheduleImpactNote={displayedScheduleImpactNote}
-    changeOrderDetection={changeOrderDetection}
-    scopeSignals={scopeSignals}
-    jobPhotosCount={jobPhotos.length}
-    photoAnalysis={photoAnalysis}
-    photoScopeAssist={photoScopeAssist}
-    measureEnabled={measureEnabled}
-    totalSqft={totalSqft}
-    estimateConfidence={estimateConfidence}
-  />
+  displayedDocumentType={displayedDocumentType}
+  displayedChangeOrderNote={displayedChangeOrderNote}
+  displayedScheduleImpactNote={displayedScheduleImpactNote}
+  changeOrderDetection={changeOrderDetection}
+  scopeSignals={scopeSignals}
+  jobPhotosCount={jobPhotos.length}
+  photoAnalysis={photoAnalysis}
+  photoScopeAssist={photoScopeAssist}
+  measureEnabled={measureEnabled}
+  totalSqft={totalSqft}
+  hasMeasurementReference={hasMeasurementReference}
+  estimateConfidence={estimateConfidence}
+/>
 )}
 
     <div

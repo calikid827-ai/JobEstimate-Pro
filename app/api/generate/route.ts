@@ -11,6 +11,7 @@ import {
   readJsonWithLimit,
 } from "./lib/guards"
 
+import { buildEstimatorContext } from "./lib/estimator/context"
 import { rateLimit } from "./lib/rateLimit"
 import { computeFlooringDeterministic } from "./lib/priceguard/flooringEngine"
 import { computeElectricalDeterministic } from "./lib/priceguard/electricalEngine"
@@ -24,7 +25,25 @@ import { computeDrywallDeterministic } from "./lib/priceguard/drywallEngine"
 import { computePaintingDeterministic } from "./lib/priceguard/paintingEngine"
 import { applyMinimumCharge } from "./lib/priceguard/minimumCharges"
 import { detectScopeSignals } from "./lib/priceguard/scopeSignals"
+
+import type {
+  ComplexityProfile as EstimatorComplexityProfile,
+  EstimateBasis as EstimatorEstimateBasis,
+  EstimateExplanation as EstimatorEstimateExplanation,
+  PhotoAnalysis as EstimatorPhotoAnalysis,
+  PhotoPricingImpact as EstimatorPhotoPricingImpact,
+  PriceGuardReport as EstimatorPriceGuardReport,
+  ScheduleBlock as EstimatorScheduleBlock,
+  ScopeSignals as EstimatorScopeSignals,
+  ScopeXRay as EstimatorScopeXRay,
+  SplitScopeItem as EstimatorSplitScopeItem,
+  TradeStack as EstimatorTradeStack,
+} from "./lib/estimator/types"
 import { splitScopeByTrade, isMultiTradeScope } from "./lib/priceguard/scopeSplitter"
+import {
+  runEstimatorOrchestrator,
+  type OrchestratorDeps,
+} from "./lib/estimator/orchestrator"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -564,7 +583,7 @@ type ScopeXRay = {
   quantities: Array<{
     label: string
     value: string
-    source: "user" | "parsed" | "photo" | "estimated"
+    source: QuantitySource
   }>
   pricingMethod: {
     pricingSource: "ai" | "deterministic" | "merged"
@@ -584,7 +603,7 @@ type ScopeXRay = {
 
 function buildScopeXRay(args: {
   trade: string
-  splitScopes: SplitScopeItem[]
+  splitScopes: EstimatorSplitScopeItem[]
   effectivePaintScope: string | null
   rawState: string
   stateAbbrev: string
@@ -609,15 +628,12 @@ function buildScopeXRay(args: {
     missingScopeFlags: string[]
     suggestedAdditions: string[]
   }
-  photoAnalysis: PhotoAnalysis | null
-  scopeSignals?: {
-    needsReturnVisit?: boolean
-    reason?: string
-  } | null
-  complexityProfile: ComplexityProfile | null
-  tradeStack: TradeStack | null
-  schedule: ScheduleBlock
-}): ScopeXRay {
+  photoAnalysis: EstimatorPhotoAnalysis | null
+  scopeSignals?: EstimatorScopeSignals | null
+  complexityProfile: EstimatorComplexityProfile | null
+  tradeStack: EstimatorTradeStack | null
+  schedule: EstimatorScheduleBlock
+}): EstimatorScopeXRay {
   const quantities: ScopeXRay["quantities"] = []
 
   const photoJob = args.photoAnalysis?.jobSummary ?? null
@@ -662,11 +678,13 @@ if (args.quantityInputs.photoWallSqft) {
   quantities.push({
     label: "Photo-estimated wall area",
     value: `${args.quantityInputs.photoWallSqft} sqft`,
-    source: "photo",
+    source:
+      args.photoAnalysis?.jobSummary?.quantitySources?.wallSqft === "reference_scaled"
+        ? "photo_reference"
+        : "photo",
   })
 }
   
-
   const photoWindows = positiveOrNull(
     exteriorSummary?.windows ?? args.photoAnalysis?.quantitySignals?.windows
   )
@@ -976,18 +994,15 @@ function buildAreaScopeBreakdown(args: {
 }
 
 function buildScheduleBlock(args: {
-  basis: EstimateBasis | null
-  cp: ComplexityProfile | null
+  basis: EstimatorEstimateBasis | null
+  cp: EstimatorComplexityProfile | null
   trade: string
-  tradeStack: TradeStack | null
+  tradeStack: EstimatorTradeStack | null
   scopeText: string
   workDaysPerWeek: 5 | 6 | 7
-  photoImpact?: PhotoPricingImpact | null
-  scopeSignals?: {
-    needsReturnVisit?: boolean
-    reason?: string
-  }
-}): ScheduleBlock {
+  photoImpact?: EstimatorPhotoPricingImpact | null
+  scopeSignals?: EstimatorScopeSignals | null
+}): EstimatorScheduleBlock {
   
   const b = args.basis
   const sched = args.workDaysPerWeek
@@ -1070,7 +1085,7 @@ function buildPriceGuardReport(args: {
   anchorId: string | null
   detSource: string | null
   usedNationalBaseline: boolean
-}): PriceGuardReport {
+}): EstimatorPriceGuardReport {
   const appliedRules: string[] = []
   const assumptions: string[] = []
   const warnings: string[] = []
@@ -1260,6 +1275,18 @@ type PhotoFinding = {
     estimatedFloorSqftMax?: number | null
     estimatedTrimLfMin?: number | null
     estimatedTrimLfMax?: number | null
+
+    estimateMethod?: "reference_scaled" | "visual_guess" | "count_based" | null
+  }
+
+  scaleSignals: {
+    referenceProvided: boolean
+    referenceVisible: boolean | null
+    referenceSamePlane: boolean | null
+    referenceUsable: boolean | null
+    scaleConfidence: "low" | "medium" | "high" | null
+    referenceLabel: string | null
+    referenceRealWidthIn: number | null
   }
 
   exteriorSignals?: {
@@ -1279,6 +1306,25 @@ type PhotoFinding = {
   scopeCompletenessFlags: string[]
   reasoning: string[]
   confidence: "low" | "medium" | "high"
+}
+
+type QuantityEstimateMethod = "reference_scaled" | "visual_guess" | "count_based"
+
+type QuantitySource =
+  | "user"
+  | "parsed"
+  | "photo"
+  | "photo_reference"
+  | "estimated"
+
+type RangeCandidate = {
+  min: number | null
+  max: number | null
+  confidence: "low" | "medium" | "high"
+  shotType: PhotoFinding["shotType"]
+  estimateMethod: QuantityEstimateMethod | null
+  referenceUsable: boolean
+  referenceSamePlane: boolean
 }
 
 type PhotoJobSummary = {
@@ -1315,6 +1361,13 @@ type PhotoJobSummary = {
     ceilingSqft: number | null
     floorSqft: number | null
     trimLf: number | null
+  }
+
+  quantitySources: {
+    wallSqft: QuantityEstimateMethod | null
+    ceilingSqft: QuantityEstimateMethod | null
+    floorSqft: QuantityEstimateMethod | null
+    trimLf: QuantityEstimateMethod | null
   }
 
   exteriorSummary: {
@@ -1629,6 +1682,76 @@ function midpointFromRange(min?: number | null, max?: number | null): number | n
   return null
 }
 
+function rangeMid(min?: number | null, max?: number | null) {
+  const a = Number.isFinite(Number(min)) ? Number(min) : null
+  const b = Number.isFinite(Number(max)) ? Number(max) : null
+  if (a != null && b != null) return Math.round((a + b) / 2)
+  if (a != null) return Math.round(a)
+  if (b != null) return Math.round(b)
+  return null
+}
+
+function rangeSpread(min?: number | null, max?: number | null) {
+  const a = Number.isFinite(Number(min)) ? Number(min) : null
+  const b = Number.isFinite(Number(max)) ? Number(max) : null
+  if (a != null && b != null) return Math.abs(b - a)
+  return 9999
+}
+
+function scoreRangeCandidate(c: RangeCandidate) {
+  let score = 0
+
+  if (c.estimateMethod === "reference_scaled") score += 8
+  if (c.referenceUsable) score += 5
+  if (c.referenceSamePlane) score += 4
+  if (c.shotType === "measurement") score += 3
+
+  if (c.confidence === "high") score += 3
+  else if (c.confidence === "medium") score += 1
+
+  const spread = rangeSpread(c.min, c.max)
+  if (spread <= 30) score += 2
+  else if (spread >= 120) score -= 2
+
+  return score
+}
+
+function pickBestRangeValue(candidates: RangeCandidate[]): number | null {
+  const valid = candidates.filter((c) => rangeMid(c.min, c.max) != null)
+  if (!valid.length) return null
+
+  const sorted = [...valid].sort(
+    (a, b) => scoreRangeCandidate(b) - scoreRangeCandidate(a)
+  )
+
+  const topScore = scoreRangeCandidate(sorted[0])
+  const top = sorted
+    .filter((c) => scoreRangeCandidate(c) >= topScore - 2)
+    .slice(0, 3)
+
+  const mids = top
+    .map((c) => rangeMid(c.min, c.max))
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
+
+  if (!mids.length) return null
+
+  return mids[Math.floor(mids.length / 2)]
+}
+
+function pickBestRangeMethod(
+  candidates: RangeCandidate[]
+): QuantityEstimateMethod | null {
+  const valid = candidates.filter((c) => rangeMid(c.min, c.max) != null)
+  if (!valid.length) return null
+
+  const sorted = [...valid].sort(
+    (a, b) => scoreRangeCandidate(b) - scoreRangeCandidate(a)
+  )
+
+  return sorted[0]?.estimateMethod ?? null
+}
+
 function pickHighestAreaType(findings: PhotoFinding[]): PhotoJobSummary["probableArea"] {
   if (findings.some((f) => f.exteriorSignals?.isExterior)) return "exterior_house"
   if (findings.some((f) => f.areaType === "bathroom")) return "bathroom"
@@ -1655,47 +1778,56 @@ function mergePhotoFindings(findings: PhotoFinding[]): PhotoJobSummary | null {
 
   const probableArea = pickHighestAreaType(findings)
 
-  const wallSqft = safeMaxInt(
-    ...findings.map((f) =>
-      midpointFromRange(
-        f.quantitySignals?.estimatedWallSqftMin,
-        f.quantitySignals?.estimatedWallSqftMax
-      )
-    ),
-    ...findings.map((f) =>
-      midpointFromRange(
-        f.exteriorSignals?.bodyWallSqftMin,
-        f.exteriorSignals?.bodyWallSqftMax
-      )
-    )
-  )
+  const wallCandidates: RangeCandidate[] = findings.map((f) => ({
+  min:
+    f.quantitySignals?.estimatedWallSqftMin ??
+    f.exteriorSignals?.bodyWallSqftMin ??
+    null,
+  max:
+    f.quantitySignals?.estimatedWallSqftMax ??
+    f.exteriorSignals?.bodyWallSqftMax ??
+    null,
+  confidence: f.confidence,
+  shotType: f.shotType,
+  estimateMethod: f.quantitySignals?.estimateMethod ?? null,
+  referenceUsable: f.scaleSignals?.referenceUsable === true,
+  referenceSamePlane: f.scaleSignals?.referenceSamePlane === true,
+}))
 
-  const ceilingSqft = safeMaxInt(
-    ...findings.map((f) =>
-      midpointFromRange(
-        f.quantitySignals?.estimatedCeilingSqftMin,
-        f.quantitySignals?.estimatedCeilingSqftMax
-      )
-    )
-  )
+const ceilingCandidates: RangeCandidate[] = findings.map((f) => ({
+  min: f.quantitySignals?.estimatedCeilingSqftMin ?? null,
+  max: f.quantitySignals?.estimatedCeilingSqftMax ?? null,
+  confidence: f.confidence,
+  shotType: f.shotType,
+  estimateMethod: f.quantitySignals?.estimateMethod ?? null,
+  referenceUsable: f.scaleSignals?.referenceUsable === true,
+  referenceSamePlane: f.scaleSignals?.referenceSamePlane === true,
+}))
 
-  const floorSqft = safeMaxInt(
-    ...findings.map((f) =>
-      midpointFromRange(
-        f.quantitySignals?.estimatedFloorSqftMin,
-        f.quantitySignals?.estimatedFloorSqftMax
-      )
-    )
-  )
+const floorCandidates: RangeCandidate[] = findings.map((f) => ({
+  min: f.quantitySignals?.estimatedFloorSqftMin ?? null,
+  max: f.quantitySignals?.estimatedFloorSqftMax ?? null,
+  confidence: f.confidence,
+  shotType: f.shotType,
+  estimateMethod: f.quantitySignals?.estimateMethod ?? null,
+  referenceUsable: f.scaleSignals?.referenceUsable === true,
+  referenceSamePlane: f.scaleSignals?.referenceSamePlane === true,
+}))
 
-  const trimLf = safeMaxInt(
-    ...findings.map((f) =>
-      midpointFromRange(
-        f.quantitySignals?.estimatedTrimLfMin,
-        f.quantitySignals?.estimatedTrimLfMax
-      )
-    )
-  )
+const trimCandidates: RangeCandidate[] = findings.map((f) => ({
+  min: f.quantitySignals?.estimatedTrimLfMin ?? null,
+  max: f.quantitySignals?.estimatedTrimLfMax ?? null,
+  confidence: f.confidence,
+  shotType: f.shotType,
+  estimateMethod: f.quantitySignals?.estimateMethod ?? null,
+  referenceUsable: f.scaleSignals?.referenceUsable === true,
+  referenceSamePlane: f.scaleSignals?.referenceSamePlane === true,
+}))
+
+const wallSqft = pickBestRangeValue(wallCandidates)
+const ceilingSqft = pickBestRangeValue(ceilingCandidates)
+const floorSqft = pickBestRangeValue(floorCandidates)
+const trimLf = pickBestRangeValue(trimCandidates)
 
   const shotTypes = new Set(findings.map((f) => f.shotType))
   const missingViews: string[] = []
@@ -1822,6 +1954,12 @@ function mergePhotoFindings(findings: PhotoFinding[]): PhotoJobSummary | null {
       floorSqft,
       trimLf,
     },
+    quantitySources: {
+  wallSqft: pickBestRangeMethod(wallCandidates),
+  ceilingSqft: pickBestRangeMethod(ceilingCandidates),
+  floorSqft: pickBestRangeMethod(floorCandidates),
+  trimLf: pickBestRangeMethod(trimCandidates),
+},
     exteriorSummary: {
       isExterior,
       stories: exteriorStories,
@@ -1917,6 +2055,22 @@ async function analyzeJobPhotos(args: {
       ? value
       : null
 
+  const safeEstimateMethod = (
+  value: any
+): QuantityEstimateMethod | null =>
+  value === "reference_scaled" ||
+  value === "visual_guess" ||
+  value === "count_based"
+    ? value
+    : null
+
+  const safeScaleConfidence = (
+  value: any
+): "low" | "medium" | "high" | null =>
+  value === "low" || value === "medium" || value === "high"
+    ? value
+    : null
+
   async function analyzeSinglePhoto(photo: PhotoInput): Promise<PhotoFinding> {
     const referenceMeta =
   photo.reference?.kind === "custom" &&
@@ -1964,8 +2118,18 @@ Return ONLY valid JSON with this exact shape:
     "estimatedFloorSqftMin": null,
     "estimatedFloorSqftMax": null,
     "estimatedTrimLfMin": null,
-    "estimatedTrimLfMax": null
-  },
+    "estimatedTrimLfMax": null,
+    "estimateMethod": null
+},
+"scaleSignals": {
+  "referenceProvided": false,
+  "referenceVisible": null,
+  "referenceSamePlane": null,
+  "referenceUsable": null,
+  "scaleConfidence": null,
+  "referenceLabel": null,
+  "referenceRealWidthIn": null
+ },
   "exteriorSignals": {
     "isExterior": null,
     "stories": null,
@@ -1994,6 +2158,20 @@ Rules:
 - Use short contractor-style phrases.
 - No markdown.
 - No extra text.
+- If a custom reference is provided, first decide whether the reference object is actually visible in the image.
+- Only use the reference for scale when the reference appears to be on the same plane or a very similar depth plane as the target surface.
+- If the reference is usable, set:
+  - scaleSignals.referenceProvided = true
+  - scaleSignals.referenceVisible = true
+  - scaleSignals.referenceSamePlane = true or false
+  - scaleSignals.referenceUsable = true
+  - quantitySignals.estimateMethod = "reference_scaled"
+- If the reference is not visible or not usable for scale:
+  - keep referenceUsable = false
+  - set estimateMethod = "visual_guess" or "count_based"
+- Use tighter min/max ranges when reference scaling is usable.
+- Use wider ranges or null when the reference is weak, distorted, angled, or on a different plane.
+- Never pretend the reference gives exact measurements.
 
 Global scope:
 ${args.scopeText}
@@ -2033,6 +2211,7 @@ Photo metadata:
 
     const q = parsed?.quantitySignals ?? {}
     const ex = parsed?.exteriorSignals ?? {}
+    const scale = parsed?.scaleSignals ?? {}
 
     return {
       photoName: photo.name || "photo",
@@ -2066,26 +2245,53 @@ Photo metadata:
       detectedDemoNeeds: cleanStrings(parsed?.detectedDemoNeeds, 8),
       complexityFlags: cleanStrings(parsed?.complexityFlags, 8),
       quantitySignals: {
-        doors: safeInt(q?.doors),
-        windows: safeInt(q?.windows),
-        vanities: safeInt(q?.vanities),
-        toilets: safeInt(q?.toilets),
-        sinks: safeInt(q?.sinks),
-        outlets: safeInt(q?.outlets),
-        switches: safeInt(q?.switches),
-        recessedLights: safeInt(q?.recessedLights),
-        cabinets: safeInt(q?.cabinets),
-        appliances: safeInt(q?.appliances),
-        ceilingHeightCategory: safeCeilingHeight(q?.ceilingHeightCategory),
-        estimatedWallSqftMin: safeNum(q?.estimatedWallSqftMin),
-        estimatedWallSqftMax: safeNum(q?.estimatedWallSqftMax),
-        estimatedCeilingSqftMin: safeNum(q?.estimatedCeilingSqftMin),
-        estimatedCeilingSqftMax: safeNum(q?.estimatedCeilingSqftMax),
-        estimatedFloorSqftMin: safeNum(q?.estimatedFloorSqftMin),
-        estimatedFloorSqftMax: safeNum(q?.estimatedFloorSqftMax),
-        estimatedTrimLfMin: safeNum(q?.estimatedTrimLfMin),
-        estimatedTrimLfMax: safeNum(q?.estimatedTrimLfMax),
-      },
+  doors: safeInt(q?.doors),
+  windows: safeInt(q?.windows),
+  vanities: safeInt(q?.vanities),
+  toilets: safeInt(q?.toilets),
+  sinks: safeInt(q?.sinks),
+  outlets: safeInt(q?.outlets),
+  switches: safeInt(q?.switches),
+  recessedLights: safeInt(q?.recessedLights),
+  cabinets: safeInt(q?.cabinets),
+  appliances: safeInt(q?.appliances),
+  ceilingHeightCategory: safeCeilingHeight(q?.ceilingHeightCategory),
+  estimatedWallSqftMin: safeNum(q?.estimatedWallSqftMin),
+  estimatedWallSqftMax: safeNum(q?.estimatedWallSqftMax),
+  estimatedCeilingSqftMin: safeNum(q?.estimatedCeilingSqftMin),
+  estimatedCeilingSqftMax: safeNum(q?.estimatedCeilingSqftMax),
+  estimatedFloorSqftMin: safeNum(q?.estimatedFloorSqftMin),
+  estimatedFloorSqftMax: safeNum(q?.estimatedFloorSqftMax),
+  estimatedTrimLfMin: safeNum(q?.estimatedTrimLfMin),
+  estimatedTrimLfMax: safeNum(q?.estimatedTrimLfMax),
+  estimateMethod: safeEstimateMethod(q?.estimateMethod),
+},
+scaleSignals: {
+  referenceProvided:
+    typeof scale?.referenceProvided === "boolean"
+      ? scale.referenceProvided
+      : photo.reference?.kind === "custom",
+  referenceVisible:
+    typeof scale?.referenceVisible === "boolean"
+      ? scale.referenceVisible
+      : null,
+  referenceSamePlane:
+    typeof scale?.referenceSamePlane === "boolean"
+      ? scale.referenceSamePlane
+      : null,
+  referenceUsable:
+    typeof scale?.referenceUsable === "boolean"
+      ? scale.referenceUsable
+      : null,
+  scaleConfidence: safeScaleConfidence(scale?.scaleConfidence),
+  referenceLabel:
+    typeof scale?.referenceLabel === "string" && scale.referenceLabel.trim()
+      ? scale.referenceLabel.trim().slice(0, 40)
+      : photo.reference?.label?.trim() || null,
+  referenceRealWidthIn: safeNum(
+    scale?.referenceRealWidthIn ?? photo.reference?.realWidthIn
+  ),
+},
       exteriorSignals: {
         isExterior: typeof ex?.isExterior === "boolean" ? ex.isExterior : null,
         stories: safeStories(safeInt(ex?.stories)),
@@ -2628,6 +2834,7 @@ function getEffectiveQuantityInputs(args: {
 }) {
   const parsedSqft = parseSqft(args.scopeText)
   const photoSqft = getPhotoEstimatedSqft(args.photoAnalysis)
+  const quantitySources = args.photoAnalysis?.jobSummary?.quantitySources
 
   const userMeasuredSqft =
     args.measurements?.totalSqft && Number(args.measurements.totalSqft) > 0
@@ -2637,9 +2844,15 @@ function getEffectiveQuantityInputs(args: {
   return {
     userMeasuredSqft,
     parsedSqft,
+
     photoWallSqft: photoSqft.wallSqft,
     photoCeilingSqft: photoSqft.ceilingSqft,
     photoFloorSqft: photoSqft.floorSqft,
+
+    photoWallSqftSource: quantitySources?.wallSqft ?? null,
+    photoCeilingSqftSource: quantitySources?.ceilingSqft ?? null,
+    photoFloorSqftSource: quantitySources?.floorSqft ?? null,
+    photoTrimLfSource: quantitySources?.trimLf ?? null,
 
     effectiveFloorSqft:
       userMeasuredSqft ??
@@ -2930,10 +3143,21 @@ function buildPhotoEstimateDecision(args: {
     tradeStack: args.tradeStack,
   })
 
-  let confidence =
-    packetScore > 0 && jobConfidence > 0
-      ? Math.round(packetScore * 0.45 + jobConfidence * 0.55)
-      : packetScore || jobConfidence || 0
+let confidence =
+  packetScore > 0 && jobConfidence > 0
+    ? Math.round(packetScore * 0.45 + jobConfidence * 0.55)
+    : packetScore || jobConfidence || 0
+
+const hasReferenceScaledQty =
+  args.photoAnalysis?.jobSummary?.quantitySources?.wallSqft === "reference_scaled" ||
+  args.photoAnalysis?.jobSummary?.quantitySources?.floorSqft === "reference_scaled" ||
+  args.photoAnalysis?.jobSummary?.quantitySources?.ceilingSqft === "reference_scaled" ||
+  args.photoAnalysis?.jobSummary?.quantitySources?.trimLf === "reference_scaled"
+
+if (hasReferenceScaledQty) {
+  confidence += 10
+  reasons.push("Reference-scaled photo quantities were available.")
+}
 
   if (usableQuantities) confidence += 8
   else confidence -= 10
@@ -3047,16 +3271,13 @@ function buildEstimateExplanation(args: {
   trade: string
   priceGuardVerified: boolean
   priceGuardProtected: boolean
-  photoImpact: PhotoPricingImpact | null
+  photoImpact: EstimatorPhotoPricingImpact | null
   minApplied: boolean
   minAmount?: number | null
-  scopeSignals?: {
-    needsReturnVisit?: boolean
-    reason?: string
-  } | null
-  complexityProfile: ComplexityProfile | null
-  priceGuard: PriceGuardReport
-}): EstimateExplanation {
+  scopeSignals?: EstimatorScopeSignals | null
+  complexityProfile: EstimatorComplexityProfile | null
+  priceGuard: EstimatorPriceGuardReport
+}): EstimatorEstimateExplanation {
   const priceReasons: string[] = []
   const scheduleReasons: string[] = []
   const photoReasons: string[] = []
@@ -3464,6 +3685,49 @@ function clampPricing(pricing: Pricing): Pricing {
     markup: Math.min(25, Math.max(15, pricing.markup)),
     total: Math.min(MAX_TOTAL, Math.max(0, pricing.total)),
   }
+}
+
+function applyAiRealism(args: {
+  pricing: Pricing
+  trade: string
+}): Pricing {
+  const p = { ...coercePricing(args.pricing) }
+  const trade = (args.trade || "").toLowerCase()
+
+  if (p.markup < 12) p.markup = 15
+  if (p.markup > 30) p.markup = 25
+
+  switch (trade) {
+    case "painting":
+      if (p.materials > p.labor * 0.5) p.materials = Math.round(p.labor * 0.35)
+      break
+
+    case "flooring":
+    case "tile":
+      if (p.materials < p.labor * 0.6) p.materials = Math.round(p.labor * 0.8)
+      if (p.materials > p.labor * 1.8) p.materials = Math.round(p.labor * 1.4)
+      break
+
+    case "electrical":
+    case "plumbing":
+      if (p.materials > p.labor * 0.75) p.materials = Math.round(p.labor * 0.5)
+      break
+
+    case "carpentry":
+    case "general renovation":
+      if (p.materials < p.labor * 0.4) p.materials = Math.round(p.labor * 0.6)
+      break
+  }
+
+  const base = p.labor + p.materials
+  if (p.subs > base * 0.5) {
+    p.subs = Math.round(base * 0.3)
+  }
+
+  const totalBase = p.labor + p.materials + p.subs
+  p.total = totalBase + Math.round(totalBase * (p.markup / 100))
+
+  return clampPricing(p)
 }
 
 function isValidEstimateBasis(b: any): b is EstimateBasis {
@@ -3899,7 +4163,7 @@ function compressCrossTradeMobilization(args: {
 function applyCrossTradeMobilizationCompression(args: {
   pricing: Pricing
   basis: EstimateBasis | null
-  tradeStack: TradeStack
+  tradeStack: TradeStack | null
   cp: ComplexityProfile | null
   scopeText: string
   pricingSource: "ai" | "deterministic" | "merged"
@@ -4384,14 +4648,12 @@ if (primary && REAL_TRADES.has(primary)) trades.push(primary)
   }
 }
 
-function appendTradeCoordinationSentence(desc: string, stack: TradeStack): string {
+function appendTradeCoordinationSentence(desc: string, stack: TradeStack | null): string {
   let d = (desc || "").trim()
   if (!d) return d
 
-  // Only add if we truly have multi-trade
   if (!stack?.isMultiTrade) return d
 
-  // prevent duplicates
   const alreadyMentionsCoordination =
     /\bcoordination\b/i.test(d) ||
     /\bmulti[-\s]?trade\b/i.test(d) ||
@@ -4406,13 +4668,15 @@ function appendTradeCoordinationSentence(desc: string, stack: TradeStack): strin
 
   if (list.length === 0) return d
 
-  // If demo/waterproofing exists, mention it as sequencing context (not as a "trade")
   const phaseHint =
     Array.isArray(stack.activities) && stack.activities.length > 0
       ? ` with sequencing for ${stack.activities.slice(0, 2).join(" and ")}`
       : ""
 
-  return (d + ` The scope includes coordination across ${list.join(", ")} activities${phaseHint} to maintain sequencing with existing conditions.`).trim()
+  return (
+    d +
+    ` The scope includes coordination across ${list.join(", ")} activities${phaseHint} to maintain sequencing with existing conditions.`
+  ).trim()
 }
 
 function estimateCalendarDaysRange(args: {
@@ -4832,7 +5096,7 @@ function parseBathKeyword(text: string): boolean {
 }
 
 function parseKitchenKeyword(text: string): boolean {
-  return /\b(kitchen|cabinet|cabinets|countertop|counter top|backsplash|sink|faucet|range|cooktop|hood|appliance|dishwasher|microwave)\b/i.test(
+  return /\b(kitchen|cabinet|cabinets|countertop|counter top|backsplash|range|cooktop|hood|dishwasher|microwave)\b/i.test(
     text
   )
 }
@@ -6302,18 +6566,22 @@ function computeMultiTradeDeterministic(args: {
 
   const allPiecesPriced = pricedCount === pieces.length
 
-  return {
-    okForDeterministic: allPiecesPriced,
-    okForVerified: allPiecesPriced,
-    pricing: clampPricing({ labor, materials, subs, markup, total }),
-    estimateBasis,
-    perTrade,
-    notes: [
-      `Priced ${pricedCount}/${pieces.length} split scopes deterministically.`,
-      ...notes,
-      ...perTrade.flatMap((x) => x.notes || []),
-    ],
-  }
+const allPiecesVerified =
+  allPiecesPriced &&
+  perTrade.every((x) => /_verified$/.test(x.source))
+
+return {
+  okForDeterministic: allPiecesPriced,
+  okForVerified: allPiecesVerified,
+  pricing: clampPricing({ labor, materials, subs, markup, total }),
+  estimateBasis,
+  perTrade,
+  notes: [
+    `Priced ${pricedCount}/${pieces.length} split scopes deterministically.`,
+    ...notes,
+    ...perTrade.flatMap((x) => x.notes || []),
+  ],
+}
 }
 
 // -----------------------------
@@ -7020,6 +7288,124 @@ const doorPricing: Pricing | null =
       })
     : null
 
+    type CtxPhoto = NonNullable<
+  Parameters<typeof buildEstimatorContext>[0]["photos"]
+>[number]
+
+const ctxPhotos: CtxPhoto[] | null =
+  photos?.map((p): CtxPhoto => ({
+    name: p.name,
+    dataUrl: p.dataUrl,
+    roomTag: p.roomTag ?? "",
+    shotType: (p.shotType ?? "overview") as CtxPhoto["shotType"],
+    note: p.note ?? "",
+    reference: {
+      kind: p.reference?.kind === "custom" ? "custom" : "none",
+      label: p.reference?.label ?? "",
+      realWidthIn: p.reference?.realWidthIn ?? null,
+    },
+  })) ?? null
+
+    const ctx = buildEstimatorContext({
+  input: body,
+  normalizedEmail,
+  requestId,
+
+  scopeChange,
+  trade,
+  tradeLabel: trade,
+
+  rawState,
+  stateAbbrev,
+  stateMultiplier,
+  usedNationalBaseline,
+
+  measurements,
+  photos: ctxPhotos,
+
+  paintScope: paintScopeForJob,
+  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
+  workDaysPerWeek,
+
+  rooms,
+  doors,
+
+  splitScopes,
+  tradeStack,
+  complexityProfile,
+  scopeSignals,
+
+  quantityInputs,
+
+  photoPacketScore,
+  photoAnalysis,
+  photoImpact,
+  photoScopeAssist,
+  photoEstimateDecision,
+
+  materialsList,
+  areaScopeBreakdown,
+
+  useBigJobPricing,
+  anchorHit,
+  multiTradeDet,
+
+  paintingDet: paintingDetPricing
+    ? {
+        pricing: paintingDetPricing,
+        okForVerified: !!paintingDet?.okForVerified,
+        verifiedSource: "painting_engine_v1_verified",
+        source: "painting_engine_v1",
+        estimateBasis: null,
+      }
+    : null,
+
+  flooringDet: flooringDetPricing
+    ? {
+        pricing: flooringDetPricing,
+        okForVerified: !!flooringDet?.okForVerified,
+        verifiedSource: "flooring_engine_v1_verified",
+        source: "flooring_engine_v1",
+        estimateBasis: null,
+      }
+    : null,
+
+  electricalDet: electricalDetPricing
+    ? {
+        pricing: electricalDetPricing,
+        okForVerified: !!electricalDet?.okForVerified,
+        verifiedSource: "electrical_engine_v1_verified",
+        source: "electrical_engine_v1",
+        estimateBasis: null,
+      }
+    : null,
+
+  plumbingDet: plumbingDetPricing
+    ? {
+        pricing: plumbingDetPricing,
+        okForVerified: !!plumbingDet?.okForVerified,
+        verifiedSource: "plumbing_engine_v1_verified",
+        source: "plumbing_engine_v1",
+        estimateBasis: null,
+      }
+    : null,
+
+  drywallDet: drywallDetPricing
+    ? {
+        pricing: drywallDetPricing,
+        okForVerified: !!drywallDet?.okForVerified,
+        verifiedSource: "drywall_engine_v1_verified",
+        source: "drywall_engine_v1",
+        estimateBasis: null,
+      }
+    : null,
+
+  mixedPaintPricing,
+  doorPricing,
+  bigJobPricing,
+  photoPaintPricing,
+})
+
     // -----------------------------
     // AI PROMPT (PRODUCTION-LOCKED)
     // -----------------------------
@@ -7381,7 +7767,9 @@ const effectiveSqft =
     ? quantityInputs.effectiveFloorSqft
     : trade === "drywall"
     ? quantityInputs.effectiveWallSqft
-    : quantityInputs.effectivePaintSqft
+    : trade === "painting"
+    ? quantityInputs.effectivePaintSqft
+    : null
 normalized.estimateBasis = syncEstimateBasisMath({
   pricing: normalized.pricing,
   basis: normalizeEstimateBasisUnits(
@@ -7470,69 +7858,6 @@ normalized.estimateBasis = syncEstimateBasisMath({
   }
 }
 
-// -----------------------------
-// ENFORCE MULTI-VISIT CREW-DAYS FLOOR (AI OUTPUT)
-// -----------------------------
-{
-  const enforced = enforcePhaseVisitCrewDaysFloor({
-    pricing: normalized.pricing,
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    cp: complexityProfile,
-    scopeText: scopeChange,
-  })
-
-  if (enforced.applied) {
-    normalized.pricing = enforced.pricing
-    normalized.estimateBasis = enforced.basis
-  }
-}
-
-normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
-
-if (
-  photoImpact.extraCrewDays > 0 &&
-  normalized.estimateBasis &&
-  isValidEstimateBasis(normalized.estimateBasis) &&
-  normalized.estimateBasis.units.includes("days")
-) {
-  const currentCrewDays = Number(
-    normalized.estimateBasis.crewDays ?? normalized.estimateBasis.quantities?.days ?? 0
-  )
-
-  if (Number.isFinite(currentCrewDays) && currentCrewDays > 0) {
-    const bumpedCrewDays = Math.round((currentCrewDays + photoImpact.extraCrewDays) * 2) / 2
-
-    normalized.estimateBasis = {
-      ...normalized.estimateBasis,
-      crewDays: bumpedCrewDays,
-      quantities: {
-        ...normalized.estimateBasis.quantities,
-        days: bumpedCrewDays,
-      },
-      assumptions: Array.isArray(normalized.estimateBasis.assumptions)
-        ? [...normalized.estimateBasis.assumptions, "Photo-visible conditions increased schedule allowance."]
-        : ["Photo-visible conditions increased schedule allowance."],
-    }
-  }
-}
-
-normalized.estimateBasis = syncEstimateBasisMath({
-  pricing: normalized.pricing,
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-})
-
-const v3 = validateAiMath({
-  pricing: normalized.pricing,
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  parsedCounts: { rooms, doors, sqft: effectiveSqft },
-  complexity: complexityProfile,
-  scopeText: scopeChange,
-})
-
-if (!v3.ok) {
-  console.warn("AI output failed after phase-visit enforcement:", v3.reasons)
-}
-
 // ✅ Normalize documentType BEFORE any early returns (deterministic path included)
 const allowedTypes = [
   "Change Order",
@@ -7558,395 +7883,47 @@ if (typeof normalized.description === "string") {
   )
 }
 
-// Start from AI as default
-let pricingSource: "ai" | "deterministic" | "merged" = "ai"
-let priceGuardVerified = false
-let pricingFinal: Pricing = normalized.pricing
-let detSource: string | null = null
+const deps = {
+  basis: {
+    normalizeBasisSafe,
+    syncEstimateBasisMath,
+    enforceEstimateBasis,
+    buildEstimateBasisFallback,
+  },
+  pricing: {
+    applyAiRealism,
+    compressCrossTradeMobilization,
+    enforcePhaseVisitCrewDaysFloor,
+    clampPricing,
+    coercePricing,
+    applyPermitBuffer,
+    applyMinimumCharge,
+  },
+  description: {
+    syncDescriptionLeadToDocumentType,
+    appendExecutionPlanSentence,
+    appendTradeCoordinationSentence,
+    appendPermitCoordinationSentence,
+    polishDescriptionWith4o,
+  },
+  buildScheduleBlock,
+  buildScopeXRay,
+  buildPriceGuardReport,
+  buildEstimateExplanation,
+} satisfies OrchestratorDeps
 
-// ✅ Multi-trade deterministic combiner takes priority when all split scopes were priced
-if (
-  multiTradeDet?.okForDeterministic &&
-  multiTradeDet.pricing &&
-  multiTradeDet.estimateBasis
-) {
-  pricingFinal = clampPricing(coercePricing(multiTradeDet.pricing))
-  pricingSource = "deterministic"
-  priceGuardVerified = !!multiTradeDet.okForVerified
-  detSource = "multi_trade_combiner_v1"
-  normalized.estimateBasis = multiTradeDet.estimateBasis
-  normalized.trade = "general renovation"
-}
-
-// ✅ Treat kitchen remodel anchor as deterministic-owned (no merge)
-if (
-  pricingSource !== "deterministic" &&
-  anchorHit?.id === "kitchen_remodel_v1" &&
-  anchorPricing
-) {
-  pricingFinal = clampPricing(coercePricing(anchorPricing))
-  pricingSource = "deterministic"
-  detSource = `anchor:${anchorHit.id}`
-  priceGuardVerified = true
-}
-
-if (
-  pricingSource !== "deterministic" &&
-  anchorHit?.id === "bathroom_remodel_v1" &&
-  anchorPricing
-) {
-  pricingFinal = clampPricing(coercePricing(anchorPricing))
-  pricingSource = "deterministic"
-  detSource = `anchor:${anchorHit.id}`
-  priceGuardVerified = true
-}
-
-// ✅ Rooms + doors mixed painting deterministic-owned
-if (
-  pricingSource !== "deterministic" &&
-  looksLikePainting &&
-  typeof rooms === "number" && rooms > 0 &&
-  typeof doors === "number" && doors > 0 &&
-  mixedPaintPricing
-) {
-  pricingFinal = clampPricing(coercePricing(mixedPaintPricing))
-  pricingSource = "deterministic"
-  detSource = "painting_rooms_plus_doors"
-  priceGuardVerified = false
-}
-
-// ✅ Doors-only painting deterministic-owned
-if (
-  pricingSource !== "deterministic" &&
-  looksLikePainting &&
-  effectivePaintScope === "doors_only" &&
-  doorPricing
-) {
-  pricingFinal = clampPricing(coercePricing(doorPricing))
-  pricingSource = "deterministic"
-  detSource = "painting_doors_only"
-  priceGuardVerified = false
-}
-
-// ✅ Big painting jobs deterministic-owned
-if (
-  pricingSource !== "deterministic" &&
-  looksLikePainting &&
-  useBigJobPricing &&
-  bigJobPricing
-) {
-  pricingFinal = clampPricing(coercePricing(bigJobPricing))
-  pricingSource = "deterministic"
-  detSource = "painting_big_job"
-  priceGuardVerified = false
-}
-
-function applyDeterministicOwnership(args: {
-  pricing: Pricing | null
-  okForVerified?: boolean
-  sourceVerifiedId: string
-  sourceId: string
-}) {
-  if (!args.pricing) return false
-
-  pricingFinal = clampPricing(coercePricing(args.pricing))
-  pricingSource = "deterministic"
-  detSource = args.okForVerified ? args.sourceVerifiedId : args.sourceId
-  priceGuardVerified = !!args.okForVerified
-  return true
-}
-
-const deterministicOwned =
-  pricingSource === "deterministic" ||
-  (trade === "painting" &&
-    applyDeterministicOwnership({
-      pricing: paintingDetPricing,
-      okForVerified: !!paintingDet?.okForVerified,
-      sourceVerifiedId: "painting_engine_v1_verified",
-      sourceId: "painting_engine_v1",
-    })) ||
-  (trade === "flooring" &&
-    applyDeterministicOwnership({
-      pricing: flooringDetPricing,
-      okForVerified: !!flooringDet?.okForVerified,
-      sourceVerifiedId: "flooring_engine_v1_verified",
-      sourceId: "flooring_engine_v1",
-    })) ||
-  (trade === "electrical" &&
-    applyDeterministicOwnership({
-      pricing: electricalDetPricing,
-      okForVerified: !!electricalDet?.okForVerified,
-      sourceVerifiedId: "electrical_engine_v1_verified",
-      sourceId: "electrical_engine_v1",
-    })) ||
-  (trade === "plumbing" &&
-    !plumbingScopeConflict &&
-    applyDeterministicOwnership({
-      pricing: plumbingDetPricing,
-      okForVerified: !!plumbingDet?.okForVerified,
-      sourceVerifiedId: "plumbing_engine_v1_verified",
-      sourceId: "plumbing_engine_v1",
-    })) ||
-  (trade === "drywall" &&
-    applyDeterministicOwnership({
-      pricing: drywallDetPricing,
-      okForVerified: !!drywallDet?.okForVerified,
-      sourceVerifiedId: "drywall_engine_v1_verified",
-      sourceId: "drywall_engine_v1",
-    }))
-
-    if (trade === "painting" && paintingDet?.estimateBasis && deterministicOwned) {
-  normalized.estimateBasis = paintingDet.estimateBasis
-}
-
-  // -----------------------------
-  // CROSS-TRADE MOBILIZATION COMPRESSION (pre-permit)
-  // -----------------------------
-  if (deterministicOwned) {
-  const ctm = compressCrossTradeMobilization({
-    pricing: pricingFinal,
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    cp: complexityProfile,
-    tradeStack,
-    scopeText: scopeChange,
-    pricingSource,
-    detSource,
-  })
-
-  if (ctm.applied) {
-    pricingFinal = ctm.pricing
-    normalized.pricing = pricingFinal
-    normalized.estimateBasis = ctm.basis
-    console.log("PG XTRADE COMPRESS (det)", ctm.note)
-  }
-}
-
-if (deterministicOwned) {
-  const permitPatch1 = applyPermitBuffer({
-    pricing: clampPricing(pricingFinal),
-    trade,
-    cp: complexityProfile,
-    pricingSource,
-    priceGuardVerified,
-    detSource,
-  })
-
-    pricingFinal = permitPatch1.pricing
-
-  const minResult = applyMinimumCharge(trade, pricingFinal.total)
-
-if (minResult.applied) {
-  const diff = minResult.total - pricingFinal.total
-
-  pricingFinal = clampPricing({
-    ...pricingFinal,
-    subs: Math.round(Number(pricingFinal.subs || 0) + diff),
-    total: minResult.total,
-  })
-}
-
-if (photoImpact.reasons.length > 0) {
-  const nextLabor = Math.round(Number(pricingFinal.labor || 0) + photoImpact.laborDelta)
-  const nextMaterials = Math.round(Number(pricingFinal.materials || 0) + photoImpact.materialsDelta)
-  const nextSubs = Math.round(Number(pricingFinal.subs || 0) + photoImpact.subsDelta)
-  const nextMarkup = Number(pricingFinal.markup || 20)
-
-  const nextBase = nextLabor + nextMaterials + nextSubs
-  const nextTotal = Math.round(nextBase * (1 + nextMarkup / 100))
-
-  pricingFinal = clampPricing({
-    labor: nextLabor,
-    materials: nextMaterials,
-    subs: nextSubs,
-    markup: nextMarkup,
-    total: nextTotal,
-  })
-}
-
-  const safePricing = clampPricing(pricingFinal)
-
-  const priceGuardProtected = true
-
-  normalized.trade = trade
-
-  // --- Description sync when deterministic owns pricing (prevents wrong narrative) ---
-  if (trade === "electrical" && electricalDet?.jobType) {
-    if (electricalDet.jobType === "device_work") {
-      normalized.description = syncDescriptionLeadToDocumentType(
-  normalized.description,
-  normalized.documentType
-)
-      if (!/outlet|switch|recessed|fixture/i.test(normalized.description)) {
-        normalized.description +=
-          " Work covers device-level electrical installation/replacement as described, including protection, testing, and cleanup."
-      }
-    }
-    if (electricalDet.jobType === "panel_replacement" && !/panel/i.test(normalized.description)) {
-      normalized.description +=
-        " Scope includes electrical panel replacement activities as described, including labeling, changeover coordination, testing, and cleanup."
-    }
-  }
-
-  if (trade === "plumbing" && plumbingDet?.jobType) {
-    if (plumbingDet.jobType === "fixture_swaps" && !/toilet|faucet|sink|vanity|valve/i.test(normalized.description)) {
-      normalized.description +=
-        " Scope covers fixture-level plumbing work as described, including isolation, removal/install, test, and cleanup."
-    }
-  }
-
-  if (trade === "drywall" && drywallDet?.jobType) {
-    if (drywallDet.jobType === "patch_repair" && !/patch|repair/i.test(normalized.description)) {
-      normalized.description +=
-        " Work includes drywall patch/repair steps as described, including prep, finish work, and site cleanup."
-    }
-  }
-
-  normalized.description = appendExecutionPlanSentence({
-    description: normalized.description,
+const payload = await runEstimatorOrchestrator({
+  ctx,
+  aiDraft: {
     documentType: normalized.documentType,
-    trade,
-    cp: complexityProfile,
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    scopeText: scopeChange,
-    tradeStack,
-    workDaysPerWeek
-  })
-
-  normalized.description = appendTradeCoordinationSentence(normalized.description, tradeStack)
-
-  normalized.description = appendPermitCoordinationSentence(normalized.description, complexityProfile)
-
-  normalized.description = syncDescriptionLeadToDocumentType(
-  normalized.description,
-  normalized.documentType
-)
-
-  const pg = buildPriceGuardReport({
-    pricingSource,
-    priceGuardVerified,
-    priceGuardAnchorStrict: false,
-    stateAbbrev,
-    rooms,
-    doors,
-    measurements,
-    effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
-    anchorId: anchorHit?.id ?? null,
-    detSource,
-    usedNationalBaseline,
-  })
-
-  if (photoImpact.reasons.length > 0) {
-  pg.appliedRules.push(...photoImpact.reasons.map((r) => `Photo-confirmed: ${r}`))
-  pg.confidence = clampConfidence(pg.confidence + photoImpact.confidenceBoost)
-}
-
-    if (minResult.applied) {
-    pg.appliedRules.push(
-      `Minimum service charge applied for ${trade}: $${minResult.minimum}`
-    )
-  }
-
-    normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
-
-    normalized.estimateBasis = syncEstimateBasisMath({
-  pricing: safePricing,
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-})
-
-    const outTrade = normalized.trade || trade
-
-    const scheduleBlock = buildScheduleBlock({
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  cp: complexityProfile,
-  trade: outTrade,
-  tradeStack,
-  scopeText: scopeChange,
-  workDaysPerWeek,
-  photoImpact,
-  scopeSignals,
-})
-
-const scopeXRay = buildScopeXRay({
-  trade: normalized.trade || trade,
-  splitScopes,
-  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
-  rawState,
-  stateAbbrev,
-  pricingSource,
-  detSource,
-  anchorId: anchorHit?.id ?? null,
-  priceGuardVerified,
-  usedNationalBaseline,
-  rooms,
-  doors,
-  quantityInputs,
-  photoScopeAssist,
-  photoAnalysis,
-  scopeSignals,
-  complexityProfile,
-  tradeStack,
-  schedule: scheduleBlock,
-})
-
-    const explanation = buildEstimateExplanation({
-  pricingSource,
-  detSource,
-  trade,
-  priceGuardVerified,
-  priceGuardProtected,
-  photoImpact,
-  minApplied: minResult.applied,
-  minAmount: minResult.applied ? minResult.minimum : null,
-  scopeSignals,
-  complexityProfile,
-  priceGuard: pg,
-})
-
-  // ✅ BUILD PAYLOAD ONCE
-  const payload = {
-  documentType: normalized.documentType,
-  trade: normalized.trade || trade,
-  text: normalized.description,
-  pricing: safePricing,
-  schedule: scheduleBlock,
-  scopeXRay,
-  explanation,
-  scopeSignals,
-  photoAnalysis,
-  photoImpact,
-  photoScopeAssist,
-  photoPacketScore,
-  photoEstimateDecision,
-  materialsList,
-  areaScopeBreakdown,
-  splitScopes,
-  multiTrade: multiTradeDet
-    ? {
-        okForDeterministic: multiTradeDet.okForDeterministic,
-        okForVerified: multiTradeDet.okForVerified,
-        perTrade: multiTradeDet.perTrade.map((x) => ({
-          trade: x.trade,
-          scope: x.scope,
-          pricing: x.pricing,
-          laborRate: x.laborRate,
-          crewDays: x.crewDays,
-          source: x.source,
-          notes: x.notes,
-        })),
-        notes: multiTradeDet.notes,
-      }
-    : null,
-  
-    // debug-only: expose estimateBasis for terminal tests
-    ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),
-
-    pricingSource,
-    detSource,
-    priceGuardAnchor: anchorHit?.id ?? null,
-    priceGuardVerified,
-    priceGuardProtected,
-    priceGuard: pg,
-
+    trade: normalized.trade || trade,
+    description: normalized.description,
+    pricing: normalized.pricing,
+    estimateBasis: normalized.estimateBasis ?? null,
+  },
+  deps,
+  includeDebugEstimateBasis: wantsDebug(req),
+  engineDebug: {
     flooring: flooringDet
       ? {
           okForDeterministic: flooringDet.okForDeterministic,
@@ -7956,7 +7933,6 @@ const scopeXRay = buildScopeXRay({
           notes: flooringDet.notes,
         }
       : null,
-
     electrical: electricalDet
       ? {
           okForDeterministic: electricalDet.okForDeterministic,
@@ -7966,7 +7942,6 @@ const scopeXRay = buildScopeXRay({
           notes: electricalDet.notes,
         }
       : null,
-
     plumbing: plumbingDet
       ? {
           okForDeterministic: plumbingDet.okForDeterministic,
@@ -7976,7 +7951,6 @@ const scopeXRay = buildScopeXRay({
           notes: plumbingDet.notes,
         }
       : null,
-
     drywall: drywallDet
       ? {
           okForDeterministic: drywallDet.okForDeterministic,
@@ -7986,434 +7960,8 @@ const scopeXRay = buildScopeXRay({
           notes: drywallDet.notes,
         }
       : null,
-  }
-
-  // ✅ CACHE + RETURN
-  return await respondAndCache({
-  email: normalizedEmail,
-  requestId,
-  payload,
-  cache: cacheEligible,
+  },
 })
-}
-
-// IMPORTANT: Make sure your later logic respects this:
-// - Only run your "merged" (anchor/bigJob/door/mixed) block when pricingSource !== "deterministic"
-// - Only run AI realism when pricingSource === "ai"
-// =============================
-
-// ✅ Deterministic safety pricing ...
-// Only run merge/AI fallback when deterministic did NOT claim ownership.
-if (pricingSource !== "deterministic") {
-  const detPickedRaw: Pricing | null =
-  anchorPricing ?? bigJobPricing ?? doorPricing ?? mixedPaintPricing ?? photoPaintPricing ?? null
-
-  // ✅ detSource must be based on the raw winner (reference identity)
-  detSource =
-  detPickedRaw === anchorPricing ? `anchor:${anchorHit?.id}` :
-  detPickedRaw === bigJobPricing ? "painting_big_job" :
-  detPickedRaw === doorPricing ? "painting_doors_only" :
-  detPickedRaw === mixedPaintPricing ? "painting_rooms_plus_doors" :
-  detPickedRaw === photoPaintPricing ? "painting_photo_sqft" :
-  null
-
-  // ✅ safe normalized deterministic baseline used for math
-  const detPicked = detPickedRaw ? clampPricing(coercePricing(detPickedRaw)) : null
-
-  if (detPicked) {
-    const ai = normalized.pricing
-    const aiMarkup = Number.isFinite(ai.markup) ? ai.markup : 20
-    const mergedMarkup = Math.min(25, Math.max(15, Math.max(aiMarkup, detPicked.markup)))
-
-    const merged: Pricing = {
-      labor: Math.max(ai.labor, detPicked.labor),
-      materials: Math.max(ai.materials, detPicked.materials),
-      subs: Math.max(ai.subs, detPicked.subs),
-      markup: mergedMarkup,
-      total: 0,
-    }
-
-    const base = merged.labor + merged.materials + merged.subs
-    merged.total = Math.round(base * (1 + merged.markup / 100))
-
-    pricingFinal = clampPricing(merged)
-    pricingSource = "merged"
-    priceGuardVerified = false
-  } else {
-    pricingFinal = normalized.pricing
-    pricingSource = "ai"
-    priceGuardVerified = false
-    detSource = null
-  }
-}
-
-console.log("PG AFTER MERGE DECISION", {
-  pricingSource,
-  detSource,
-  total: pricingFinal.total,
-})
-
-    if (
-  typeof normalized.documentType !== "string" ||
-  typeof normalized.description !== "string" ||
-  !isValidPricing(pricingFinal)
-) {
-  return NextResponse.json(
-  { error: "AI response invalid", aiParsed },
-  { status: 500 }
-)
-}
-
-const shouldRunAiRealism = pricingSource === "ai"
-
-if (shouldRunAiRealism) {
-  // ✅ Patch: compress stacked overhead for real multi-trade projects (AI-only)
-  {
-    const cc = applyCrossTradeMobilizationCompression({
-      pricing: pricingFinal,
-      basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-      tradeStack,
-      cp: complexityProfile,
-      scopeText: scopeChange,
-      pricingSource,
-    })
-
-    if (cc.applied) {
-      pricingFinal = cc.pricing
-      normalized.pricing = pricingFinal
-      normalized.estimateBasis = cc.basis
-      console.log("PG CROSS-TRADE COMPRESSION", cc.note)
-    }
-  }
-
-  // ✅ run realism on the actual current pricing
-  const p = { ...pricingFinal }
-
-  // ---- Markup realism (true contractor ranges) ----
-  if (p.markup < 12) p.markup = 15
-  if (p.markup > 30) p.markup = 25
-
-  // ---- Labor vs material ratios by trade ----
-  switch (trade) {
-    case "painting":
-      if (p.materials > p.labor * 0.5) p.materials = Math.round(p.labor * 0.35)
-      break
-
-    case "flooring":
-    case "tile":
-      if (p.materials < p.labor * 0.6) p.materials = Math.round(p.labor * 0.8)
-      if (p.materials > p.labor * 1.8) p.materials = Math.round(p.labor * 1.4)
-      break
-
-    case "electrical":
-    case "plumbing":
-      if (p.materials > p.labor * 0.75) p.materials = Math.round(p.labor * 0.5)
-      break
-
-    case "carpentry":
-    case "general renovation":
-      if (p.materials < p.labor * 0.4) p.materials = Math.round(p.labor * 0.6)
-      break
-  }
-
-  // ---- Subs realism ----
-  const base = p.labor + p.materials
-  if (p.subs > base * 0.5) p.subs = Math.round(base * 0.3)
-
-  // ---- Total sanity ----
-  const impliedTotal =
-    p.labor + p.materials + p.subs +
-    Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
-
-  if (impliedTotal > 0 && Math.abs(p.total - impliedTotal) / impliedTotal > 0.2) {
-    p.total = impliedTotal
-  }
-
-  p.total =
-    p.labor + p.materials + p.subs +
-    Math.round((p.labor + p.materials + p.subs) * (p.markup / 100))
-
-  pricingFinal = clampPricing(p)
-
-  // ✅ keep normalized in sync for the response payload
-  normalized.pricing = pricingFinal
-} else {
-  pricingFinal = clampPricing(pricingFinal)
-}
-
-// -----------------------------
-// CROSS-TRADE MOBILIZATION COMPRESSION (pre-permit)
-// -----------------------------
-{
-  const ctm = compressCrossTradeMobilization({
-    pricing: pricingFinal,
-    basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-    cp: complexityProfile,
-    tradeStack,
-    scopeText: scopeChange,
-    pricingSource,
-    detSource,
-  })
-
-  if (ctm.applied) {
-    pricingFinal = ctm.pricing
-    normalized.pricing = pricingFinal
-    normalized.estimateBasis = ctm.basis
-    console.log("PG XTRADE COMPRESS", ctm.note)
-  }
-}
-
-const permitPatch2 = applyPermitBuffer({
-  pricing: clampPricing(pricingFinal),
-  trade,
-  cp: complexityProfile,
-  pricingSource,
-  priceGuardVerified,
-  detSource,
-})
-
-pricingFinal = permitPatch2.pricing
-
-const minResult = applyMinimumCharge(trade, pricingFinal.total)
-
-if (minResult.applied) {
-  const diff = minResult.total - pricingFinal.total
-
-  pricingFinal = clampPricing({
-    ...pricingFinal,
-    subs: Math.round(Number(pricingFinal.subs || 0) + diff),
-    total: minResult.total,
-  })
-}
-
-if (photoImpact.reasons.length > 0) {
-  const nextLabor = Math.round(Number(pricingFinal.labor || 0) + photoImpact.laborDelta)
-  const nextMaterials = Math.round(Number(pricingFinal.materials || 0) + photoImpact.materialsDelta)
-  const nextSubs = Math.round(Number(pricingFinal.subs || 0) + photoImpact.subsDelta)
-  const nextMarkup = Number(pricingFinal.markup || 20)
-
-  const nextBase = nextLabor + nextMaterials + nextSubs
-  const nextTotal = Math.round(nextBase * (1 + nextMarkup / 100))
-
-  pricingFinal = clampPricing({
-    labor: nextLabor,
-    materials: nextMaterials,
-    subs: nextSubs,
-    markup: nextMarkup,
-    total: nextTotal,
-  })
-}
-
-const safePricing = clampPricing(pricingFinal)
-
-const priceGuardProtected = (["merged", "deterministic"] as readonly string[]).includes(
-  pricingSource
-)
-
-console.log("PG RESULT", { pricingSource, detSource, total: pricingFinal.total })
-
-const pg = buildPriceGuardReport({
-  pricingSource,
-  priceGuardVerified,
-  priceGuardAnchorStrict: false, 
-  stateAbbrev,
-  rooms,
-  doors,
-  measurements,
-  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
-  anchorId: anchorHit?.id ?? null,
-  detSource,
-  usedNationalBaseline,
-})
-
-if (photoImpact.reasons.length > 0) {
-  pg.appliedRules.push(...photoImpact.reasons.map((r) => `Photo-confirmed: ${r}`))
-  pg.confidence = clampConfidence(pg.confidence + photoImpact.confidenceBoost)
-}
-
-if (minResult.applied) {
-  pg.appliedRules.push(
-    `Minimum service charge applied for ${trade}: $${minResult.minimum}`
-  )
-}
-
-const explanation = buildEstimateExplanation({
-  pricingSource,
-  detSource,
-  trade,
-  priceGuardVerified,
-  priceGuardProtected,
-  photoImpact,
-  minApplied: minResult.applied,
-  minAmount: minResult.applied ? minResult.minimum : null,
-  scopeSignals,
-  complexityProfile,
-  priceGuard: pg,
-})
-
-normalized.trade = trade
-
-normalized.description = appendExecutionPlanSentence({
-  description: normalized.description,
-  documentType: normalized.documentType,
-  trade,
-  cp: complexityProfile,
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  scopeText: scopeChange,
-  tradeStack,
-  workDaysPerWeek,
-})
-
-normalized.description = appendTradeCoordinationSentence(
-  normalized.description,
-  tradeStack
-)
-
-normalized.description = appendPermitCoordinationSentence(
-  normalized.description,
-  complexityProfile
-)
-
-// -----------------------------
-// FINAL DESCRIPTION POLISH (4o)
-// -----------------------------
-normalized.description = await polishDescriptionWith4o({
-  description: normalized.description,
-  documentType: normalized.documentType,
-  trade,
-})
-
-normalized.description = syncDescriptionLeadToDocumentType(
-  normalized.description,
-  normalized.documentType
-)
-
-  normalized.estimateBasis = normalizeBasisSafe(normalized.estimateBasis)
-
-  normalized.estimateBasis = syncEstimateBasisMath({
-  pricing: safePricing,
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-})
-
-  const outTrade = normalized.trade || trade
-
-  const scheduleBlock = buildScheduleBlock({
-  basis: (normalized.estimateBasis ?? null) as EstimateBasis | null,
-  cp: complexityProfile,
-  trade: outTrade,
-  tradeStack,
-  scopeText: scopeChange,
-  workDaysPerWeek,
-  photoImpact,
-  scopeSignals,
-})
-
-const scopeXRay = buildScopeXRay({
-  trade: normalized.trade || trade,
-  splitScopes,
-  effectivePaintScope: looksLikePainting ? effectivePaintScope : null,
-  rawState,
-  stateAbbrev,
-  pricingSource,
-  detSource,
-  anchorId: anchorHit?.id ?? null,
-  priceGuardVerified,
-  usedNationalBaseline,
-  rooms,
-  doors,
-  quantityInputs,
-  photoScopeAssist,
-  photoAnalysis,
-  scopeSignals,
-  complexityProfile,
-  tradeStack,
-  schedule: scheduleBlock,
-})
-
-const payload = {
-  documentType: normalized.documentType,
-  trade: normalized.trade || trade,
-  text: normalized.description,
-  pricing: safePricing,
-  schedule: scheduleBlock,
-  scopeXRay, 
-  explanation,
-  scopeSignals,
-  photoAnalysis,
-  photoImpact,
-  photoScopeAssist,
-  photoPacketScore,
-  photoEstimateDecision,
-  materialsList,
-  areaScopeBreakdown,
-  splitScopes,
-    multiTrade: multiTradeDet
-    ? {
-        okForDeterministic: multiTradeDet.okForDeterministic,
-        okForVerified: multiTradeDet.okForVerified,
-        perTrade: multiTradeDet.perTrade.map((x) => ({
-          trade: x.trade,
-          scope: x.scope,
-          pricing: x.pricing,
-          laborRate: x.laborRate,
-          crewDays: x.crewDays,
-          source: x.source,
-          notes: x.notes,
-        })),
-        notes: multiTradeDet.notes,
-      }
-    : null,
-
-  // debug-only: expose estimateBasis for terminal tests
-    ...(wantsDebug(req) ? { estimateBasis: normalized.estimateBasis ?? null } : {}),
-
-  pricingSource,
-  detSource,
-  priceGuardAnchor: anchorHit?.id ?? null,
-  priceGuardVerified,
-  priceGuardProtected,
-  priceGuard: pg,
-
-  flooring: flooringDet
-    ? {
-        okForDeterministic: flooringDet.okForDeterministic,
-        okForVerified: flooringDet.okForVerified,
-        flooringType: flooringDet.flooringType,
-        sqft: flooringDet.sqft,
-        notes: flooringDet.notes,
-      }
-    : null,
-
-  electrical: electricalDet
-    ? {
-        okForDeterministic: electricalDet.okForDeterministic,
-        okForVerified: electricalDet.okForVerified,
-        jobType: electricalDet.jobType,
-        signals: electricalDet.signals ?? null,
-        notes: electricalDet.notes,
-      }
-    : null,
-
-  plumbing: plumbingDet
-    ? {
-        okForDeterministic: plumbingDet.okForDeterministic,
-        okForVerified: plumbingDet.okForVerified,
-        jobType: plumbingDet.jobType,
-        signals: plumbingDet.signals ?? null,
-        notes: plumbingDet.notes,
-      }
-    : null,
-
-  drywall: drywallDet
-    ? {
-        okForDeterministic: drywallDet.okForDeterministic,
-        okForVerified: drywallDet.okForVerified,
-        jobType: drywallDet.jobType,
-        signals: drywallDet.signals ?? null,
-        notes: drywallDet.notes,
-      }
-    : null,
-}
 
 return await respondAndCache({
   email: normalizedEmail,

@@ -876,6 +876,7 @@ export function buildEstimateConfidence({
   scopeQualityScore,
   priceGuardVerified,
   photoAnalysis,
+  hasMeasurementReference,
 }: {
   scopeChange: string
   trade: string
@@ -886,6 +887,7 @@ export function buildEstimateConfidence({
   scopeQualityScore: number
   priceGuardVerified: boolean
   photoAnalysis: PhotoAnalysis
+  hasMeasurementReference: boolean
 }) {
   let score = 0
   const reasons: string[] = []
@@ -941,26 +943,42 @@ export function buildEstimateConfidence({
     )
 
   if (measureEnabled && totalSqft > 0) {
-    score += 20
-    reasons.push("Measurements were included")
-  } else if (photoHasQuantitySignals) {
-    warnings.push("No manual measurements were included")
-  } else {
-    warnings.push("No measurements were included")
-  }
+  score += 20
+  reasons.push("Measurements were included")
+} else if (hasMeasurementReference) {
+  score += 12
+  reasons.push("Photo measurement reference was included")
 
-  if (!measureEnabled && photoHasQuantitySignals) {
+  if (photoHasQuantitySignals) {
     if (photoAnalysis?.confidence === "high") {
-      score += 14
+      score += 12
       reasons.push("Photo-derived quantity ranges strengthened estimate confidence")
     } else if (photoAnalysis?.confidence === "medium") {
       score += 8
       reasons.push("Photo-derived quantity ranges helped support estimate confidence")
     } else {
-      score += 3
+      score += 4
       reasons.push("Photo quantity hints were available")
     }
+  } else {
+    warnings.push("Manual measurements were not entered, but a photo reference was provided")
   }
+} else if (photoHasQuantitySignals) {
+  warnings.push("No manual measurements were included")
+
+  if (photoAnalysis?.confidence === "high") {
+    score += 10
+    reasons.push("Photo-derived quantity ranges strengthened estimate confidence")
+  } else if (photoAnalysis?.confidence === "medium") {
+    score += 6
+    reasons.push("Photo-derived quantity ranges helped support estimate confidence")
+  } else {
+    score += 2
+    reasons.push("Photo quantity hints were available")
+  }
+} else {
+  warnings.push("No measurements were included")
+}
 
   if (jobPhotosCount > 0) {
     score += 15
