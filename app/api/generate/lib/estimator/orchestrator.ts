@@ -224,15 +224,15 @@ export async function runEstimatorOrchestrator(args: {
   })
 
   const description = await finalizeDescription({
-    draft,
-    trade: ctx.trade,
-    scopeText: ctx.scopeChange,
-    complexity: ctx.complexityProfile,
-    tradeStack: ctx.tradeStack,
-    basis: finalBasis,
-    workDaysPerWeek: ctx.workDaysPerWeek,
-    helpers: deps.description,
-  })
+  draft,
+  trade: ctx.trade,
+  scopeText: ctx.enrichedScopeText,
+  complexity: ctx.complexityProfile,
+  tradeStack: ctx.tradeStack,
+  basis: finalBasis,
+  workDaysPerWeek: ctx.workDaysPerWeek,
+  helpers: deps.description,
+})
 
   const schedule = deps.buildScheduleBlock({
     basis: finalBasis,
@@ -268,6 +268,24 @@ export async function runEstimatorOrchestrator(args: {
       Math.min(99, Math.round(priceGuard.confidence + ctx.photoImpact.confidenceBoost))
     )
   }
+
+if (ctx.planIntelligence?.ok) {
+  priceGuard.appliedRules.push(
+    `Plan intelligence reviewed ${ctx.planIntelligence.pagesCount} plan page(s).`
+  )
+
+  const boost =
+    ctx.planIntelligence.confidenceScore >= 85
+      ? 5
+      : ctx.planIntelligence.confidenceScore >= 65
+      ? 3
+      : 1
+
+  priceGuard.confidence = Math.max(
+    0,
+    Math.min(99, Math.round(priceGuard.confidence + boost))
+  )
+}
 
   if (protectedResult.minimumApplied && protectedResult.minimumAmount) {
     priceGuard.appliedRules.push(
@@ -327,6 +345,7 @@ export async function runEstimatorOrchestrator(args: {
     photoScopeAssist: ctx.photoScopeAssist,
     photoPacketScore: ctx.photoPacketScore,
     photoEstimateDecision: ctx.photoEstimateDecision,
+    planIntelligence: ctx.planIntelligence,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,

@@ -44,6 +44,7 @@ import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
 } from "./lib/estimator/orchestrator"
+import { runPlanIntelligence } from "./lib/plans/orchestrator"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -6680,6 +6681,8 @@ if (cacheEligible && requestId && normalizedEmail) {
 const rawPhotos = (body.photos ?? null) as PhotoInput[] | null
 const photos = rawPhotos ? sanitizePhotoInputs(rawPhotos) : null
 
+const plans = body.plans ?? null
+
 if (rawPhotos && Array.isArray(rawPhotos) && rawPhotos.length > MAX_PHOTOS) {
   return NextResponse.json(
     {
@@ -6825,6 +6828,15 @@ const complexityProfile = buildComplexityProfile({
   trade,
 })
 
+const planIntelligence =
+  plans && plans.length > 0
+    ? await runPlanIntelligence({
+        rawPlans: plans,
+        scopeText: scopeChange,
+        trade,
+      })
+    : null
+
 const photoAnalysis =
   photos && photos.length > 0
     ? await analyzeJobPhotos({
@@ -6947,6 +6959,38 @@ if (photoScopeAssist.suggestedAdditions.length) {
 
 PHOTO SUGGESTED ADDITIONS:
 ${photoScopeAssist.suggestedAdditions.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.summary) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN SUMMARY:
+${planIntelligence.summary}`.trim()
+}
+
+if (planIntelligence?.detectedSheets?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN SHEETS REVIEWED:
+${planIntelligence.detectedSheets.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.detectedTrades?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN-DETECTED TRADES:
+${planIntelligence.detectedTrades.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.notes?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN NOTES:
+${planIntelligence.notes.map((x) => `- ${x}`).join("\n")}`.trim()
 }
 
 const stateAbbrev = getStateAbbrev(rawState)
@@ -7306,12 +7350,13 @@ const ctxPhotos: CtxPhoto[] | null =
     },
   })) ?? null
 
-    const ctx = buildEstimatorContext({
+   const ctx = buildEstimatorContext({
   input: body,
   normalizedEmail,
   requestId,
 
   scopeChange,
+  enrichedScopeText: effectiveScopeChange,
   trade,
   tradeLabel: trade,
 
@@ -7342,6 +7387,8 @@ const ctxPhotos: CtxPhoto[] | null =
   photoImpact,
   photoScopeAssist,
   photoEstimateDecision,
+
+  planIntelligence,
 
   materialsList,
   areaScopeBreakdown,

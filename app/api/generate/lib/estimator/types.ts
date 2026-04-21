@@ -1,11 +1,13 @@
 import { z } from "zod"
 import { GenerateSchema } from "../guards"
+import type { PlanIntelligence } from "../plans/types"
 
 export type GenerateInput = z.infer<typeof GenerateSchema>
 
 export type MeasurementInput = NonNullable<GenerateInput["measurements"]>
 export type MeasurementRow = MeasurementInput["rows"][number]
 export type UploadedPhotoInput = NonNullable<NonNullable<GenerateInput["photos"]>[number]>
+export type UploadedPlanInput = NonNullable<NonNullable<GenerateInput["plans"]>[number]>
 
 export type PaintScope = "walls" | "walls_ceilings" | "full"
 export type EffectivePaintScope = PaintScope | "doors_only"
@@ -527,6 +529,7 @@ export type EstimatorContext = PricingOwnerContext & {
   requestId: string
 
   scopeChange: string
+  enrichedScopeText: string
   tradeLabel: string
 
   rawState: string
@@ -559,6 +562,8 @@ export type EstimatorContext = PricingOwnerContext & {
   }
   photoEstimateDecision: PhotoEstimateDecision
 
+  planIntelligence: PlanIntelligence | null
+
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
 }
@@ -580,6 +585,9 @@ export type EstimatorPayload = {
   }
   photoPacketScore: PhotoPacketScore
   photoEstimateDecision: PhotoEstimateDecision
+
+  planIntelligence: PlanIntelligence | null
+
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
   splitScopes: SplitScopeItem[]

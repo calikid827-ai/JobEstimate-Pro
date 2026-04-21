@@ -40,6 +40,45 @@ const PhotoInputSchema = z.object({
     }),
 })
 
+const PlanInputSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  dataUrl: z
+    .string()
+    .regex(
+      /^data:(application\/pdf|image\/(png|jpeg|jpg|webp));base64,/,
+      "Invalid plan data URL"
+    ),
+  note: z.string().trim().max(240).optional().default(""),
+})
+
+const TradeSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.toLowerCase())
+  .refine(
+    (v) =>
+      [
+        "",
+        "auto-detect",
+        "auto detect",
+        "painting",
+        "drywall",
+        "flooring",
+        "electrical",
+        "plumbing",
+        "carpentry",
+        "general renovation",
+        "general_renovation",
+        "bathroom_tile",
+      ].includes(v),
+    "Invalid trade"
+  )
+  .transform((v) => {
+    if (v === "auto detect") return "auto-detect"
+    if (v === "general_renovation" || v === "bathroom_tile") return "general renovation"
+    return v
+  })
+
 export const GenerateSchema = z.object({
   email: z.string().email().max(254),
 
@@ -47,29 +86,9 @@ export const GenerateSchema = z.object({
 
   scopeChange: z.string().min(10).max(4000),
 
-  trade: z
-    .enum([
-      "",
-      "auto-detect",
-      "painting",
-      "drywall",
-      "flooring",
-      "electrical",
-      "plumbing",
-      "carpentry",
-      "general renovation",
-    ])
-    .optional()
-    .default(""),
+  trade: TradeSchema.optional().default(""),
 
-  state: z
-    .string()
-    .trim()
-    .regex(
-      /^(|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)$/
-    )
-    .optional()
-    .default(""),
+  state: z.string().trim().max(40).optional().default(""),
 
   paintScope: z
     .enum(["walls", "walls_ceilings", "full"])
@@ -103,10 +122,14 @@ export const GenerateSchema = z.object({
     .optional()
     .default(null),
 
-  workDaysPerWeek: z
-    .union([z.literal(5), z.literal(6), z.literal(7)])
+  workDaysPerWeek: z.union([z.literal(5), z.literal(6), z.literal(7)]).optional().default(5),
+
+  plans: z
+    .array(PlanInputSchema)
+    .max(20)
+    .nullable()
     .optional()
-    .default(5),
+    .default(null),
 })
 
 export function cleanScopeText(s: string) {
