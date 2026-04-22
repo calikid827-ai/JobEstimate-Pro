@@ -108,6 +108,13 @@ type JobPhoto = {
   }
 }
 
+type JobPlan = {
+  id: string
+  name: string
+  dataUrl: string
+  note: string
+}
+
 const SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "corner", label: "Corner" },
@@ -140,6 +147,7 @@ const lastSavedEstimateIdRef = useRef<string | null>(null)
 const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
 
 const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
+const [jobPlans, setJobPlans] = useState<JobPlan[]>([])
 
 function scrollToInvoices() {
   // small delay so UI can render filtered invoices after setting activeJobId
@@ -151,11 +159,26 @@ function scrollToInvoices() {
 const MAX_JOB_PHOTOS = 8
 const MAX_PHOTO_DATAURL_LENGTH = 450_000
 const MAX_TOTAL_PHOTO_PAYLOAD = 3_200_000
+const MAX_JOB_PLANS = 10
+const MAX_TOTAL_PLAN_PAYLOAD = 18_000_000
+const ALLOWED_PLAN_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+])
 
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
 ): number {
   return photos.reduce((sum, p) => sum + (p.dataUrl?.length || 0), 0)
+}
+
+function estimatePlanPayloadLength(
+  plans: { dataUrl: string }[]
+): number {
+  return plans.reduce((sum, p) => sum + (p.dataUrl?.length || 0), 0)
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -193,6 +216,22 @@ async function compressImageFile(file: File): Promise<string> {
   }
 
   return dataUrl
+}
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+
+      reject(new Error("Could not read file"))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"))
+    reader.readAsDataURL(file)
+  })
 }
 
 async function handlePhotoUpload(files: FileList | null) {
@@ -287,6 +326,97 @@ function updateJobPhotoReference(
             },
           }
         : photo
+    )
+  )
+}
+
+async function handlePlanUpload(files: FileList | null) {
+  if (!files || files.length === 0) return
+
+  if (jobPlans.length >= MAX_JOB_PLANS) {
+    setStatus(`Plan upload limit reached. Remove a plan before adding more than ${MAX_JOB_PLANS}.`)
+    return
+  }
+
+  const remainingSlots = Math.max(0, MAX_JOB_PLANS - jobPlans.length)
+  const selected = Array.from(files)
+  const validFiles = selected.filter((file) => ALLOWED_PLAN_MIME_TYPES.has(file.type))
+  const invalidCount = selected.length - validFiles.length
+  const picked = validFiles.slice(0, remainingSlots)
+  const skippedForLimit = Math.max(0, validFiles.length - picked.length)
+
+  if (picked.length === 0) {
+    if (invalidCount > 0) {
+      setStatus("No supported plan files were added. Use PDF, PNG, JPG, JPEG, or WEBP.")
+    } else {
+      setStatus(`Plan upload limit reached. Remove a plan before adding more than ${MAX_JOB_PLANS}.`)
+    }
+    return
+  }
+
+  try {
+    const uploaded: JobPlan[] = await Promise.all(
+      picked.map(async (file) => ({
+        id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+        name: file.name,
+        dataUrl: await readFileAsDataUrl(file),
+        note: "",
+      }))
+    )
+
+    const mergedBase: JobPlan[] = [...jobPlans]
+    const merged: JobPlan[] = [...mergedBase]
+    let skippedForSize = 0
+
+    for (const plan of uploaded) {
+      const next = [...merged, plan]
+      const totalSize = estimatePlanPayloadLength(next)
+
+      if (totalSize <= MAX_TOTAL_PLAN_PAYLOAD) {
+        merged.push(plan)
+      } else {
+        skippedForSize += 1
+      }
+    }
+
+    setJobPlans(merged.slice(0, MAX_JOB_PLANS))
+
+    const addedCount = merged.length - jobPlans.length
+    const notices: string[] = []
+
+    if (addedCount > 0) {
+      notices.push(`Added ${addedCount} plan file${addedCount === 1 ? "" : "s"}.`)
+    }
+    if (invalidCount > 0) {
+      notices.push(`${invalidCount} unsupported file${invalidCount === 1 ? "" : "s"} skipped.`)
+    }
+    if (skippedForLimit > 0) {
+      notices.push(`${skippedForLimit} file${skippedForLimit === 1 ? "" : "s"} skipped because the ${MAX_JOB_PLANS}-plan limit was reached.`)
+    }
+    if (skippedForSize > 0) {
+      notices.push("Some plan files were skipped because the total upload payload is too large.")
+    }
+
+    setStatus(notices.join(" "))
+  } catch (err) {
+    console.error(err)
+    setStatus("Could not read selected plan file(s).")
+  }
+}
+
+function removeJobPlan(id: string) {
+  setJobPlans((prev) => prev.filter((plan) => plan.id !== id))
+}
+
+function updateJobPlan(id: string, patch: Partial<JobPlan>) {
+  setJobPlans((prev) =>
+    prev.map((plan) =>
+      plan.id === id
+        ? {
+            ...plan,
+            ...patch,
+          }
+        : plan
     )
   )
 }
@@ -2244,6 +2374,11 @@ const res = await fetch("/api/generate", {
       ? { rows: measureRows, totalSqft, units: "ft" }
       : null,
     photos: photosToSend,
+    plans: jobPlans.map((plan) => ({
+      name: plan.name,
+      dataUrl: plan.dataUrl,
+      note: plan.note,
+    })),
   }),
 })
 
@@ -6073,9 +6208,14 @@ function AdvancedAnalysisSection({
   removeJobPhoto={removeJobPhoto}
   updateJobPhoto={updateJobPhoto}
   updateJobPhotoReference={updateJobPhotoReference}
+  handlePlanUpload={handlePlanUpload}
+  jobPlans={jobPlans}
+  removeJobPlan={removeJobPlan}
+  updateJobPlan={updateJobPlan}
   SHOT_TYPE_OPTIONS={SHOT_TYPE_OPTIONS}
   ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
   maxJobPhotos={MAX_JOB_PHOTOS}
+  maxJobPlans={MAX_JOB_PLANS}
   scopeQuality={scopeQuality}
   measureEnabled={measureEnabled}
   setMeasureEnabled={setMeasureEnabled}

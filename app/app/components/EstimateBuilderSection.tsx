@@ -3,6 +3,7 @@
 import type React from "react"
 import MeasurementsSection from "./MeasurementsSection"
 import JobPhotosSection from "./JobPhotosSection"
+import PlanUploadsSection from "./PlanUploadsSection"
 
 type ShotType =
   | "overview"
@@ -28,6 +29,13 @@ type JobPhoto = {
   }
 }
 
+type JobPlan = {
+  id: string
+  name: string
+  dataUrl: string
+  note: string
+}
+
 type Props = {
   trade: any
   setTrade: (value: any) => void
@@ -50,9 +58,14 @@ type Props = {
     id: string,
     patch: Partial<JobPhoto["reference"]>
   ) => void
+  handlePlanUpload: (files: FileList | null) => void
+  jobPlans: JobPlan[]
+  removeJobPlan: (id: string) => void
+  updateJobPlan: (id: string, patch: Partial<JobPlan>) => void
   SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }>
   ROOM_TAG_SUGGESTIONS: readonly string[]
   maxJobPhotos: number
+  maxJobPlans: number
 
   scopeQuality: any
   measureEnabled: boolean
@@ -85,6 +98,10 @@ export default function EstimateBuilderSection({
   removeJobPhoto,
   updateJobPhoto,
   updateJobPhotoReference,
+  handlePlanUpload,
+  jobPlans,
+  removeJobPlan,
+  updateJobPlan,
   SHOT_TYPE_OPTIONS,
   ROOM_TAG_SUGGESTIONS,
 
@@ -99,6 +116,7 @@ export default function EstimateBuilderSection({
   loading,
   status,
   maxJobPhotos,
+  maxJobPlans,
 }: Props) {
   return (
     <>
@@ -245,6 +263,14 @@ export default function EstimateBuilderSection({
   ROOM_TAG_SUGGESTIONS={ROOM_TAG_SUGGESTIONS}
   maxJobPhotos={maxJobPhotos}
 />
+
+      <PlanUploadsSection
+        jobPlans={jobPlans}
+        handlePlanUpload={handlePlanUpload}
+        removeJobPlan={removeJobPlan}
+        updateJobPlan={updateJobPlan}
+        maxJobPlans={maxJobPlans}
+      />
 
       <MeasurementsSection
         scopeQuality={scopeQuality}
