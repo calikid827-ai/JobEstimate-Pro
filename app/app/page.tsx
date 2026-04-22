@@ -123,6 +123,34 @@ type PlanIntelligence = {
   summary?: string | null
   detectedRooms: string[]
   detectedTrades: string[]
+  sheetRoleSignals?: string[]
+  prototypeSignals?: string[]
+  repeatScalingSignals?: string[]
+  packageGroupingSignals?: string[]
+  bidStrategyNotes?: string[]
+  highValueSheetSignals?: string[]
+  pricingAnchorSignals?: string[]
+  bidCoverageGaps?: string[]
+  estimatingPrioritySignals?: string[]
+  bidExecutionNotes?: string[]
+  pricingPackageSignals?: string[]
+  prototypePackageSignals?: string[]
+  packageScopeCandidates?: string[]
+  packageScalingGuidance?: string[]
+  packageConfidenceNotes?: string[]
+  estimatingFrameworkNotes?: string[]
+  estimateStructureSignals?: string[]
+  estimatePackageCandidates?: string[]
+  packageTradeScopeSignals?: string[]
+  packagePricingBasisSignals?: string[]
+  packageAllowanceSignals?: string[]
+  estimateAssemblyGuidance?: string[]
+  estimateScaffoldNotes?: string[]
+  repeatedSpaceSignals?: string[]
+  likelyRoomTypes?: string[]
+  scalableScopeSignals?: string[]
+  tradePackageSignals?: string[]
+  bidAssistNotes?: string[]
   scopeAssist: {
     missingScopeFlags: string[]
     suggestedAdditions: string[]
@@ -2493,6 +2521,60 @@ setPlanIntelligence(
             : null,
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
         detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
+        sheetRoleSignals: normalizePlanStrings(data.planIntelligence?.sheetRoleSignals),
+        prototypeSignals: normalizePlanStrings(data.planIntelligence?.prototypeSignals),
+        repeatScalingSignals: normalizePlanStrings(data.planIntelligence?.repeatScalingSignals),
+        packageGroupingSignals: normalizePlanStrings(data.planIntelligence?.packageGroupingSignals),
+        bidStrategyNotes: normalizePlanStrings(data.planIntelligence?.bidStrategyNotes),
+        highValueSheetSignals: normalizePlanStrings(data.planIntelligence?.highValueSheetSignals),
+        pricingAnchorSignals: normalizePlanStrings(data.planIntelligence?.pricingAnchorSignals),
+        bidCoverageGaps: normalizePlanStrings(data.planIntelligence?.bidCoverageGaps),
+        estimatingPrioritySignals: normalizePlanStrings(
+          data.planIntelligence?.estimatingPrioritySignals
+        ),
+        bidExecutionNotes: normalizePlanStrings(data.planIntelligence?.bidExecutionNotes),
+        pricingPackageSignals: normalizePlanStrings(data.planIntelligence?.pricingPackageSignals),
+        prototypePackageSignals: normalizePlanStrings(
+          data.planIntelligence?.prototypePackageSignals
+        ),
+        packageScopeCandidates: normalizePlanStrings(data.planIntelligence?.packageScopeCandidates),
+        packageScalingGuidance: normalizePlanStrings(data.planIntelligence?.packageScalingGuidance),
+        packageConfidenceNotes: normalizePlanStrings(data.planIntelligence?.packageConfidenceNotes),
+        estimatingFrameworkNotes: normalizePlanStrings(
+          data.planIntelligence?.estimatingFrameworkNotes
+        ),
+        estimateStructureSignals: normalizePlanStrings(
+          data.planIntelligence?.estimateStructureSignals
+        ),
+        estimatePackageCandidates: normalizePlanStrings(
+          data.planIntelligence?.estimatePackageCandidates
+        ),
+        packageTradeScopeSignals: normalizePlanStrings(
+          data.planIntelligence?.packageTradeScopeSignals
+        ),
+        packagePricingBasisSignals: normalizePlanStrings(
+          data.planIntelligence?.packagePricingBasisSignals
+        ),
+        packageAllowanceSignals: normalizePlanStrings(
+          data.planIntelligence?.packageAllowanceSignals
+        ),
+        estimateAssemblyGuidance: normalizePlanStrings(
+          data.planIntelligence?.estimateAssemblyGuidance
+        ),
+        estimateScaffoldNotes: normalizePlanStrings(
+          data.planIntelligence?.estimateScaffoldNotes
+        ),
+        repeatedSpaceSignals: normalizePlanStrings(
+          data.planIntelligence?.repeatedSpaceSignals
+        ),
+        likelyRoomTypes: normalizePlanStrings(data.planIntelligence?.likelyRoomTypes),
+        scalableScopeSignals: normalizePlanStrings(
+          data.planIntelligence?.scalableScopeSignals
+        ),
+        tradePackageSignals: normalizePlanStrings(
+          data.planIntelligence?.tradePackageSignals
+        ),
+        bidAssistNotes: normalizePlanStrings(data.planIntelligence?.bidAssistNotes),
         scopeAssist: {
           missingScopeFlags: normalizePlanStrings(
             data.planIntelligence?.scopeAssist?.missingScopeFlags
@@ -6521,6 +6603,90 @@ function PlanIntelligenceCard({
   const detectedTrades = Array.isArray(planIntelligence.detectedTrades)
     ? Array.from(new Set(planIntelligence.detectedTrades.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
     : []
+  const sheetRoleSignals = Array.isArray(planIntelligence.sheetRoleSignals)
+    ? Array.from(new Set(planIntelligence.sheetRoleSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const prototypeSignals = Array.isArray(planIntelligence.prototypeSignals)
+    ? Array.from(new Set(planIntelligence.prototypeSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const repeatScalingSignals = Array.isArray(planIntelligence.repeatScalingSignals)
+    ? Array.from(new Set(planIntelligence.repeatScalingSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const packageGroupingSignals = Array.isArray(planIntelligence.packageGroupingSignals)
+    ? Array.from(new Set(planIntelligence.packageGroupingSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const bidStrategyNotes = Array.isArray(planIntelligence.bidStrategyNotes)
+    ? Array.from(new Set(planIntelligence.bidStrategyNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const highValueSheetSignals = Array.isArray(planIntelligence.highValueSheetSignals)
+    ? Array.from(new Set(planIntelligence.highValueSheetSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const pricingAnchorSignals = Array.isArray(planIntelligence.pricingAnchorSignals)
+    ? Array.from(new Set(planIntelligence.pricingAnchorSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const bidCoverageGaps = Array.isArray(planIntelligence.bidCoverageGaps)
+    ? Array.from(new Set(planIntelligence.bidCoverageGaps.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const estimatingPrioritySignals = Array.isArray(planIntelligence.estimatingPrioritySignals)
+    ? Array.from(new Set(planIntelligence.estimatingPrioritySignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const bidExecutionNotes = Array.isArray(planIntelligence.bidExecutionNotes)
+    ? Array.from(new Set(planIntelligence.bidExecutionNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const pricingPackageSignals = Array.isArray(planIntelligence.pricingPackageSignals)
+    ? Array.from(new Set(planIntelligence.pricingPackageSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const prototypePackageSignals = Array.isArray(planIntelligence.prototypePackageSignals)
+    ? Array.from(new Set(planIntelligence.prototypePackageSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const packageScopeCandidates = Array.isArray(planIntelligence.packageScopeCandidates)
+    ? Array.from(new Set(planIntelligence.packageScopeCandidates.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const packageScalingGuidance = Array.isArray(planIntelligence.packageScalingGuidance)
+    ? Array.from(new Set(planIntelligence.packageScalingGuidance.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const packageConfidenceNotes = Array.isArray(planIntelligence.packageConfidenceNotes)
+    ? Array.from(new Set(planIntelligence.packageConfidenceNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const estimatingFrameworkNotes = Array.isArray(planIntelligence.estimatingFrameworkNotes)
+    ? Array.from(new Set(planIntelligence.estimatingFrameworkNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const estimateStructureSignals = Array.isArray(planIntelligence.estimateStructureSignals)
+    ? Array.from(new Set(planIntelligence.estimateStructureSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const estimatePackageCandidates = Array.isArray(planIntelligence.estimatePackageCandidates)
+    ? Array.from(new Set(planIntelligence.estimatePackageCandidates.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const packageTradeScopeSignals = Array.isArray(planIntelligence.packageTradeScopeSignals)
+    ? Array.from(new Set(planIntelligence.packageTradeScopeSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const packagePricingBasisSignals = Array.isArray(planIntelligence.packagePricingBasisSignals)
+    ? Array.from(new Set(planIntelligence.packagePricingBasisSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const packageAllowanceSignals = Array.isArray(planIntelligence.packageAllowanceSignals)
+    ? Array.from(new Set(planIntelligence.packageAllowanceSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const estimateAssemblyGuidance = Array.isArray(planIntelligence.estimateAssemblyGuidance)
+    ? Array.from(new Set(planIntelligence.estimateAssemblyGuidance.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const estimateScaffoldNotes = Array.isArray(planIntelligence.estimateScaffoldNotes)
+    ? Array.from(new Set(planIntelligence.estimateScaffoldNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const repeatedSpaceSignals = Array.isArray(planIntelligence.repeatedSpaceSignals)
+    ? Array.from(new Set(planIntelligence.repeatedSpaceSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const likelyRoomTypes = Array.isArray(planIntelligence.likelyRoomTypes)
+    ? Array.from(new Set(planIntelligence.likelyRoomTypes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const scalableScopeSignals = Array.isArray(planIntelligence.scalableScopeSignals)
+    ? Array.from(new Set(planIntelligence.scalableScopeSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const tradePackageSignals = Array.isArray(planIntelligence.tradePackageSignals)
+    ? Array.from(new Set(planIntelligence.tradePackageSignals.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
+  const bidAssistNotes = Array.isArray(planIntelligence.bidAssistNotes)
+    ? Array.from(new Set(planIntelligence.bidAssistNotes.map((x) => String(x).trim()).filter(Boolean))).slice(0, 6)
+    : []
   const missingScopeFlags = Array.isArray(planIntelligence.scopeAssist?.missingScopeFlags)
     ? Array.from(
         new Set(planIntelligence.scopeAssist.missingScopeFlags.map((x) => String(x).trim()).filter(Boolean))
@@ -6536,6 +6702,34 @@ function PlanIntelligenceCard({
     !!planIntelligence.summary ||
     detectedRooms.length > 0 ||
     detectedTrades.length > 0 ||
+    sheetRoleSignals.length > 0 ||
+    prototypeSignals.length > 0 ||
+    repeatScalingSignals.length > 0 ||
+    packageGroupingSignals.length > 0 ||
+    bidStrategyNotes.length > 0 ||
+    highValueSheetSignals.length > 0 ||
+    pricingAnchorSignals.length > 0 ||
+    bidCoverageGaps.length > 0 ||
+    estimatingPrioritySignals.length > 0 ||
+    bidExecutionNotes.length > 0 ||
+    pricingPackageSignals.length > 0 ||
+    prototypePackageSignals.length > 0 ||
+    packageScopeCandidates.length > 0 ||
+    packageScalingGuidance.length > 0 ||
+    packageConfidenceNotes.length > 0 ||
+    estimatingFrameworkNotes.length > 0 ||
+    estimateStructureSignals.length > 0 ||
+    estimatePackageCandidates.length > 0 ||
+    packageTradeScopeSignals.length > 0 ||
+    packagePricingBasisSignals.length > 0 ||
+    packageAllowanceSignals.length > 0 ||
+    estimateAssemblyGuidance.length > 0 ||
+    estimateScaffoldNotes.length > 0 ||
+    repeatedSpaceSignals.length > 0 ||
+    likelyRoomTypes.length > 0 ||
+    scalableScopeSignals.length > 0 ||
+    tradePackageSignals.length > 0 ||
+    bidAssistNotes.length > 0 ||
     missingScopeFlags.length > 0 ||
     suggestedAdditions.length > 0
 
@@ -6638,6 +6832,34 @@ function PlanIntelligenceCard({
         </div>
       )}
 
+      <SectionList title="Sheet Role Signals" items={sheetRoleSignals} tone="neutral" />
+      <SectionList title="Prototype Signals" items={prototypeSignals} tone="info" />
+      <SectionList title="Repeat Scaling Signals" items={repeatScalingSignals} tone="info" />
+      <SectionList title="Package Grouping Signals" items={packageGroupingSignals} tone="neutral" />
+      <SectionList title="Bid Strategy Notes" items={bidStrategyNotes} tone="warning" />
+      <SectionList title="High-Value Sheet Signals" items={highValueSheetSignals} tone="neutral" />
+      <SectionList title="Pricing Anchor Signals" items={pricingAnchorSignals} tone="info" />
+      <SectionList title="Bid Coverage Gaps" items={bidCoverageGaps} tone="warning" />
+      <SectionList title="Estimating Priority Signals" items={estimatingPrioritySignals} tone="info" />
+      <SectionList title="Bid Execution Notes" items={bidExecutionNotes} tone="warning" />
+      <SectionList title="Pricing Package Signals" items={pricingPackageSignals} tone="neutral" />
+      <SectionList title="Prototype Package Signals" items={prototypePackageSignals} tone="info" />
+      <SectionList title="Package Scope Candidates" items={packageScopeCandidates} tone="neutral" />
+      <SectionList title="Package Scaling Guidance" items={packageScalingGuidance} tone="warning" />
+      <SectionList title="Package Confidence Notes" items={packageConfidenceNotes} tone="info" />
+      <SectionList title="Estimating Framework Notes" items={estimatingFrameworkNotes} tone="warning" />
+      <SectionList title="Estimate Structure Signals" items={estimateStructureSignals} tone="neutral" />
+      <SectionList title="Estimate Package Candidates" items={estimatePackageCandidates} tone="neutral" />
+      <SectionList title="Package Trade Scope Signals" items={packageTradeScopeSignals} tone="info" />
+      <SectionList title="Package Pricing Basis Signals" items={packagePricingBasisSignals} tone="info" />
+      <SectionList title="Package Allowance Signals" items={packageAllowanceSignals} tone="warning" />
+      <SectionList title="Estimate Assembly Guidance" items={estimateAssemblyGuidance} tone="warning" />
+      <SectionList title="Estimate Scaffold Notes" items={estimateScaffoldNotes} tone="info" />
+      <SectionList title="Likely Room Types" items={likelyRoomTypes} tone="info" />
+      <SectionList title="Repeated Space Signals" items={repeatedSpaceSignals} tone="info" />
+      <SectionList title="Trade Package Signals" items={tradePackageSignals} tone="neutral" />
+      <SectionList title="Scalable Scope Signals" items={scalableScopeSignals} tone="neutral" />
+      <SectionList title="Bid-Assist Notes" items={bidAssistNotes} tone="warning" />
       <SectionList title="Detected Rooms" items={detectedRooms} tone="info" />
       <SectionList title="Detected Trades" items={detectedTrades} tone="neutral" />
       <SectionList title="Scope Flags" items={missingScopeFlags} tone="warning" />
