@@ -1,6 +1,8 @@
 import { z } from "zod"
 import { GenerateSchema } from "../guards"
 import type { PlanIntelligence } from "../plans/types"
+import type { MissedScopeDetector } from "./missedScopeDetector"
+import type { ProfitLeakDetector } from "./profitLeakDetector"
 
 export type GenerateInput = z.infer<typeof GenerateSchema>
 
@@ -587,6 +589,8 @@ export type EstimatorPayload = {
   photoEstimateDecision: PhotoEstimateDecision
 
   planIntelligence: PlanIntelligence | null
+  missedScopeDetector?: MissedScopeDetector | null
+  profitLeakDetector?: ProfitLeakDetector | null
 
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown

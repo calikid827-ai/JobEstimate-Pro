@@ -1,4 +1,6 @@
 import { decidePricingOwner } from "./pricingOwner"
+import { detectMissedScope } from "./missedScopeDetector"
+import { detectProfitLeaks } from "./profitLeakDetector"
 import {
   applyFinalPricingProtections,
   deriveEffectiveSqft,
@@ -17,7 +19,6 @@ import type {
   EstimateExplanation,
   EstimateBasis,
   PriceGuardReport,
-  Pricing,
   ScheduleBlock,
   ScopeXRay,
   ComplexityProfile,
@@ -331,6 +332,70 @@ if (ctx.planIntelligence?.ok) {
     schedule,
   })
 
+  const missedScopeDetector = detectMissedScope({
+    trade: ctx.trade,
+    scopeText: ctx.scopeChange,
+    planIntelligence: ctx.planIntelligence,
+    photoScopeAssist: ctx.photoScopeAssist,
+    complexityProfile: ctx.complexityProfile,
+    tradeStack: ctx.tradeStack,
+  })
+
+  const profitLeakDetector = detectProfitLeaks({
+    pricing: finalPricing,
+    estimateBasis: finalBasis,
+    pricingSource: resolvedPricing.pricingSource,
+    priceGuardVerified: resolvedPricing.priceGuardVerified,
+    priceGuard,
+    trade: ctx.trade,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+    planIntelligence: ctx.planIntelligence,
+    photoScopeAssist: ctx.photoScopeAssist,
+    schedule,
+    scopeText: ctx.scopeChange,
+  })
+
+  if (missedScopeDetector) {
+    scopeXRay.riskFlags = Array.from(
+      new Set([
+        ...(scopeXRay.riskFlags || []),
+        ...missedScopeDetector.likelyMissingScope.map(
+          (item) => `Possible omitted scope: ${item.label}.`
+        ),
+      ])
+    ).slice(0, 8)
+
+    scopeXRay.needsConfirmation = Array.from(
+      new Set([
+        ...(scopeXRay.needsConfirmation || []),
+        ...missedScopeDetector.recommendedConfirmations.map(
+          (item) => `Confirm scope item: ${item.label}.`
+        ),
+      ])
+    ).slice(0, 8)
+  }
+
+  if (profitLeakDetector) {
+    scopeXRay.riskFlags = Array.from(
+      new Set([
+        ...(scopeXRay.riskFlags || []),
+        ...profitLeakDetector.likelyProfitLeaks.map(
+          (item) => `Profit leak risk: ${item.label}.`
+        ),
+      ])
+    ).slice(0, 8)
+
+    scopeXRay.needsConfirmation = Array.from(
+      new Set([
+        ...(scopeXRay.needsConfirmation || []),
+        ...profitLeakDetector.pricingReviewPrompts.map(
+          (item) => `Pricing review: ${item.label}.`
+        ),
+      ])
+    ).slice(0, 8)
+  }
+
   const payload: EstimatorPayload = {
     documentType: draft.documentType,
     trade: ctx.trade,
@@ -346,6 +411,8 @@ if (ctx.planIntelligence?.ok) {
     photoPacketScore: ctx.photoPacketScore,
     photoEstimateDecision: ctx.photoEstimateDecision,
     planIntelligence: ctx.planIntelligence,
+    missedScopeDetector,
+    profitLeakDetector,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,
