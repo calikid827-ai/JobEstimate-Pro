@@ -1,10 +1,19 @@
 export type PlanUpload = {
+  uploadId: string
   name: string
+  note: string
   mimeType: string
   dataUrl: string
+  bytes: number | null
 }
 
 export type PlanPageImage = {
+  uploadId: string
+  uploadName: string
+  uploadNote: string
+  sourceMimeType: string
+  sourceKind: "image" | "pdf"
+  sourcePageNumber: number
   pageNumber: number
   imageDataUrl: string
   width: number | null
@@ -23,6 +32,9 @@ export type PlanSheetDiscipline =
   | "unknown"
 
 export type PlanSheetIndexEntry = {
+  uploadId: string
+  uploadName: string
+  sourcePageNumber: number
   pageNumber: number
   sheetNumber: string | null
   sheetTitle: string | null
@@ -32,6 +44,9 @@ export type PlanSheetIndexEntry = {
 }
 
 export type PlanEvidenceRef = {
+  uploadId: string
+  uploadName: string
+  sourcePageNumber: number
   pageNumber: number
   sheetNumber: string | null
   sheetTitle: string | null
@@ -91,6 +106,9 @@ export type PlanTradeFinding = {
 }
 
 export type PlanSheetAnalysis = {
+  uploadId: string
+  uploadName: string
+  sourcePageNumber: number
   pageNumber: number
   sheetNumber: string | null
   sheetTitle: string | null
