@@ -6985,6 +6985,38 @@ PLAN-DETECTED TRADES:
 ${planIntelligence.detectedTrades.map((x) => `- ${x}`).join("\n")}`.trim()
 }
 
+if (planIntelligence?.detectedRooms?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN ROOM SIGNALS:
+${planIntelligence.detectedRooms.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.scopeAssist.missingScopeFlags?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN SCOPE FLAGS:
+${planIntelligence.scopeAssist.missingScopeFlags.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.scopeAssist.suggestedAdditions?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN SUGGESTED ADDITIONS:
+${planIntelligence.scopeAssist.suggestedAdditions.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
+if (planIntelligence?.scopeAssist.conflicts?.length) {
+  effectiveScopeChange =
+    `${effectiveScopeChange}
+
+PLAN CONFLICTS:
+${planIntelligence.scopeAssist.conflicts.map((x) => `- ${x}`).join("\n")}`.trim()
+}
+
 if (planIntelligence?.notes?.length) {
   effectiveScopeChange =
     `${effectiveScopeChange}
