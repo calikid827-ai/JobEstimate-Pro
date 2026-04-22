@@ -1,7 +1,10 @@
 import { decidePricingOwner } from "./pricingOwner"
 import { buildEstimateDefenseMode } from "./estimateDefenseMode"
+import { buildEstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
+import { buildEstimateStructureConsumption } from "./estimateStructureConsumption"
 import { detectMissedScope } from "./missedScopeDetector"
 import { detectProfitLeaks } from "./profitLeakDetector"
+import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
 import {
   applyFinalPricingProtections,
   deriveEffectiveSqft,
@@ -374,6 +377,20 @@ if (ctx.planIntelligence?.ok) {
     complexityProfile: ctx.complexityProfile,
   })
 
+  const estimateSkeletonHandoff = buildEstimateSkeletonHandoff(ctx.planIntelligence)
+  const estimateStructureConsumption = buildEstimateStructureConsumption(
+    estimateSkeletonHandoff
+  )
+  const tradePackagePricingPrep = buildTradePackagePricingPrep({
+    trade: ctx.trade,
+    planIntelligence: ctx.planIntelligence,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    scopeText: ctx.scopeChange,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+
   if (missedScopeDetector) {
     scopeXRay.riskFlags = Array.from(
       new Set([
@@ -432,6 +449,9 @@ if (ctx.planIntelligence?.ok) {
     missedScopeDetector,
     profitLeakDetector,
     estimateDefenseMode,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    tradePackagePricingPrep,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,

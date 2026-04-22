@@ -2,8 +2,11 @@ import { z } from "zod"
 import { GenerateSchema } from "../guards"
 import type { PlanIntelligence } from "../plans/types"
 import type { EstimateDefenseMode } from "./estimateDefenseMode"
+import type { EstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
+import type { EstimateStructureConsumption } from "./estimateStructureConsumption"
 import type { MissedScopeDetector } from "./missedScopeDetector"
 import type { ProfitLeakDetector } from "./profitLeakDetector"
+import type { TradePackagePricingPrep } from "./tradePackagePricingPrep"
 
 export type GenerateInput = z.infer<typeof GenerateSchema>
 
@@ -593,6 +596,9 @@ export type EstimatorPayload = {
   missedScopeDetector?: MissedScopeDetector | null
   profitLeakDetector?: ProfitLeakDetector | null
   estimateDefenseMode?: EstimateDefenseMode | null
+  estimateSkeletonHandoff?: EstimateSkeletonHandoff | null
+  estimateStructureConsumption?: EstimateStructureConsumption | null
+  tradePackagePricingPrep?: TradePackagePricingPrep
 
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
