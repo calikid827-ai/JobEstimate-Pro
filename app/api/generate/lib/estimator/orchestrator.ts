@@ -4,8 +4,12 @@ import { buildEstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import { buildEstimateStructureConsumption } from "./estimateStructureConsumption"
 import { detectMissedScope } from "./missedScopeDetector"
 import { detectProfitLeaks } from "./profitLeakDetector"
+import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
+import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
+import { buildTradePreparedPricingInputs } from "./tradePreparedPricingInputs"
 import { buildTradePricingPrepAnalysis } from "./tradePricingPrepAnalysis"
 import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
+import { buildTradeQuantitySupport } from "./tradeQuantitySupport"
 import {
   applyFinalPricingProtections,
   deriveEffectiveSqft,
@@ -391,6 +395,46 @@ if (ctx.planIntelligence?.ok) {
     tradeStack: ctx.tradeStack,
     complexityProfile: ctx.complexityProfile,
   })
+  const tradeQuantitySupport = buildTradeQuantitySupport({
+    trade: ctx.trade,
+    scopeText: ctx.scopeChange,
+    planIntelligence: ctx.planIntelligence,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    tradePackagePricingPrep,
+  })
+  const tradePricingBasisBridge = buildTradePricingBasisBridge({
+    trade: ctx.trade,
+    scopeText: ctx.scopeChange,
+    planIntelligence: ctx.planIntelligence,
+    tradeQuantitySupport,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradePricingInputDraft = buildTradePricingInputDraft({
+    tradePricingBasisBridge,
+    tradeQuantitySupport,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    planIntelligence: ctx.planIntelligence,
+    scopeText: ctx.scopeChange,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradePreparedPricingInputs = buildTradePreparedPricingInputs({
+    tradePricingInputDraft,
+    tradePricingBasisBridge,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    planIntelligence: ctx.planIntelligence,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
   const tradePricingPrepAnalysis =
     buildTradePricingPrepAnalysis(tradePackagePricingPrep)
 
@@ -473,7 +517,11 @@ if (ctx.planIntelligence?.ok) {
     estimateSkeletonHandoff,
     estimateStructureConsumption,
     tradePackagePricingPrep,
+    tradeQuantitySupport,
     tradePricingPrepAnalysis,
+    tradePricingBasisBridge,
+    tradePricingInputDraft,
+    tradePreparedPricingInputs,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,

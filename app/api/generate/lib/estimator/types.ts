@@ -7,7 +7,11 @@ import type { EstimateStructureConsumption } from "./estimateStructureConsumptio
 import type { MissedScopeDetector } from "./missedScopeDetector"
 import type { ProfitLeakDetector } from "./profitLeakDetector"
 import type { TradePackagePricingPrep } from "./tradePackagePricingPrep"
+import type { TradeQuantitySupport } from "./tradeQuantitySupport"
 import type { TradePricingPrepAnalysis } from "./tradePricingPrepAnalysis"
+import type { TradePricingBasisBridge } from "./tradePricingBasisBridge"
+import type { TradePricingInputDraft } from "./tradePricingInputDraft"
+import type { TradePreparedPricingInputs } from "./tradePreparedPricingInputs"
 
 export type GenerateInput = z.infer<typeof GenerateSchema>
 
@@ -600,7 +604,11 @@ export type EstimatorPayload = {
   estimateSkeletonHandoff?: EstimateSkeletonHandoff | null
   estimateStructureConsumption?: EstimateStructureConsumption | null
   tradePackagePricingPrep?: TradePackagePricingPrep
+  tradeQuantitySupport?: TradeQuantitySupport
   tradePricingPrepAnalysis?: TradePricingPrepAnalysis
+  tradePricingBasisBridge?: TradePricingBasisBridge
+  tradePricingInputDraft?: TradePricingInputDraft
+  tradePreparedPricingInputs?: TradePreparedPricingInputs
 
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
