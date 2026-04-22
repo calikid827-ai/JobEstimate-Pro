@@ -130,6 +130,17 @@ function hasLowQuantitySupport(args: DetectorArgs): boolean {
   return !hasBasisQty && !hasPlanQty
 }
 
+function getWordCount(value: string): number {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length
+}
+
+function isShortWrittenScope(scope: string): boolean {
+  return getWordCount(scope) > 0 && getWordCount(scope) <= 12
+}
+
 function getMobilizationAllowance(args: DetectorArgs): number {
   const basisMob = Number(args.estimateBasis?.mobilization || 0)
   if (Number.isFinite(basisMob) && basisMob > 0) return basisMob
@@ -160,6 +171,50 @@ function mergeCandidates(items: Candidate[], max = 8): Candidate[] {
     .slice(0, max)
 }
 
+function isMarkupLeakLabel(label: string): boolean {
+  return /\bmarkup|margin buffer|margin\b/i.test(label)
+}
+
+function isWetAreaLeakLabel(label: string): boolean {
+  return /\bwet-area|protection and setup|protection\b/i.test(label)
+}
+
+function isCoordinationLeakLabel(label: string): boolean {
+  return /\bcoordination burden|coordination load\b/i.test(label)
+}
+
+function isVisitLeakLabel(label: string): boolean {
+  return /\breturn-trip burden|mobilization allowance\b/i.test(label)
+}
+
+function isQuantityReviewLabel(label: string): boolean {
+  return /\bquantity support|allowance-heavy|pricing spread\b/i.test(label)
+}
+
+function suppressOverlappingReviews(
+  likelyProfitLeaks: ProfitLeakItem[],
+  reviewItems: ProfitLeakItem[]
+): ProfitLeakItem[] {
+  const hasMarkupLeak = likelyProfitLeaks.some((item) => isMarkupLeakLabel(item.label))
+  const hasWetAreaLeak = likelyProfitLeaks.some((item) => isWetAreaLeakLabel(item.label))
+  const hasCoordinationLeak = likelyProfitLeaks.some((item) => isCoordinationLeakLabel(item.label))
+  const hasVisitLeak = likelyProfitLeaks.some((item) => isVisitLeakLabel(item.label))
+
+  return reviewItems.filter((item) => {
+    if (likelyProfitLeaks.some((existing) => normalizeLabel(existing.label) === normalizeLabel(item.label))) {
+      return false
+    }
+    if (hasMarkupLeak && /\bmarkup\b/i.test(item.label)) return false
+    if (hasWetAreaLeak && /\bsetup|mobilization|protection\b/i.test(item.label)) return false
+    if (hasCoordinationLeak && /\bcoordination load|pricing spread\b/i.test(item.label)) return false
+    if (hasVisitLeak && /\bmobilization allowance\b/i.test(item.label)) return false
+    if ((hasMarkupLeak || hasCoordinationLeak) && isQuantityReviewLabel(item.label) && item.confidence < 78) {
+      return false
+    }
+    return true
+  })
+}
+
 function getAuditCandidates(args: DetectorArgs): Candidate[] {
   const out: Candidate[] = []
   const scope = (args.scopeText || "").toLowerCase()
@@ -176,25 +231,41 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   const bathroomRemodel = isBathroomRemodel(args)
   const wetAreaRemodel = isWetAreaRemodel(args)
   const quantityWeak = hasLowQuantitySupport(args)
+  const shortScope = isShortWrittenScope(args.scopeText || "")
+  const remodelCoordinationPressure =
+    complexity?.class === "remodel" &&
+    (bathroomRemodel || wetAreaRemodel || !!args.tradeStack?.isMultiTrade || shortScope)
+  const weakMobilizationForRemodel =
+    mobilization < Math.max(350, Number(complexity?.minMobilization || 0) * 0.7)
 
-  if (complexity?.class === "remodel" && markup <= 18) {
+  if (
+    complexity?.class === "remodel" &&
+    (markup <= 18 || (markup <= 20 && remodelCoordinationPressure && !args.priceGuardVerified))
+  ) {
     const candidate = maybeCandidate({
       kind: "likely",
-      label: "Remodel margin looks thin",
-      reason: "Markup looks light for remodel coordination, callbacks, and unknowns already implied by this scope.",
+      label: "Margin buffer looks light for remodel coordination",
+      reason: "This remodel is carrying coordination and unknown-condition exposure that usually wants more margin buffer than the current markup shows.",
       evidence: collectEvidence([
         `Markup is ${markup}%.`,
         "Complexity profile classified this as remodel work.",
+        shortScope ? "Written scope is short for the amount of implied remodel work." : null,
+        wetAreaRemodel ? "Wet-area remodel signals are present." : null,
         args.tradeStack?.isMultiTrade ? "Trade stack indicates multi-trade coordination." : null,
       ]),
-      confidence: args.tradeStack?.isMultiTrade ? 92 : 84,
+      confidence:
+        wetAreaRemodel || args.tradeStack?.isMultiTrade
+          ? 92
+          : bathroomRemodel || shortScope
+            ? 88
+            : 84,
     })
     if (candidate) out.push(candidate)
   } else if (complexity?.class === "remodel" && markup <= 20 && !args.priceGuardVerified) {
     const candidate = maybeCandidate({
       kind: "review",
       label: "Review remodel markup buffer",
-      reason: "Markup may be light for a remodel scope that still carries coordination and unknown-condition risk.",
+      reason: "This remodel may be carrying more coordination and unknown-condition exposure than the current markup buffer comfortably covers.",
       evidence: collectEvidence([
         `Markup is ${markup}%.`,
         "Complexity profile classified this as remodel work.",
@@ -209,60 +280,74 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   if (args.tradeStack?.isMultiTrade && markup <= 20 && !args.priceGuardVerified) {
     const candidate = maybeCandidate({
       kind: "likely",
-      label: "Multi-trade coordination under-covered",
-      reason: "This job carries multi-trade coordination risk, but the margin buffer looks light for sequencing, supervision, and returns.",
+      label: "Coordination burden looks under-carried",
+      reason: "This estimate is carrying multi-trade sequencing, supervision, and callback exposure without much coordination room in the margin.",
       evidence: collectEvidence([
         `Markup is ${markup}%.`,
         `Trade stack includes: ${(args.tradeStack.trades || []).slice(0, 4).join(", ")}.`,
         "Pricing is not verified deterministic.",
+        shortScope ? "Written scope is short for the coordination load implied." : null,
       ]),
-      confidence: 86,
+      confidence: shortScope || wetAreaRemodel ? 90 : 86,
     })
     if (candidate) out.push(candidate)
   }
 
-  if (wetAreaRemodel && !hasExplicitProtection(scope) && mobilization < Math.max(450, Number(complexity?.minMobilization || 0))) {
+  if (
+    wetAreaRemodel &&
+    !hasExplicitProtection(scope) &&
+    mobilization < Math.max(450, Number(complexity?.minMobilization || 0))
+  ) {
     const candidate = maybeCandidate({
       kind: "likely",
-      label: "Wet-area setup / protection looks under-carried",
-      reason: "Wet-area remodel scope usually needs stronger protection, containment, and cleanup allowance than this estimate shows.",
+      label: "Wet-area protection and setup look under-carried",
+      reason: "Wet-area remodel work usually needs a stronger setup, containment, and cleanup carry than this estimate appears to be holding.",
       evidence: collectEvidence([
         `Setup/other allowance is about $${Math.round(mobilization)}.`,
         "Wet-area bathroom remodel signals are present.",
         "Scope text does not clearly mention protection or containment.",
       ]),
-      confidence: 84,
+      confidence: shortScope || bathroomRemodel ? 89 : 84,
     })
     if (candidate) out.push(candidate)
   }
 
-  if ((bathroomRemodel || complexity?.class === "remodel") && !hasExplicitDemo(scope) && missingFlags.some((flag) => /\bdemo|remove|tear[-\s]*out|disposal/i.test(flag))) {
+  if (
+    (bathroomRemodel || complexity?.class === "remodel") &&
+    !hasExplicitDemo(scope) &&
+    missingFlags.some((flag) => /\bdemo|remove|tear[-\s]*out|disposal/i.test(flag))
+  ) {
     const candidate = maybeCandidate({
       kind: "likely",
-      label: "Demo / disposal burden may be missing from price",
-      reason: "Remodel scope appears to carry tear-out or disposal burden, but the written scope does not clearly price that burden in.",
+      label: "Demo and haul-off do not look clearly carried",
+      reason: "This remodel reads like it needs tear-out and disposal burden, but the written scope does not clearly show that burden being carried.",
       evidence: collectEvidence([
         "Scope text does not clearly mention demo/disposal.",
         missingFlags.find((flag) => /\bdemo|remove|tear[-\s]*out|disposal/i.test(flag)),
         complexity?.class === "remodel" ? "Complexity profile classified this as remodel work." : null,
+        shortScope ? "Written scope is short for a remodel with implied removal work." : null,
       ]),
-      confidence: 82,
+      confidence: bathroomRemodel || shortScope ? 88 : 82,
     })
     if (candidate) out.push(candidate)
   }
 
-  if ((visits >= 2 || (crewDays > 0 && crewDays <= 1.5)) && total < 2500 && mobilization < 300) {
+  if (
+    (visits >= 2 || (crewDays > 0 && crewDays <= 1.5)) &&
+    total < 2500 &&
+    mobilization < 300
+  ) {
     const candidate = maybeCandidate({
       kind: "likely",
-      label: "Fragmented visit burden looks under-protected",
-      reason: "This estimate appears to carry multiple trip or setup burden without much margin in the setup/other bucket.",
+      label: "Return-trip burden looks under-carried",
+      reason: "This job appears to need more than one setup or return trip, but the current setup carry looks thin for that burden.",
       evidence: collectEvidence([
         visits >= 2 ? `Schedule indicates about ${visits} visit(s).` : null,
         crewDays > 0 ? `Crew-days are about ${crewDays}.` : null,
         `Setup/other allowance is about $${Math.round(mobilization)}.`,
         `Total price is about $${Math.round(total)}.`,
       ]),
-      confidence: 80,
+      confidence: visits >= 2 ? 86 : 80,
     })
     if (candidate) out.push(candidate)
   }
@@ -270,8 +355,8 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   if (lowConfidence && quantityWeak && (complexity?.class === "remodel" || args.tradeStack?.isMultiTrade)) {
     const candidate = maybeCandidate({
       kind: "review",
-      label: "Scope complexity is outrunning quantity support",
-      reason: "The scope carries remodel or coordination complexity, but the estimate is being carried with limited quantity support and modest review confidence.",
+      label: "Quantity support is thin for this remodel carry",
+      reason: "The estimate is carrying remodel or coordination exposure with limited quantity support and only modest review confidence.",
       evidence: collectEvidence([
         `PriceGuard confidence is ${args.priceGuard.confidence}.`,
         quantityWeak ? "Quantity/takeoff support is thin." : null,
@@ -284,11 +369,15 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
     if (candidate) out.push(candidate)
   }
 
-  if (mobilization < Math.max(200, Number(complexity?.minMobilization || 0) * 0.6) && total > 0) {
+  if (
+    mobilization < Math.max(200, Number(complexity?.minMobilization || 0) * 0.6) &&
+    total > 0 &&
+    !weakMobilizationForRemodel
+  ) {
     const candidate = maybeCandidate({
       kind: "review",
-      label: "Setup / mobilization allowance looks light",
-      reason: "The setup/other bucket looks light for the current job profile and could leave travel, setup, and overhead under-recovered.",
+      label: "Mobilization allowance may be light",
+      reason: "The setup carry looks light for this job profile and could leave travel, setup, or small-job overhead under-recovered.",
       evidence: collectEvidence([
         `Setup/other allowance is about $${Math.round(mobilization)}.`,
         complexity?.minMobilization
@@ -311,8 +400,8 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   ) {
     const candidate = maybeCandidate({
       kind: "review",
-      label: "Allowance-heavy scope is leaning on weak pricing confidence",
-      reason: "The scope still has unresolved allowance-style scope questions, but the estimate is leaning on AI pricing with limited confidence buffer.",
+      label: "Allowance-heavy scope is riding weak pricing confidence",
+      reason: "This scope still has unresolved allowance-style questions, and the estimate is leaning on limited confidence rather than strong quantity support.",
       evidence: collectEvidence([
         `PriceGuard confidence is ${args.priceGuard.confidence}.`,
         `Pricing source is ${args.pricingSource}.`,
@@ -333,8 +422,8 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   ) {
     const candidate = maybeCandidate({
       kind: "review",
-      label: "Pricing looks flat for listed coordination load",
-      reason: "The estimate is carrying multi-trade scope, but the final spread above base cost looks flatter than the coordination burden suggests.",
+      label: "Pricing spread looks flat for the coordination load",
+      reason: "The final spread over base cost looks flatter than the coordination burden on this scope would usually justify.",
       evidence: collectEvidence([
         `Base cost is about $${Math.round(base)} with total about $${Math.round(total)}.`,
         `Markup is ${markup}%.`,
@@ -363,14 +452,10 @@ export function detectProfitLeaks(args: DetectorArgs): ProfitLeakDetector | null
     }))
     .slice(0, 6)
 
-  const pricingReviewPrompts = merged
+  const pricingReviewPrompts = suppressOverlappingReviews(
+    likelyProfitLeaks,
+    merged
     .filter((item) => item.kind === "review")
-    .filter(
-      (item) =>
-        !likelyProfitLeaks.some(
-          (existing) => normalizeLabel(existing.label) === normalizeLabel(item.label)
-        )
-    )
     .map((item) => ({
       label: item.label,
       reason: item.reason,
@@ -378,7 +463,7 @@ export function detectProfitLeaks(args: DetectorArgs): ProfitLeakDetector | null
       confidence: item.confidence,
       severity: item.severity,
     }))
-    .slice(0, 6)
+  ).slice(0, 6)
 
   if (likelyProfitLeaks.length === 0 && pricingReviewPrompts.length === 0) {
     return null

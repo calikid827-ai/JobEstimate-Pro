@@ -38,6 +38,10 @@ import type {
   AreaScopeBreakdown,
   ProfitProtection,
   ScopeXRay,
+  MissedScopeDetector,
+  ProfitLeakDetector,
+  EstimateDefenseMode,
+  TierAInsightItem,
   ChangeOrderDetection,
 } from "./lib/types"
 
@@ -949,6 +953,9 @@ function startChangeOrderFromJob(jobId: string) {
   setAreaScopeBreakdown(null)
   setProfitProtection(null)
   setScopeXRay(null)
+  setMissedScopeDetector(null)
+  setProfitLeakDetector(null)
+  setEstimateDefenseMode(null)
   setChangeOrderDetection(null)
   setJobPhotos([])
 
@@ -1261,6 +1268,9 @@ const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
 const [planIntelligence, setPlanIntelligence] = useState<PlanIntelligence>(null)
 const [materialsList, setMaterialsList] = useState<MaterialsList>(null)
 const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
+const [missedScopeDetector, setMissedScopeDetector] = useState<MissedScopeDetector>(null)
+const [profitLeakDetector, setProfitLeakDetector] = useState<ProfitLeakDetector>(null)
+const [estimateDefenseMode, setEstimateDefenseMode] = useState<EstimateDefenseMode>(null)
 const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
 const [areaScopeBreakdown, setAreaScopeBreakdown] = useState<AreaScopeBreakdown>(null)
 const [profitProtection, setProfitProtection] = useState<ProfitProtection>(null)
@@ -2275,6 +2285,9 @@ async function generate(scopeOverride?: string) {
   setAreaScopeBreakdown(null)
   setProfitProtection(null)
   setScopeXRay(null)
+  setMissedScopeDetector(null)
+  setProfitLeakDetector(null)
+  setEstimateDefenseMode(null)
   setChangeOrderDetection(null)
 
     if (scopeOverride) {
@@ -2655,7 +2668,92 @@ const normalizedScopeXRay = data?.scopeXRay
     }
   : null
 
+const normalizeTierAInsightItems = (items: unknown): TierAInsightItem[] =>
+  Array.isArray(items)
+    ? items
+        .map((item): TierAInsightItem => {
+          const evidence =
+            item &&
+            typeof item === "object" &&
+            "evidence" in item &&
+            Array.isArray(item.evidence)
+              ? item.evidence.map((x: unknown) => String(x).trim()).filter(Boolean)
+              : []
+
+          return {
+            label:
+              item && typeof item === "object" && "label" in item
+                ? String(item.label ?? "").trim()
+                : "",
+            reason:
+              item && typeof item === "object" && "reason" in item
+                ? String(item.reason ?? "").trim()
+                : "",
+            evidence,
+            confidence:
+              item && typeof item === "object" && "confidence" in item
+                ? Number(item.confidence ?? 0)
+                : 0,
+            severity:
+              item && typeof item === "object" && "severity" in item && item.severity === "high"
+                ? "high"
+                : "medium",
+          }
+        })
+        .filter((item) => Boolean(item.label || item.reason))
+    : []
+
+const normalizedMissedScopeDetector = data?.missedScopeDetector
+  ? {
+      likelyMissingScope: normalizeTierAInsightItems(
+        data.missedScopeDetector?.likelyMissingScope
+      ),
+      recommendedConfirmations: normalizeTierAInsightItems(
+        data.missedScopeDetector?.recommendedConfirmations
+      ),
+    }
+  : null
+
+const normalizedProfitLeakDetector = data?.profitLeakDetector
+  ? {
+      likelyProfitLeaks: normalizeTierAInsightItems(
+        data.profitLeakDetector?.likelyProfitLeaks
+      ),
+      pricingReviewPrompts: normalizeTierAInsightItems(
+        data.profitLeakDetector?.pricingReviewPrompts
+      ),
+    }
+  : null
+
+const normalizeDefenseList = (items: unknown): string[] =>
+  Array.isArray(items)
+    ? items.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : []
+
+const normalizedEstimateDefenseMode = data?.estimateDefenseMode
+  ? {
+      whyThisPriceHolds: normalizeDefenseList(data.estimateDefenseMode?.whyThisPriceHolds),
+      includedScopeHighlights: normalizeDefenseList(
+        data.estimateDefenseMode?.includedScopeHighlights
+      ),
+      exclusionNotes: normalizeDefenseList(data.estimateDefenseMode?.exclusionNotes),
+      allowanceNotes: normalizeDefenseList(data.estimateDefenseMode?.allowanceNotes),
+      homeownerFriendlyJustification: normalizeDefenseList(
+        data.estimateDefenseMode?.homeownerFriendlyJustification
+      ),
+      estimatorDefenseNotes: normalizeDefenseList(
+        data.estimateDefenseMode?.estimatorDefenseNotes
+      ),
+      optionalValueEngineeringIdeas: normalizeDefenseList(
+        data.estimateDefenseMode?.optionalValueEngineeringIdeas
+      ),
+    }
+  : null
+
 setScopeXRay(normalizedScopeXRay)
+setMissedScopeDetector(normalizedMissedScopeDetector)
+setProfitLeakDetector(normalizedProfitLeakDetector)
+setEstimateDefenseMode(normalizedEstimateDefenseMode)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 
@@ -2755,6 +2853,9 @@ const estItem: EstimateHistoryItem = {
   areaScopeBreakdown: normalizedAreaScopeBreakdown,
   profitProtection: normalizedProfitProtection,
   scopeXRay: normalizedScopeXRay,
+  missedScopeDetector: normalizedMissedScopeDetector,
+  profitLeakDetector: normalizedProfitLeakDetector,
+  estimateDefenseMode: normalizedEstimateDefenseMode,
   changeOrderDetection,
 
   pricingSource: nextPricingSource,
@@ -2868,6 +2969,51 @@ function makeJobId() {
 }
 
 function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
+  const normalizeInsightItems = (items: unknown): TierAInsightItem[] =>
+    Array.isArray(items)
+      ? items
+          .map((item): TierAInsightItem => {
+            const evidence =
+              item &&
+              typeof item === "object" &&
+              "evidence" in item &&
+              Array.isArray(item.evidence)
+                ? item.evidence
+                    .map((entry: unknown) => String(entry).trim())
+                    .filter(Boolean)
+                : []
+
+            return {
+              label:
+                item && typeof item === "object" && "label" in item
+                  ? String(item.label ?? "").trim()
+                  : "",
+              reason:
+                item && typeof item === "object" && "reason" in item
+                  ? String(item.reason ?? "").trim()
+                  : "",
+              evidence,
+              confidence:
+                item && typeof item === "object" && "confidence" in item
+                  ? Number(item.confidence ?? 0)
+                  : 0,
+              severity:
+                item &&
+                typeof item === "object" &&
+                "severity" in item &&
+                item.severity === "high"
+                  ? "high"
+                  : "medium",
+            }
+          })
+          .filter((item) => Boolean(item.label || item.reason))
+      : []
+
+  const normalizeDefenseLists = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.map((entry: unknown) => String(entry).trim()).filter(Boolean)
+      : []
+
   return {
     id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
     jobId: String(x?.jobId ?? ""),
@@ -2901,6 +3047,41 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
     areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
     profitProtection: normalizeProfitProtection(x?.profitProtection),
     scopeXRay: x?.scopeXRay ?? null,
+    missedScopeDetector: x?.missedScopeDetector
+      ? {
+          likelyMissingScope: normalizeInsightItems(x.missedScopeDetector?.likelyMissingScope),
+          recommendedConfirmations: normalizeInsightItems(
+            x.missedScopeDetector?.recommendedConfirmations
+          ),
+        }
+      : null,
+    profitLeakDetector: x?.profitLeakDetector
+      ? {
+          likelyProfitLeaks: normalizeInsightItems(x.profitLeakDetector?.likelyProfitLeaks),
+          pricingReviewPrompts: normalizeInsightItems(
+            x.profitLeakDetector?.pricingReviewPrompts
+          ),
+        }
+      : null,
+    estimateDefenseMode: x?.estimateDefenseMode
+      ? {
+          whyThisPriceHolds: normalizeDefenseLists(x.estimateDefenseMode?.whyThisPriceHolds),
+          includedScopeHighlights: normalizeDefenseLists(
+            x.estimateDefenseMode?.includedScopeHighlights
+          ),
+          exclusionNotes: normalizeDefenseLists(x.estimateDefenseMode?.exclusionNotes),
+          allowanceNotes: normalizeDefenseLists(x.estimateDefenseMode?.allowanceNotes),
+          homeownerFriendlyJustification: normalizeDefenseLists(
+            x.estimateDefenseMode?.homeownerFriendlyJustification
+          ),
+          estimatorDefenseNotes: normalizeDefenseLists(
+            x.estimateDefenseMode?.estimatorDefenseNotes
+          ),
+          optionalValueEngineeringIdeas: normalizeDefenseLists(
+            x.estimateDefenseMode?.optionalValueEngineeringIdeas
+          ),
+        }
+      : null,
     changeOrderDetection: x?.changeOrderDetection ?? null,
     tax: x?.tax
       ? {
@@ -3058,6 +3239,9 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setAreaScopeBreakdown(item.areaScopeBreakdown ?? null)
   setProfitProtection(item.profitProtection ?? null)
   setScopeXRay(item.scopeXRay ?? null)
+  setMissedScopeDetector(item.missedScopeDetector ?? null)
+  setProfitLeakDetector(item.profitLeakDetector ?? null)
+  setEstimateDefenseMode(item.estimateDefenseMode ?? null)
   setChangeOrderDetection(item.changeOrderDetection ?? null)
   setJobPhotos([])
 
@@ -4072,6 +4256,9 @@ const hasAdvancedAnalysis =
   !!areaScopeBreakdown ||
   !!profitProtection ||
   !!scopeXRay ||
+  !!missedScopeDetector ||
+  !!profitLeakDetector ||
+  !!estimateDefenseMode ||
   hasReviewInsights
 
 function PriceGuardBadge() {
@@ -4684,6 +4871,357 @@ function ScopeXRayCard({
         </div>
       )}
     </details>
+  )
+}
+
+function TierAIntelligenceCard({
+  missedScopeDetector,
+  profitLeakDetector,
+  estimateDefenseMode,
+}: {
+  missedScopeDetector: MissedScopeDetector
+  profitLeakDetector: ProfitLeakDetector
+  estimateDefenseMode: EstimateDefenseMode
+}) {
+  const hasMissedScope =
+    !!missedScopeDetector &&
+    (missedScopeDetector.likelyMissingScope.length > 0 ||
+      missedScopeDetector.recommendedConfirmations.length > 0)
+  const hasProfitLeaks =
+    !!profitLeakDetector &&
+    (profitLeakDetector.likelyProfitLeaks.length > 0 ||
+      profitLeakDetector.pricingReviewPrompts.length > 0)
+  const hasDefenseMode =
+    !!estimateDefenseMode &&
+    Object.values(estimateDefenseMode).some(
+      (items) => Array.isArray(items) && items.length > 0
+    )
+
+  if (!hasMissedScope && !hasProfitLeaks && !hasDefenseMode) return null
+
+  const sectionTone = {
+    danger: { bg: "#fff7ed", border: "#fdba74", color: "#9a3412" },
+    warning: { bg: "#fffbeb", border: "#fcd34d", color: "#92400e" },
+    neutral: { bg: "#fafafa", border: "#e5e7eb", color: "#111827" },
+    info: { bg: "#eff6ff", border: "#93c5fd", color: "#1d4ed8" },
+  } as const
+
+  const normalizeConcept = (value: string): string =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/\b(likely|possible|recommended|confirm|review|pricing|scope|item|risk)\b/g, " ")
+      .replace(/\b(looks|look|may be|might be|do not|does not|clearly|carried|under-covered|under-carried)\b/g, " ")
+      .replace(/[^\w]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+  const cleanBulletText = (value: string): string =>
+    String(value || "")
+      .replace(/^(possible omitted scope|profit leak risk|pricing review|confirm scope item):\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\.$/, "")
+
+  const dedupeStrings = (
+    items: string[],
+    seenConcepts: Set<string>,
+    max = 4
+  ): string[] => {
+    const out: string[] = []
+
+    for (const rawItem of items) {
+      const item = cleanBulletText(rawItem)
+      if (!item) continue
+      const concept = normalizeConcept(item)
+      if (!concept) continue
+
+      const isDuplicate =
+        seenConcepts.has(concept) ||
+        Array.from(seenConcepts).some(
+          (existing) =>
+            existing === concept ||
+            existing.includes(concept) ||
+            concept.includes(existing)
+        )
+
+      if (isDuplicate) continue
+
+      seenConcepts.add(concept)
+      out.push(item)
+      if (out.length >= max) break
+    }
+
+    return out
+  }
+
+  const dedupeInsightItems = (
+    items: TierAInsightItem[],
+    seenConcepts: Set<string>,
+    max = 4
+  ): TierAInsightItem[] => {
+    const out: TierAInsightItem[] = []
+
+    for (const item of items) {
+      const label = cleanBulletText(item.label)
+      const reason = cleanBulletText(item.reason)
+      const labelConcept = normalizeConcept(label)
+      const reasonConcept = normalizeConcept(reason)
+      const combinedConcept = normalizeConcept(`${label} ${reason}`)
+
+      const concepts = [combinedConcept, labelConcept, reasonConcept].filter(Boolean)
+      const isDuplicate = concepts.some(
+        (concept) =>
+          seenConcepts.has(concept) ||
+          Array.from(seenConcepts).some(
+            (existing) =>
+              existing === concept ||
+              existing.includes(concept) ||
+              concept.includes(existing)
+          )
+      )
+
+      if (isDuplicate) continue
+
+      concepts.forEach((concept) => seenConcepts.add(concept))
+
+      const trimmedReason =
+        reasonConcept && reasonConcept === labelConcept ? "" : reason
+
+      out.push({
+        ...item,
+        label,
+        reason: trimmedReason,
+      })
+
+      if (out.length >= max) break
+    }
+
+    return out
+  }
+
+  const sharedSeenConcepts = new Set<string>()
+  const likelyMissingScope = dedupeInsightItems(
+    missedScopeDetector?.likelyMissingScope || [],
+    sharedSeenConcepts,
+    4
+  )
+  const recommendedConfirmations = dedupeInsightItems(
+    missedScopeDetector?.recommendedConfirmations || [],
+    sharedSeenConcepts,
+    3
+  )
+  const likelyProfitLeaks = dedupeInsightItems(
+    profitLeakDetector?.likelyProfitLeaks || [],
+    sharedSeenConcepts,
+    4
+  )
+  const pricingReviewPrompts = dedupeInsightItems(
+    profitLeakDetector?.pricingReviewPrompts || [],
+    sharedSeenConcepts,
+    3
+  )
+  const whyThisPriceHolds = dedupeStrings(
+    estimateDefenseMode?.whyThisPriceHolds || [],
+    sharedSeenConcepts,
+    3
+  )
+  const includedScopeHighlights = dedupeStrings(
+    estimateDefenseMode?.includedScopeHighlights || [],
+    sharedSeenConcepts,
+    3
+  )
+  const exclusionNotes = dedupeStrings(
+    estimateDefenseMode?.exclusionNotes || [],
+    sharedSeenConcepts,
+    3
+  )
+  const allowanceNotes = dedupeStrings(
+    estimateDefenseMode?.allowanceNotes || [],
+    sharedSeenConcepts,
+    3
+  )
+  const homeownerFriendlyJustification = dedupeStrings(
+    estimateDefenseMode?.homeownerFriendlyJustification || [],
+    sharedSeenConcepts,
+    2
+  )
+  const estimatorDefenseNotes = dedupeStrings(
+    estimateDefenseMode?.estimatorDefenseNotes || [],
+    sharedSeenConcepts,
+    3
+  )
+  const optionalValueEngineeringIdeas = dedupeStrings(
+    estimateDefenseMode?.optionalValueEngineeringIdeas || [],
+    sharedSeenConcepts,
+    2
+  )
+
+  const showMissedScope =
+    likelyMissingScope.length > 0 || recommendedConfirmations.length > 0
+  const showProfitLeaks =
+    likelyProfitLeaks.length > 0 || pricingReviewPrompts.length > 0
+  const showDefenseMode =
+    whyThisPriceHolds.length > 0 ||
+    includedScopeHighlights.length > 0 ||
+    exclusionNotes.length > 0 ||
+    allowanceNotes.length > 0 ||
+    homeownerFriendlyJustification.length > 0 ||
+    estimatorDefenseNotes.length > 0 ||
+    optionalValueEngineeringIdeas.length > 0
+
+  if (!showMissedScope && !showProfitLeaks && !showDefenseMode) return null
+
+  const renderInsightList = (
+    title: string,
+    items: TierAInsightItem[],
+    tone: keyof typeof sectionTone
+  ) => {
+    if (items.length === 0) return null
+
+    const styles = sectionTone[tone]
+
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: styles.color }}>
+          {title}
+        </div>
+        <div
+          style={{
+            marginTop: 6,
+            padding: 12,
+            border: `1px solid ${styles.border}`,
+            borderRadius: 12,
+            background: styles.bg,
+          }}
+        >
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.55 }}>
+            {items.map((item, index) => (
+              <li key={`${title}-${index}`} style={{ marginBottom: index === items.length - 1 ? 0 : 8 }}>
+                <div>
+                  <strong>{item.label}</strong>
+                  {item.confidence > 0 ? (
+                    <span style={{ color: "#666" }}> · {item.confidence}% confidence</span>
+                  ) : null}
+                </div>
+                {item.reason && (
+                  <div style={{ color: "#4b5563", marginTop: 2 }}>{item.reason}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
+  const renderStringList = (
+    title: string,
+    items: string[],
+    tone: keyof typeof sectionTone = "neutral"
+  ) => {
+    if (items.length === 0) return null
+
+    const styles = sectionTone[tone]
+
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: styles.color }}>
+          {title}
+        </div>
+        <div
+          style={{
+            marginTop: 6,
+            padding: 12,
+            border: `1px solid ${styles.border}`,
+            borderRadius: 12,
+            background: styles.bg,
+          }}
+        >
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.55 }}>
+            {items.map((item, index) => (
+              <li key={`${title}-${index}`} style={{ marginBottom: index === items.length - 1 ? 0 : 6 }}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+        Tier A Intelligence
+      </div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        Backend audit signals for missed scope, margin exposure, and estimate defense.
+      </div>
+
+      {showMissedScope && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Missed Scope Detector</div>
+          {renderInsightList(
+            "Likely Missing Scope",
+            likelyMissingScope,
+            "danger"
+          )}
+          {renderInsightList(
+            "Recommended Confirmations",
+            recommendedConfirmations,
+            "warning"
+          )}
+        </div>
+      )}
+
+      {showProfitLeaks && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Profit Leak Detector</div>
+          {renderInsightList(
+            "Likely Profit Leaks",
+            likelyProfitLeaks,
+            "danger"
+          )}
+          {renderInsightList(
+            "Pricing Review Prompts",
+            pricingReviewPrompts,
+            "warning"
+          )}
+        </div>
+      )}
+
+      {showDefenseMode && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>Estimate Defense Mode</div>
+          {renderStringList(
+            "Why This Price Holds",
+            whyThisPriceHolds,
+            "info"
+          )}
+          {renderStringList("Included Scope Highlights", includedScopeHighlights)}
+          {renderStringList("Exclusion Notes", exclusionNotes, "warning")}
+          {renderStringList("Allowance Notes", allowanceNotes, "warning")}
+          {renderStringList(
+            "Homeowner-Friendly Justification",
+            homeownerFriendlyJustification,
+            "info"
+          )}
+          {renderStringList("Estimator Defense Notes", estimatorDefenseNotes)}
+          {renderStringList(
+            "Optional Value Engineering Ideas",
+            optionalValueEngineeringIdeas
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -5862,6 +6400,9 @@ function AdvancedAnalysisSection({
   areaScopeBreakdown,
   profitProtection,
   scopeXRay,
+  missedScopeDetector,
+  profitLeakDetector,
+  estimateDefenseMode,
   estimateConfidence,
   changeOrderSummary,
   explainChangesReport,
@@ -5875,6 +6416,9 @@ function AdvancedAnalysisSection({
   areaScopeBreakdown: AreaScopeBreakdown
   profitProtection: ProfitProtection
   scopeXRay: ScopeXRay
+  missedScopeDetector: MissedScopeDetector
+  profitLeakDetector: ProfitLeakDetector
+  estimateDefenseMode: EstimateDefenseMode
   estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
   changeOrderSummary: ReturnType<typeof computeChangeOrderSummary> | null
   explainChangesReport: ReturnType<typeof explainEstimateChanges> | null
@@ -5896,6 +6440,9 @@ function AdvancedAnalysisSection({
     !!areaScopeBreakdown ||
     !!profitProtection ||
     !!scopeXRay ||
+    !!missedScopeDetector ||
+    !!profitLeakDetector ||
+    !!estimateDefenseMode ||
     hasReviewInsights
 
   if (!hasAnything) return null
@@ -5937,6 +6484,11 @@ function AdvancedAnalysisSection({
       )}
 
       {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
+      <TierAIntelligenceCard
+        missedScopeDetector={missedScopeDetector}
+        profitLeakDetector={profitLeakDetector}
+        estimateDefenseMode={estimateDefenseMode}
+      />
       {materialsList && <MaterialsListCard materialsList={materialsList} />}
       {areaScopeBreakdown && (
         <AreaScopeBreakdownCard areaScopeBreakdown={areaScopeBreakdown} />
@@ -6637,6 +7189,9 @@ function PlanIntelligenceCard({
         areaScopeBreakdown={areaScopeBreakdown}
         profitProtection={profitProtection}
         scopeXRay={scopeXRay}
+        missedScopeDetector={missedScopeDetector}
+        profitLeakDetector={profitLeakDetector}
+        estimateDefenseMode={estimateDefenseMode}
         estimateConfidence={estimateConfidence}
         changeOrderSummary={changeOrderSummary}
         explainChangesReport={explainChangesReport}

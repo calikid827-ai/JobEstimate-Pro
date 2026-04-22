@@ -250,6 +250,34 @@ export type ScopeXRay = {
   needsConfirmation: string[]
 } | null
 
+export type TierAInsightItem = {
+  label: string
+  reason: string
+  evidence: string[]
+  confidence: number
+  severity?: "high" | "medium"
+}
+
+export type MissedScopeDetector = {
+  likelyMissingScope: TierAInsightItem[]
+  recommendedConfirmations: TierAInsightItem[]
+} | null
+
+export type ProfitLeakDetector = {
+  likelyProfitLeaks: TierAInsightItem[]
+  pricingReviewPrompts: TierAInsightItem[]
+} | null
+
+export type EstimateDefenseMode = {
+  whyThisPriceHolds: string[]
+  includedScopeHighlights: string[]
+  exclusionNotes: string[]
+  allowanceNotes: string[]
+  homeownerFriendlyJustification: string[]
+  estimatorDefenseNotes: string[]
+  optionalValueEngineeringIdeas: string[]
+} | null
+
 export type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -287,6 +315,9 @@ export type EstimateHistoryItem = {
   areaScopeBreakdown?: AreaScopeBreakdown
   profitProtection?: ProfitProtection
   scopeXRay?: ScopeXRay
+  missedScopeDetector?: MissedScopeDetector
+  profitLeakDetector?: ProfitLeakDetector
+  estimateDefenseMode?: EstimateDefenseMode
   changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
   priceGuardVerified?: boolean

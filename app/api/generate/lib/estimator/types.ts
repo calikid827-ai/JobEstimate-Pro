@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { GenerateSchema } from "../guards"
 import type { PlanIntelligence } from "../plans/types"
+import type { EstimateDefenseMode } from "./estimateDefenseMode"
 import type { MissedScopeDetector } from "./missedScopeDetector"
 import type { ProfitLeakDetector } from "./profitLeakDetector"
 
@@ -591,6 +592,7 @@ export type EstimatorPayload = {
   planIntelligence: PlanIntelligence | null
   missedScopeDetector?: MissedScopeDetector | null
   profitLeakDetector?: ProfitLeakDetector | null
+  estimateDefenseMode?: EstimateDefenseMode | null
 
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown

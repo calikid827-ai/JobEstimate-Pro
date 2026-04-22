@@ -1,4 +1,5 @@
 import { decidePricingOwner } from "./pricingOwner"
+import { buildEstimateDefenseMode } from "./estimateDefenseMode"
 import { detectMissedScope } from "./missedScopeDetector"
 import { detectProfitLeaks } from "./profitLeakDetector"
 import {
@@ -356,6 +357,23 @@ if (ctx.planIntelligence?.ok) {
     scopeText: ctx.scopeChange,
   })
 
+  const estimateDefenseMode = buildEstimateDefenseMode({
+    scopeText: ctx.scopeChange,
+    trade: ctx.trade,
+    tradeStack: ctx.tradeStack,
+    pricing: finalPricing,
+    pricingSource: resolvedPricing.pricingSource,
+    priceGuardVerified: resolvedPricing.priceGuardVerified,
+    estimateBasis: finalBasis,
+    missedScopeDetector,
+    profitLeakDetector,
+    planIntelligence: ctx.planIntelligence,
+    photoScopeAssist: ctx.photoScopeAssist,
+    schedule,
+    priceGuard,
+    complexityProfile: ctx.complexityProfile,
+  })
+
   if (missedScopeDetector) {
     scopeXRay.riskFlags = Array.from(
       new Set([
@@ -413,6 +431,7 @@ if (ctx.planIntelligence?.ok) {
     planIntelligence: ctx.planIntelligence,
     missedScopeDetector,
     profitLeakDetector,
+    estimateDefenseMode,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,
