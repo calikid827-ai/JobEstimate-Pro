@@ -41,6 +41,9 @@ import type {
   MissedScopeDetector,
   ProfitLeakDetector,
   EstimateDefenseMode,
+  EstimateSkeletonHandoff,
+  EstimateStructureConsumption,
+  TradePricingPrepAnalysis,
   TierAInsightItem,
   ChangeOrderDetection,
 } from "./lib/types"
@@ -156,6 +159,9 @@ type PlanIntelligence = {
     suggestedAdditions: string[]
   }
 } | null
+
+type PlanEstimateSkeletonHandoff = EstimateSkeletonHandoff
+type PlanEstimateStructureConsumption = EstimateStructureConsumption
 
 const SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }> = [
   { value: "overview", label: "Overview" },
@@ -977,6 +983,9 @@ function startChangeOrderFromJob(jobId: string) {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+  setPlanIntelligence(null)
+  setEstimateSkeletonHandoff(null)
+  setEstimateStructureConsumption(null)
   setMaterialsList(null)
   setAreaScopeBreakdown(null)
   setProfitProtection(null)
@@ -984,6 +993,7 @@ function startChangeOrderFromJob(jobId: string) {
   setMissedScopeDetector(null)
   setProfitLeakDetector(null)
   setEstimateDefenseMode(null)
+  setTradePricingPrepAnalysis(null)
   setChangeOrderDetection(null)
   setJobPhotos([])
 
@@ -1294,11 +1304,17 @@ const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
 const [planIntelligence, setPlanIntelligence] = useState<PlanIntelligence>(null)
+const [estimateSkeletonHandoff, setEstimateSkeletonHandoff] =
+  useState<PlanEstimateSkeletonHandoff>(null)
+const [estimateStructureConsumption, setEstimateStructureConsumption] =
+  useState<PlanEstimateStructureConsumption>(null)
 const [materialsList, setMaterialsList] = useState<MaterialsList>(null)
 const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
 const [missedScopeDetector, setMissedScopeDetector] = useState<MissedScopeDetector>(null)
 const [profitLeakDetector, setProfitLeakDetector] = useState<ProfitLeakDetector>(null)
 const [estimateDefenseMode, setEstimateDefenseMode] = useState<EstimateDefenseMode>(null)
+const [tradePricingPrepAnalysis, setTradePricingPrepAnalysis] =
+  useState<TradePricingPrepAnalysis>(null)
 const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
 const [areaScopeBreakdown, setAreaScopeBreakdown] = useState<AreaScopeBreakdown>(null)
 const [profitProtection, setProfitProtection] = useState<ProfitProtection>(null)
@@ -1517,10 +1533,14 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     scopeSignals: scopeSignals ?? null,
     photoAnalysis: photoAnalysis ?? null,
     photoScopeAssist: photoScopeAssist ?? null,
+    planIntelligence: planIntelligence ?? null,
+    estimateSkeletonHandoff: estimateSkeletonHandoff ?? null,
+    estimateStructureConsumption: estimateStructureConsumption ?? null,
     materialsList: materialsList ?? null,
     areaScopeBreakdown: areaScopeBreakdown ?? null,
     profitProtection: profitProtection ?? null,
     scopeXRay: scopeXRay ?? null,
+    tradePricingPrepAnalysis: tradePricingPrepAnalysis ?? null,
     changeOrderDetection: changeOrderDetection ?? null,
     tax: {
       enabled: taxEnabled,
@@ -1550,10 +1570,14 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   scopeSignals,
   photoAnalysis,
   photoScopeAssist,
+  planIntelligence,
+  estimateSkeletonHandoff,
+  estimateStructureConsumption,
   materialsList,
   areaScopeBreakdown,
   profitProtection,
   scopeXRay,
+  tradePricingPrepAnalysis,
   changeOrderDetection,
   taxEnabled,
   taxRate,
@@ -2309,6 +2333,9 @@ async function generate(scopeOverride?: string) {
   setScopeSignals(null)
   setPhotoAnalysis(null)
   setPhotoScopeAssist(null)
+  setPlanIntelligence(null)
+  setEstimateSkeletonHandoff(null)
+  setEstimateStructureConsumption(null)
   setMaterialsList(null)
   setAreaScopeBreakdown(null)
   setProfitProtection(null)
@@ -2316,6 +2343,7 @@ async function generate(scopeOverride?: string) {
   setMissedScopeDetector(null)
   setProfitLeakDetector(null)
   setEstimateDefenseMode(null)
+  setTradePricingPrepAnalysis(null)
   setChangeOrderDetection(null)
 
     if (scopeOverride) {
@@ -2812,6 +2840,111 @@ const normalizeDefenseList = (items: unknown): string[] =>
     ? items.map((x: unknown) => String(x).trim()).filter(Boolean)
     : []
 
+const normalizedEstimateSkeletonHandoff = data?.estimateSkeletonHandoff
+  ? {
+      estimatorBucketGuidance: normalizeDefenseList(
+        data.estimateSkeletonHandoff?.estimatorBucketGuidance
+      ),
+      estimatorBucketDrafts: Array.isArray(data.estimateSkeletonHandoff?.estimatorBucketDrafts)
+        ? data.estimateSkeletonHandoff.estimatorBucketDrafts
+            .map((bucket: unknown) => ({
+              bucketName:
+                bucket && typeof bucket === "object" && "bucketName" in bucket
+                  ? String(bucket.bucketName ?? "").trim()
+                  : "",
+              bucketRole:
+                bucket && typeof bucket === "object" && "bucketRole" in bucket
+                  ? String(bucket.bucketRole ?? "").trim()
+                  : "support package",
+              likelyTradeCoverage:
+                bucket && typeof bucket === "object" && "likelyTradeCoverage" in bucket
+                  ? normalizeDefenseList(bucket.likelyTradeCoverage)
+                  : [],
+              likelyScopeBasis:
+                bucket && typeof bucket === "object" && "likelyScopeBasis" in bucket
+                  ? normalizeDefenseList(bucket.likelyScopeBasis)
+                  : [],
+              allowanceReviewStatus:
+                bucket &&
+                typeof bucket === "object" &&
+                "allowanceReviewStatus" in bucket &&
+                (bucket.allowanceReviewStatus === "structure_ready" ||
+                  bucket.allowanceReviewStatus === "support_only" ||
+                  bucket.allowanceReviewStatus === "allowance_review")
+                  ? bucket.allowanceReviewStatus
+                  : "support_only",
+            }))
+            .filter((bucket: { bucketName: string }) => bucket.bucketName)
+        : [],
+      bucketScopeDrafts: normalizeDefenseList(
+        data.estimateSkeletonHandoff?.bucketScopeDrafts
+      ),
+      bucketAllowanceFlags: normalizeDefenseList(
+        data.estimateSkeletonHandoff?.bucketAllowanceFlags
+      ),
+      bucketHandoffNotes: normalizeDefenseList(
+        data.estimateSkeletonHandoff?.bucketHandoffNotes
+      ),
+      estimateStructureHandoffSummary:
+        typeof data.estimateSkeletonHandoff?.estimateStructureHandoffSummary === "string"
+          ? data.estimateSkeletonHandoff.estimateStructureHandoffSummary.trim()
+          : "",
+    }
+  : null
+
+const normalizedEstimateStructureConsumption = data?.estimateStructureConsumption
+  ? {
+      structuredEstimateBuckets: Array.isArray(
+        data.estimateStructureConsumption?.structuredEstimateBuckets
+      )
+        ? data.estimateStructureConsumption.structuredEstimateBuckets
+            .map((bucket: unknown) => ({
+              bucketName:
+                bucket && typeof bucket === "object" && "bucketName" in bucket
+                  ? String(bucket.bucketName ?? "").trim()
+                  : "",
+              bucketRole:
+                bucket && typeof bucket === "object" && "bucketRole" in bucket
+                  ? String(bucket.bucketRole ?? "").trim()
+                  : "support package",
+              likelyTradeCoverage:
+                bucket && typeof bucket === "object" && "likelyTradeCoverage" in bucket
+                  ? normalizeDefenseList(bucket.likelyTradeCoverage)
+                  : [],
+              likelyScopeBasis:
+                bucket && typeof bucket === "object" && "likelyScopeBasis" in bucket
+                  ? normalizeDefenseList(bucket.likelyScopeBasis)
+                  : [],
+              allowanceReviewStatus:
+                bucket &&
+                typeof bucket === "object" &&
+                "allowanceReviewStatus" in bucket &&
+                (bucket.allowanceReviewStatus === "structure_ready" ||
+                  bucket.allowanceReviewStatus === "support_only" ||
+                  bucket.allowanceReviewStatus === "allowance_review")
+                  ? bucket.allowanceReviewStatus
+                  : "support_only",
+              safeForPrimaryStructure:
+                bucket &&
+                typeof bucket === "object" &&
+                "safeForPrimaryStructure" in bucket
+                  ? bucket.safeForPrimaryStructure === true
+                  : false,
+            }))
+            .filter((bucket: { bucketName: string }) => bucket.bucketName)
+        : [],
+      estimateGroupingSignals: normalizeDefenseList(
+        data.estimateStructureConsumption?.estimateGroupingSignals
+      ),
+      estimateReviewBuckets: normalizeDefenseList(
+        data.estimateStructureConsumption?.estimateReviewBuckets
+      ),
+      estimateStructureNotes: normalizeDefenseList(
+        data.estimateStructureConsumption?.estimateStructureNotes
+      ),
+    }
+  : null
+
 const normalizedEstimateDefenseMode = data?.estimateDefenseMode
   ? {
       whyThisPriceHolds: normalizeDefenseList(data.estimateDefenseMode?.whyThisPriceHolds),
@@ -2832,10 +2965,41 @@ const normalizedEstimateDefenseMode = data?.estimateDefenseMode
     }
   : null
 
+const normalizedTradePricingPrepAnalysis = data?.tradePricingPrepAnalysis
+  ? {
+      trade:
+        data.tradePricingPrepAnalysis?.trade === "painting" ||
+        data.tradePricingPrepAnalysis?.trade === "drywall" ||
+        data.tradePricingPrepAnalysis?.trade === "wallcovering"
+          ? data.tradePricingPrepAnalysis.trade
+          : "painting",
+      supportLevel:
+        data.tradePricingPrepAnalysis?.supportLevel === "strong" ||
+        data.tradePricingPrepAnalysis?.supportLevel === "moderate"
+          ? data.tradePricingPrepAnalysis.supportLevel
+          : "weak",
+      tradeEstimateGroupingNotes: normalizeDefenseList(
+        data.tradePricingPrepAnalysis?.tradeEstimateGroupingNotes
+      ),
+      tradePricingPrepSummary: normalizeDefenseList(
+        data.tradePricingPrepAnalysis?.tradePricingPrepSummary
+      ),
+      tradeReviewActions: normalizeDefenseList(
+        data.tradePricingPrepAnalysis?.tradeReviewActions
+      ),
+      tradeAnalysisSignals: normalizeDefenseList(
+        data.tradePricingPrepAnalysis?.tradeAnalysisSignals
+      ),
+    }
+  : null
+
 setScopeXRay(normalizedScopeXRay)
 setMissedScopeDetector(normalizedMissedScopeDetector)
 setProfitLeakDetector(normalizedProfitLeakDetector)
+setEstimateSkeletonHandoff(normalizedEstimateSkeletonHandoff)
+setEstimateStructureConsumption(normalizedEstimateStructureConsumption)
 setEstimateDefenseMode(normalizedEstimateDefenseMode)
+setTradePricingPrepAnalysis(normalizedTradePricingPrepAnalysis)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 
@@ -2931,6 +3095,95 @@ const estItem: EstimateHistoryItem = {
   scopeSignals: data?.scopeSignals ?? null,
   photoAnalysis: data?.photoAnalysis ?? null,
   photoScopeAssist: data?.photoScopeAssist ?? null,
+  planIntelligence:
+    data?.planIntelligence
+      ? {
+          summary:
+            typeof data.planIntelligence?.summary === "string"
+              ? data.planIntelligence.summary.trim()
+              : null,
+          detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
+          detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
+          sheetRoleSignals: normalizePlanStrings(data.planIntelligence?.sheetRoleSignals),
+          prototypeSignals: normalizePlanStrings(data.planIntelligence?.prototypeSignals),
+          repeatScalingSignals: normalizePlanStrings(data.planIntelligence?.repeatScalingSignals),
+          packageGroupingSignals: normalizePlanStrings(
+            data.planIntelligence?.packageGroupingSignals
+          ),
+          bidStrategyNotes: normalizePlanStrings(data.planIntelligence?.bidStrategyNotes),
+          highValueSheetSignals: normalizePlanStrings(
+            data.planIntelligence?.highValueSheetSignals
+          ),
+          pricingAnchorSignals: normalizePlanStrings(
+            data.planIntelligence?.pricingAnchorSignals
+          ),
+          bidCoverageGaps: normalizePlanStrings(data.planIntelligence?.bidCoverageGaps),
+          estimatingPrioritySignals: normalizePlanStrings(
+            data.planIntelligence?.estimatingPrioritySignals
+          ),
+          bidExecutionNotes: normalizePlanStrings(data.planIntelligence?.bidExecutionNotes),
+          pricingPackageSignals: normalizePlanStrings(
+            data.planIntelligence?.pricingPackageSignals
+          ),
+          prototypePackageSignals: normalizePlanStrings(
+            data.planIntelligence?.prototypePackageSignals
+          ),
+          packageScopeCandidates: normalizePlanStrings(
+            data.planIntelligence?.packageScopeCandidates
+          ),
+          packageScalingGuidance: normalizePlanStrings(
+            data.planIntelligence?.packageScalingGuidance
+          ),
+          packageConfidenceNotes: normalizePlanStrings(
+            data.planIntelligence?.packageConfidenceNotes
+          ),
+          estimatingFrameworkNotes: normalizePlanStrings(
+            data.planIntelligence?.estimatingFrameworkNotes
+          ),
+          estimateStructureSignals: normalizePlanStrings(
+            data.planIntelligence?.estimateStructureSignals
+          ),
+          estimatePackageCandidates: normalizePlanStrings(
+            data.planIntelligence?.estimatePackageCandidates
+          ),
+          packageTradeScopeSignals: normalizePlanStrings(
+            data.planIntelligence?.packageTradeScopeSignals
+          ),
+          packagePricingBasisSignals: normalizePlanStrings(
+            data.planIntelligence?.packagePricingBasisSignals
+          ),
+          packageAllowanceSignals: normalizePlanStrings(
+            data.planIntelligence?.packageAllowanceSignals
+          ),
+          estimateAssemblyGuidance: normalizePlanStrings(
+            data.planIntelligence?.estimateAssemblyGuidance
+          ),
+          estimateScaffoldNotes: normalizePlanStrings(
+            data.planIntelligence?.estimateScaffoldNotes
+          ),
+          repeatedSpaceSignals: normalizePlanStrings(
+            data.planIntelligence?.repeatedSpaceSignals
+          ),
+          likelyRoomTypes: normalizePlanStrings(data.planIntelligence?.likelyRoomTypes),
+          scalableScopeSignals: normalizePlanStrings(
+            data.planIntelligence?.scalableScopeSignals
+          ),
+          tradePackageSignals: normalizePlanStrings(
+            data.planIntelligence?.tradePackageSignals
+          ),
+          bidAssistNotes: normalizePlanStrings(data.planIntelligence?.bidAssistNotes),
+          scopeAssist: {
+            missingScopeFlags: normalizePlanStrings(
+              data.planIntelligence?.scopeAssist?.missingScopeFlags
+            ),
+            suggestedAdditions: normalizePlanStrings(
+              data.planIntelligence?.scopeAssist?.suggestedAdditions
+            ),
+          },
+        }
+      : null,
+  estimateSkeletonHandoff: normalizedEstimateSkeletonHandoff,
+  estimateStructureConsumption: normalizedEstimateStructureConsumption,
   materialsList: normalizedMaterialsList,
   areaScopeBreakdown: normalizedAreaScopeBreakdown,
   profitProtection: normalizedProfitProtection,
@@ -2938,6 +3191,7 @@ const estItem: EstimateHistoryItem = {
   missedScopeDetector: normalizedMissedScopeDetector,
   profitLeakDetector: normalizedProfitLeakDetector,
   estimateDefenseMode: normalizedEstimateDefenseMode,
+  tradePricingPrepAnalysis: normalizedTradePricingPrepAnalysis,
   changeOrderDetection,
 
   pricingSource: nextPricingSource,
@@ -3125,6 +3379,197 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
     scopeSignals: x?.scopeSignals ?? null,
     photoAnalysis: x?.photoAnalysis ?? null,
     photoScopeAssist: x?.photoScopeAssist ?? null,
+    planIntelligence: x?.planIntelligence
+      ? {
+          summary:
+            typeof x.planIntelligence?.summary === "string"
+              ? x.planIntelligence.summary.trim()
+              : null,
+          detectedRooms: normalizeDefenseLists(x.planIntelligence?.detectedRooms),
+          detectedTrades: normalizeDefenseLists(x.planIntelligence?.detectedTrades),
+          sheetRoleSignals: normalizeDefenseLists(x.planIntelligence?.sheetRoleSignals),
+          prototypeSignals: normalizeDefenseLists(x.planIntelligence?.prototypeSignals),
+          repeatScalingSignals: normalizeDefenseLists(
+            x.planIntelligence?.repeatScalingSignals
+          ),
+          packageGroupingSignals: normalizeDefenseLists(
+            x.planIntelligence?.packageGroupingSignals
+          ),
+          bidStrategyNotes: normalizeDefenseLists(x.planIntelligence?.bidStrategyNotes),
+          highValueSheetSignals: normalizeDefenseLists(
+            x.planIntelligence?.highValueSheetSignals
+          ),
+          pricingAnchorSignals: normalizeDefenseLists(
+            x.planIntelligence?.pricingAnchorSignals
+          ),
+          bidCoverageGaps: normalizeDefenseLists(x.planIntelligence?.bidCoverageGaps),
+          estimatingPrioritySignals: normalizeDefenseLists(
+            x.planIntelligence?.estimatingPrioritySignals
+          ),
+          bidExecutionNotes: normalizeDefenseLists(x.planIntelligence?.bidExecutionNotes),
+          pricingPackageSignals: normalizeDefenseLists(
+            x.planIntelligence?.pricingPackageSignals
+          ),
+          prototypePackageSignals: normalizeDefenseLists(
+            x.planIntelligence?.prototypePackageSignals
+          ),
+          packageScopeCandidates: normalizeDefenseLists(
+            x.planIntelligence?.packageScopeCandidates
+          ),
+          packageScalingGuidance: normalizeDefenseLists(
+            x.planIntelligence?.packageScalingGuidance
+          ),
+          packageConfidenceNotes: normalizeDefenseLists(
+            x.planIntelligence?.packageConfidenceNotes
+          ),
+          estimatingFrameworkNotes: normalizeDefenseLists(
+            x.planIntelligence?.estimatingFrameworkNotes
+          ),
+          estimateStructureSignals: normalizeDefenseLists(
+            x.planIntelligence?.estimateStructureSignals
+          ),
+          estimatePackageCandidates: normalizeDefenseLists(
+            x.planIntelligence?.estimatePackageCandidates
+          ),
+          packageTradeScopeSignals: normalizeDefenseLists(
+            x.planIntelligence?.packageTradeScopeSignals
+          ),
+          packagePricingBasisSignals: normalizeDefenseLists(
+            x.planIntelligence?.packagePricingBasisSignals
+          ),
+          packageAllowanceSignals: normalizeDefenseLists(
+            x.planIntelligence?.packageAllowanceSignals
+          ),
+          estimateAssemblyGuidance: normalizeDefenseLists(
+            x.planIntelligence?.estimateAssemblyGuidance
+          ),
+          estimateScaffoldNotes: normalizeDefenseLists(
+            x.planIntelligence?.estimateScaffoldNotes
+          ),
+          repeatedSpaceSignals: normalizeDefenseLists(
+            x.planIntelligence?.repeatedSpaceSignals
+          ),
+          likelyRoomTypes: normalizeDefenseLists(x.planIntelligence?.likelyRoomTypes),
+          scalableScopeSignals: normalizeDefenseLists(
+            x.planIntelligence?.scalableScopeSignals
+          ),
+          tradePackageSignals: normalizeDefenseLists(
+            x.planIntelligence?.tradePackageSignals
+          ),
+          bidAssistNotes: normalizeDefenseLists(x.planIntelligence?.bidAssistNotes),
+          scopeAssist: {
+            missingScopeFlags: normalizeDefenseLists(
+              x.planIntelligence?.scopeAssist?.missingScopeFlags
+            ),
+            suggestedAdditions: normalizeDefenseLists(
+              x.planIntelligence?.scopeAssist?.suggestedAdditions
+            ),
+          },
+        }
+      : null,
+    estimateSkeletonHandoff: x?.estimateSkeletonHandoff
+      ? {
+          estimatorBucketGuidance: normalizeDefenseLists(
+            x.estimateSkeletonHandoff?.estimatorBucketGuidance
+          ),
+          estimatorBucketDrafts: Array.isArray(x.estimateSkeletonHandoff?.estimatorBucketDrafts)
+            ? x.estimateSkeletonHandoff.estimatorBucketDrafts
+                .map((bucket: unknown) => ({
+                  bucketName:
+                    bucket && typeof bucket === "object" && "bucketName" in bucket
+                      ? String(bucket.bucketName ?? "").trim()
+                      : "",
+                  bucketRole:
+                    bucket && typeof bucket === "object" && "bucketRole" in bucket
+                      ? String(bucket.bucketRole ?? "").trim()
+                      : "support package",
+                  likelyTradeCoverage:
+                    bucket && typeof bucket === "object" && "likelyTradeCoverage" in bucket
+                      ? normalizeDefenseLists(bucket.likelyTradeCoverage)
+                      : [],
+                  likelyScopeBasis:
+                    bucket && typeof bucket === "object" && "likelyScopeBasis" in bucket
+                      ? normalizeDefenseLists(bucket.likelyScopeBasis)
+                      : [],
+                  allowanceReviewStatus:
+                    bucket &&
+                    typeof bucket === "object" &&
+                    "allowanceReviewStatus" in bucket &&
+                    (bucket.allowanceReviewStatus === "structure_ready" ||
+                      bucket.allowanceReviewStatus === "support_only" ||
+                      bucket.allowanceReviewStatus === "allowance_review")
+                      ? bucket.allowanceReviewStatus
+                      : "support_only",
+                }))
+                .filter((bucket: { bucketName: string }) => bucket.bucketName)
+            : [],
+          bucketScopeDrafts: normalizeDefenseLists(
+            x.estimateSkeletonHandoff?.bucketScopeDrafts
+          ),
+          bucketAllowanceFlags: normalizeDefenseLists(
+            x.estimateSkeletonHandoff?.bucketAllowanceFlags
+          ),
+          bucketHandoffNotes: normalizeDefenseLists(
+            x.estimateSkeletonHandoff?.bucketHandoffNotes
+          ),
+          estimateStructureHandoffSummary:
+            typeof x.estimateSkeletonHandoff?.estimateStructureHandoffSummary === "string"
+              ? x.estimateSkeletonHandoff.estimateStructureHandoffSummary.trim()
+              : "",
+        }
+      : null,
+    estimateStructureConsumption: x?.estimateStructureConsumption
+      ? {
+          structuredEstimateBuckets: Array.isArray(
+            x.estimateStructureConsumption?.structuredEstimateBuckets
+          )
+            ? x.estimateStructureConsumption.structuredEstimateBuckets
+                .map((bucket: unknown) => ({
+                  bucketName:
+                    bucket && typeof bucket === "object" && "bucketName" in bucket
+                      ? String(bucket.bucketName ?? "").trim()
+                      : "",
+                  bucketRole:
+                    bucket && typeof bucket === "object" && "bucketRole" in bucket
+                      ? String(bucket.bucketRole ?? "").trim()
+                      : "support package",
+                  likelyTradeCoverage:
+                    bucket && typeof bucket === "object" && "likelyTradeCoverage" in bucket
+                      ? normalizeDefenseLists(bucket.likelyTradeCoverage)
+                      : [],
+                  likelyScopeBasis:
+                    bucket && typeof bucket === "object" && "likelyScopeBasis" in bucket
+                      ? normalizeDefenseLists(bucket.likelyScopeBasis)
+                      : [],
+                  allowanceReviewStatus:
+                    bucket &&
+                    typeof bucket === "object" &&
+                    "allowanceReviewStatus" in bucket &&
+                    (bucket.allowanceReviewStatus === "structure_ready" ||
+                      bucket.allowanceReviewStatus === "support_only" ||
+                      bucket.allowanceReviewStatus === "allowance_review")
+                      ? bucket.allowanceReviewStatus
+                      : "support_only",
+                  safeForPrimaryStructure:
+                    bucket &&
+                    typeof bucket === "object" &&
+                    "safeForPrimaryStructure" in bucket
+                      ? bucket.safeForPrimaryStructure === true
+                      : false,
+                }))
+                .filter((bucket: { bucketName: string }) => bucket.bucketName)
+            : [],
+          estimateGroupingSignals: normalizeDefenseLists(
+            x.estimateStructureConsumption?.estimateGroupingSignals
+          ),
+          estimateReviewBuckets: normalizeDefenseLists(
+            x.estimateStructureConsumption?.estimateReviewBuckets
+          ),
+          estimateStructureNotes: normalizeDefenseLists(
+            x.estimateStructureConsumption?.estimateStructureNotes
+          ),
+        }
+      : null,
     materialsList: x?.materialsList ?? null,
     areaScopeBreakdown: x?.areaScopeBreakdown ?? null,
     profitProtection: normalizeProfitProtection(x?.profitProtection),
@@ -3161,6 +3606,33 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
           ),
           optionalValueEngineeringIdeas: normalizeDefenseLists(
             x.estimateDefenseMode?.optionalValueEngineeringIdeas
+          ),
+        }
+      : null,
+    tradePricingPrepAnalysis: x?.tradePricingPrepAnalysis
+      ? {
+          trade:
+            x.tradePricingPrepAnalysis?.trade === "painting" ||
+            x.tradePricingPrepAnalysis?.trade === "drywall" ||
+            x.tradePricingPrepAnalysis?.trade === "wallcovering"
+              ? x.tradePricingPrepAnalysis.trade
+              : "painting",
+          supportLevel:
+            x.tradePricingPrepAnalysis?.supportLevel === "strong" ||
+            x.tradePricingPrepAnalysis?.supportLevel === "moderate"
+              ? x.tradePricingPrepAnalysis.supportLevel
+              : "weak",
+          tradeEstimateGroupingNotes: normalizeDefenseLists(
+            x.tradePricingPrepAnalysis?.tradeEstimateGroupingNotes
+          ),
+          tradePricingPrepSummary: normalizeDefenseLists(
+            x.tradePricingPrepAnalysis?.tradePricingPrepSummary
+          ),
+          tradeReviewActions: normalizeDefenseLists(
+            x.tradePricingPrepAnalysis?.tradeReviewActions
+          ),
+          tradeAnalysisSignals: normalizeDefenseLists(
+            x.tradePricingPrepAnalysis?.tradeAnalysisSignals
           ),
         }
       : null,
@@ -3316,7 +3788,9 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setScopeSignals(item.scopeSignals ?? null)
   setPhotoAnalysis(item.photoAnalysis ?? null)
   setPhotoScopeAssist(item.photoScopeAssist ?? null)
-  setPlanIntelligence(null)
+  setPlanIntelligence(item.planIntelligence ?? null)
+  setEstimateSkeletonHandoff(item.estimateSkeletonHandoff ?? null)
+  setEstimateStructureConsumption(item.estimateStructureConsumption ?? null)
   setMaterialsList(item.materialsList ?? null)
   setAreaScopeBreakdown(item.areaScopeBreakdown ?? null)
   setProfitProtection(item.profitProtection ?? null)
@@ -3324,6 +3798,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setMissedScopeDetector(item.missedScopeDetector ?? null)
   setProfitLeakDetector(item.profitLeakDetector ?? null)
   setEstimateDefenseMode(item.estimateDefenseMode ?? null)
+  setTradePricingPrepAnalysis(item.tradePricingPrepAnalysis ?? null)
   setChangeOrderDetection(item.changeOrderDetection ?? null)
   setJobPhotos([])
 
@@ -4341,6 +4816,7 @@ const hasAdvancedAnalysis =
   !!missedScopeDetector ||
   !!profitLeakDetector ||
   !!estimateDefenseMode ||
+  !!tradePricingPrepAnalysis ||
   hasReviewInsights
 
 function PriceGuardBadge() {
@@ -6478,6 +6954,8 @@ function AdvancedAnalysisSection({
   photoAnalysis,
   photoScopeAssist,
   planIntelligence,
+  estimateSkeletonHandoff,
+  estimateStructureConsumption,
   materialsList,
   areaScopeBreakdown,
   profitProtection,
@@ -6485,6 +6963,7 @@ function AdvancedAnalysisSection({
   missedScopeDetector,
   profitLeakDetector,
   estimateDefenseMode,
+  tradePricingPrepAnalysis,
   estimateConfidence,
   changeOrderSummary,
   explainChangesReport,
@@ -6494,6 +6973,8 @@ function AdvancedAnalysisSection({
   photoAnalysis: PhotoAnalysis
   photoScopeAssist: PhotoScopeAssist
   planIntelligence: PlanIntelligence
+  estimateSkeletonHandoff: PlanEstimateSkeletonHandoff
+  estimateStructureConsumption: PlanEstimateStructureConsumption
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
   profitProtection: ProfitProtection
@@ -6501,6 +6982,7 @@ function AdvancedAnalysisSection({
   missedScopeDetector: MissedScopeDetector
   profitLeakDetector: ProfitLeakDetector
   estimateDefenseMode: EstimateDefenseMode
+  tradePricingPrepAnalysis: TradePricingPrepAnalysis
   estimateConfidence: ReturnType<typeof buildEstimateConfidence> | null
   changeOrderSummary: ReturnType<typeof computeChangeOrderSummary> | null
   explainChangesReport: ReturnType<typeof explainEstimateChanges> | null
@@ -6518,6 +7000,8 @@ function AdvancedAnalysisSection({
     !!photoAnalysis ||
     !!photoScopeAssist ||
     !!planIntelligence ||
+    !!estimateSkeletonHandoff ||
+    !!estimateStructureConsumption ||
     !!materialsList ||
     !!areaScopeBreakdown ||
     !!profitProtection ||
@@ -6525,6 +7009,7 @@ function AdvancedAnalysisSection({
     !!missedScopeDetector ||
     !!profitLeakDetector ||
     !!estimateDefenseMode ||
+    !!tradePricingPrepAnalysis ||
     hasReviewInsights
 
   if (!hasAnything) return null
@@ -6565,6 +7050,24 @@ function AdvancedAnalysisSection({
         <PlanIntelligenceCard planIntelligence={planIntelligence} />
       )}
 
+      {estimateSkeletonHandoff && (
+        <EstimateSkeletonHandoffCard
+          estimateSkeletonHandoff={estimateSkeletonHandoff}
+        />
+      )}
+
+      {estimateStructureConsumption && (
+        <EstimateStructureConsumptionCard
+          estimateStructureConsumption={estimateStructureConsumption}
+        />
+      )}
+
+      {tradePricingPrepAnalysis && (
+        <TradePricingPrepAnalysisCard
+          tradePricingPrepAnalysis={tradePricingPrepAnalysis}
+        />
+      )}
+
       {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
       <TierAIntelligenceCard
         missedScopeDetector={missedScopeDetector}
@@ -6587,6 +7090,398 @@ function AdvancedAnalysisSection({
         estimateAssumptions={estimateAssumptions}
       />
     </details>
+  )
+}
+
+function TradePricingPrepAnalysisCard({
+  tradePricingPrepAnalysis,
+}: {
+  tradePricingPrepAnalysis: TradePricingPrepAnalysis
+}) {
+  if (!tradePricingPrepAnalysis) return null
+
+  const {
+    trade,
+    supportLevel,
+    tradeEstimateGroupingNotes,
+    tradePricingPrepSummary,
+    tradeReviewActions,
+    tradeAnalysisSignals,
+  } = tradePricingPrepAnalysis
+
+  const SectionList = ({
+    title,
+    items,
+    tone = "neutral",
+  }: {
+    title: string
+    items: string[]
+    tone?: "neutral" | "warning" | "info"
+  }) => {
+    if (items.length === 0) return null
+
+    const styles =
+      tone === "warning"
+        ? { bg: "#fff7ed", border: "#fdba74" }
+        : tone === "info"
+        ? { bg: "#eff6ff", border: "#93c5fd" }
+        : { bg: "#fafafa", border: "#e5e7eb" }
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#374151",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            padding: 12,
+            border: `1px solid ${styles.border}`,
+            borderRadius: 12,
+            background: styles.bg,
+          }}
+        >
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {items.map((item, index) => (
+              <li key={`${title}-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+            Trade Pricing Prep
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            Backend trade-package guidance for estimate organization and review only.
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            padding: "6px 10px",
+            borderRadius: 999,
+            border: "1px solid #d1d5db",
+            background: supportLevel === "weak" ? "#fff7ed" : "#eff6ff",
+            color: supportLevel === "weak" ? "#9a3412" : "#1d4ed8",
+            textTransform: "capitalize",
+          }}
+        >
+          {trade} · {supportLevel}
+        </div>
+      </div>
+
+      <SectionList
+        title="Pricing Prep Summary"
+        items={tradePricingPrepSummary}
+        tone={supportLevel === "weak" ? "warning" : "info"}
+      />
+      <SectionList
+        title="Estimate Grouping Notes"
+        items={tradeEstimateGroupingNotes}
+        tone="neutral"
+      />
+      <SectionList
+        title="Review Actions"
+        items={tradeReviewActions}
+        tone="warning"
+      />
+      <SectionList
+        title="Analysis Signals"
+        items={tradeAnalysisSignals}
+        tone="info"
+      />
+    </div>
+  )
+}
+
+function EstimateSkeletonHandoffCard({
+  estimateSkeletonHandoff,
+}: {
+  estimateSkeletonHandoff: PlanEstimateSkeletonHandoff
+}) {
+  if (!estimateSkeletonHandoff) return null
+
+  const {
+    estimatorBucketGuidance,
+    estimatorBucketDrafts,
+    bucketScopeDrafts,
+    bucketAllowanceFlags,
+    bucketHandoffNotes,
+    estimateStructureHandoffSummary,
+  } = estimateSkeletonHandoff
+
+  const hasAnything =
+    estimatorBucketGuidance.length > 0 ||
+    estimatorBucketDrafts.length > 0 ||
+    bucketScopeDrafts.length > 0 ||
+    bucketAllowanceFlags.length > 0 ||
+    bucketHandoffNotes.length > 0 ||
+    !!estimateStructureHandoffSummary
+
+  if (!hasAnything) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+        Estimate Skeleton Handoff
+      </div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        Plan-derived bucket scaffolding for estimator organization.
+      </div>
+
+      {estimateStructureHandoffSummary && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #dbeafe",
+            borderRadius: 12,
+            background: "#f8fbff",
+            lineHeight: 1.55,
+            fontSize: 13,
+          }}
+        >
+          {estimateStructureHandoffSummary}
+        </div>
+      )}
+
+      {estimatorBucketGuidance.length > 0 && (
+        <ul style={{ marginTop: 12, paddingLeft: 18, lineHeight: 1.6 }}>
+          {estimatorBucketGuidance.map((item, index) => (
+            <li key={`estimator-bucket-guidance-${index}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+
+      {estimatorBucketDrafts.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          {estimatorBucketDrafts.map((bucket, index) => (
+            <div
+              key={`estimator-bucket-draft-${index}`}
+              style={{
+                marginTop: index === 0 ? 0 : 10,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#fafafa",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>
+                {bucket.bucketName}
+              </div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {bucket.bucketRole} · {bucket.allowanceReviewStatus.replaceAll("_", " ")}
+              </div>
+              {bucket.likelyTradeCoverage.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Trade coverage:</strong> {bucket.likelyTradeCoverage.join(", ")}
+                </div>
+              )}
+              {bucket.likelyScopeBasis.length > 0 && (
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {bucket.likelyScopeBasis.map((item, basisIndex) => (
+                    <li key={`bucket-basis-${index}-${basisIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {bucketScopeDrafts.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Scope Drafts
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {bucketScopeDrafts.map((item, index) => (
+              <li key={`bucket-scope-draft-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {bucketAllowanceFlags.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Allowance Flags
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {bucketAllowanceFlags.map((item, index) => (
+              <li key={`bucket-allowance-flag-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {bucketHandoffNotes.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Handoff Notes
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {bucketHandoffNotes.map((item, index) => (
+              <li key={`bucket-handoff-note-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function EstimateStructureConsumptionCard({
+  estimateStructureConsumption,
+}: {
+  estimateStructureConsumption: PlanEstimateStructureConsumption
+}) {
+  if (!estimateStructureConsumption) return null
+
+  const {
+    structuredEstimateBuckets,
+    estimateGroupingSignals,
+    estimateReviewBuckets,
+    estimateStructureNotes,
+  } = estimateStructureConsumption
+
+  const hasAnything =
+    structuredEstimateBuckets.length > 0 ||
+    estimateGroupingSignals.length > 0 ||
+    estimateReviewBuckets.length > 0 ||
+    estimateStructureNotes.length > 0
+
+  if (!hasAnything) return null
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+        Estimate Structure Consumption
+      </div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        How the plan-derived scaffold can be used safely in estimate organization.
+      </div>
+
+      {estimateGroupingSignals.length > 0 && (
+        <ul style={{ marginTop: 12, paddingLeft: 18, lineHeight: 1.6 }}>
+          {estimateGroupingSignals.map((item, index) => (
+            <li key={`estimate-grouping-signal-${index}`}>{item}</li>
+          ))}
+        </ul>
+      )}
+
+      {structuredEstimateBuckets.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          {structuredEstimateBuckets.map((bucket, index) => (
+            <div
+              key={`structured-estimate-bucket-${index}`}
+              style={{
+                marginTop: index === 0 ? 0 : 10,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: bucket.safeForPrimaryStructure ? "#f8fbff" : "#fafafa",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>
+                {bucket.bucketName}
+              </div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {bucket.bucketRole} · {bucket.safeForPrimaryStructure ? "primary-safe" : "review-oriented"}
+              </div>
+              {bucket.likelyTradeCoverage.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Trade coverage:</strong> {bucket.likelyTradeCoverage.join(", ")}
+                </div>
+              )}
+              {bucket.likelyScopeBasis.length > 0 && (
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {bucket.likelyScopeBasis.map((item, basisIndex) => (
+                    <li key={`structure-basis-${index}-${basisIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {estimateReviewBuckets.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Review Buckets
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {estimateReviewBuckets.map((item, index) => (
+              <li key={`estimate-review-bucket-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {estimateStructureNotes.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Structure Notes
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {estimateStructureNotes.map((item, index) => (
+              <li key={`estimate-structure-note-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -7407,6 +8302,8 @@ function PlanIntelligenceCard({
         photoAnalysis={photoAnalysis}
         photoScopeAssist={photoScopeAssist}
         planIntelligence={planIntelligence}
+        estimateSkeletonHandoff={estimateSkeletonHandoff}
+        estimateStructureConsumption={estimateStructureConsumption}
         materialsList={materialsList}
         areaScopeBreakdown={areaScopeBreakdown}
         profitProtection={profitProtection}
@@ -7414,6 +8311,7 @@ function PlanIntelligenceCard({
         missedScopeDetector={missedScopeDetector}
         profitLeakDetector={profitLeakDetector}
         estimateDefenseMode={estimateDefenseMode}
+        tradePricingPrepAnalysis={tradePricingPrepAnalysis}
         estimateConfidence={estimateConfidence}
         changeOrderSummary={changeOrderSummary}
         explainChangesReport={explainChangesReport}

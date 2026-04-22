@@ -4,6 +4,7 @@ import { buildEstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import { buildEstimateStructureConsumption } from "./estimateStructureConsumption"
 import { detectMissedScope } from "./missedScopeDetector"
 import { detectProfitLeaks } from "./profitLeakDetector"
+import { buildTradePricingPrepAnalysis } from "./tradePricingPrepAnalysis"
 import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
 import {
   applyFinalPricingProtections,
@@ -390,6 +391,26 @@ if (ctx.planIntelligence?.ok) {
     tradeStack: ctx.tradeStack,
     complexityProfile: ctx.complexityProfile,
   })
+  const tradePricingPrepAnalysis =
+    buildTradePricingPrepAnalysis(tradePackagePricingPrep)
+
+  if (tradePackagePricingPrep && tradePricingPrepAnalysis) {
+    const isWeakSupport = tradePackagePricingPrep.supportLevel === "weak"
+
+    scopeXRay.riskFlags = Array.from(
+      new Set([
+        ...(scopeXRay.riskFlags || []),
+        ...tradePackagePricingPrep.tradePackageRiskFlags.slice(0, isWeakSupport ? 1 : 2),
+      ])
+    ).slice(0, 8)
+
+    scopeXRay.needsConfirmation = Array.from(
+      new Set([
+        ...(scopeXRay.needsConfirmation || []),
+        ...tradePricingPrepAnalysis.tradeReviewActions.slice(0, isWeakSupport ? 2 : 3),
+      ])
+    ).slice(0, 8)
+  }
 
   if (missedScopeDetector) {
     scopeXRay.riskFlags = Array.from(
@@ -452,6 +473,7 @@ if (ctx.planIntelligence?.ok) {
     estimateSkeletonHandoff,
     estimateStructureConsumption,
     tradePackagePricingPrep,
+    tradePricingPrepAnalysis,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,

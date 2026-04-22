@@ -200,6 +200,87 @@ export type PhotoScopeAssist = {
   suggestedAdditions: string[]
 } | null
 
+export type PlanIntelligenceSummary = {
+  summary?: string | null
+  detectedRooms: string[]
+  detectedTrades: string[]
+  sheetRoleSignals?: string[]
+  prototypeSignals?: string[]
+  repeatScalingSignals?: string[]
+  packageGroupingSignals?: string[]
+  bidStrategyNotes?: string[]
+  highValueSheetSignals?: string[]
+  pricingAnchorSignals?: string[]
+  bidCoverageGaps?: string[]
+  estimatingPrioritySignals?: string[]
+  bidExecutionNotes?: string[]
+  pricingPackageSignals?: string[]
+  prototypePackageSignals?: string[]
+  packageScopeCandidates?: string[]
+  packageScalingGuidance?: string[]
+  packageConfidenceNotes?: string[]
+  estimatingFrameworkNotes?: string[]
+  estimateStructureSignals?: string[]
+  estimatePackageCandidates?: string[]
+  packageTradeScopeSignals?: string[]
+  packagePricingBasisSignals?: string[]
+  packageAllowanceSignals?: string[]
+  estimateAssemblyGuidance?: string[]
+  estimateScaffoldNotes?: string[]
+  repeatedSpaceSignals?: string[]
+  likelyRoomTypes?: string[]
+  scalableScopeSignals?: string[]
+  tradePackageSignals?: string[]
+  bidAssistNotes?: string[]
+  scopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+} | null
+
+export type EstimateSkeletonHandoff = {
+  estimatorBucketGuidance: string[]
+  estimatorBucketDrafts: {
+    bucketName: string
+    bucketRole:
+      | "primary package"
+      | "secondary package"
+      | "support package"
+      | "allowance/review package"
+    likelyTradeCoverage: string[]
+    likelyScopeBasis: string[]
+    allowanceReviewStatus:
+      | "structure_ready"
+      | "support_only"
+      | "allowance_review"
+  }[]
+  bucketScopeDrafts: string[]
+  bucketAllowanceFlags: string[]
+  bucketHandoffNotes: string[]
+  estimateStructureHandoffSummary: string
+} | null
+
+export type EstimateStructureConsumption = {
+  structuredEstimateBuckets: {
+    bucketName: string
+    bucketRole:
+      | "primary package"
+      | "secondary package"
+      | "support package"
+      | "allowance/review package"
+    likelyTradeCoverage: string[]
+    likelyScopeBasis: string[]
+    allowanceReviewStatus:
+      | "structure_ready"
+      | "support_only"
+      | "allowance_review"
+    safeForPrimaryStructure: boolean
+  }[]
+  estimateGroupingSignals: string[]
+  estimateReviewBuckets: string[]
+  estimateStructureNotes: string[]
+} | null
+
 export type MaterialsListCategory =
   | "material"
   | "consumable"
@@ -278,6 +359,15 @@ export type EstimateDefenseMode = {
   optionalValueEngineeringIdeas: string[]
 } | null
 
+export type TradePricingPrepAnalysis = {
+  trade: "painting" | "drywall" | "wallcovering"
+  supportLevel: "strong" | "moderate" | "weak"
+  tradeEstimateGroupingNotes: string[]
+  tradePricingPrepSummary: string[]
+  tradeReviewActions: string[]
+  tradeAnalysisSignals: string[]
+} | null
+
 export type EstimateHistoryItem = {
   id: string
   createdAt: number
@@ -311,6 +401,9 @@ export type EstimateHistoryItem = {
   scopeSignals?: ScopeSignals
   photoAnalysis?: PhotoAnalysis
   photoScopeAssist?: PhotoScopeAssist
+  planIntelligence?: PlanIntelligenceSummary
+  estimateSkeletonHandoff?: EstimateSkeletonHandoff
+  estimateStructureConsumption?: EstimateStructureConsumption
   materialsList?: MaterialsList
   areaScopeBreakdown?: AreaScopeBreakdown
   profitProtection?: ProfitProtection
@@ -318,6 +411,7 @@ export type EstimateHistoryItem = {
   missedScopeDetector?: MissedScopeDetector
   profitLeakDetector?: ProfitLeakDetector
   estimateDefenseMode?: EstimateDefenseMode
+  tradePricingPrepAnalysis?: TradePricingPrepAnalysis
   changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
   priceGuardVerified?: boolean
