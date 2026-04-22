@@ -66,6 +66,210 @@ function collectScheduleEvidence(schedules: PlanScheduleItem[]): PlanEvidenceRef
   return schedules.flatMap((item) => item.evidence || [])
 }
 
+const BATHROOM_DETAIL_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /\b\d{1,3}(?:\s*[xX]\s*\d{1,3}){1,2}\s+vanity\b/i, label: "Vanity" },
+  { pattern: /\bvan\b/i, label: "Vanity" },
+  { pattern: /\bvanity\b/i, label: "Vanity" },
+  { pattern: /\btub\/shower\b/i, label: "Tub/Shower" },
+  { pattern: /\bshower\b/i, label: "Shower" },
+  { pattern: /\btub\b/i, label: "Tub" },
+  { pattern: /\btoilet\b|\bwc\b|\bwater closet\b/i, label: "WC/Toilet" },
+  { pattern: /\blav(?:atory)?\b|\blav\/sink\b|\bsink\b/i, label: "Lav/Sink" },
+]
+
+function normalizeBathroomDetailLabel(value: string): string {
+  const text = String(value || "").replace(/[ \t]+/g, " ").trim()
+  if (!text) return ""
+
+  const vanityWithDimension = text.match(/\b\d{1,3}(?:\s*[xX]\s*\d{1,3}){1,2}\s+vanity\b/i)?.[0]
+  if (vanityWithDimension) {
+    return vanityWithDimension.replace(/\s+/g, "").replace(/vanity$/i, " vanity")
+  }
+  if (/\bvanity\b|\bvan\b/i.test(text)) return "vanity"
+  if (/\btub\/shower\b/i.test(text) || (/\btub\b/i.test(text) && /\bshower\b/i.test(text))) {
+    return "tub/shower"
+  }
+  if (/\bshower\b/i.test(text)) return "shower"
+  if (/\btub\b/i.test(text)) return "tub"
+  if (/\btoilet\b/i.test(text)) return "toilet"
+  if (/\bwc\b|\bwater closet\b/i.test(text)) return "WC"
+  if (/\blav(?:atory)?\b|\blav\/sink\b|\bsink\b/i.test(text)) return "lav/sink"
+
+  return text
+}
+
+function collapseBathroomDetailLabels(values: string[]): string[] {
+  const normalized = uniqStrings(values.map(normalizeBathroomDetailLabel), 12)
+
+  const hasTubShower = normalized.includes("tub/shower")
+  const dimensionedVanity = normalized.find((value) => /\b\d{1,3}x\d{1,3}(?:x\d{1,3})?\s+vanity\b/i.test(value))
+  const hasVanity = !!dimensionedVanity || normalized.includes("vanity")
+  const hasToilet = normalized.includes("toilet")
+
+  return normalized.filter((value) => {
+    if (hasTubShower && (value === "tub" || value === "shower")) return false
+    if (dimensionedVanity && value === "vanity") return false
+    if (hasVanity && value === "lav/sink") return false
+    if (hasToilet && value === "WC") return false
+    return true
+  })
+}
+
+function extractBathroomLayoutDetails(analyses: PlanSheetAnalysis[]): string[] {
+  const rawTexts = [
+    ...analyses.flatMap((analysis) => analysis.textSnippets || []),
+    ...analyses.flatMap((analysis) => analysis.notes || []),
+    ...analyses.flatMap((analysis) => (analysis.schedules || []).map((item) => item.label)),
+    ...analyses.flatMap((analysis) => (analysis.schedules || []).flatMap((item) => item.notes || [])),
+    ...analyses.flatMap((analysis) =>
+      (analysis.schedules || []).flatMap((item) => (item.evidence || []).map((ref) => ref.excerpt))
+    ),
+    ...analyses.flatMap((analysis) => (analysis.tradeFindings || []).map((item) => item.label)),
+    ...analyses.flatMap((analysis) => (analysis.tradeFindings || []).flatMap((item) => item.notes || [])),
+    ...analyses.flatMap((analysis) =>
+      (analysis.tradeFindings || []).flatMap((item) => (item.evidence || []).map((ref) => ref.excerpt))
+    ),
+  ]
+
+  const out: string[] = []
+  const seen = new Set<string>()
+
+  for (const text of rawTexts) {
+    const normalized = String(text || "").replace(/[ \t]+/g, " ").trim()
+    if (!normalized) continue
+
+    for (const candidate of BATHROOM_DETAIL_PATTERNS) {
+      const match = normalized.match(candidate.pattern)
+      if (!match) continue
+      const detail = match[0].replace(/[ \t]+/g, " ").trim()
+      const value = detail || candidate.label
+      const key = value.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(value)
+      break
+    }
+  }
+
+  return collapseBathroomDetailLabels(out).slice(0, 6)
+}
+
+function extractBathroomLayoutDetailsFromTexts(texts: string[]): string[] {
+  const analyses: PlanSheetAnalysis[] = [
+    {
+      uploadId: "synthetic",
+      uploadName: "synthetic",
+      sourcePageNumber: 1,
+      pageNumber: 1,
+      sheetNumber: null,
+      sheetTitle: null,
+      discipline: "unknown",
+      textSnippets: texts,
+      notes: [],
+      rooms: [],
+      schedules: [],
+      tradeFindings: [],
+      scaleText: null,
+      revision: null,
+      confidence: 0,
+    },
+  ]
+
+  return extractBathroomLayoutDetails(analyses)
+}
+
+function getBathroomTradeSpecificityScore(finding: PlanTradeFinding): number {
+  const details = extractBathroomLayoutDetailsFromTexts([
+    finding.label,
+    ...(finding.notes || []),
+    ...(finding.evidence || []).map((ref) => ref.excerpt),
+  ])
+
+  let score = details.length * 10
+  if (finding.trade === "plumbing") score += 20
+  if (/\bbathroom fixture layout referenced\b/i.test(finding.label)) score += 5
+  if (/\bfixtures?\/layout\b/i.test(finding.label)) score -= 2
+  if (/\b\d{1,3}x\d{1,3}(?:x\d{1,3})?\s+vanity\b/i.test(finding.label)) score += 3
+
+  return score
+}
+
+function isSubsetOfDetails(left: string[], right: string[]): boolean {
+  if (left.length > right.length) return false
+  const rightSet = new Set(right)
+  return left.every((item) => rightSet.has(item))
+}
+
+function normalizeTradeFindingLabel(finding: PlanTradeFinding): string {
+  if (finding.trade !== "plumbing") return finding.label
+
+  const details = extractBathroomLayoutDetailsFromTexts([
+    finding.label,
+    ...(finding.notes || []),
+    ...(finding.evidence || []).map((ref) => ref.excerpt),
+  ])
+
+  if (!details.length) return finding.label
+
+  return `Bathroom fixture layout referenced: ${details.join(", ")}`
+}
+
+function normalizeAnalysisTradeFindings(analysis: PlanSheetAnalysis): PlanSheetAnalysis {
+  const normalizedTradeFindings = (analysis.tradeFindings || []).map((finding) => ({
+    ...finding,
+    label: normalizeTradeFindingLabel(finding),
+  }))
+
+  const plumbingBathroomGroups: Array<{
+    details: string[]
+    finding: PlanTradeFinding
+  }> = []
+  const out: PlanTradeFinding[] = []
+
+  for (const finding of normalizedTradeFindings) {
+    if (finding.trade !== "plumbing") {
+      out.push(finding)
+      continue
+    }
+
+    const details = extractBathroomLayoutDetailsFromTexts([
+      finding.label,
+      ...(finding.notes || []),
+      ...(finding.evidence || []).map((ref) => ref.excerpt),
+    ])
+
+    if (!details.length) {
+      out.push(finding)
+      continue
+    }
+
+    const existingIndex = plumbingBathroomGroups.findIndex((entry) => {
+      return (
+        isSubsetOfDetails(details, entry.details) ||
+        isSubsetOfDetails(entry.details, details)
+      )
+    })
+
+    if (existingIndex === -1) {
+      plumbingBathroomGroups.push({ details, finding })
+      continue
+    }
+
+    const existing = plumbingBathroomGroups[existingIndex].finding
+    if (getBathroomTradeSpecificityScore(finding) > getBathroomTradeSpecificityScore(existing)) {
+      plumbingBathroomGroups[existingIndex] = { details, finding }
+    }
+  }
+
+  return {
+    ...analysis,
+    tradeFindings: [
+      ...out,
+      ...plumbingBathroomGroups.map((entry) => entry.finding),
+    ],
+  }
+}
+
 function buildTakeoff(analyses: PlanSheetAnalysis[]): PlanTakeoff {
   const allRooms = analyses.flatMap((analysis) => analysis.rooms || [])
   const allSchedules = analyses.flatMap((analysis) => analysis.schedules || [])
@@ -123,6 +327,14 @@ function buildScopeAssist(args: {
   const missingScopeFlags: string[] = []
   const suggestedAdditions: string[] = []
   const conflicts: string[] = []
+  const bathroomLayoutDetails = extractBathroomLayoutDetails(args.analyses)
+  const hasBathroomRoom = args.detectedRooms.some((room) => /\bbath(room)?\b/i.test(room))
+  const hasSpecificBathroomSuggestion =
+    hasBathroomRoom &&
+    bathroomLayoutDetails.length > 0 &&
+    !/\bvanity\b|\btoilet\b|\bwc\b|\bwater closet\b|\bshower\b|\btub\b|\blav(?:atory)?\b|\bsink\b/i.test(
+      scopeText
+    )
 
   if (args.detectedRooms.length > 0) {
     const missingRooms = args.detectedRooms.filter(
@@ -151,9 +363,15 @@ function buildScopeAssist(args: {
   }
   if (
     schedules.some((item) => item.scheduleType === "fixture") &&
-    !/\bfixture|plumbing|electrical/.test(scopeText)
+    !/\bfixture|plumbing|electrical/.test(scopeText) &&
+    !hasSpecificBathroomSuggestion
   ) {
     suggestedAdditions.push("Confirm fixture-related work shown in plans.")
+  }
+  if (hasSpecificBathroomSuggestion) {
+    suggestedAdditions.push(
+      `Confirm bathroom fixture/layout scope shown in plans: ${bathroomLayoutDetails.join(", ")}.`
+    )
   }
 
   if (
@@ -169,7 +387,11 @@ function buildScopeAssist(args: {
 
   return {
     missingScopeFlags: uniqStrings(missingScopeFlags, 8),
-    suggestedAdditions: uniqStrings(suggestedAdditions, 8),
+    suggestedAdditions: uniqStrings(suggestedAdditions, 8).filter(
+      (item) =>
+        item !== "Confirm fixture-related work shown in plans." ||
+        !suggestedAdditions.some((x) => x.startsWith("Confirm bathroom fixture/layout scope shown in plans:"))
+    ),
     conflicts: uniqStrings(conflicts, 8),
   }
 }
@@ -207,6 +429,7 @@ function buildSummary(args: {
   detectedTrades: string[]
   detectedRooms: string[]
   takeoff: PlanTakeoff
+  analyses: PlanSheetAnalysis[]
   scopeAssist: {
     missingScopeFlags: string[]
     suggestedAdditions: string[]
@@ -223,6 +446,12 @@ function buildSummary(args: {
   }
   if (args.detectedRooms.length > 0) {
     parts.push(`Detected spaces: ${args.detectedRooms.slice(0, 6).join(", ")}.`)
+  }
+
+  const bathroomLayoutDetails = extractBathroomLayoutDetails(args.analyses)
+  const hasBathroomRoom = args.detectedRooms.some((room) => /\bbath(room)?\b/i.test(room))
+  if (hasBathroomRoom && bathroomLayoutDetails.length > 0) {
+    parts.push(`Bathroom fixture/layout signals: ${bathroomLayoutDetails.join(", ")}.`)
   }
 
   const quantityParts: string[] = []
@@ -256,15 +485,33 @@ function buildNotes(args: {
     conflicts: string[]
   }
 }): string[] {
+  const baseNotes = [
+    ...args.analyses.flatMap((analysis) => analysis.notes || []),
+    ...args.scopeAssist.missingScopeFlags,
+    ...args.scopeAssist.suggestedAdditions,
+    ...args.scopeAssist.conflicts,
+  ]
+
+  const bathroomLayoutDetails = extractBathroomLayoutDetails(args.analyses)
+  const hasBathroomRoom = args.analyses.some((analysis) =>
+    (analysis.rooms || []).some((room) => /\bbath(room)?\b/i.test(room.roomName))
+  )
   const notes = uniqStrings(
-    [
-      ...args.analyses.flatMap((analysis) => analysis.notes || []),
-      ...args.scopeAssist.missingScopeFlags,
-      ...args.scopeAssist.suggestedAdditions,
-      ...args.scopeAssist.conflicts,
-    ],
+    baseNotes.filter((note) => {
+      if (!hasBathroomRoom || bathroomLayoutDetails.length === 0) return true
+      return !/\bbathroom fixture\/layout signals reviewed\b|\bvisible bathroom fixture\/layout labels\b/i.test(
+        note
+      )
+    }),
     16
   )
+  if (
+    hasBathroomRoom &&
+    bathroomLayoutDetails.length > 0 &&
+    !notes.some((note) => /\bbathroom fixture\/layout\b|\bvisible bathroom fixture\/layout\b/i.test(note))
+  ) {
+    notes.unshift(`Bathroom fixture/layout signals reviewed: ${bathroomLayoutDetails.join(", ")}.`)
+  }
 
   if (args.sheetIndex.length > 0 && notes.length === 0) {
     return ["Plan pages were normalized and indexed for sheet-level review."]
@@ -304,30 +551,31 @@ export function buildMergedPlanIntelligence(args: {
   scopeText: string
   trade: string
 }): Omit<PlanIntelligence, "ok" | "uploadsCount" | "pagesCount"> {
+  const normalizedAnalyses = args.analyses.map(normalizeAnalysisTradeFindings)
   const detectedSheets = uniqStrings(args.sheetIndex.map(formatSheetLabel), 24)
   const detectedRooms = uniqStrings(
-    args.analyses.flatMap((analysis) => (analysis.rooms || []).map((room) => room.roomName)),
+    normalizedAnalyses.flatMap((analysis) => (analysis.rooms || []).map((room) => room.roomName)),
     24
   )
   const detectedTrades = uniqStrings(
-    args.analyses.flatMap((analysis) =>
+    normalizedAnalyses.flatMap((analysis) =>
       (analysis.tradeFindings || []).map((finding) => finding.trade)
     ),
     12
   )
 
-  const takeoff = buildTakeoff(args.analyses)
+  const takeoff = buildTakeoff(normalizedAnalyses)
   const scopeAssist = buildScopeAssist({
-    analyses: args.analyses,
+    analyses: normalizedAnalyses,
     scopeText: args.scopeText,
     trade: args.trade,
     detectedTrades,
     detectedRooms,
   })
-  const evidence = buildEvidenceBundle(args.analyses)
+  const evidence = buildEvidenceBundle(normalizedAnalyses)
   const notes = buildNotes({
     sheetIndex: args.sheetIndex,
-    analyses: args.analyses,
+    analyses: normalizedAnalyses,
     scopeAssist,
   })
   const summary = buildSummary({
@@ -335,11 +583,12 @@ export function buildMergedPlanIntelligence(args: {
     detectedTrades,
     detectedRooms,
     takeoff,
+    analyses: normalizedAnalyses,
     scopeAssist,
   })
   const confidenceScore = buildConfidenceScore({
     sheetIndex: args.sheetIndex,
-    analyses: args.analyses,
+    analyses: normalizedAnalyses,
     evidence,
     detectedTrades,
     detectedRooms,
@@ -347,7 +596,7 @@ export function buildMergedPlanIntelligence(args: {
 
   return {
     sheetIndex: args.sheetIndex,
-    analyses: args.analyses,
+    analyses: normalizedAnalyses,
     takeoff,
     scopeAssist,
     evidence,

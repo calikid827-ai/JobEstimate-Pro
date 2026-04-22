@@ -6837,6 +6837,11 @@ const planIntelligence =
       })
     : null
 
+console.log(
+  "PLAN DEBUG:",
+  JSON.stringify(planIntelligence, null, 2)
+)
+
 const photoAnalysis =
   photos && photos.length > 0
     ? await analyzeJobPhotos({
@@ -7839,7 +7844,7 @@ const normalized: any = {
   estimateBasis: aiParsed.estimateBasis ?? null,
 }
 
-normalized.pricing = clampPricing(coercePricing(normalized.pricing))
+normalized.pricing = normalizePricingMath(coercePricing(normalized.pricing))
 
 const effectiveSqft =
   trade === "flooring"
@@ -7898,7 +7903,7 @@ Return corrected JSON using the SAME schema, and make estimateBasis match the pr
         normalized.documentType = repaired.documentType ?? normalized.documentType
         normalized.trade = repaired.trade ?? normalized.trade
         normalized.description = repaired.description ?? normalized.description
-        normalized.pricing = clampPricing(coercePricing(repaired.pricing))
+        normalized.pricing = normalizePricingMath(coercePricing(repaired.pricing))
         normalized.estimateBasis = repaired.estimateBasis ?? normalized.estimateBasis
 
 normalized.estimateBasis = syncEstimateBasisMath({

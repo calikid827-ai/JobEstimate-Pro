@@ -115,6 +115,16 @@ type JobPlan = {
   note: string
 }
 
+type PlanIntelligence = {
+  summary?: string | null
+  detectedRooms: string[]
+  detectedTrades: string[]
+  scopeAssist: {
+    missingScopeFlags: string[]
+    suggestedAdditions: string[]
+  }
+} | null
+
 const SHOT_TYPE_OPTIONS: Array<{ value: ShotType; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "corner", label: "Corner" },
@@ -1248,6 +1258,7 @@ const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
+const [planIntelligence, setPlanIntelligence] = useState<PlanIntelligence>(null)
 const [materialsList, setMaterialsList] = useState<MaterialsList>(null)
 const [scopeXRay, setScopeXRay] = useState<ScopeXRay>(null)
 const [changeOrderDetection, setChangeOrderDetection] = useState<ChangeOrderDetection | null>(null)
@@ -2455,6 +2466,31 @@ setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
 setPhotoScopeAssist(data?.photoScopeAssist ?? null)
+const normalizePlanStrings = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : []
+
+setPlanIntelligence(
+  data?.planIntelligence
+    ? {
+        summary:
+          typeof data.planIntelligence?.summary === "string"
+            ? data.planIntelligence.summary.trim()
+            : null,
+        detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
+        detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
+        scopeAssist: {
+          missingScopeFlags: normalizePlanStrings(
+            data.planIntelligence?.scopeAssist?.missingScopeFlags
+          ),
+          suggestedAdditions: normalizePlanStrings(
+            data.planIntelligence?.scopeAssist?.suggestedAdditions
+          ),
+        },
+      }
+    : null
+)
 
 const normalizedMaterialsList: MaterialsList =
   data?.materialsList
@@ -3017,6 +3053,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setScopeSignals(item.scopeSignals ?? null)
   setPhotoAnalysis(item.photoAnalysis ?? null)
   setPhotoScopeAssist(item.photoScopeAssist ?? null)
+  setPlanIntelligence(null)
   setMaterialsList(item.materialsList ?? null)
   setAreaScopeBreakdown(item.areaScopeBreakdown ?? null)
   setProfitProtection(item.profitProtection ?? null)
@@ -5820,6 +5857,7 @@ function ReviewInsightsCard({
 function AdvancedAnalysisSection({
   photoAnalysis,
   photoScopeAssist,
+  planIntelligence,
   materialsList,
   areaScopeBreakdown,
   profitProtection,
@@ -5832,6 +5870,7 @@ function AdvancedAnalysisSection({
 }: {
   photoAnalysis: PhotoAnalysis
   photoScopeAssist: PhotoScopeAssist
+  planIntelligence: PlanIntelligence
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
   profitProtection: ProfitProtection
@@ -5852,6 +5891,7 @@ function AdvancedAnalysisSection({
   const hasAnything =
     !!photoAnalysis ||
     !!photoScopeAssist ||
+    !!planIntelligence ||
     !!materialsList ||
     !!areaScopeBreakdown ||
     !!profitProtection ||
@@ -5892,6 +5932,10 @@ function AdvancedAnalysisSection({
         />
       )}
 
+      {planIntelligence && (
+        <PlanIntelligenceCard planIntelligence={planIntelligence} />
+      )}
+
       {scopeXRay && <ScopeXRayCard scopeXRay={scopeXRay} />}
       {materialsList && <MaterialsListCard materialsList={materialsList} />}
       {areaScopeBreakdown && (
@@ -5909,6 +5953,144 @@ function AdvancedAnalysisSection({
         estimateAssumptions={estimateAssumptions}
       />
     </details>
+  )
+}
+
+function PlanIntelligenceCard({
+  planIntelligence,
+}: {
+  planIntelligence: PlanIntelligence
+}) {
+  if (!planIntelligence) return null
+
+  const detectedRooms = Array.isArray(planIntelligence.detectedRooms)
+    ? Array.from(new Set(planIntelligence.detectedRooms.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const detectedTrades = Array.isArray(planIntelligence.detectedTrades)
+    ? Array.from(new Set(planIntelligence.detectedTrades.map((x) => String(x).trim()).filter(Boolean))).slice(0, 8)
+    : []
+  const missingScopeFlags = Array.isArray(planIntelligence.scopeAssist?.missingScopeFlags)
+    ? Array.from(
+        new Set(planIntelligence.scopeAssist.missingScopeFlags.map((x) => String(x).trim()).filter(Boolean))
+      ).slice(0, 8)
+    : []
+  const suggestedAdditions = Array.isArray(planIntelligence.scopeAssist?.suggestedAdditions)
+    ? Array.from(
+        new Set(planIntelligence.scopeAssist.suggestedAdditions.map((x) => String(x).trim()).filter(Boolean))
+      ).slice(0, 8)
+    : []
+
+  const hasAnything =
+    !!planIntelligence.summary ||
+    detectedRooms.length > 0 ||
+    detectedTrades.length > 0 ||
+    missingScopeFlags.length > 0 ||
+    suggestedAdditions.length > 0
+
+  if (!hasAnything) return null
+
+  const SectionList = ({
+    title,
+    items,
+    tone = "neutral",
+  }: {
+    title: string
+    items: string[]
+    tone?: "neutral" | "warning" | "info"
+  }) => {
+    if (items.length === 0) return null
+
+    const styles =
+      tone === "warning"
+        ? { bg: "#fff7ed", border: "#fdba74" }
+        : tone === "info"
+        ? { bg: "#eff6ff", border: "#93c5fd" }
+        : { bg: "#fafafa", border: "#e5e7eb" }
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#374151",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {title}
+        </div>
+
+        <div
+          style={{
+            padding: 12,
+            border: `1px solid ${styles.border}`,
+            borderRadius: 12,
+            background: styles.bg,
+          }}
+        >
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
+            {items.map((item, index) => (
+              <li key={`${title}-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 16,
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
+            Plan Intelligence
+          </div>
+          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+            Signals extracted from uploaded plan files.
+          </div>
+        </div>
+      </div>
+
+      {planIntelligence.summary && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #dbeafe",
+            borderRadius: 12,
+            background: "#f8fbff",
+            color: "#1f2937",
+            lineHeight: 1.55,
+            fontSize: 13,
+          }}
+        >
+          {planIntelligence.summary}
+        </div>
+      )}
+
+      <SectionList title="Detected Rooms" items={detectedRooms} tone="info" />
+      <SectionList title="Detected Trades" items={detectedTrades} tone="neutral" />
+      <SectionList title="Scope Flags" items={missingScopeFlags} tone="warning" />
+      <SectionList title="Suggested Additions" items={suggestedAdditions} tone="info" />
+    </div>
   )
 }
 
@@ -6450,6 +6632,7 @@ function AdvancedAnalysisSection({
       <AdvancedAnalysisSection
         photoAnalysis={photoAnalysis}
         photoScopeAssist={photoScopeAssist}
+        planIntelligence={planIntelligence}
         materialsList={materialsList}
         areaScopeBreakdown={areaScopeBreakdown}
         profitProtection={profitProtection}
