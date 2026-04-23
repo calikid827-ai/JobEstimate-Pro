@@ -177,26 +177,111 @@ function joinLower(texts: string[]): string {
   return texts.join(" ").toLowerCase()
 }
 
-function isUnitLikeRoomLabel(value: string): boolean {
-  return /\bguest room|guestroom|unit|suite|bed(room)?|typical room\b/i.test(value)
-}
+type PrototypeRoomGroupKind =
+  | "guest_room"
+  | "suite"
+  | "bathroom_cluster"
+  | "corridor_hallway"
+  | "lobby_common"
+  | "amenity_support"
+  | "one_off"
 
-function isCorridorLikeRoomLabel(value: string): boolean {
-  return /\bcorridor|hallway|lobby|common area|common corridor\b/i.test(value)
-}
-
-function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null): {
+type PrototypeRoomRollup = {
   repeatedUnitCount: number | null
   repeatedUnitSource: "takeoff" | "room_signal" | null
+  repeatedUnitGroup: PrototypeRoomGroupKind | null
+  repeatedUnitGroupLabel: string | null
   hasUnitLikeRooms: boolean
   hasCorridorLikeRooms: boolean
-} {
+  hasLobbyCommonRooms: boolean
+  hasAmenitySupportRooms: boolean
+  hasMixedPrototypeCandidates: boolean
+}
+
+function classifyPrototypeRoomGroup(value: string): PrototypeRoomGroupKind | null {
+  const text = String(value || "").trim().toLowerCase()
+  if (!text) return null
+
+  if (/\bcorridor|hallway|hall\b/.test(text)) return "corridor_hallway"
+  if (/\blobby|common area|common room|common corridor|public area\b/.test(text)) {
+    return "lobby_common"
+  }
+  if (
+    /\bfitness|gym|laundry|storage|back of house|boh|office|break room|support|service|janitor|housekeeping|meeting room|conference|amenity|club room\b/.test(
+      text
+    )
+  ) {
+    return "amenity_support"
+  }
+  if (/\bbath(room)?|restroom|wc|water closet|toilet\b/.test(text)) {
+    return "bathroom_cluster"
+  }
+  if (/\bsuite|studio|apartment|tenant unit|dwelling unit|unit\b/.test(text)) {
+    return "suite"
+  }
+  if (/\bguest room|guestroom|bed(room)?|typical room\b/.test(text)) {
+    return "guest_room"
+  }
+  if (/\bone[-\s]?off|unique|model\b/.test(text)) return "one_off"
+
+  return null
+}
+
+function isPrototypeQualifier(kind: PrototypeRoomGroupKind | null): boolean {
+  return kind === "guest_room" || kind === "suite"
+}
+
+function getPrototypeRoomGroupLabel(kind: PrototypeRoomGroupKind | null): string | null {
+  if (kind === "guest_room") return "guest room"
+  if (kind === "suite") return "suite / unit"
+  if (kind === "bathroom_cluster") return "bathroom cluster"
+  if (kind === "corridor_hallway") return "corridor / hallway"
+  if (kind === "lobby_common") return "lobby / common area"
+  if (kind === "amenity_support") return "amenity / support space"
+  if (kind === "one_off") return "one-off room"
+  return null
+}
+
+function pickPrototypeGroup(args: {
+  measuredCounts: Map<PrototypeRoomGroupKind, number>
+  hintedCounts: Map<PrototypeRoomGroupKind, number>
+}): PrototypeRoomGroupKind | null {
+  const measuredCandidates = Array.from(args.measuredCounts.entries()).filter(
+    ([kind, count]) => isPrototypeQualifier(kind) && count >= 2
+  )
+
+  if (measuredCandidates.length === 1) return measuredCandidates[0][0]
+  if (measuredCandidates.length > 1) {
+    const sorted = measuredCandidates.sort((left, right) => right[1] - left[1])
+    if ((sorted[0]?.[1] || 0) > (sorted[1]?.[1] || 0)) return sorted[0][0]
+
+    const hintedCandidates = Array.from(args.hintedCounts.entries()).filter(([kind, count]) => {
+      return isPrototypeQualifier(kind) && count > 0
+    })
+    if (hintedCandidates.length === 1) return hintedCandidates[0][0]
+    return null
+  }
+
+  const hintedCandidates = Array.from(args.hintedCounts.entries()).filter(([kind, count]) => {
+    return isPrototypeQualifier(kind) && count > 0
+  })
+  if (hintedCandidates.length === 1) return hintedCandidates[0][0]
+
+  return null
+}
+
+function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null): PrototypeRoomRollup {
   if (!planIntelligence?.ok) {
     return {
       repeatedUnitCount: null,
       repeatedUnitSource: null,
+      repeatedUnitGroup: null,
+      repeatedUnitGroupLabel: null,
       hasUnitLikeRooms: false,
       hasCorridorLikeRooms: false,
+      hasLobbyCommonRooms: false,
+      hasAmenitySupportRooms: false,
+      hasMixedPrototypeCandidates: false,
     }
   }
 
@@ -204,51 +289,110 @@ function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null)
     ...(planIntelligence.detectedRooms || []),
     ...(planIntelligence.likelyRoomTypes || []),
     ...(planIntelligence.repeatedSpaceSignals || []),
+    ...(planIntelligence.prototypeSignals || []),
+    ...(planIntelligence.prototypePackageSignals || []),
   ]
   const measuredRoomNames = (planIntelligence.analyses || []).flatMap((analysis) =>
     (analysis.rooms || []).map((room) => room.roomName)
   )
-  const roomNames = [...inferredRoomLabels, ...measuredRoomNames]
+  const measuredCounts = new Map<PrototypeRoomGroupKind, number>()
+  const hintedCounts = new Map<PrototypeRoomGroupKind, number>()
 
-  const unitLikeMeasuredRooms = measuredRoomNames.filter((roomName) =>
-    isUnitLikeRoomLabel(roomName)
-  )
-  const unitLikeRoomLabels = inferredRoomLabels.filter((roomName) =>
-    isUnitLikeRoomLabel(roomName)
-  )
-  const corridorLikeRoomNames = roomNames.filter((roomName) => isCorridorLikeRoomLabel(roomName))
+  for (const roomName of measuredRoomNames) {
+    const kind = classifyPrototypeRoomGroup(roomName)
+    if (!kind) continue
+    measuredCounts.set(kind, (measuredCounts.get(kind) || 0) + 1)
+  }
+
+  for (const roomName of inferredRoomLabels) {
+    const kind = classifyPrototypeRoomGroup(roomName)
+    if (!kind) continue
+    hintedCounts.set(kind, (hintedCounts.get(kind) || 0) + 1)
+  }
+
   const hasPrototypeSignals =
     (planIntelligence.repeatedSpaceSignals || []).length > 0 ||
-    (planIntelligence.prototypeSignals || []).length > 0
+    (planIntelligence.prototypeSignals || []).length > 0 ||
+    (planIntelligence.prototypePackageSignals || []).length > 0
+  const selectedPrototypeGroup = pickPrototypeGroup({
+    measuredCounts,
+    hintedCounts,
+  })
+  const selectedPrototypeLabel = getPrototypeRoomGroupLabel(selectedPrototypeGroup)
+  const prototypeCandidateKinds = Array.from(
+    new Set(
+      [...measuredCounts.keys(), ...hintedCounts.keys()].filter((kind) =>
+        isPrototypeQualifier(kind)
+      )
+    )
+  )
 
-  if (hasPrototypeSignals && unitLikeMeasuredRooms.length >= 2) {
+  if (
+    hasPrototypeSignals &&
+    selectedPrototypeGroup &&
+    (measuredCounts.get(selectedPrototypeGroup) || 0) >= 2
+  ) {
     return {
-      repeatedUnitCount: unitLikeMeasuredRooms.length,
+      repeatedUnitCount: measuredCounts.get(selectedPrototypeGroup) || null,
       repeatedUnitSource: "room_signal",
-      hasUnitLikeRooms: true,
-      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+      repeatedUnitGroup: selectedPrototypeGroup,
+      repeatedUnitGroupLabel: selectedPrototypeLabel,
+      hasUnitLikeRooms: prototypeCandidateKinds.length > 0,
+      hasCorridorLikeRooms:
+        (measuredCounts.get("corridor_hallway") || 0) > 0 ||
+        (hintedCounts.get("corridor_hallway") || 0) > 0,
+      hasLobbyCommonRooms:
+        (measuredCounts.get("lobby_common") || 0) > 0 ||
+        (hintedCounts.get("lobby_common") || 0) > 0,
+      hasAmenitySupportRooms:
+        (measuredCounts.get("amenity_support") || 0) > 0 ||
+        (hintedCounts.get("amenity_support") || 0) > 0,
+      hasMixedPrototypeCandidates: prototypeCandidateKinds.length > 1,
     }
   }
 
   if (
     hasPrototypeSignals &&
-    unitLikeRoomLabels.length > 0 &&
+    selectedPrototypeGroup &&
+    prototypeCandidateKinds.length === 1 &&
     typeof planIntelligence.takeoff.roomCount === "number" &&
     planIntelligence.takeoff.roomCount > 0
   ) {
     return {
       repeatedUnitCount: Math.round(planIntelligence.takeoff.roomCount),
       repeatedUnitSource: "takeoff",
-      hasUnitLikeRooms: true,
-      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+      repeatedUnitGroup: selectedPrototypeGroup,
+      repeatedUnitGroupLabel: selectedPrototypeLabel,
+      hasUnitLikeRooms: prototypeCandidateKinds.length > 0,
+      hasCorridorLikeRooms:
+        (measuredCounts.get("corridor_hallway") || 0) > 0 ||
+        (hintedCounts.get("corridor_hallway") || 0) > 0,
+      hasLobbyCommonRooms:
+        (measuredCounts.get("lobby_common") || 0) > 0 ||
+        (hintedCounts.get("lobby_common") || 0) > 0,
+      hasAmenitySupportRooms:
+        (measuredCounts.get("amenity_support") || 0) > 0 ||
+        (hintedCounts.get("amenity_support") || 0) > 0,
+      hasMixedPrototypeCandidates: false,
     }
   }
 
   return {
     repeatedUnitCount: null,
     repeatedUnitSource: null,
-    hasUnitLikeRooms: unitLikeMeasuredRooms.length > 0 || unitLikeRoomLabels.length > 0,
-    hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+    repeatedUnitGroup: null,
+    repeatedUnitGroupLabel: null,
+    hasUnitLikeRooms: prototypeCandidateKinds.length > 0,
+    hasCorridorLikeRooms:
+      (measuredCounts.get("corridor_hallway") || 0) > 0 ||
+      (hintedCounts.get("corridor_hallway") || 0) > 0,
+    hasLobbyCommonRooms:
+      (measuredCounts.get("lobby_common") || 0) > 0 ||
+      (hintedCounts.get("lobby_common") || 0) > 0,
+    hasAmenitySupportRooms:
+      (measuredCounts.get("amenity_support") || 0) > 0 ||
+      (hintedCounts.get("amenity_support") || 0) > 0,
+    hasMixedPrototypeCandidates: prototypeCandidateKinds.length > 1,
   }
 }
 
@@ -541,7 +685,9 @@ function buildPaintingQuantitySupport(args: {
   if (repeatedSpaceRollup.repeatedUnitCount && repeatedSpaceRollup.repeatedUnitCount > 0) {
     areaSignals.push(
       buildSignal({
-        label: "Repeated unit prototype support",
+        label: repeatedSpaceRollup.repeatedUnitGroupLabel
+          ? `Repeated ${repeatedSpaceRollup.repeatedUnitGroupLabel} prototype support`
+          : "Repeated unit prototype support",
         category: "repeated_unit_count",
         quantity: repeatedSpaceRollup.repeatedUnitCount,
         unit: "rooms",
@@ -550,8 +696,8 @@ function buildPaintingQuantitySupport(args: {
         source: repeatedSpaceRollup.repeatedUnitSource ?? "room_signal",
         note:
           repeatedSpaceRollup.hasCorridorLikeRooms
-            ? "Repeated unit count supports prototype painting rollups, while corridor/common-area scope stays separate from direct repeated-unit rows."
-            : "Repeated unit count supports prototype painting rollups, but not measured paintable area by itself.",
+            ? `Repeated ${repeatedSpaceRollup.repeatedUnitGroupLabel || "unit"} count supports prototype painting rollups, while corridor/common-area scope stays separate from direct repeated-unit rows.`
+            : `Repeated ${repeatedSpaceRollup.repeatedUnitGroupLabel || "unit"} count supports prototype painting rollups, but not measured paintable area by itself.`,
         evidenceRefs: evidence,
       })
     )
@@ -669,10 +815,18 @@ function buildPaintingQuantitySupport(args: {
         ? `Package buckets may help organize painting quantities around ${packageBuckets.join(", ")}.`
         : null,
       repeatedSpaceRollup.hasUnitLikeRooms
-        ? "Unit-like room-type signals support prototype/repeated-room painting rollups."
+        ? repeatedSpaceRollup.repeatedUnitGroupLabel
+          ? `${repeatedSpaceRollup.repeatedUnitGroupLabel} signals support prototype/repeated-room painting rollups.`
+          : "Unit-like room-type signals support prototype/repeated-room painting rollups."
         : null,
       repeatedSpaceRollup.hasCorridorLikeRooms
         ? "Corridor/common-area room-type signals should stay separate from repeated-unit direct rows."
+        : null,
+      repeatedSpaceRollup.hasLobbyCommonRooms
+        ? "Lobby/common-area room-type signals should stay separate from guest-room or suite prototype rows."
+        : null,
+      repeatedSpaceRollup.hasAmenitySupportRooms
+        ? "Amenity/support spaces should stay separate from repeated guest-room or suite prototype scaling."
         : null,
       /\bcorridor\b/.test(blob)
         ? "Corridor painting may need to stay separate from room interiors."
@@ -701,8 +855,14 @@ function buildPaintingQuantitySupport(args: {
       (plan?.repeatedSpaceSignals || []).length > 0 && !repeatedSpaceRollup.repeatedUnitCount
         ? "Repeated-space cues exist, but repeat counts are still not hard-supported."
         : null,
+      repeatedSpaceRollup.hasMixedPrototypeCandidates && !repeatedSpaceRollup.repeatedUnitCount
+        ? "Multiple unit-style room groups were detected, so prototype scaling stayed non-binding until one repeatable room type was clear."
+        : null,
       repeatedSpaceRollup.hasCorridorLikeRooms && repeatedSpaceRollup.repeatedUnitCount
         ? "Repeated-unit rollups should not absorb corridor/common-area scope."
+        : null,
+      repeatedSpaceRollup.hasLobbyCommonRooms && repeatedSpaceRollup.repeatedUnitCount
+        ? "Repeated-unit rollups should not absorb lobby/common-area scope."
         : null,
       ...(args.tradePackagePricingPrep?.tradePackageMeasurementHints || []).slice(0, 2),
     ],
@@ -711,16 +871,23 @@ function buildPaintingQuantitySupport(args: {
 
   const quantityReasonParts = uniqStrings(
     [
-      areaSignals.some((item) => item.exactQuantity)
+      areaSignals.some((item) => item.exactQuantity && item.unit === "sqft")
         ? "Exact takeoff-backed area support exists."
+        : null,
+      repeatedSpaceRollup.repeatedUnitCount && repeatedSpaceRollup.repeatedUnitSource === "room_signal"
+        ? "Measured room-group repetition supports prototype scaling without acting as measured paintable area."
         : null,
       openingSignals.some((item) => item.exactQuantity)
         ? "Opening counts are visible in plan support."
         : null,
       repeatedSpaceRollup.repeatedUnitCount
         ? repeatedSpaceRollup.repeatedUnitSource === "room_signal"
-          ? "Room-type signals provide a repeatable unit count for prototype painting support."
-          : "Repeated-space signals strengthen package-style quantity support."
+          ? repeatedSpaceRollup.repeatedUnitGroupLabel
+            ? `Room-type signals provide a repeatable ${repeatedSpaceRollup.repeatedUnitGroupLabel} count for prototype painting support.`
+            : "Room-type signals provide a repeatable unit count for prototype painting support."
+          : repeatedSpaceRollup.repeatedUnitGroupLabel
+            ? `Repeated-space signals strengthen ${repeatedSpaceRollup.repeatedUnitGroupLabel} package support.`
+            : "Repeated-space signals strengthen package-style quantity support."
         : null,
       finishSchedules.length > 0
         ? "Finish schedules reinforce paint coverage cues."
@@ -732,8 +899,14 @@ function buildPaintingQuantitySupport(args: {
     4
   )
 
+  const strongPrototypeSupport =
+    repeatedSpaceRollup.repeatedUnitCount != null &&
+    repeatedSpaceRollup.repeatedUnitCount >= 2 &&
+    repeatedSpaceRollup.repeatedUnitSource === "room_signal"
+
   const supportLevel: TradeQuantityConfidence["level"] =
     areaSignals.filter((item) => item.exactQuantity).length >= 2 ||
+    strongPrototypeSupport ||
     (areaSignals.some((item) => item.exactQuantity) &&
       openingSignals.some((item) => item.exactQuantity))
       ? "strong"

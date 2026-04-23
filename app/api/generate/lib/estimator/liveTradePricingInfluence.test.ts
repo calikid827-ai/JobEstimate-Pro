@@ -344,6 +344,186 @@ test("painting influence can scale from strong repeated-room support without pre
   )
 })
 
+test("painting influence can scale from repeated suite support while keeping lobby/common-area scope separate", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Suite", "Lobby"],
+    likelyRoomTypes: ["suite", "lobby"],
+    repeatedSpaceSignals: ["typical suite layout repeats by floor"],
+    prototypeSignals: ["suite prototype plan"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Prototype suite repaint package with separate lobby refresh."],
+        notes: ["Typical suite repeats by floor and lobby/common areas are separate."],
+        rooms: [
+          { roomName: "Suite 101", floorLabel: "L1", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Suite 102", floorLabel: "L1", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Suite 201", floorLabel: "L2", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Main Lobby", floorLabel: "L1", dimensionsText: null, areaSqft: 900, confidence: 82, evidence: [] },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated suites and separate lobby/common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 3)
+  assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+  assert.ok(
+    influence.basisAssumptions.some((item) => /suite \/ unit/i.test(item))
+  )
+  assert.ok(
+    influence.notes.some((item) => /lobby\/common-area|corridor\/common-area/i.test(item))
+  )
+})
+
+test("ambiguous repeated-room cues stay non-binding when no single repeatable room type is clear", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Guest Room", "Suite", "Lobby"],
+    likelyRoomTypes: ["guest room", "suite", "lobby"],
+    repeatedSpaceSignals: ["prototype room repeats by floor"],
+    prototypeSignals: ["typical room prototype"],
+    tradePackageSignals: ["painting"],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: null,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 18,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated rooms and common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(influence.engineInputs, undefined)
+  assert.ok(
+    influence.notes.some((item) => /multiple unit-style room groups|repeat counts are still not hard-supported/i.test(item))
+  )
+})
+
+test("mixed room-type plans only scale the repeatable guest-room group for painting", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Guest Room", "Suite", "Lobby"],
+    likelyRoomTypes: ["guest room", "suite", "lobby"],
+    repeatedSpaceSignals: ["typical guest room layout repeats by floor"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repeated guest room repaint package with one suite upgrade and separate lobby refresh."],
+        rooms: [
+          { roomName: "Guest Room 101", floorLabel: "L1", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Guest Room 102", floorLabel: "L1", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Guest Room 201", floorLabel: "L2", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Suite 401", floorLabel: "L4", dimensionsText: null, areaSqft: 620, confidence: 85, evidence: [] },
+          { roomName: "Lobby", floorLabel: "L1", dimensionsText: null, areaSqft: 900, confidence: 82, evidence: [] },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated guest rooms, one suite, and lobby common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 3)
+  assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+})
+
+test("shared-plan repeated guest-room painting support does not leak into drywall or wallcovering rows", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall", "wallcovering"],
+    detectedRooms: ["Guest Room", "Corridor"],
+    likelyRoomTypes: ["guest room", "corridor"],
+    repeatedSpaceSignals: ["typical guest room layout repeats by floor"],
+    tradePackageSignals: ["painting", "drywall", "wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint repeated guest rooms with separate corridor work."],
+        rooms: [
+          { roomName: "Guest Room 101", floorLabel: "L1", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Guest Room 102", floorLabel: "L1", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Guest Room 201", floorLabel: "L2", dimensionsText: null, areaSqft: 320, confidence: 88, evidence: [] },
+          { roomName: "Corridor Level 1", floorLabel: "L1", dimensionsText: null, areaSqft: 500, confidence: 80, evidence: [] },
+        ],
+      }),
+    ],
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated guest rooms and corridor common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Review guest room drywall scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Review guest room wallcovering scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(paintingInfluence)
+  assert.equal(paintingInfluence.engineInputs?.painting?.supportedRoomCount, 3)
+  assert.equal(paintingInfluence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+  assert.ok(drywallInfluence)
+  assert.equal(drywallInfluence.canAffectNumericPricing, false)
+  assert.equal(drywallInfluence.engineInputs, undefined)
+  assert.ok(wallcoveringInfluence)
+  assert.equal(wallcoveringInfluence.canAffectNumericPricing, false)
+  assert.equal(wallcoveringInfluence.engineInputs, undefined)
+})
+
 test("drywall influence feeds exact supported sqft into live numeric execution and keeps section routing", () => {
   const plan = makePlan({
     detectedTrades: ["drywall"],

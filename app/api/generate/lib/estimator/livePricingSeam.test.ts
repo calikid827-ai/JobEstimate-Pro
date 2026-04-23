@@ -471,6 +471,110 @@ test("room-type prototype rollups can drive painting scale support while keeping
   )
 })
 
+test("repeated suite repaint package scales from suite prototypes while keeping lobby/common-area scope separate", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Suite", "Lobby"],
+    likelyRoomTypes: ["suite", "lobby"],
+    repeatedSpaceSignals: ["typical suite layout repeats by floor"],
+    prototypeSignals: ["suite prototype plan"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Prototype suite repaint package with separate lobby/common-area refresh."],
+        notes: ["Typical suite repeats by floor and lobby/common areas are separate."],
+        rooms: [
+          { roomName: "Suite 101", floorLabel: "L1", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Suite 102", floorLabel: "L1", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Suite 201", floorLabel: "L2", dimensionsText: null, areaSqft: 540, confidence: 88, evidence: [] },
+          { roomName: "Main Lobby", floorLabel: "L1", dimensionsText: null, areaSqft: 900, confidence: 82, evidence: [] },
+        ],
+      }),
+    ],
+  })
+
+  const scopeText = "Repaint repeated suites and separate lobby/common areas."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText,
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computePaintingDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    paintScope: influence?.paintScopeOverride || "walls",
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.painting || null : null,
+  })
+
+  const planAwareBasis = mergeLiveTradePricingInfluenceIntoBasis({
+    basis: planAware.estimateBasis,
+    influence: influence!,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 3)
+  assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+  assert.ok(
+    planAwareBasis?.assumptions.some((item) => /suite \/ unit/i.test(item))
+  )
+  assert.ok(
+    influence?.notes.some((item) => /lobby\/common-area|corridor\/common-area/i.test(item))
+  )
+})
+
+test("ambiguous repeated-room painting cues stay non-binding through the live seam", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Guest Room", "Suite", "Lobby"],
+    likelyRoomTypes: ["guest room", "suite", "lobby"],
+    repeatedSpaceSignals: ["prototype room repeats by floor"],
+    prototypeSignals: ["typical room prototype"],
+    tradePackageSignals: ["painting"],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: null,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 18,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Repaint repeated rooms and common areas."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText,
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computePaintingDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    paintScope: influence?.paintScopeOverride || "walls",
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.painting || null : null,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(planAware.pricing, null)
+})
+
 test("drywall live seam changes real totals and carries estimateBasis through owner resolution", () => {
   const plan = makePlan({
     detectedTrades: ["drywall"],

@@ -367,8 +367,8 @@ function buildPaintingInfluence(args: {
           : null,
         roomSignal
           ? measuredInteriorBase
-            ? `Plan-aware pricing kept ${Math.round(roomSignal.quantity || 0)} repeated room(s) as organization support while measured wall area remained the numeric basis.`
-            : `Plan-aware pricing used ${Math.round(roomSignal.quantity || 0)} strongly supported repeated unit/room prototypes as scaled interior-base support.`
+            ? `Plan-aware pricing kept ${Math.round(roomSignal.quantity || 0)} repeated ${String(roomSignal.label || "room").replace(/^Repeated\s+/i, "").replace(/\s+prototype support$/i, "")} as organization support while measured wall area remained the numeric basis.`
+            : `Plan-aware pricing used ${Math.round(roomSignal.quantity || 0)} strongly supported ${String(roomSignal.label || "unit/room prototype").replace(/^Repeated\s+/i, "").replace(/\s+prototype support$/i, "")} as scaled interior-base support.`
           : null,
         wallSignal
           ? supportedCeilingSqft
