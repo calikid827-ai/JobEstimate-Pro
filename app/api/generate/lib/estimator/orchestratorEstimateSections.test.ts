@@ -440,6 +440,13 @@ test("orchestrator payload exposes combined structured estimateSections when mul
   assert.ok(payload.estimateSections?.some((section) => section.trade === "wallcovering"))
   assert.ok(payload.estimateRows?.some((row) => row.trade === "painting"))
   assert.ok(payload.estimateRows?.some((row) => row.trade === "wallcovering"))
+  assert.deepEqual(
+    payload.estimateRows?.map((row) => row.section).sort(),
+    ["painting: Walls", "wallcovering: Install"].sort()
+  )
+  assert.ok(
+    !payload.estimateRows?.some((row) => row.section === "painting: Prep / protection")
+  )
   assert.ok(
     payload.estimateEmbeddedBurdens?.some((section) => section.trade === "painting")
   )

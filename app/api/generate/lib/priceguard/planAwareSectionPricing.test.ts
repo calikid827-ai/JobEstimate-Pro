@@ -149,6 +149,49 @@ test("painting trim LF affects live numeric pricing when exact trim support exis
   assert.ok((withTrim.pricing?.total || 0) > (base.pricing?.total || 0))
 })
 
+test("painting measured wall and ceiling support overrides broader generic measurements for mixed uploaded-plan packages", () => {
+  const result = computePaintingDeterministic({
+    scopeText: "Repaint repeated guest rooms and corridor common areas.",
+    stateMultiplier: 1,
+    measurements: { totalSqft: 2600 },
+    paintScope: "walls_ceilings",
+    planSectionInputs: {
+      supportedWallSqft: 1800,
+      supportedCeilingSqft: 600,
+      supportedRoomCount: 18,
+      hasCorridorSection: true,
+      interiorBaseSupport: "measured",
+      includeCeilings: true,
+    },
+  })
+
+  assert.ok(result.pricing)
+  assert.equal(result.signals.sqft, 2600)
+  assert.ok(
+    result.estimateBasis?.assumptions.some((item) => /measured wall sqft and 600 measured ceiling sqft/i.test(item))
+  )
+  assert.ok(
+    result.estimateBasis?.sectionPricing?.some(
+      (section) =>
+        section.section === "Walls" &&
+        section.notes?.some((note) => /measured wall\/ceiling support/i.test(note))
+    )
+  )
+  assert.ok(
+    result.estimateBasis?.sectionPricing?.some(
+      (section) =>
+        section.section === "Ceilings" &&
+        section.notes?.some((note) => /measured wall\/ceiling support/i.test(note))
+    )
+  )
+  assert.ok(
+    result.estimateBasis?.sectionPricing?.some(
+      (section) => section.section === "Corridor repaint" && section.pricingBasis === "burden"
+    )
+  )
+  assertSectionPricingAligned(result)
+})
+
 test("drywall supported ceiling section changes live numeric install pricing", () => {
   const base = computeDrywallDeterministic({
     scopeText: "Drywall install and finish at guest rooms.",

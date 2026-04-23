@@ -279,12 +279,58 @@ function buildPaintingQuantitySupport(args: {
     analyses,
     /\bdoor schedule\b|\bdoors?\b/i
   )
+  const paintingFindings = collectTradeFindings(
+    analyses,
+    "painting",
+    /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i
+  )
+  const quantifiedWallFinding = paintingFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      /\bwall/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedCeilingFinding = paintingFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      /\bceiling|rcp|soffit/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedTrimFinding = paintingFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "linear_ft" &&
+      /\btrim|base|baseboard|casing|frame/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedDoorFinding = paintingFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      (finding.unit === "doors" || finding.unit === "each") &&
+      /\bdoor|frame|casing/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
 
   const areaSignals: TradeQuantitySignal[] = []
   const linearSignals: TradeQuantitySignal[] = []
   const openingSignals: TradeQuantitySignal[] = []
 
-  if ((plan?.takeoff.wallSqft || 0) > 0) {
+  if (quantifiedWallFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Wall coverage support",
+        quantity: quantifiedWallFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedWallFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note: "Measured wall area exists in plan findings and can back direct painting wall rows.",
+        evidenceRefs: quantifiedWallFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.wallSqft || 0) > 0) {
     areaSignals.push(
       buildSignal({
         label: "Wall coverage support",
@@ -299,7 +345,20 @@ function buildPaintingQuantitySupport(args: {
     )
   }
 
-  if ((plan?.takeoff.ceilingSqft || 0) > 0) {
+  if (quantifiedCeilingFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Ceiling coverage support",
+        quantity: quantifiedCeilingFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedCeilingFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note: "Measured ceiling area exists in plan findings and can back direct painting ceiling rows.",
+        evidenceRefs: quantifiedCeilingFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.ceilingSqft || 0) > 0) {
     areaSignals.push(
       buildSignal({
         label: "Ceiling coverage support",
@@ -314,7 +373,10 @@ function buildPaintingQuantitySupport(args: {
     )
   }
 
-  if ((plan?.takeoff.roomCount || 0) > 0) {
+  if (
+    (plan?.takeoff.roomCount || 0) > 0 &&
+    ((plan?.repeatedSpaceSignals || []).length > 0 || /\bguest room|unit|suite|bedroom|room type\b/.test(blob))
+  ) {
     areaSignals.push(
       buildSignal({
         label: "Repeated room package support",
@@ -331,7 +393,21 @@ function buildPaintingQuantitySupport(args: {
     )
   }
 
-  if ((plan?.takeoff.trimLf || 0) > 0 && /\b(trim|base|baseboard|casing|frame)\b/.test(blob)) {
+  if (quantifiedTrimFinding) {
+    linearSignals.push(
+      buildSignal({
+        label: "Trim / frame linear support",
+        quantity: quantifiedTrimFinding.quantity ?? null,
+        unit: "linear_ft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedTrimFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured trim/casing footage exists in plan findings and can back direct trim/casing rows.",
+        evidenceRefs: quantifiedTrimFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.trimLf || 0) > 0 && /\b(trim|base|baseboard|casing|frame)\b/.test(blob)) {
     linearSignals.push(
       buildSignal({
         label: "Trim / frame linear support",
@@ -347,7 +423,21 @@ function buildPaintingQuantitySupport(args: {
     )
   }
 
-  if ((plan?.takeoff.doorCount || 0) > 0 && (doorSchedules.length > 0 || /\bdoor|frame|casing\b/.test(blob))) {
+  if (quantifiedDoorFinding) {
+    openingSignals.push(
+      buildSignal({
+        label: "Door opening support",
+        quantity: quantifiedDoorFinding.quantity ?? null,
+        unit: "doors",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedDoorFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured door/frame counts exist in plan findings and can back direct door/frame rows.",
+        evidenceRefs: quantifiedDoorFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.doorCount || 0) > 0 && (doorSchedules.length > 0 || /\bdoor|frame|casing\b/.test(blob))) {
     openingSignals.push(
       buildSignal({
         label: "Door opening support",
@@ -500,11 +590,28 @@ function buildDrywallQuantitySupport(args: {
     null,
     /\bpartition|gyp|gypsum|wall type\b/i
   )
-  const quantifiedSqftFinding = drywallFindings.find(
+  const quantifiedRepairSqftFinding = drywallFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
-      finding.unit === "sqft"
+      finding.unit === "sqft" &&
+      /\bpatch|repair|hole|crack|texture|skim/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedCeilingSqftFinding = drywallFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      /\bceiling|soffit/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedAssemblySqftFinding = drywallFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      !/\bpatch|repair|hole|crack|texture|skim|ceiling|soffit/i.test(
+        [finding.label, ...(finding.notes || [])].join(" ")
+      )
   )
 
   const patchLike = /\b(patch|repair|hole|crack|texture|skim)\b/.test(blob)
@@ -514,22 +621,50 @@ function buildDrywallQuantitySupport(args: {
   const linearSignals: TradeQuantitySignal[] = []
   const openingSignals: TradeQuantitySignal[] = []
 
-  if (quantifiedSqftFinding) {
+  if (quantifiedRepairSqftFinding) {
     areaSignals.push(
       buildSignal({
-        label: patchLike && !installLike
-          ? "Measured patch / repair area support"
-          : "Measured drywall assembly area support",
-        quantity: quantifiedSqftFinding.quantity ?? null,
+        label: "Measured patch / repair area support",
+        quantity: quantifiedRepairSqftFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
-        confidence: getTradeSignalConfidence(quantifiedSqftFinding.confidence ?? null, 75),
+        confidence: getTradeSignalConfidence(quantifiedRepairSqftFinding.confidence ?? null, 75),
         source: "trade_finding",
         note:
-          patchLike && !installLike
-            ? "Measured repair area exists in plan findings and can support patch/repair routing without inventing patch counts."
-            : "Measured drywall area exists in plan findings and can support install/hang routing more safely than gross wall takeoff alone.",
-        evidenceRefs: quantifiedSqftFinding.evidence || [],
+          "Measured repair area exists in plan findings and can support patch/repair routing without inventing patch counts.",
+        evidenceRefs: quantifiedRepairSqftFinding.evidence || [],
+      })
+    )
+  }
+
+  if (quantifiedAssemblySqftFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured drywall assembly area support",
+        quantity: quantifiedAssemblySqftFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedAssemblySqftFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured drywall assembly area exists in plan findings and can support install/hang routing more safely than gross wall takeoff alone.",
+        evidenceRefs: quantifiedAssemblySqftFinding.evidence || [],
+      })
+    )
+  }
+
+  if (quantifiedCeilingSqftFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured ceiling drywall area support",
+        quantity: quantifiedCeilingSqftFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedCeilingSqftFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured ceiling drywall area exists in plan findings and can back direct ceiling drywall rows.",
+        evidenceRefs: quantifiedCeilingSqftFinding.evidence || [],
       })
     )
   }
@@ -645,7 +780,7 @@ function buildDrywallQuantitySupport(args: {
       patchLike
         ? "Do not convert repeated room support into patch counts or exact patch area without stronger evidence."
         : null,
-      patchLike && !quantifiedSqftFinding
+      patchLike && !quantifiedRepairSqftFinding
         ? "Patch/repair routing should stay non-binding until measured repair area exists."
         : null,
       installLike && areaSignals.every((item) => !item.exactQuantity)
@@ -685,7 +820,7 @@ function buildDrywallQuantitySupport(args: {
           areaSignals.some((item) => item.exactQuantity)
             ? "Exact area support exists for at least part of the drywall scope."
             : null,
-          quantifiedSqftFinding && patchLike && !installLike
+          quantifiedRepairSqftFinding
             ? "Measured repair-area support exists for patch routing."
             : null,
           linearSignals.some((item) => item.exactQuantity)
@@ -734,12 +869,37 @@ function buildWallcoveringQuantitySupport(args: {
     analyses,
     /\bfinish schedule\b|\bfinish plan\b|\bwallcover(?:ing)?\b/i
   )
+  const wallcoveringFindings = collectTradeFindings(
+    analyses,
+    null,
+    /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i
+  )
+  const quantifiedWallcoveringSqftFinding = wallcoveringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft"
+  )
 
   const areaSignals: TradeQuantitySignal[] = []
   const linearSignals: TradeQuantitySignal[] = []
   const openingSignals: TradeQuantitySignal[] = []
 
-  if ((plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue) {
+  if (quantifiedWallcoveringSqftFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Wall-area support for wallcovering",
+        quantity: quantifiedWallcoveringSqftFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedWallcoveringSqftFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured wallcovering area exists in plan findings and can back direct install/remove rows more safely than gross wall area.",
+        evidenceRefs: quantifiedWallcoveringSqftFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",

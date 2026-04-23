@@ -158,6 +158,35 @@ test("painting influence upgrades live paint scope and carries section routing w
             evidence: [],
           },
         ],
+        tradeFindings: [
+          {
+            trade: "painting",
+            label: "Guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 4200,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            label: "Guest room ceiling paint area",
+            confidence: 90,
+            notes: ["Measured guest room ceiling area."],
+            quantity: 2100,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            label: "Trim and casing footage",
+            confidence: 82,
+            notes: ["Measured casing and base footage."],
+            quantity: 520,
+            unit: "linear_ft",
+            evidence: [],
+          },
+        ],
       }),
     ],
     takeoff: {
@@ -188,8 +217,12 @@ test("painting influence upgrades live paint scope and carries section routing w
   assert.equal(influence.trade, "painting")
   assert.equal(influence.canAffectNumericPricing, true)
   assert.equal(influence.paintScopeOverride, "walls_ceilings")
+  assert.equal(influence.engineInputs?.painting?.supportedWallSqft, 4200)
+  assert.equal(influence.engineInputs?.painting?.supportedCeilingSqft, 2100)
+  assert.equal(influence.engineInputs?.painting?.supportedInteriorSqft, null)
   assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 24)
   assert.equal(influence.engineInputs?.painting?.supportedDoorCount, 48)
+  assert.equal(influence.engineInputs?.painting?.supportedTrimLf, 520)
   assert.ok(influence.executionSections.includes("Ceilings"))
   assert.ok(influence.executionSections.includes("Doors / frames"))
   assert.ok(influence.executionSections.includes("Trim / casing"))
@@ -297,6 +330,24 @@ test("drywall influence feeds exact supported sqft into live numeric execution a
             unit: "linear_ft",
             evidence: [],
           },
+          {
+            trade: "drywall",
+            label: "Measured wallboard area",
+            confidence: 94,
+            notes: ["Board area for partitions only."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured ceiling drywall area",
+            confidence: 89,
+            notes: ["Ceiling board area."],
+            quantity: 400,
+            unit: "sqft",
+            evidence: [],
+          },
         ],
       }),
     ],
@@ -382,6 +433,17 @@ test("wallcovering influence feeds exact area and explicit install-remove routin
       makeAnalysis({
         textSnippets: ["Remove corridor wallcovering and install new vinyl wallcovering."],
         notes: ["Corridor wallcovering type W-1."],
+        tradeFindings: [
+          {
+            trade: "general renovation",
+            label: "Measured corridor wallcovering area",
+            confidence: 93,
+            notes: ["Measured corridor elevations only."],
+            quantity: 1400,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
       }),
     ],
     takeoff: {

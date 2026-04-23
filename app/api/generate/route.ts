@@ -6533,6 +6533,33 @@ function computeMultiTradeDeterministic(args: {
             complexityProfile: args.complexityProfile ?? null,
           })
         : null
+    const splitPaintingMeasurements =
+      splitLiveTradePricingInfluence?.trade === "painting"
+        ? typeof splitLiveTradePricingInfluence.engineInputs?.painting?.supportedWallSqft === "number" &&
+          splitLiveTradePricingInfluence.engineInputs.painting.supportedWallSqft > 0
+          ? null
+          : typeof splitLiveTradePricingInfluence.engineInputs?.painting?.supportedInteriorSqft === "number" &&
+            splitLiveTradePricingInfluence.engineInputs.painting.supportedInteriorSqft > 0
+          ? {
+              totalSqft: Math.round(
+                splitLiveTradePricingInfluence.engineInputs.painting.supportedInteriorSqft
+              ),
+            }
+          : splitLiveTradePricingInfluence.engineInputs?.painting?.interiorBaseSupport === "scaled"
+            ? null
+            : null
+        : pieceMeasurements
+    const splitDrywallMeasurements =
+      splitLiveTradePricingInfluence?.trade === "drywall"
+        ? typeof splitLiveTradePricingInfluence.engineInputs?.drywall?.supportedSqft === "number" &&
+          splitLiveTradePricingInfluence.engineInputs.drywall.supportedSqft > 0
+          ? {
+              totalSqft: Math.round(
+                splitLiveTradePricingInfluence.engineInputs.drywall.supportedSqft
+              ),
+            }
+          : null
+        : pieceMeasurements
 
     if (!trade || !scope) continue
 
@@ -6586,7 +6613,7 @@ function computeMultiTradeDeterministic(args: {
       const det = computePaintingDeterministic({
         scopeText: scope,
         stateMultiplier: args.stateMultiplier,
-        measurements: pieceMeasurements,
+        measurements: splitPaintingMeasurements,
         paintScope: args.paintScope ?? "walls",
         planSectionInputs:
           splitLiveTradePricingInfluence?.trade === "painting" &&
@@ -6628,7 +6655,7 @@ function computeMultiTradeDeterministic(args: {
       const det = computeDrywallDeterministic({
         scopeText: scope,
         stateMultiplier: args.stateMultiplier,
-        measurements: pieceMeasurements,
+        measurements: splitDrywallMeasurements,
         planSectionInputs:
           splitLiveTradePricingInfluence?.trade === "drywall" &&
           splitLiveTradePricingInfluence.canAffectNumericPricing

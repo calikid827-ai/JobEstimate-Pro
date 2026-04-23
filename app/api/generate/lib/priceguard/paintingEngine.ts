@@ -543,6 +543,9 @@ export function computePaintingDeterministic(args: {
   paintScope?: PaintScope | null
   photoAnalysis?: PaintingPhotoAnalysis | null
     planSectionInputs?: {
+      supportedInteriorSqft?: number | null
+      supportedWallSqft?: number | null
+      supportedCeilingSqft?: number | null
       supportedRoomCount?: number | null
       supportedDoorCount?: number | null
       supportedTrimLf?: number | null
@@ -584,9 +587,24 @@ export function computePaintingDeterministic(args: {
     args.measurements?.totalSqft && Number(args.measurements.totalSqft) > 0
       ? Number(args.measurements.totalSqft)
       : null
+  const supportedInteriorSqft =
+    typeof args.planSectionInputs?.supportedInteriorSqft === "number" &&
+    args.planSectionInputs.supportedInteriorSqft > 0
+      ? Math.round(args.planSectionInputs.supportedInteriorSqft)
+      : null
+  const supportedWallSqft =
+    typeof args.planSectionInputs?.supportedWallSqft === "number" &&
+    args.planSectionInputs.supportedWallSqft > 0
+      ? Math.round(args.planSectionInputs.supportedWallSqft)
+      : null
+  const supportedCeilingSqft =
+    typeof args.planSectionInputs?.supportedCeilingSqft === "number" &&
+    args.planSectionInputs.supportedCeilingSqft > 0
+      ? Math.round(args.planSectionInputs.supportedCeilingSqft)
+      : null
 
   const textSqft = parseSqftFromText(scope)
-  const sqft = measSqft ?? textSqft ?? null
+  const sqft = supportedInteriorSqft ?? measSqft ?? textSqft ?? null
 
   const parsedRooms = parseRoomCount(scope)
   const parsedDoors = parseDoorCount(scope)
@@ -771,6 +789,8 @@ export function computePaintingDeterministic(args: {
       hasCorridorSection: !!args.planSectionInputs?.hasCorridorSection,
       hasPrepProtectionSection: !!args.planSectionInputs?.hasPrepProtectionSection,
       supportedTrimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+      exactWallSqft: supportedWallSqft,
+      exactCeilingSqft: supportedCeilingSqft,
     })
 
     const doorPriced = pricePaintingDoors({
@@ -824,7 +844,9 @@ export function computePaintingDeterministic(args: {
             ? `${rooms} room(s) parsed from scope text.`
             : `${rooms} room(s) supported by plan-aware repeated-room routing.`
           : sqft
-          ? `${sqft} sqft used for interior painting basis.`
+          ? supportedInteriorSqft && !textSqft && !measSqft
+            ? `${sqft} sqft used for interior painting basis from measured plan-aware wall support.`
+            : `${sqft} sqft used for interior painting basis.`
           : null,
         parsedDoors
           ? `${doors} door(s) parsed from scope text.`
@@ -839,6 +861,11 @@ export function computePaintingDeterministic(args: {
         `Prep level: ${prepLevel}.`,
         args.planSectionInputs?.supportedTrimLf && args.planSectionInputs.supportedTrimLf > 0
           ? `${Math.round(args.planSectionInputs.supportedTrimLf)} trim LF was carried into live trim/casing numeric pricing.`
+          : null,
+        supportedWallSqft
+          ? supportedCeilingSqft && finalPaintScope === "walls_ceilings"
+            ? `${supportedWallSqft} measured wall sqft and ${supportedCeilingSqft} measured ceiling sqft informed the live painting route.`
+            : `${supportedWallSqft} measured wall sqft informed the live painting route.`
           : null,
         args.planSectionInputs?.hasCorridorSection
           ? "Corridor repaint remains separately routed in live prep, but corridor-specific numeric pricing still shares the main painting engine."
@@ -896,6 +923,8 @@ export function computePaintingDeterministic(args: {
       hasCorridorSection: !!args.planSectionInputs?.hasCorridorSection,
       hasPrepProtectionSection: !!args.planSectionInputs?.hasPrepProtectionSection,
       supportedTrimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+      exactWallSqft: supportedWallSqft,
+      exactCeilingSqft: supportedCeilingSqft,
     })
 
     const estimateBasis = buildEstimateBasis({
@@ -923,6 +952,11 @@ export function computePaintingDeterministic(args: {
         `Prep level: ${prepLevel}.`,
         args.planSectionInputs?.supportedTrimLf && args.planSectionInputs.supportedTrimLf > 0
           ? `${Math.round(args.planSectionInputs.supportedTrimLf)} trim LF was carried into live trim/casing numeric pricing.`
+          : null,
+        supportedWallSqft
+          ? supportedCeilingSqft && finalPaintScope === "walls_ceilings"
+            ? `${supportedWallSqft} measured wall sqft and ${supportedCeilingSqft} measured ceiling sqft informed the live painting route.`
+            : `${supportedWallSqft} measured wall sqft informed the live painting route.`
           : null,
         args.planSectionInputs?.hasCorridorSection
           ? "Corridor repaint remains separately routed in live prep, but corridor-specific numeric pricing still shares the main painting engine."
@@ -1000,6 +1034,8 @@ export function computePaintingDeterministic(args: {
 function pricePaintingInterior(args: {
   sqft: number | null
   rooms: number | null
+  exactWallSqft?: number | null
+  exactCeilingSqft?: number | null
   stateMultiplier: number
   paintScope: PaintScope
   coats: number
@@ -1125,6 +1161,8 @@ function pricePaintingInterior(args: {
 function computePaintingInteriorCore(args: {
   sqft: number | null
   rooms: number | null
+  exactWallSqft?: number | null
+  exactCeilingSqft?: number | null
   stateMultiplier: number
   paintScope: PaintScope
   coats: number
@@ -1138,6 +1176,16 @@ function computePaintingInteriorCore(args: {
   const markup = 25
 
   let sqft = args.sqft
+  const exactWallSqft =
+    typeof args.exactWallSqft === "number" && args.exactWallSqft > 0
+      ? Math.round(args.exactWallSqft)
+      : null
+  const exactCeilingSqft =
+    (args.paintScope === "walls_ceilings" || args.paintScope === "full") &&
+    typeof args.exactCeilingSqft === "number" &&
+    args.exactCeilingSqft > 0
+      ? Math.round(args.exactCeilingSqft)
+      : null
 
   // Fallback room-to-sqft assumptions if sqft missing
   if ((!sqft || sqft <= 0) && args.rooms && args.rooms > 0) {
@@ -1148,8 +1196,6 @@ function computePaintingInteriorCore(args: {
         ? args.rooms * 325
         : args.rooms * 350
   }
-
-  sqft = Math.max(150, Number(sqft || 0))
 
   // Convert floor sqft into estimated paintable surface area
   // These multipliers are intentionally more realistic for interior residential repainting
@@ -1166,14 +1212,32 @@ function computePaintingInteriorCore(args: {
     args.coats === 2 ? 1.0 :
     1.22
 
-  let effectivePaintArea = sqft * scopeMultiplier
-  const wallAreaBase = sqft * 1.75 * coatFactor
+  const canUseExactAreaPath =
+    !!exactWallSqft && (args.paintScope === "walls" || !!exactCeilingSqft)
+  const basisSqft =
+    canUseExactAreaPath
+      ? Math.max(
+          150,
+          Math.round(
+            (Number(exactWallSqft || 0) + Number(exactCeilingSqft || 0)) /
+              Math.max(1, scopeMultiplier)
+          )
+        )
+      : Math.max(150, Number(sqft || 0))
+
+  const wallAreaBase = canUseExactAreaPath
+    ? Number(exactWallSqft || 0) * coatFactor
+    : basisSqft * 1.75 * coatFactor
   const ceilingAreaBase =
     args.paintScope === "walls_ceilings" || args.paintScope === "full"
-      ? sqft * 0.4 * coatFactor
+      ? canUseExactAreaPath
+        ? Number(exactCeilingSqft || 0) * coatFactor
+        : basisSqft * 0.4 * coatFactor
       : 0
 
-  effectivePaintArea *= coatFactor
+  const effectivePaintArea = canUseExactAreaPath
+    ? wallAreaBase + ceilingAreaBase
+    : basisSqft * scopeMultiplier * coatFactor
 
   // Base production rates (sqft of paintable area per labor hour)
   // Tuned slower than before to better reflect real residential interiors
@@ -1202,9 +1266,9 @@ function computePaintingInteriorCore(args: {
 
   // Setup / masking / cleanup / cut-in / handling time
   let setupHrs =
-    sqft <= 700
+    basisSqft <= 700
       ? 6
-      : sqft <= 1400
+      : basisSqft <= 1400
       ? 10
       : 14
 
@@ -1239,9 +1303,9 @@ function computePaintingInteriorCore(args: {
   let materials =
     Math.round(gallons * paintCostPerGallon) +
     (
-      sqft <= 700
+      basisSqft <= 700
         ? 140
-        : sqft <= 1400
+        : basisSqft <= 1400
         ? 235
         : 325
     )
@@ -1254,18 +1318,18 @@ function computePaintingInteriorCore(args: {
 
   // Mobilization / overhead
   const mobilization =
-    sqft <= 500
+    basisSqft <= 500
       ? 325
-      : sqft <= 1000
+      : basisSqft <= 1000
       ? 525
-      : sqft <= 1600
+      : basisSqft <= 1600
       ? 750
       : 950
 
   const supervisionPct =
-    sqft <= 1000
+    basisSqft <= 1000
       ? 0.06
-      : sqft <= 2000
+      : basisSqft <= 2000
       ? 0.07
       : 0.08
 
@@ -1290,23 +1354,23 @@ function computePaintingInteriorCore(args: {
       : Math.ceil(totalLaborHrs / 8)
 
   // Minimum duration floors for more realistic condo / house repaint schedules
-  if (sqft >= 900 && args.paintScope === "walls") {
+  if (basisSqft >= 900 && args.paintScope === "walls") {
     crewDays = Math.max(crewDays, 2)
   }
 
-  if (sqft >= 1100 && args.paintScope === "walls") {
+  if (basisSqft >= 1100 && args.paintScope === "walls") {
     crewDays = Math.max(crewDays, 2.5)
   }
 
-  if (sqft >= 1100 && args.paintScope === "walls_ceilings") {
+  if (basisSqft >= 1100 && args.paintScope === "walls_ceilings") {
     crewDays = Math.max(crewDays, 3)
   }
 
-  if (args.paintScope === "full" && sqft >= 1100) {
+  if (args.paintScope === "full" && basisSqft >= 1100) {
     crewDays = Math.max(crewDays, 4)
   }
 
-  if (args.prepLevel === "heavy" && sqft >= 900) {
+  if (args.prepLevel === "heavy" && basisSqft >= 900) {
     crewDays = Math.max(crewDays, 3)
   }
 

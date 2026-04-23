@@ -18,6 +18,9 @@ export type LiveTradePricingInfluence = {
   paintScopeOverride: PaintScope | null
   engineInputs?: {
     painting?: {
+      supportedInteriorSqft: number | null
+      supportedWallSqft: number | null
+      supportedCeilingSqft: number | null
       supportedRoomCount: number | null
       supportedDoorCount: number | null
       supportedTrimLf: number | null
@@ -232,13 +235,14 @@ function buildPaintingInfluence(args: {
     label: /\btrim\s*\/\s*frame linear support\b/i,
     unit: "linear_ft",
   })
+  const wallSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bwall coverage support\b/i,
+    unit: "sqft",
+  })
   const measuredInteriorBase =
     Number(args.measurements?.totalSqft || 0) > 0 ||
-    Number(findExactSignal({
-      signals: args.support.tradeAreaSignals,
-      label: /\bwall coverage support\b/i,
-      unit: "sqft",
-    })?.quantity || 0) > 0
+    Number(wallSignal?.quantity || 0) > 0
   const scaledInteriorBase =
     args.supportLevel === "strong" && Number(roomSignal?.quantity || 0) > 0
   const hasBaseQuantity =
@@ -250,6 +254,16 @@ function buildPaintingInfluence(args: {
     args.executionSections.includes("Ceilings") && ceilingSignal ? "walls_ceilings" : null
 
   const canAffectNumericPricing = args.supportLevel !== "weak" && hasBaseQuantity
+  const supportedWallSqft =
+    wallSignal && Number(wallSignal.quantity || 0) > 0
+      ? Math.round(Number(wallSignal.quantity || 0))
+      : null
+  const supportedCeilingSqft =
+    args.executionSections.includes("Ceilings") &&
+    ceilingSignal &&
+    Number(ceilingSignal.quantity || 0) > 0
+      ? Math.round(Number(ceilingSignal.quantity || 0))
+      : null
 
   return {
     trade: "painting",
@@ -261,6 +275,12 @@ function buildPaintingInfluence(args: {
       canAffectNumericPricing
         ? {
             painting: {
+              supportedInteriorSqft:
+                !supportedWallSqft && Number(args.measurements?.totalSqft || 0) > 0
+                  ? Math.round(Number(args.measurements?.totalSqft || 0))
+                  : null,
+              supportedWallSqft,
+              supportedCeilingSqft,
               supportedRoomCount: Number(roomSignal?.quantity || 0) > 0 ? Math.round(Number(roomSignal?.quantity || 0)) : null,
               supportedDoorCount:
                 doorSignal &&
@@ -300,6 +320,11 @@ function buildPaintingInfluence(args: {
           ? measuredInteriorBase
             ? `Plan-aware pricing kept ${Math.round(roomSignal.quantity || 0)} repeated room(s) as organization support while measured wall area remained the numeric basis.`
             : `Plan-aware pricing used ${Math.round(roomSignal.quantity || 0)} strongly supported repeated room(s) as scaled interior-base support.`
+          : null,
+        wallSignal
+          ? supportedCeilingSqft
+            ? `Plan-aware pricing used ${supportedWallSqft} measured wall sqft and ${supportedCeilingSqft} measured ceiling sqft for painting execution input assembly.`
+            : `Plan-aware pricing used ${Math.round(Number(wallSignal.quantity || 0))} measured wall-area sqft for painting execution input assembly.`
           : null,
         doorSignal &&
         args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
@@ -342,6 +367,11 @@ function buildDrywallInfluence(args: {
     label: /\bmeasured drywall assembly area support\b/i,
     unit: "sqft",
   })
+  const measuredCeilingSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bmeasured ceiling drywall area support\b/i,
+    unit: "sqft",
+  })
   const ceilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     label: /\bceiling drywall support\b/i,
@@ -369,7 +399,7 @@ function buildDrywallInfluence(args: {
     isInstall
       ? Math.round(
           Number(measuredAssemblySignal?.quantity || wallSignal?.quantity || 0) +
-            Number(includeCeilings ? ceilingSignal?.quantity || 0 : 0)
+            Number(includeCeilings ? measuredCeilingSignal?.quantity || ceilingSignal?.quantity || 0 : 0)
         )
       : 0
 
@@ -409,6 +439,9 @@ function buildDrywallInfluence(args: {
       [
         isInstall && installSqft > 0
           ? `Plan-aware drywall pricing used ${Math.round(installSqft)} measured/install-supported sqft for live numeric execution.`
+          : null,
+        measuredCeilingSignal && includeCeilings
+          ? `Plan-aware drywall pricing used ${Math.round(Number(measuredCeilingSignal.quantity || 0))} measured ceiling drywall sqft for ceiling inclusion.`
           : null,
         isPatchRepair && patchSqft > 0
           ? `Plan-aware drywall pricing used ${Math.round(patchSqft)} measured repair sqft for patch/repair execution.`

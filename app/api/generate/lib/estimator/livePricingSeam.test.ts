@@ -157,6 +157,26 @@ test("painting live seam changes real totals and carries estimateBasis through o
       makeAnalysis({
         textSnippets: ["Paint guest room walls, ceilings, doors, trim, and corridor surfaces."],
         notes: ["Door schedule and finish plan included."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 4200,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            label: "Measured guest room ceiling paint area",
+            confidence: 89,
+            notes: ["Measured guest room ceiling area."],
+            quantity: 2100,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
       }),
     ],
     takeoff: {
@@ -224,10 +244,95 @@ test("painting live seam changes real totals and carries estimateBasis through o
   assert.ok(planAware.pricing)
   assert.ok((planAware.pricing?.total || 0) > (base.pricing?.total || 0))
   assert.equal(decision.owner, "painting_engine")
-  assert.ok(decision.estimateBasis?.assumptions.some((item) => /ceiling support|door opening|trim/i.test(item)))
+  assert.ok(
+    decision.estimateBasis?.assumptions.some(
+      (item) => /measured wall sqft|measured ceiling sqft|door opening|trim/i.test(item)
+    )
+  )
   assert.ok(decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Walls"))
   assert.ok(decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Ceilings"))
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
+})
+
+test("repeated guest room repaint package can scale from strong repeated-room support without pretending corridor burden is direct room scope", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    repeatedSpaceSignals: ["repeated guest room type"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repeated guest room repaint package with separate corridor/common-area repaint."],
+        notes: ["Prototype room repeats across floors and corridor surfaces are called out separately."],
+        schedules: [
+          {
+            scheduleType: "door",
+            label: "Door schedule",
+            quantity: 18,
+            notes: ["Guest room door set repeats by room type."],
+            confidence: 88,
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: null,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: 18,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 18,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Repaint repeated guest rooms and corridor common areas."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText,
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computePaintingDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    paintScope: influence?.paintScopeOverride || "walls",
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.painting || null : null,
+  })
+
+  const planAwareBasis = mergeLiveTradePricingInfluenceIntoBasis({
+    basis: planAware.estimateBasis,
+    influence: influence!,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedInteriorSqft, null)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 18)
+  assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+  assert.ok(planAware.pricing)
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some(
+      (section) =>
+        section.section === "Walls" &&
+        section.pricingBasis === "direct" &&
+        section.notes?.some((note) => /scaled prototype coverage/i.test(note))
+    )
+  )
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some(
+      (section) => section.section === "Corridor repaint" && section.pricingBasis === "burden"
+    )
+  )
+  assert.equal(sumSectionTotals(planAwareBasis), planAware.pricing?.total || 0)
 })
 
 test("drywall live seam changes real totals and carries estimateBasis through owner resolution", () => {
@@ -316,7 +421,84 @@ test("drywall live seam changes real totals and carries estimateBasis through ow
   assert.equal(decision.owner, "drywall_engine")
   assert.ok(decision.estimateBasis?.assumptions.some((item) => /supported sqft|partition lf|finish/i.test(item)))
   assert.ok((decision.estimateBasis?.sectionPricing?.length || 0) >= 2)
+  assert.ok(
+    decision.estimateBasis?.sectionPricing?.some(
+      (section) => section.section === "Install / hang" && section.pricingBasis === "direct"
+    )
+  )
+  assert.ok(
+    decision.estimateBasis?.sectionPricing?.some(
+      (section) => section.section === "Partition-related scope" && section.pricingBasis === "burden"
+    )
+  )
+  assert.ok(
+    !decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Patch / repair")
+  )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
+})
+
+test("drywall repeated-room repair scenario stays non-binding without measured repair area through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["drywall"],
+    repeatedSpaceSignals: ["repeated guest room repair pattern"],
+    tradePackageSignals: ["drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Patch and repair drywall damage in repeated guest rooms."],
+        notes: ["Localized drywall damage only."],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 14,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Patch and repair drywall in guest rooms."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText,
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeDrywallDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.drywall || null : null,
+  })
+
+  const decision = decidePricingOwner(
+    makeOwnerContext({
+      trade: "drywall",
+      drywallDet: planAware.pricing
+        ? {
+            pricing: planAware.pricing,
+            okForVerified: planAware.okForVerified,
+            verifiedSource: "drywall_engine_v1_verified",
+            source: "drywall_engine_v1",
+            estimateBasis: planAware.estimateBasis,
+          }
+        : null,
+    })
+  )
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(planAware.pricing, null)
+  assert.equal(decision.owner, "ai")
 })
 
 test("wallcovering live seam changes real totals and carries estimateBasis through owner resolution", () => {
@@ -401,6 +583,11 @@ test("wallcovering live seam changes real totals and carries estimateBasis throu
   assert.ok(decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Install"))
   assert.ok(
     decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Removal / prep")
+  )
+  assert.ok(
+    decision.estimateBasis?.sectionPricing?.some(
+      (section) => section.section === "Corridor burden" && section.pricingBasis === "burden"
+    )
   )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
 })
