@@ -256,10 +256,30 @@ test("painting live seam changes real totals and carries estimateBasis through o
       ?.quantitySupport,
     "measured"
   )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.supportCategory,
+    "wall_area"
+  )
+  assert.match(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.quantityDetail || "",
+    /4200 sqft/i
+  )
   assert.deepEqual(
     decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
       ?.sourceBasis,
     ["trade_finding"]
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Doors / frames")
+      ?.provenance?.supportCategory,
+    "door_openings"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Trim / casing")
+      ?.provenance?.supportCategory,
+    "trim_lf"
   )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
 })
@@ -348,9 +368,24 @@ test("repeated guest room repaint package can scale from strong repeated-room su
     "scaled_prototype"
   )
   assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.roomGroupBasis,
+    "guest room"
+  )
+  assert.match(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.quantityDetail || "",
+    /18 repeated guest room/i
+  )
+  assert.equal(
     planAwareBasis?.sectionPricing?.find((section) => section.section === "Corridor repaint")
       ?.provenance?.quantitySupport,
     "support_only"
+  )
+  assert.match(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Corridor repaint")
+      ?.provenance?.blockedReason || "",
+    /embedded/i
   )
   assert.equal(sumSectionTotals(planAwareBasis), planAware.pricing?.total || 0)
 })
@@ -677,10 +712,31 @@ test("drywall live seam changes real totals and carries estimateBasis through ow
     "measured"
   )
   assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Install / hang")
+      ?.provenance?.supportCategory,
+    "assembly_area"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Finish / texture")
+      ?.provenance?.supportCategory,
+    "finish_texture_area"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Ceiling drywall")
+      ?.provenance?.supportCategory,
+    "ceiling_area"
+  )
+  assert.equal(
     decision.estimateBasis?.sectionPricing?.find(
       (section) => section.section === "Partition-related scope"
     )?.provenance?.quantitySupport,
     "support_only"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find(
+      (section) => section.section === "Partition-related scope"
+    )?.provenance?.supportCategory,
+    "partition_lf"
   )
   assert.ok(
     !decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Patch / repair")
@@ -967,9 +1023,19 @@ test("wallcovering live seam changes real totals and carries estimateBasis throu
     "measured"
   )
   assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Install")
+      ?.provenance?.supportCategory,
+    "corridor_area"
+  )
+  assert.equal(
     decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Corridor burden")
       ?.provenance?.quantitySupport,
     "support_only"
+  )
+  assert.match(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Corridor burden")
+      ?.provenance?.blockedReason || "",
+    /embedded/i
   )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
 })
@@ -1044,6 +1110,16 @@ test("wallcovering selected-elevation scope stays narrower than gross fallback t
     planAwareBasis?.sectionPricing?.find((section) => section.section === "Install")?.provenance
       ?.summary,
     "Direct wallcovering row is backed by measured selected-elevation area."
+  )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Install")?.provenance
+      ?.supportCategory,
+    "selected_elevation_area"
+  )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Install")?.provenance
+      ?.coverageKind,
+    "selected_elevation"
   )
 })
 

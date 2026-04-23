@@ -64,6 +64,12 @@ export type EstimateSectionProvenance = {
   quantitySupport: "measured" | "scaled_prototype" | "support_only"
   sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
   summary?: string
+  supportCategory?: string
+  roomGroupBasis?: string
+  coverageKind?: "full_area" | "corridor_area" | "selected_elevation"
+  quantityDetail?: string
+  blockedReason?: string
+  diagnosticDetails?: string[]
 }
 
 export type EstimateStructuredSection = {

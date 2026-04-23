@@ -314,6 +314,9 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
           quantitySupport: "measured",
           sourceBasis: ["trade_finding"],
           summary: "Direct wall row is backed by measured wall area.",
+          supportCategory: "wall_area",
+          quantityDetail: "1400 sqft of measured wall support was used for this row.",
+          diagnosticDetails: ["direct_row_allowed: measured wall area is present."],
         },
       },
       {
@@ -328,6 +331,9 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
           quantitySupport: "support_only",
           sourceBasis: ["repeated_space_rollup"],
           summary: "Embedded burden remains non-standalone and non-authoritative.",
+          supportCategory: "prep_protection",
+          blockedReason: "Prep / protection remains embedded until a standalone measurable basis exists.",
+          diagnosticDetails: ["embedded_burden_only: burden remains reference-only."],
         },
       },
     ],
@@ -359,12 +365,22 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
   assert.equal(payload.estimateRows?.[0]?.pricingBasis, "direct")
   assert.equal(payload.estimateRows?.[0]?.provenance?.quantitySupport, "measured")
   assert.deepEqual(payload.estimateRows?.[0]?.provenance?.sourceBasis, ["trade_finding"])
+  assert.equal(payload.estimateRows?.[0]?.provenance?.supportCategory, "wall_area")
+  assert.match(payload.estimateRows?.[0]?.provenance?.quantityDetail || "", /1400 sqft/i)
   assert.ok(payload.estimateEmbeddedBurdens)
   assert.equal(payload.estimateEmbeddedBurdens?.length, 1)
   assert.equal(payload.estimateEmbeddedBurdens?.[0]?.section, "Prep / protection")
   assert.equal(
     payload.estimateEmbeddedBurdens?.[0]?.provenance?.quantitySupport,
     "support_only"
+  )
+  assert.equal(
+    payload.estimateEmbeddedBurdens?.[0]?.provenance?.supportCategory,
+    "prep_protection"
+  )
+  assert.match(
+    payload.estimateEmbeddedBurdens?.[0]?.provenance?.blockedReason || "",
+    /embedded/i
   )
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),
@@ -405,6 +421,8 @@ test("orchestrator payload exposes combined structured estimateSections when mul
                 quantitySupport: "measured",
                 sourceBasis: ["trade_finding"],
                 summary: "Painting wall row is backed by measured wall area.",
+                supportCategory: "wall_area",
+                quantityDetail: "Measured painting wall area was used for this row.",
               },
             },
             {
@@ -418,6 +436,9 @@ test("orchestrator payload exposes combined structured estimateSections when mul
                 quantitySupport: "measured",
                 sourceBasis: ["trade_finding"],
                 summary: "Wallcovering install row is backed by measured corridor area.",
+                supportCategory: "corridor_area",
+                coverageKind: "corridor_area",
+                quantityDetail: "Exact corridor/common-area wallcovering sqft was used for this row.",
               },
             },
             {
@@ -431,6 +452,8 @@ test("orchestrator payload exposes combined structured estimateSections when mul
                 quantitySupport: "support_only",
                 sourceBasis: ["repeated_space_rollup"],
                 summary: "Painting burden remains embedded.",
+                supportCategory: "prep_protection",
+                blockedReason: "Prep / protection remains embedded.",
               },
             },
           ],
@@ -479,6 +502,14 @@ test("orchestrator payload exposes combined structured estimateSections when mul
     payload.estimateRows?.find((row) => row.trade === "wallcovering")?.provenance?.quantitySupport,
     "measured"
   )
+  assert.equal(
+    payload.estimateRows?.find((row) => row.trade === "painting")?.provenance?.supportCategory,
+    "wall_area"
+  )
+  assert.equal(
+    payload.estimateRows?.find((row) => row.trade === "wallcovering")?.provenance?.coverageKind,
+    "corridor_area"
+  )
   assert.deepEqual(
     payload.estimateRows?.map((row) => row.section).sort(),
     ["Walls", "Install"].sort()
@@ -493,6 +524,11 @@ test("orchestrator payload exposes combined structured estimateSections when mul
     payload.estimateEmbeddedBurdens?.find((section) => section.trade === "painting")?.provenance
       ?.quantitySupport,
     "support_only"
+  )
+  assert.match(
+    payload.estimateEmbeddedBurdens?.find((section) => section.trade === "painting")?.provenance
+      ?.blockedReason || "",
+    /embedded/i
   )
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),

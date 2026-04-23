@@ -1,3 +1,5 @@
+import type { EstimateSectionProvenance } from "../estimator/types"
+
 type Pricing = {
   labor: number
   materials: number
@@ -37,11 +39,7 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
-  provenance?: {
-    quantitySupport: "measured" | "scaled_prototype" | "support_only"
-    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
-    summary?: string
-  }
+  provenance?: EstimateSectionProvenance
 }
 
 export type PaintingDeterministicResult = {
@@ -484,10 +482,14 @@ function buildPaintingSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   doorCount: number | null
   trimLf: number | null
+  supportedWallSqft?: number | null
+  supportedCeilingSqft?: number | null
+  supportedRoomCount?: number | null
   interiorBaseSupport?: "measured" | "scaled" | null
   wallSupportSource?: "trade_finding" | "takeoff" | null
   ceilingSupportSource?: "trade_finding" | "takeoff" | null
   prototypeSupportSource?: "repeated_space_rollup" | "takeoff" | "schedule" | null
+  prototypeRoomGroupLabel?: string | null
   doorCountSupport?: "measured" | null
   doorCountSource?: "trade_finding" | "takeoff" | "schedule" | null
   trimSupport?: "measured" | null
@@ -510,6 +512,15 @@ function buildPaintingSectionPricing(args: {
                 quantitySupport: "measured",
                 sourceBasis: args.doorCountSource ? [args.doorCountSource] : [],
                 summary: "Direct door/frame row is backed by explicit counted openings.",
+                supportCategory: "door_openings",
+                quantityDetail:
+                  args.doorCount && args.doorCount > 0
+                    ? `${args.doorCount} explicit door/frame openings were used for this row.`
+                    : undefined,
+                diagnosticDetails: [
+                  "direct_row_allowed: explicit counted openings are present.",
+                  args.doorCountSource ? `source_basis: ${args.doorCountSource}` : null,
+                ].filter(Boolean) as string[],
               }
             : undefined,
       }
@@ -531,6 +542,15 @@ function buildPaintingSectionPricing(args: {
                 quantitySupport: "measured",
                 sourceBasis: args.trimSource ? [args.trimSource] : [],
                 summary: "Direct trim/casing row is backed by measured trim footage.",
+                supportCategory: "trim_lf",
+                quantityDetail:
+                  args.trimLf && args.trimLf > 0
+                    ? `${args.trimLf} LF of measured trim/casing footage was used for this row.`
+                    : undefined,
+                diagnosticDetails: [
+                  "direct_row_allowed: measured trim/casing footage is present.",
+                  args.trimSource ? `source_basis: ${args.trimSource}` : null,
+                ].filter(Boolean) as string[],
               }
             : undefined,
       }
@@ -545,6 +565,18 @@ function buildPaintingSectionPricing(args: {
           quantitySupport: "support_only",
           sourceBasis: ["repeated_space_rollup"],
           summary: "Embedded burden remains non-standalone and non-authoritative.",
+          supportCategory:
+            bucket.section === "Corridor repaint" ? "corridor_scope" : "prep_protection",
+          blockedReason:
+            bucket.section === "Corridor repaint"
+              ? "Corridor/common-area scope stays embedded and cannot become a standalone direct row in this pass."
+              : "Prep/protection remains embedded and cannot become a standalone direct row in this pass.",
+          diagnosticDetails: [
+            "embedded_burden_only: section remains reference-only.",
+            bucket.section === "Corridor repaint"
+              ? "reason: corridor/common-area scope is kept separate from direct room rows."
+              : "reason: prep/protection is surfaced for explanation but not promoted to billable direct scope.",
+          ],
         },
       }
     }
@@ -574,12 +606,41 @@ function buildPaintingSectionPricing(args: {
                   bucket.section === "Ceilings"
                     ? "Direct ceiling row is backed by measured ceiling area."
                     : "Direct wall row is backed by measured wall area.",
+                supportCategory:
+                  bucket.section === "Ceilings" ? "ceiling_area" : "wall_area",
+                quantityDetail:
+                  bucket.section === "Ceilings"
+                    ? args.supportedCeilingSqft && args.supportedCeilingSqft > 0
+                      ? `${args.supportedCeilingSqft} sqft of measured ceiling area was used for this row.`
+                      : undefined
+                    : args.supportedWallSqft && args.supportedWallSqft > 0
+                      ? `${args.supportedWallSqft} sqft of measured wall area was used for this row.`
+                      : undefined,
+                diagnosticDetails: [
+                  "direct_row_allowed: measured paintable area is present.",
+                  bucket.section === "Ceilings"
+                    ? `source_basis: ${args.ceilingSupportSource || "takeoff"}`
+                    : `source_basis: ${args.wallSupportSource || "takeoff"}`,
+                ],
               }
             : args.interiorBaseSupport === "scaled"
               ? {
                   quantitySupport: "scaled_prototype",
                   sourceBasis: [args.prototypeSupportSource || "repeated_space_rollup"],
                   summary: "Direct row is backed by repeated-unit prototype scaling, not measured area.",
+                  supportCategory: "repeated_unit_count",
+                  roomGroupBasis: args.prototypeRoomGroupLabel || undefined,
+                  quantityDetail:
+                    args.supportedRoomCount && args.supportedRoomCount > 0
+                      ? `${args.supportedRoomCount} repeated ${args.prototypeRoomGroupLabel || "room"} instances supported prototype scaling for this row.`
+                      : undefined,
+                  diagnosticDetails: [
+                    "direct_row_allowed: strong repeated-space support qualified as scaled prototype coverage.",
+                    "not_measured_area: prototype scaling did not become measured wall/ceiling area.",
+                    args.prototypeSupportSource
+                      ? `source_basis: ${args.prototypeSupportSource}`
+                      : null,
+                  ].filter(Boolean) as string[],
                 }
               : undefined
           : undefined,
@@ -604,6 +665,7 @@ export function computePaintingDeterministic(args: {
     ceilingSupportSource?: "trade_finding" | "takeoff" | null
     supportedRoomCount?: number | null
     prototypeSupportSource?: "repeated_space_rollup" | "takeoff" | "schedule" | null
+    prototypeRoomGroupLabel?: string | null
     supportedDoorCount?: number | null
     doorCountSource?: "trade_finding" | "takeoff" | "schedule" | null
     supportedTrimLf?: number | null
@@ -807,6 +869,9 @@ export function computePaintingDeterministic(args: {
         sectionBuckets: priced.sectionBuckets,
         doorCount: doors,
         trimLf: null,
+        supportedWallSqft: null,
+        supportedCeilingSqft: null,
+        supportedRoomCount: null,
         interiorBaseSupport: "measured",
         doorCountSource: "takeoff",
         doorCountSupport: "measured",
@@ -939,10 +1004,14 @@ export function computePaintingDeterministic(args: {
         sectionBuckets,
         doorCount: doors,
         trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+        supportedWallSqft,
+        supportedCeilingSqft,
+        supportedRoomCount: args.planSectionInputs?.supportedRoomCount ?? null,
         interiorBaseSupport: args.planSectionInputs?.interiorBaseSupport ?? null,
         wallSupportSource: args.planSectionInputs?.wallSupportSource ?? null,
         ceilingSupportSource: args.planSectionInputs?.ceilingSupportSource ?? null,
         prototypeSupportSource: args.planSectionInputs?.prototypeSupportSource ?? null,
+        prototypeRoomGroupLabel: args.planSectionInputs?.prototypeRoomGroupLabel ?? null,
         doorCountSupport: args.planSectionInputs?.doorCountSupport ?? null,
         doorCountSource: args.planSectionInputs?.doorCountSource ?? null,
         trimSupport: args.planSectionInputs?.trimSupport ?? null,
@@ -1035,10 +1104,14 @@ export function computePaintingDeterministic(args: {
         sectionBuckets: priced.sectionBuckets,
         doorCount: null,
         trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+        supportedWallSqft,
+        supportedCeilingSqft,
+        supportedRoomCount: args.planSectionInputs?.supportedRoomCount ?? null,
         interiorBaseSupport: args.planSectionInputs?.interiorBaseSupport ?? null,
         wallSupportSource: args.planSectionInputs?.wallSupportSource ?? null,
         ceilingSupportSource: args.planSectionInputs?.ceilingSupportSource ?? null,
         prototypeSupportSource: args.planSectionInputs?.prototypeSupportSource ?? null,
+        prototypeRoomGroupLabel: args.planSectionInputs?.prototypeRoomGroupLabel ?? null,
         doorCountSupport: args.planSectionInputs?.doorCountSupport ?? null,
         doorCountSource: args.planSectionInputs?.doorCountSource ?? null,
         trimSupport: args.planSectionInputs?.trimSupport ?? null,

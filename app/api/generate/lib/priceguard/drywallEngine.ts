@@ -1,5 +1,7 @@
 // ./lib/priceguard/drywallEngine.ts
 
+import type { EstimateSectionProvenance } from "../estimator/types"
+
 type Pricing = {
   labor: number
   materials: number
@@ -19,11 +21,7 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "linear_ft" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
-  provenance?: {
-    quantitySupport: "measured" | "scaled_prototype" | "support_only"
-    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
-    summary?: string
-  }
+  provenance?: EstimateSectionProvenance
 }
 
 export type DrywallDeterministicResult = {
@@ -213,6 +211,8 @@ function buildEstimateBasis(args: {
 function buildDrywallSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   partitionLf: number | null
+  supportedSqft: number | null
+  supportedFinishTextureSqft?: number | null
   supportedSqftSupport?: "measured" | null
   assemblySource?: "trade_finding" | "takeoff" | null
   finishTextureSource?: "trade_finding" | "takeoff" | null
@@ -231,6 +231,17 @@ function buildDrywallSectionPricing(args: {
           quantitySupport: "support_only",
           sourceBasis: ["trade_finding"],
           summary: "Partition burden remains non-standalone until a fuller measured assembly basis exists.",
+          supportCategory: "partition_lf",
+          quantityDetail:
+            args.partitionLf && args.partitionLf > 0
+              ? `${args.partitionLf} LF of partition layout support exists, but it does not authorize standalone assembly pricing.`
+              : undefined,
+          blockedReason:
+            "Partition-related scope remains embedded until a fuller measured assembly basis exists.",
+          diagnosticDetails: [
+            "embedded_burden_only: partition cues remain reference-only.",
+            "reason: partition LF does not by itself prove full board/finish assembly quantity.",
+          ],
         },
       }
     }
@@ -263,6 +274,40 @@ function buildDrywallSectionPricing(args: {
                     : bucket.section === "Ceiling drywall"
                       ? "Direct ceiling drywall row is backed by measured ceiling drywall area."
                       : "Direct drywall row is backed by measured assembly area.",
+              supportCategory:
+                bucket.section === "Patch / repair"
+                  ? "repair_area"
+                  : bucket.section === "Finish / texture"
+                    ? "finish_texture_area"
+                    : bucket.section === "Ceiling drywall"
+                      ? "ceiling_area"
+                      : "assembly_area",
+              quantityDetail:
+                bucket.section === "Finish / texture"
+                  ? args.supportedFinishTextureSqft && args.supportedFinishTextureSqft > 0
+                    ? `${args.supportedFinishTextureSqft} sqft of measured finish/texture support was used for this row.`
+                    : args.supportedSqft && args.supportedSqft > 0
+                      ? `${args.supportedSqft} sqft of measured assembly support backed this finish row.`
+                      : undefined
+                  : args.supportedSqft && args.supportedSqft > 0
+                    ? `${args.supportedSqft} sqft of measured drywall support was used for this row.`
+                    : undefined,
+              diagnosticDetails: [
+                bucket.section === "Patch / repair"
+                  ? "direct_row_allowed: measured repair area is present."
+                  : bucket.section === "Finish / texture"
+                    ? "direct_row_allowed: measured finish/texture or assembly support is present."
+                    : bucket.section === "Ceiling drywall"
+                      ? "direct_row_allowed: measured ceiling drywall support is present."
+                      : "direct_row_allowed: measured assembly support is present.",
+                bucket.section === "Patch / repair"
+                  ? `source_basis: ${args.repairSource || "trade_finding"}`
+                  : bucket.section === "Finish / texture"
+                    ? `source_basis: ${args.finishTextureSource || args.assemblySource || "takeoff"}`
+                    : bucket.section === "Ceiling drywall"
+                      ? `source_basis: ${args.ceilingSource || args.assemblySource || "takeoff"}`
+                      : `source_basis: ${args.assemblySource || "takeoff"}`,
+              ],
             }
           : undefined,
     }
@@ -418,6 +463,8 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqft,
+        supportedFinishTextureSqft: args.planSectionInputs?.supportedFinishTextureSqft ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
         assemblySource: args.planSectionInputs?.assemblySource ?? null,
         finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,
@@ -519,6 +566,8 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqft,
+        supportedFinishTextureSqft: args.planSectionInputs?.supportedFinishTextureSqft ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
         assemblySource: args.planSectionInputs?.assemblySource ?? null,
         finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,
@@ -599,6 +648,8 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqft,
+        supportedFinishTextureSqft: args.planSectionInputs?.supportedFinishTextureSqft ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
         assemblySource: args.planSectionInputs?.assemblySource ?? null,
         finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,

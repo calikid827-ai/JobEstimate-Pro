@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { PlanIntelligence, PlanSheetAnalysis } from "../plans/types"
-import { buildLiveTradePricingInfluence } from "./liveTradePricingInfluence"
+import {
+  buildLiveTradePricingInfluence,
+  selectTradeScopedSplitMeasurements,
+} from "./liveTradePricingInfluence"
 import type { ComplexityProfile, MeasurementInput, TradeStack } from "./types"
 
 const defaultComplexity: ComplexityProfile = {
@@ -522,6 +525,266 @@ test("shared-plan repeated guest-room painting support does not leak into drywal
   assert.ok(wallcoveringInfluence)
   assert.equal(wallcoveringInfluence.canAffectNumericPricing, false)
   assert.equal(wallcoveringInfluence.engineInputs, undefined)
+})
+
+test("multi-trade split allocation keeps measured painting support isolated from drywall install quantities", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall"],
+    tradePackageSignals: ["painting", "drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms and install new drywall partitions."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            category: "wall_area",
+            label: "Guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            category: "assembly_area",
+            label: "Measured wallboard area",
+            confidence: 94,
+            notes: ["New partition board area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 4200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest rooms.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Install new drywall partitions with finish.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "painting",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: paintingInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "drywall",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: drywallInfluence,
+      hasPlanIntelligence: true,
+    }),
+    { totalSqft: 1600 }
+  )
+})
+
+test("multi-trade split allocation keeps corridor wallcovering area from inflating painting rows", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "wallcovering"],
+    tradePackageSignals: ["painting", "wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms and replace corridor wallcovering."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            category: "wall_area",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "wallcovering",
+            category: "corridor_area",
+            label: "Measured corridor wallcovering area",
+            confidence: 93,
+            notes: ["Measured corridor elevations only."],
+            quantity: 900,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 4200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest rooms.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Remove and replace corridor wallcovering.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "painting",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: paintingInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "wallcovering",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: wallcoveringInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
+})
+
+test("mixed shared-plan allocation leaves unsupported split trades non-binding instead of using generic fallback sqft", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall", "wallcovering"],
+    tradePackageSignals: ["painting", "drywall", "wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms and review related scope."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            category: "wall_area",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 4200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest rooms.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Review drywall scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Review wallcovering scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "painting",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: paintingInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "drywall",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: drywallInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
+  assert.deepEqual(
+    selectTradeScopedSplitMeasurements({
+      trade: "wallcovering",
+      fallbackMeasurements: { totalSqft: 4200 },
+      influence: wallcoveringInfluence,
+      hasPlanIntelligence: true,
+    }),
+    null
+  )
 })
 
 test("drywall influence feeds exact supported sqft into live numeric execution and keeps section routing", () => {

@@ -35,6 +35,7 @@ export type LiveTradePricingInfluence = {
       interiorBaseSupport: "measured" | "scaled" | null
       doorCountSupport: "measured" | null
       trimSupport: "measured" | null
+      prototypeRoomGroupLabel?: string | null
     }
     drywall?: {
       supportedSqft: number | null
@@ -67,6 +68,51 @@ export type LiveTradePricingInfluence = {
   notes: string[]
 } | null
 
+export function selectTradeScopedSplitMeasurements(args: {
+  trade: string
+  fallbackMeasurements: MeasurementInput | { totalSqft?: number | null } | null
+  influence: LiveTradePricingInfluence
+  hasPlanIntelligence: boolean
+}): { totalSqft: number } | null {
+  if (!args.hasPlanIntelligence) {
+    const fallbackSqft = Number(args.fallbackMeasurements?.totalSqft || 0)
+    return fallbackSqft > 0 ? { totalSqft: Math.round(fallbackSqft) } : null
+  }
+
+  if (args.trade === "painting" && args.influence?.trade === "painting") {
+    const measuredInteriorSqft = Number(
+      args.influence.engineInputs?.painting?.supportedInteriorSqft || 0
+    )
+    if (measuredInteriorSqft > 0) {
+      return { totalSqft: Math.round(measuredInteriorSqft) }
+    }
+    return null
+  }
+
+  if (args.trade === "drywall" && args.influence?.trade === "drywall") {
+    const measuredDrywallSqft = Number(args.influence.engineInputs?.drywall?.supportedSqft || 0)
+    const hasTradeScopedDrywallSupport =
+      args.influence.engineInputs?.drywall?.assemblySource === "trade_finding" ||
+      args.influence.engineInputs?.drywall?.finishTextureSource === "trade_finding" ||
+      args.influence.engineInputs?.drywall?.ceilingSource === "trade_finding" ||
+      args.influence.engineInputs?.drywall?.repairSource === "trade_finding"
+    if (
+      args.influence.canAffectNumericPricing &&
+      measuredDrywallSqft > 0 &&
+      hasTradeScopedDrywallSupport
+    ) {
+      return { totalSqft: Math.round(measuredDrywallSqft) }
+    }
+    return null
+  }
+
+  if (args.trade === "wallcovering" && args.influence?.trade === "wallcovering") {
+    return null
+  }
+
+  return null
+}
+
 function uniqStrings(values: Array<string | null | undefined>, max = 12): string[] {
   return Array.from(
     new Set(values.map((value) => String(value || "").trim()).filter(Boolean))
@@ -79,6 +125,14 @@ function stripReviewPrefix(value: string): string {
 
 function normalizeSections(values: string[]): string[] {
   return uniqStrings(values.map(stripReviewPrefix), 8)
+}
+
+function extractPrototypeRoomGroupLabel(signal: TradeQuantitySignal | null): string | null {
+  if (!signal?.label) return null
+  return String(signal.label)
+    .replace(/^Repeated\s+/i, "")
+    .replace(/\s+prototype support$/i, "")
+    .trim() || null
 }
 
 function findExactSignal(args: {
@@ -357,6 +411,7 @@ function buildPaintingInfluence(args: {
                 trimSignal && args.executionSections.includes("Trim / casing")
                   ? "measured"
                   : null,
+              prototypeRoomGroupLabel: extractPrototypeRoomGroupLabel(roomSignal),
             },
           }
         : undefined,

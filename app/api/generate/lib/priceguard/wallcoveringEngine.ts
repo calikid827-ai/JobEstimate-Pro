@@ -1,3 +1,5 @@
+import type { EstimateSectionProvenance } from "../estimator/types"
+
 type Pricing = {
   labor: number
   materials: number
@@ -19,11 +21,7 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
-  provenance?: {
-    quantitySupport: "measured" | "scaled_prototype" | "support_only"
-    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
-    summary?: string
-  }
+  provenance?: EstimateSectionProvenance
 }
 
 export type WallcoveringDeterministicResult = {
@@ -154,6 +152,15 @@ function buildWallcoveringSectionPricing(args: {
           quantitySupport: "support_only",
           sourceBasis: [args.areaSource || "trade_finding"],
           summary: "Corridor burden remains embedded/reference-only and never becomes a standalone direct row.",
+          supportCategory: "corridor_area",
+          coverageKind: "corridor_area",
+          quantityDetail: `${args.sqft} exact corridor/common-area sqft informed burden handling without authorizing a standalone billable row.`,
+          blockedReason:
+            "Corridor wallcovering burden remains embedded/reference-only even when exact corridor area is measured.",
+          diagnosticDetails: [
+            "embedded_burden_only: corridor/common-area handling stays reference-only.",
+            `source_basis: ${args.areaSource || "trade_finding"}`,
+          ],
         },
       }
     }
@@ -178,6 +185,19 @@ function buildWallcoveringSectionPricing(args: {
                   : args.coverageKind === "corridor_area"
                     ? "Direct wallcovering row is backed by measured corridor/common-area wallcovering area."
                     : "Direct wallcovering row is backed by measured full-area wallcovering quantity.",
+              supportCategory:
+                args.coverageKind === "selected_elevation"
+                  ? "selected_elevation_area"
+                  : args.coverageKind === "corridor_area"
+                    ? "corridor_area"
+                    : "wall_area",
+              coverageKind: args.coverageKind || "full_area",
+              quantityDetail: `${args.sqft} exact wallcovering sqft was used for this row.`,
+              diagnosticDetails: [
+                "direct_row_allowed: exact measured wallcovering area is present.",
+                `coverage_kind: ${args.coverageKind || "full_area"}`,
+                `source_basis: ${args.areaSource || "takeoff"}`,
+              ],
             }
           : undefined,
     }
