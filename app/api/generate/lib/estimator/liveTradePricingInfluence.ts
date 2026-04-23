@@ -300,7 +300,10 @@ function buildPaintingInfluence(args: {
                   : ceilingSignal?.source === "takeoff"
                     ? "takeoff"
                     : null,
-              supportedRoomCount: Number(roomSignal?.quantity || 0) > 0 ? Math.round(Number(roomSignal?.quantity || 0)) : null,
+              supportedRoomCount:
+                !measuredInteriorBase && Number(roomSignal?.quantity || 0) > 0
+                  ? Math.round(Number(roomSignal?.quantity || 0))
+                  : null,
               prototypeSupportSource:
                 roomSignal?.source === "room_signal" || roomSignal?.source === "takeoff"
                   ? "repeated_space_rollup"
@@ -439,20 +442,38 @@ function buildDrywallInfluence(args: {
   const isInstall = args.executionSections.includes("Install / hang")
   const includeCeilings = args.executionSections.includes("Ceiling drywall") && ceilingSignal
   const patchSqft =
-    isPatchRepair && !isInstall
+    isPatchRepair
       ? Math.round(Number(measuredPatchSignal?.quantity || 0))
       : 0
+  const forcePatchRepair = isPatchRepair && patchSqft > 0
+  const hasAdditionalInstallEvidence =
+    Number(measuredAssemblySignal?.quantity || 0) > 0 ||
+    Number(measuredFinishSignal?.quantity || 0) > 0 ||
+    Number(measuredCeilingSignal?.quantity || 0) > 0 ||
+    Number(ceilingSignal?.quantity || 0) > 0 ||
+    Number(partitionSignal?.quantity || 0) > 0
+  const hasSafeInstallBasis =
+    hasAdditionalInstallEvidence ||
+    (!forcePatchRepair &&
+      (!isPatchRepair || hasAdditionalInstallEvidence) &&
+      Number(wallSignal?.quantity || 0) > 0)
   const installSqft =
-    isInstall
+    isInstall && hasSafeInstallBasis
       ? Math.round(
-          Number(measuredAssemblySignal?.quantity || measuredFinishSignal?.quantity || wallSignal?.quantity || 0) +
+          Number(
+            measuredAssemblySignal?.quantity ||
+              measuredFinishSignal?.quantity ||
+              (!forcePatchRepair ? wallSignal?.quantity : 0) ||
+              0
+          ) +
             Number(includeCeilings ? measuredCeilingSignal?.quantity || ceilingSignal?.quantity || 0 : 0)
         )
       : 0
 
+  const forceInstallFinish = isInstall && installSqft > 0
   const canAffectNumericPricing =
     args.supportLevel !== "weak" &&
-    ((isInstall && installSqft > 0) || (isPatchRepair && patchSqft > 0))
+    (forceInstallFinish || forcePatchRepair)
 
   return {
     trade: "drywall",
@@ -498,8 +519,8 @@ function buildDrywallInfluence(args: {
                     : null,
               supportedPartitionLf: partitionSignal ? Math.round(Number(partitionSignal.quantity || 0)) : null,
               includeCeilings: !!includeCeilings,
-              forcePatchRepair: isPatchRepair,
-              forceInstallFinish: isInstall,
+              forcePatchRepair,
+              forceInstallFinish,
               hasFinishTextureSection: args.executionSections.includes("Finish / texture"),
               supportedSqftSupport:
                 (isInstall && installSqft > 0) || (isPatchRepair && patchSqft > 0)

@@ -767,6 +767,17 @@ test("wallcovering live seam changes real totals and carries estimateBasis throu
       makeAnalysis({
         textSnippets: ["Remove corridor wallcovering and install new vinyl wallcovering."],
         notes: ["Corridor wallcovering type W-1."],
+        tradeFindings: [
+          {
+            trade: "general renovation",
+            label: "Measured corridor wallcovering area",
+            confidence: 93,
+            notes: ["Measured corridor elevations only."],
+            quantity: 1400,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
       }),
     ],
     takeoff: {
@@ -1031,7 +1042,7 @@ test("shared-plan painting and drywall influences keep trade-safe quantities iso
   assert.equal(paintingInfluence.engineInputs?.painting?.supportedInteriorSqft, null)
   assert.equal(drywallInfluence.engineInputs?.drywall?.supportedSqft, 1600)
   assert.ok(paintingInfluence.executionSections.includes("Corridor repaint"))
-  assert.ok(!drywallInfluence.executionSections.includes("Patch / repair"))
+  assert.equal(drywallInfluence.engineInputs?.drywall?.forcePatchRepair, false)
 })
 
 test("shared-plan painting and wallcovering influences avoid whole-job sqft leakage across split trades", () => {

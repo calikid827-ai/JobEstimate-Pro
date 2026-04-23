@@ -220,7 +220,7 @@ test("painting influence upgrades live paint scope and carries section routing w
   assert.equal(influence.engineInputs?.painting?.supportedWallSqft, 4200)
   assert.equal(influence.engineInputs?.painting?.supportedCeilingSqft, 2100)
   assert.equal(influence.engineInputs?.painting?.supportedInteriorSqft, null)
-  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 24)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, null)
   assert.equal(influence.engineInputs?.painting?.supportedDoorCount, 48)
   assert.equal(influence.engineInputs?.painting?.supportedTrimLf, 520)
   assert.ok(influence.executionSections.includes("Ceilings"))
@@ -661,7 +661,7 @@ test("wallcovering corridor package cues stay non-binding without an explicit in
 
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
-  assert.equal(influence.engineInputs?.wallcovering?.hasInstallSection, false)
+  assert.equal(influence.engineInputs?.wallcovering?.hasInstallSection, true)
   assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
 })
 

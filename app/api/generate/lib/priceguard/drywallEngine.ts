@@ -337,7 +337,12 @@ export function computeDrywallDeterministic(args: {
     sqftFromSheets ??
     null
 
-  const patchLike = args.planSectionInputs?.forcePatchRepair || hasPatchSignals(scope)
+  const patchLike =
+    args.planSectionInputs?.forcePatchRepair === true
+      ? true
+      : args.planSectionInputs?.forceInstallFinish === true
+        ? false
+        : hasPatchSignals(scope)
   const installLike = args.planSectionInputs?.forceInstallFinish || hasInstallFinishSignals(scope)
 
   // -----------------------------

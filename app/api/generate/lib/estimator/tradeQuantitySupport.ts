@@ -196,23 +196,39 @@ function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null)
     }
   }
 
-  const roomNames = [
+  const inferredRoomLabels = [
     ...(planIntelligence.detectedRooms || []),
     ...(planIntelligence.likelyRoomTypes || []),
-    ...(planIntelligence.analyses || []).flatMap((analysis) =>
-      (analysis.rooms || []).map((room) => room.roomName)
-    ),
+    ...(planIntelligence.repeatedSpaceSignals || []),
   ]
+  const measuredRoomNames = (planIntelligence.analyses || []).flatMap((analysis) =>
+    (analysis.rooms || []).map((room) => room.roomName)
+  )
+  const roomNames = [...inferredRoomLabels, ...measuredRoomNames]
 
-  const unitLikeRoomNames = roomNames.filter((roomName) => isUnitLikeRoomLabel(roomName))
+  const unitLikeMeasuredRooms = measuredRoomNames.filter((roomName) =>
+    isUnitLikeRoomLabel(roomName)
+  )
+  const unitLikeRoomLabels = inferredRoomLabels.filter((roomName) =>
+    isUnitLikeRoomLabel(roomName)
+  )
   const corridorLikeRoomNames = roomNames.filter((roomName) => isCorridorLikeRoomLabel(roomName))
   const hasPrototypeSignals =
     (planIntelligence.repeatedSpaceSignals || []).length > 0 ||
     (planIntelligence.prototypeSignals || []).length > 0
 
+  if (hasPrototypeSignals && unitLikeMeasuredRooms.length >= 2) {
+    return {
+      repeatedUnitCount: unitLikeMeasuredRooms.length,
+      repeatedUnitSource: "room_signal",
+      hasUnitLikeRooms: true,
+      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+    }
+  }
+
   if (
     hasPrototypeSignals &&
-    unitLikeRoomNames.length > 0 &&
+    unitLikeRoomLabels.length > 0 &&
     typeof planIntelligence.takeoff.roomCount === "number" &&
     planIntelligence.takeoff.roomCount > 0
   ) {
@@ -224,19 +240,10 @@ function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null)
     }
   }
 
-  if (hasPrototypeSignals && unitLikeRoomNames.length >= 2) {
-    return {
-      repeatedUnitCount: unitLikeRoomNames.length,
-      repeatedUnitSource: "room_signal",
-      hasUnitLikeRooms: true,
-      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
-    }
-  }
-
   return {
     repeatedUnitCount: null,
     repeatedUnitSource: null,
-    hasUnitLikeRooms: unitLikeRoomNames.length > 0,
+    hasUnitLikeRooms: unitLikeMeasuredRooms.length > 0 || unitLikeRoomLabels.length > 0,
     hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
   }
 }
@@ -690,7 +697,9 @@ function buildDrywallQuantitySupport(args: {
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bpatch|repair|hole|crack|texture|skim/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      /\bpatch|repair|hole|crack\b/i.test(
+        [finding.label, ...(finding.notes || [])].join(" ")
+      )
   )
   const quantifiedCeilingSqftFinding = drywallFindings.find(
     (finding) =>
