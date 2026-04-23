@@ -43,6 +43,7 @@ import type {
   EstimatorPayload,
   EstimateExplanation,
   EstimateBasis,
+  EstimateStructuredSection,
   PriceGuardReport,
   ScheduleBlock,
   ScopeXRay,
@@ -130,7 +131,74 @@ export type OrchestratorDeps = {
   scopeSignals?: ScopeSignals | null
   complexityProfile: ComplexityProfile | null
   priceGuard: PriceGuardReport
-}) => EstimateExplanation
+  }) => EstimateExplanation
+}
+
+function parseStructuredSectionLabel(args: {
+  label: string
+  fallbackTrade: string
+}): { trade: string; section: string } {
+  const raw = String(args.label || "").trim()
+  const match = raw.match(/^([a-z][a-z\s/_-]*):\s+(.+)$/i)
+  const knownTrades = new Set([
+    "painting",
+    "drywall",
+    "wallcovering",
+    "flooring",
+    "electrical",
+    "plumbing",
+    "carpentry",
+    "texture",
+    "general renovation",
+  ])
+
+  if (match?.[1] && match?.[2]) {
+    const trade = match[1].trim().toLowerCase()
+    if (knownTrades.has(trade)) {
+      return {
+        trade,
+        section: match[2].trim(),
+      }
+    }
+  }
+
+  return {
+    trade: args.fallbackTrade,
+    section: raw,
+  }
+}
+
+function buildEstimateSections(args: {
+  trade: string
+  basis: EstimateBasis | null
+}): EstimateStructuredSection[] | null {
+  const sections = args.basis?.sectionPricing
+  if (!Array.isArray(sections) || !sections.length) return null
+
+  return sections.map((section) => {
+    const parsed = parseStructuredSectionLabel({
+      label: section.section,
+      fallbackTrade: args.trade,
+    })
+
+    return {
+      trade: parsed.trade,
+      section: parsed.section,
+      label: section.section,
+      pricingBasis: section.pricingBasis,
+      estimatorTreatment:
+        section.pricingBasis === "direct"
+          ? "section_row"
+          : "embedded_burden",
+      amount: Number(section.total || 0),
+      labor: Number(section.labor || 0),
+      materials: Number(section.materials || 0),
+      subs: Number(section.subs || 0),
+      unit: section.unit,
+      quantity: section.quantity,
+      notes: [...(section.notes || [])],
+    }
+  })
 }
 
 function coerceDraft(draft: AIResponse): AIResponse {
@@ -348,6 +416,10 @@ export async function runEstimatorOrchestrator(args: {
   finalBasis = deps.basis.normalizeBasisSafe(finalBasis)
   finalBasis = deps.basis.syncEstimateBasisMath({
     pricing: finalPricing,
+    basis: finalBasis,
+  })
+  const estimateSections = buildEstimateSections({
+    trade: ctx.trade,
     basis: finalBasis,
   })
 
@@ -604,6 +676,7 @@ if (ctx.planIntelligence?.ok) {
           notes: ctx.multiTradeDet.notes,
         }
       : null,
+    estimateSections,
     pricingSource: resolvedPricing.pricingSource,
     detSource: resolvedPricing.detSource,
     priceGuardAnchor: ownerDecision.anchorId,
