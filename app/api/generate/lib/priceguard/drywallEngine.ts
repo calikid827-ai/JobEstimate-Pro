@@ -12,6 +12,19 @@ export type DrywallDeterministicResult = {
   okForDeterministic: boolean
   okForVerified: boolean
   pricing: Pricing | null
+  estimateBasis: {
+    units: ("sqft" | "days" | "lump_sum")[]
+    quantities: {
+      sqft?: number
+      days?: number
+      lump_sum?: number
+    }
+    laborRate: number
+    hoursPerUnit?: number
+    crewDays: number
+    mobilization: number
+    assumptions: string[]
+  } | null
   jobType: "install_finish" | "patch_repair" | "unknown"
   signals: {
     sqft?: number | null
@@ -121,21 +134,50 @@ function isTextureMatch(scopeText: string): boolean {
   return /\b(texture|knockdown|orange\s*peel|skip\s*trowel|match\s*texture)\b/.test(t)
 }
 
+function buildEstimateBasis(args: {
+  pricing: Pricing
+  laborRate: number
+  sqft: number | null
+  crewDays: number
+  mobilization: number
+  assumptions: string[]
+}): DrywallDeterministicResult["estimateBasis"] {
+  const impliedLaborHours =
+    args.laborRate > 0 ? Number(args.pricing.labor || 0) / args.laborRate : 0
+
+  return {
+    units: args.sqft && args.sqft > 0 ? ["days", "sqft"] : ["days", "lump_sum"],
+    quantities: {
+      sqft: args.sqft ?? undefined,
+      days: args.crewDays,
+      lump_sum: args.sqft && args.sqft > 0 ? undefined : 1,
+    },
+    laborRate: args.laborRate,
+    hoursPerUnit:
+      args.sqft && args.sqft > 0
+        ? Math.round((impliedLaborHours / args.sqft) * 1000) / 1000
+        : undefined,
+    crewDays: args.crewDays,
+    mobilization: args.mobilization,
+    assumptions: args.assumptions,
+  }
+}
+
 // -----------------------------
 // MAIN ENGINE
 // -----------------------------
 export function computeDrywallDeterministic(args: {
   scopeText: string
   stateMultiplier: number
-  measurements?: any | null
+  measurements?: { totalSqft?: number | null } | null
 }): DrywallDeterministicResult {
-  const notes: string[] = []
   const scope = (args.scopeText || "").trim()
   if (!scope) {
     return {
       okForDeterministic: false,
       okForVerified: false,
       pricing: null,
+      estimateBasis: null,
       jobType: "unknown",
       signals: {},
       notes: ["Empty scopeText"],
@@ -179,6 +221,7 @@ export function computeDrywallDeterministic(args: {
         okForDeterministic: false,
         okForVerified: false,
         pricing: null,
+        estimateBasis: null,
         jobType: "patch_repair",
         signals: {
           sqft: null,
@@ -201,12 +244,39 @@ export function computeDrywallDeterministic(args: {
       textureMatch: textureFlag,
       ceilingPatch: ceilingPatchFlag,
     })
+    const laborRate = 95
+    const mobilization = 250
+    const crewDays =
+      patchCount && patchCount > 0
+        ? patchCount <= 4
+          ? 1
+          : patchCount <= 10
+          ? 2
+          : Math.max(2, Math.ceil((patchCount * 1.1 + 2.75) / 8))
+        : sqft && sqft > 0
+        ? Math.max(1, Math.round((((sqft * 0.14 + 3.25) / 8) * 2)) / 2)
+        : 1
+    const estimateBasis = buildEstimateBasis({
+      pricing,
+      laborRate,
+      sqft: sqft ?? null,
+      crewDays,
+      mobilization,
+      assumptions: [
+        patchCount ? `${patchCount} patch / repair location(s) informed the live drywall pricing route.` : null,
+        sqft ? `${sqft} repair sqft informed the live drywall pricing route.` : null,
+        finishLevel ? `Finish level ${finishLevel} was carried into patch / repair pricing.` : null,
+        textureFlag ? "Texture-match burden was included in patch / repair pricing." : null,
+        ceilingPatchFlag ? "Ceiling patch routing stayed separate inside drywall pricing." : null,
+      ].filter(Boolean) as string[],
+    })
 
     const okForVerified = !!patchCount || !!textSqft || !!sheetsInfo // measurement-only sqft is deterministic but not “verified”
     return {
       okForDeterministic: true,
       okForVerified,
       pricing,
+      estimateBasis,
       jobType: "patch_repair",
       signals: {
         sqft: sqft ?? null,
@@ -229,6 +299,7 @@ export function computeDrywallDeterministic(args: {
         okForDeterministic: false,
         okForVerified: false,
         pricing: null,
+        estimateBasis: null,
         jobType: "install_finish",
         signals: {
           sqft: null,
@@ -250,6 +321,29 @@ export function computeDrywallDeterministic(args: {
       finishLevel,
       textureMatch: textureFlag,
     })
+    const laborRate = 95
+    const baseLaborHours =
+      sqft *
+        (0.09 + (ceilingFlag ? 0.02 : 0) + (finishLevel === 3 ? -0.01 : 0) + (finishLevel === 5 ? 0.03 : 0) + (textureFlag ? 0.015 : 0)) +
+      4.5
+    const crewDays = Math.max(1, Math.round(((baseLaborHours / 8) * 2)) / 2)
+    const mobilization =
+      sqft <= 150 ? 275 :
+      sqft <= 400 ? 425 :
+      650
+    const estimateBasis = buildEstimateBasis({
+      pricing,
+      laborRate,
+      sqft,
+      crewDays,
+      mobilization,
+      assumptions: [
+        `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
+        finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
+        textureFlag ? "Texture-match burden was included in install / finish pricing." : null,
+      ].filter(Boolean) as string[],
+    })
 
     // Verified if sqft was explicit in text or sheets were explicit (measurement-only sqft = deterministic, not verified)
     const okForVerified = !!textSqft || !!sheetsInfo
@@ -257,6 +351,7 @@ export function computeDrywallDeterministic(args: {
       okForDeterministic: true,
       okForVerified,
       pricing,
+      estimateBasis,
       jobType: "install_finish",
       signals: {
         sqft,
@@ -280,12 +375,36 @@ export function computeDrywallDeterministic(args: {
       finishLevel,
       textureMatch: textureFlag,
     })
+    const laborRate = 95
+    const baseLaborHours =
+      sqft *
+        (0.09 + (ceilingFlag ? 0.02 : 0) + (finishLevel === 3 ? -0.01 : 0) + (finishLevel === 5 ? 0.03 : 0) + (textureFlag ? 0.015 : 0)) +
+      4.5
+    const crewDays = Math.max(1, Math.round(((baseLaborHours / 8) * 2)) / 2)
+    const mobilization =
+      sqft <= 150 ? 275 :
+      sqft <= 400 ? 425 :
+      650
+    const estimateBasis = buildEstimateBasis({
+      pricing,
+      laborRate,
+      sqft,
+      crewDays,
+      mobilization,
+      assumptions: [
+        `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
+        finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
+        textureFlag ? "Texture-match burden was included in install / finish pricing." : null,
+      ].filter(Boolean) as string[],
+    })
 
     const okForVerified = !!textSqft || !!sheetsInfo
     return {
       okForDeterministic: true,
       okForVerified,
       pricing,
+      estimateBasis,
       jobType: "install_finish",
       signals: {
         sqft,
@@ -304,6 +423,7 @@ export function computeDrywallDeterministic(args: {
     okForDeterministic: false,
     okForVerified: false,
     pricing: null,
+    estimateBasis: null,
     jobType: "unknown",
     signals: {
       sqft: sqft ?? null,

@@ -1,9 +1,25 @@
 import { decidePricingOwner } from "./pricingOwner"
 import { buildEstimateDefenseMode } from "./estimateDefenseMode"
+import { buildTradeExecutionPricingPrep } from "./tradeExecutionPricingPrep"
+import { buildTradeEstimateGenerationInputs } from "./tradeEstimateGenerationInputs"
+import {
+  applyTradePricingExecutionBridgeToBasis,
+  buildTradePricingExecutionBridge,
+} from "./tradePricingExecutionBridge"
+import {
+  applyTradePricingInterpretationBridgeToBasis,
+  buildTradePricingInterpretationBridge,
+} from "./tradePricingInterpretationBridge"
+import {
+  applyConsolidatedTradePricingSectionExecutionBridgeToBasis,
+  applyTradePricingSectionExecutionBridgeToBasis,
+  buildTradePricingSectionExecutionBridge,
+} from "./tradePricingSectionExecutionBridge"
 import { buildEstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import { buildEstimateStructureConsumption } from "./estimateStructureConsumption"
 import { detectMissedScope } from "./missedScopeDetector"
 import { detectProfitLeaks } from "./profitLeakDetector"
+import { buildTradeAssembledPricingInputs } from "./tradeAssembledPricingInputs"
 import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
 import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
 import { buildTradePreparedPricingInputs } from "./tradePreparedPricingInputs"
@@ -142,6 +158,75 @@ export async function runEstimatorOrchestrator(args: {
   const { ctx, deps } = args
   const draft = coerceDraft(args.aiDraft)
 
+  const estimateSkeletonHandoff = buildEstimateSkeletonHandoff(ctx.planIntelligence)
+  const estimateStructureConsumption = buildEstimateStructureConsumption(
+    estimateSkeletonHandoff
+  )
+  const tradePackagePricingPrep = buildTradePackagePricingPrep({
+    trade: ctx.trade,
+    planIntelligence: ctx.planIntelligence,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    scopeText: ctx.scopeChange,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradeQuantitySupport = buildTradeQuantitySupport({
+    trade: ctx.trade,
+    scopeText: ctx.scopeChange,
+    planIntelligence: ctx.planIntelligence,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    tradePackagePricingPrep,
+  })
+  const tradePricingBasisBridge = buildTradePricingBasisBridge({
+    trade: ctx.trade,
+    scopeText: ctx.scopeChange,
+    planIntelligence: ctx.planIntelligence,
+    tradeQuantitySupport,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradePricingInputDraft = buildTradePricingInputDraft({
+    tradePricingBasisBridge,
+    tradeQuantitySupport,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    planIntelligence: ctx.planIntelligence,
+    scopeText: ctx.scopeChange,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradePreparedPricingInputs = buildTradePreparedPricingInputs({
+    tradePricingInputDraft,
+    tradePricingBasisBridge,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    planIntelligence: ctx.planIntelligence,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradeAssembledPricingInputs = buildTradeAssembledPricingInputs({
+    tradePreparedPricingInputs,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradeEstimateGenerationInputs = buildTradeEstimateGenerationInputs({
+    tradeAssembledPricingInputs,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+  const tradeExecutionPricingPrep = buildTradeExecutionPricingPrep({
+    tradeEstimateGenerationInputs,
+    tradeStack: ctx.tradeStack,
+    complexityProfile: ctx.complexityProfile,
+  })
+
   const ownerDecision = decidePricingOwner(ctx)
 
   const resolvedPricing = resolvePricingFromOwner({
@@ -169,6 +254,39 @@ export async function runEstimatorOrchestrator(args: {
     complexity: ctx.complexityProfile,
     helpers: deps.basis,
   })
+  const tradePricingExecutionBridge = buildTradePricingExecutionBridge({
+    tradeExecutionPricingPrep,
+    effectivePaintScope: ctx.effectivePaintScope,
+    effectiveSqft,
+    rooms: ctx.rooms,
+    doors: ctx.doors,
+  })
+  const influencedEstimateBasis = applyTradePricingExecutionBridgeToBasis({
+    basis: estimateBasis,
+    tradePricingExecutionBridge,
+  })
+  const tradePricingInterpretationBridge = buildTradePricingInterpretationBridge({
+    basis: influencedEstimateBasis,
+    tradePricingExecutionBridge,
+  })
+  const interpretedEstimateBasis = applyTradePricingInterpretationBridgeToBasis({
+    basis: influencedEstimateBasis,
+    tradePricingInterpretationBridge,
+  })
+  const tradePricingSectionExecutionBridge = buildTradePricingSectionExecutionBridge({
+    basis: interpretedEstimateBasis,
+    tradePricingInterpretationBridge,
+  })
+  const sectionExecutionPreviewBasis = applyTradePricingSectionExecutionBridgeToBasis({
+    basis: interpretedEstimateBasis,
+    tradePricingSectionExecutionBridge,
+  })
+  const sectionExecutedEstimateBasis = applyConsolidatedTradePricingSectionExecutionBridgeToBasis({
+    basis: sectionExecutionPreviewBasis,
+    tradePricingExecutionBridge,
+    tradePricingInterpretationBridge,
+    tradePricingSectionExecutionBridge,
+  })
 
   const protectedResult = applyFinalPricingProtections({
     pricing: resolvedPricing.pricing,
@@ -178,7 +296,7 @@ export async function runEstimatorOrchestrator(args: {
     detSource: resolvedPricing.detSource,
     complexity: ctx.complexityProfile,
     photoImpact: ctx.photoImpact,
-    basis: estimateBasis,
+    basis: sectionExecutedEstimateBasis,
     tradeStack: ctx.tradeStack,
     scopeText: ctx.scopeChange,
     helpers: deps.pricing,
@@ -382,59 +500,6 @@ if (ctx.planIntelligence?.ok) {
     complexityProfile: ctx.complexityProfile,
   })
 
-  const estimateSkeletonHandoff = buildEstimateSkeletonHandoff(ctx.planIntelligence)
-  const estimateStructureConsumption = buildEstimateStructureConsumption(
-    estimateSkeletonHandoff
-  )
-  const tradePackagePricingPrep = buildTradePackagePricingPrep({
-    trade: ctx.trade,
-    planIntelligence: ctx.planIntelligence,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    scopeText: ctx.scopeChange,
-    tradeStack: ctx.tradeStack,
-    complexityProfile: ctx.complexityProfile,
-  })
-  const tradeQuantitySupport = buildTradeQuantitySupport({
-    trade: ctx.trade,
-    scopeText: ctx.scopeChange,
-    planIntelligence: ctx.planIntelligence,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    tradePackagePricingPrep,
-  })
-  const tradePricingBasisBridge = buildTradePricingBasisBridge({
-    trade: ctx.trade,
-    scopeText: ctx.scopeChange,
-    planIntelligence: ctx.planIntelligence,
-    tradeQuantitySupport,
-    tradePackagePricingPrep,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    tradeStack: ctx.tradeStack,
-    complexityProfile: ctx.complexityProfile,
-  })
-  const tradePricingInputDraft = buildTradePricingInputDraft({
-    tradePricingBasisBridge,
-    tradeQuantitySupport,
-    tradePackagePricingPrep,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    planIntelligence: ctx.planIntelligence,
-    scopeText: ctx.scopeChange,
-    tradeStack: ctx.tradeStack,
-    complexityProfile: ctx.complexityProfile,
-  })
-  const tradePreparedPricingInputs = buildTradePreparedPricingInputs({
-    tradePricingInputDraft,
-    tradePricingBasisBridge,
-    tradePackagePricingPrep,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    planIntelligence: ctx.planIntelligence,
-    tradeStack: ctx.tradeStack,
-    complexityProfile: ctx.complexityProfile,
-  })
   const tradePricingPrepAnalysis =
     buildTradePricingPrepAnalysis(tradePackagePricingPrep)
 
@@ -522,6 +587,12 @@ if (ctx.planIntelligence?.ok) {
     tradePricingBasisBridge,
     tradePricingInputDraft,
     tradePreparedPricingInputs,
+    tradeAssembledPricingInputs,
+    tradeEstimateGenerationInputs,
+    tradeExecutionPricingPrep,
+    tradePricingExecutionBridge,
+    tradePricingInterpretationBridge,
+    tradePricingSectionExecutionBridge,
     materialsList: ctx.materialsList,
     areaScopeBreakdown: ctx.areaScopeBreakdown,
     splitScopes: ctx.splitScopes,

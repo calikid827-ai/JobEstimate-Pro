@@ -12,6 +12,10 @@ import {
 } from "./lib/guards"
 
 import { buildEstimatorContext } from "./lib/estimator/context"
+import {
+  buildLiveTradePricingInfluence,
+  mergeLiveTradePricingInfluenceIntoBasis,
+} from "./lib/estimator/liveTradePricingInfluence"
 import { rateLimit } from "./lib/rateLimit"
 import { computeFlooringDeterministic } from "./lib/priceguard/flooringEngine"
 import { computeElectricalDeterministic } from "./lib/priceguard/electricalEngine"
@@ -7125,20 +7129,49 @@ console.log("PG PLUMBING CONFLICT", {
   okForDeterministic: plumbingDet?.okForDeterministic ?? null,
 })
 
+const liveTradePricingInfluence = buildLiveTradePricingInfluence({
+  trade,
+  scopeText: scopeChange,
+  measurements,
+  paintScope: paintScopeForJob,
+  planIntelligence,
+  tradeStack,
+  complexityProfile,
+})
+
     // Drywall deterministic engine (PriceGuard™)
 const drywallDetMeasurements =
-  quantityInputs.effectiveWallSqft && quantityInputs.effectiveWallSqft > 0
+  liveTradePricingInfluence?.trade === "drywall" &&
+  liveTradePricingInfluence.canAffectNumericPricing &&
+  liveTradePricingInfluence.measurementsOverride
+    ? liveTradePricingInfluence.measurementsOverride
+    : quantityInputs.effectiveWallSqft && quantityInputs.effectiveWallSqft > 0
     ? { ...(measurements || {}), totalSqft: quantityInputs.effectiveWallSqft }
     : measurements
 
 const drywallDet =
   trade === "drywall"
     ? computeDrywallDeterministic({
-        scopeText: scopeChange,
+        scopeText:
+          liveTradePricingInfluence?.trade === "drywall" &&
+          liveTradePricingInfluence.canAffectNumericPricing &&
+          liveTradePricingInfluence.scopeTextOverride
+            ? liveTradePricingInfluence.scopeTextOverride
+            : scopeChange,
         stateMultiplier,
         measurements: drywallDetMeasurements,
       })
     : null
+
+const drywallDetBasis = drywallDet?.estimateBasis
+  ? mergeLiveTradePricingInfluenceIntoBasis({
+      basis: drywallDet.estimateBasis,
+      influence:
+        liveTradePricingInfluence?.trade === "drywall"
+          ? liveTradePricingInfluence
+          : null,
+    })
+  : null
 
 const drywallDetPricing: Pricing | null =
   drywallDet?.okForDeterministic
@@ -7146,20 +7179,44 @@ const drywallDetPricing: Pricing | null =
     : null
 
 const paintingDetMeasurements =
-  quantityInputs.effectivePaintSqft && quantityInputs.effectivePaintSqft > 0
+  liveTradePricingInfluence?.trade === "painting" &&
+  liveTradePricingInfluence.canAffectNumericPricing &&
+  liveTradePricingInfluence.measurementsOverride
+    ? liveTradePricingInfluence.measurementsOverride
+    : quantityInputs.effectivePaintSqft && quantityInputs.effectivePaintSqft > 0
     ? { ...(measurements || {}), totalSqft: quantityInputs.effectivePaintSqft }
     : measurements
 
 const paintingDet =
   trade === "painting"
     ? computePaintingDeterministic({
-        scopeText: scopeChange,
+        scopeText:
+          liveTradePricingInfluence?.trade === "painting" &&
+          liveTradePricingInfluence.canAffectNumericPricing &&
+          liveTradePricingInfluence.scopeTextOverride
+            ? liveTradePricingInfluence.scopeTextOverride
+            : scopeChange,
         stateMultiplier,
         measurements: paintingDetMeasurements,
-        paintScope: paintScopeForJob ?? "walls",
+        paintScope:
+          liveTradePricingInfluence?.trade === "painting" &&
+          liveTradePricingInfluence.canAffectNumericPricing &&
+          liveTradePricingInfluence.paintScopeOverride
+            ? liveTradePricingInfluence.paintScopeOverride
+            : paintScopeForJob ?? "walls",
         photoAnalysis,
       })
     : null
+
+const paintingDetBasis = paintingDet?.estimateBasis
+  ? mergeLiveTradePricingInfluenceIntoBasis({
+      basis: paintingDet.estimateBasis,
+      influence:
+        liveTradePricingInfluence?.trade === "painting"
+          ? liveTradePricingInfluence
+          : null,
+    })
+  : null
 
 const paintingDetPricing: Pricing | null =
   paintingDet?.okForDeterministic
@@ -7440,7 +7497,7 @@ const ctxPhotos: CtxPhoto[] | null =
         okForVerified: !!paintingDet?.okForVerified,
         verifiedSource: "painting_engine_v1_verified",
         source: "painting_engine_v1",
-        estimateBasis: null,
+        estimateBasis: paintingDetBasis,
       }
     : null,
 
@@ -7480,7 +7537,7 @@ const ctxPhotos: CtxPhoto[] | null =
         okForVerified: !!drywallDet?.okForVerified,
         verifiedSource: "drywall_engine_v1_verified",
         source: "drywall_engine_v1",
-        estimateBasis: null,
+        estimateBasis: drywallDetBasis,
       }
     : null,
 

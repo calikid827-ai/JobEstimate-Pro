@@ -12,6 +12,12 @@ import type { TradePricingPrepAnalysis } from "./tradePricingPrepAnalysis"
 import type { TradePricingBasisBridge } from "./tradePricingBasisBridge"
 import type { TradePricingInputDraft } from "./tradePricingInputDraft"
 import type { TradePreparedPricingInputs } from "./tradePreparedPricingInputs"
+import type { TradeAssembledPricingInputs } from "./tradeAssembledPricingInputs"
+import type { TradeEstimateGenerationInputs } from "./tradeEstimateGenerationInputs"
+import type { TradeExecutionPricingPrep } from "./tradeExecutionPricingPrep"
+import type { TradePricingExecutionBridge } from "./tradePricingExecutionBridge"
+import type { TradePricingInterpretationBridge } from "./tradePricingInterpretationBridge"
+import type { TradePricingSectionExecutionBridge } from "./tradePricingSectionExecutionBridge"
 
 export type GenerateInput = z.infer<typeof GenerateSchema>
 
@@ -609,6 +615,12 @@ export type EstimatorPayload = {
   tradePricingBasisBridge?: TradePricingBasisBridge
   tradePricingInputDraft?: TradePricingInputDraft
   tradePreparedPricingInputs?: TradePreparedPricingInputs
+  tradeAssembledPricingInputs?: TradeAssembledPricingInputs
+  tradeEstimateGenerationInputs?: TradeEstimateGenerationInputs
+  tradeExecutionPricingPrep?: TradeExecutionPricingPrep
+  tradePricingExecutionBridge?: TradePricingExecutionBridge
+  tradePricingInterpretationBridge?: TradePricingInterpretationBridge
+  tradePricingSectionExecutionBridge?: TradePricingSectionExecutionBridge
 
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
