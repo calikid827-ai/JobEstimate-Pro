@@ -37,6 +37,11 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
+  provenance?: {
+    quantitySupport: "measured" | "scaled_prototype" | "support_only"
+    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
+    summary?: string
+  }
 }
 
 export type PaintingDeterministicResult = {
@@ -480,8 +485,13 @@ function buildPaintingSectionPricing(args: {
   doorCount: number | null
   trimLf: number | null
   interiorBaseSupport?: "measured" | "scaled" | null
+  wallSupportSource?: "trade_finding" | "takeoff" | null
+  ceilingSupportSource?: "trade_finding" | "takeoff" | null
+  prototypeSupportSource?: "repeated_space_rollup" | "takeoff" | "schedule" | null
   doorCountSupport?: "measured" | null
+  doorCountSource?: "trade_finding" | "takeoff" | "schedule" | null
   trimSupport?: "measured" | null
+  trimSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
     if (bucket.section === "Doors / frames") {
@@ -493,6 +503,14 @@ function buildPaintingSectionPricing(args: {
         notes:
           args.doorCountSupport === "measured"
             ? ["Measured plan opening counts support this door/frame row."]
+            : undefined,
+        provenance:
+          args.doorCountSupport === "measured"
+            ? {
+                quantitySupport: "measured",
+                sourceBasis: args.doorCountSource ? [args.doorCountSource] : [],
+                summary: "Direct door/frame row is backed by explicit counted openings.",
+              }
             : undefined,
       }
     }
@@ -507,6 +525,14 @@ function buildPaintingSectionPricing(args: {
           args.trimSupport === "measured"
             ? ["Measured plan trim/casing footage supports this row."]
             : undefined,
+        provenance:
+          args.trimSupport === "measured"
+            ? {
+                quantitySupport: "measured",
+                sourceBasis: args.trimSource ? [args.trimSource] : [],
+                summary: "Direct trim/casing row is backed by measured trim footage.",
+              }
+            : undefined,
       }
     }
 
@@ -515,6 +541,11 @@ function buildPaintingSectionPricing(args: {
         ...bucket,
         pricingBasis: "burden",
         notes: ["Section remains embedded in the interior paint engine, but is now surfaced structurally."],
+        provenance: {
+          quantitySupport: "support_only",
+          sourceBasis: ["repeated_space_rollup"],
+          summary: "Embedded burden remains non-standalone and non-authoritative.",
+        },
       }
     }
 
@@ -529,6 +560,29 @@ function buildPaintingSectionPricing(args: {
             ? ["Strong repeated-room support backs this row as scaled prototype coverage, not as exact measured area."]
             : undefined
           : undefined,
+      provenance:
+        bucket.section === "Walls" || bucket.section === "Ceilings"
+          ? args.interiorBaseSupport === "measured"
+            ? {
+                quantitySupport: "measured",
+                sourceBasis: [
+                  bucket.section === "Ceilings"
+                    ? args.ceilingSupportSource || "takeoff"
+                    : args.wallSupportSource || "takeoff",
+                ],
+                summary:
+                  bucket.section === "Ceilings"
+                    ? "Direct ceiling row is backed by measured ceiling area."
+                    : "Direct wall row is backed by measured wall area.",
+              }
+            : args.interiorBaseSupport === "scaled"
+              ? {
+                  quantitySupport: "scaled_prototype",
+                  sourceBasis: [args.prototypeSupportSource || "repeated_space_rollup"],
+                  summary: "Direct row is backed by repeated-unit prototype scaling, not measured area.",
+                }
+              : undefined
+          : undefined,
     }
   })
 }
@@ -542,20 +596,25 @@ export function computePaintingDeterministic(args: {
   measurements?: { totalSqft?: number | null } | null
   paintScope?: PaintScope | null
   photoAnalysis?: PaintingPhotoAnalysis | null
-    planSectionInputs?: {
-      supportedInteriorSqft?: number | null
-      supportedWallSqft?: number | null
-      supportedCeilingSqft?: number | null
-      supportedRoomCount?: number | null
-      supportedDoorCount?: number | null
-      supportedTrimLf?: number | null
-      includeCeilings?: boolean
-      hasCorridorSection?: boolean
-      hasPrepProtectionSection?: boolean
-      interiorBaseSupport?: "measured" | "scaled" | null
-      doorCountSupport?: "measured" | null
-      trimSupport?: "measured" | null
-    } | null
+  planSectionInputs?: {
+    supportedInteriorSqft?: number | null
+    supportedWallSqft?: number | null
+    supportedCeilingSqft?: number | null
+    wallSupportSource?: "trade_finding" | "takeoff" | null
+    ceilingSupportSource?: "trade_finding" | "takeoff" | null
+    supportedRoomCount?: number | null
+    prototypeSupportSource?: "repeated_space_rollup" | "takeoff" | "schedule" | null
+    supportedDoorCount?: number | null
+    doorCountSource?: "trade_finding" | "takeoff" | "schedule" | null
+    supportedTrimLf?: number | null
+    trimSource?: "trade_finding" | "takeoff" | null
+    includeCeilings?: boolean
+    hasCorridorSection?: boolean
+    hasPrepProtectionSection?: boolean
+    interiorBaseSupport?: "measured" | "scaled" | null
+    doorCountSupport?: "measured" | null
+    trimSupport?: "measured" | null
+  } | null
 }): PaintingDeterministicResult {
   const scope = (args.scopeText || "").trim()
 
@@ -749,6 +808,7 @@ export function computePaintingDeterministic(args: {
         doorCount: doors,
         trimLf: null,
         interiorBaseSupport: "measured",
+        doorCountSource: "takeoff",
         doorCountSupport: "measured",
         trimSupport: null,
       }),
@@ -880,8 +940,13 @@ export function computePaintingDeterministic(args: {
         doorCount: doors,
         trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
         interiorBaseSupport: args.planSectionInputs?.interiorBaseSupport ?? null,
+        wallSupportSource: args.planSectionInputs?.wallSupportSource ?? null,
+        ceilingSupportSource: args.planSectionInputs?.ceilingSupportSource ?? null,
+        prototypeSupportSource: args.planSectionInputs?.prototypeSupportSource ?? null,
         doorCountSupport: args.planSectionInputs?.doorCountSupport ?? null,
+        doorCountSource: args.planSectionInputs?.doorCountSource ?? null,
         trimSupport: args.planSectionInputs?.trimSupport ?? null,
+        trimSource: args.planSectionInputs?.trimSource ?? null,
       }),
     })
 
@@ -971,8 +1036,13 @@ export function computePaintingDeterministic(args: {
         doorCount: null,
         trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
         interiorBaseSupport: args.planSectionInputs?.interiorBaseSupport ?? null,
+        wallSupportSource: args.planSectionInputs?.wallSupportSource ?? null,
+        ceilingSupportSource: args.planSectionInputs?.ceilingSupportSource ?? null,
+        prototypeSupportSource: args.planSectionInputs?.prototypeSupportSource ?? null,
         doorCountSupport: args.planSectionInputs?.doorCountSupport ?? null,
+        doorCountSource: args.planSectionInputs?.doorCountSource ?? null,
         trimSupport: args.planSectionInputs?.trimSupport ?? null,
+        trimSource: args.planSectionInputs?.trimSource ?? null,
       }),
     })
 

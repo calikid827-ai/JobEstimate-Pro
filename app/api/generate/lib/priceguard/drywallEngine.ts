@@ -19,6 +19,11 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "linear_ft" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
+  provenance?: {
+    quantitySupport: "measured" | "scaled_prototype" | "support_only"
+    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
+    summary?: string
+  }
 }
 
 export type DrywallDeterministicResult = {
@@ -209,6 +214,10 @@ function buildDrywallSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   partitionLf: number | null
   supportedSqftSupport?: "measured" | null
+  assemblySource?: "trade_finding" | "takeoff" | null
+  finishTextureSource?: "trade_finding" | "takeoff" | null
+  repairSource?: "trade_finding" | null
+  ceilingSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
     if (bucket.section === "Partition-related scope") {
@@ -218,6 +227,11 @@ function buildDrywallSectionPricing(args: {
         unit: args.partitionLf && args.partitionLf > 0 ? "linear_ft" : undefined,
         quantity: args.partitionLf && args.partitionLf > 0 ? args.partitionLf : undefined,
         notes: ["Partition section remains burden-based and does not imply full board/finish assembly pricing."],
+        provenance: {
+          quantitySupport: "support_only",
+          sourceBasis: ["trade_finding"],
+          summary: "Partition burden remains non-standalone until a fuller measured assembly basis exists.",
+        },
       }
     }
 
@@ -227,6 +241,29 @@ function buildDrywallSectionPricing(args: {
       notes:
         args.supportedSqftSupport === "measured"
           ? ["Measured drywall support backs this direct row."]
+          : undefined,
+      provenance:
+        args.supportedSqftSupport === "measured"
+          ? {
+              quantitySupport: "measured",
+              sourceBasis: [
+                bucket.section === "Patch / repair"
+                  ? args.repairSource || "trade_finding"
+                  : bucket.section === "Finish / texture"
+                    ? args.finishTextureSource || args.assemblySource || "takeoff"
+                    : bucket.section === "Ceiling drywall"
+                      ? args.ceilingSource || args.assemblySource || "takeoff"
+                      : args.assemblySource || "takeoff",
+              ],
+              summary:
+                bucket.section === "Patch / repair"
+                  ? "Direct patch/repair row is backed by measured repair area."
+                  : bucket.section === "Finish / texture"
+                    ? "Direct finish/texture row is backed by measured finish/texture or assembly area."
+                    : bucket.section === "Ceiling drywall"
+                      ? "Direct ceiling drywall row is backed by measured ceiling drywall area."
+                      : "Direct drywall row is backed by measured assembly area.",
+            }
           : undefined,
     }
   })
@@ -247,6 +284,11 @@ export function computeDrywallDeterministic(args: {
     forceInstallFinish?: boolean
     hasFinishTextureSection?: boolean
     supportedSqftSupport?: "measured" | null
+    supportedFinishTextureSqft?: number | null
+    assemblySource?: "trade_finding" | "takeoff" | null
+    finishTextureSource?: "trade_finding" | "takeoff" | null
+    repairSource?: "trade_finding" | null
+    ceilingSource?: "trade_finding" | "takeoff" | null
   } | null
 }): DrywallDeterministicResult {
   const scope = (args.scopeText || "").trim()
@@ -372,6 +414,10 @@ export function computeDrywallDeterministic(args: {
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
+        assemblySource: args.planSectionInputs?.assemblySource ?? null,
+        finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,
+        repairSource: args.planSectionInputs?.repairSource ?? null,
+        ceilingSource: args.planSectionInputs?.ceilingSource ?? null,
       }),
     })
 
@@ -469,6 +515,10 @@ export function computeDrywallDeterministic(args: {
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
+        assemblySource: args.planSectionInputs?.assemblySource ?? null,
+        finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,
+        repairSource: args.planSectionInputs?.repairSource ?? null,
+        ceilingSource: args.planSectionInputs?.ceilingSource ?? null,
       }),
     })
 
@@ -545,6 +595,10 @@ export function computeDrywallDeterministic(args: {
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
         supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
+        assemblySource: args.planSectionInputs?.assemblySource ?? null,
+        finishTextureSource: args.planSectionInputs?.finishTextureSource ?? null,
+        repairSource: args.planSectionInputs?.repairSource ?? null,
+        ceilingSource: args.planSectionInputs?.ceilingSource ?? null,
       }),
     })
 

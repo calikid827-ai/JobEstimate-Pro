@@ -21,9 +21,14 @@ export type LiveTradePricingInfluence = {
       supportedInteriorSqft: number | null
       supportedWallSqft: number | null
       supportedCeilingSqft: number | null
+      wallSupportSource: "trade_finding" | "takeoff" | null
+      ceilingSupportSource: "trade_finding" | "takeoff" | null
       supportedRoomCount: number | null
+      prototypeSupportSource: "repeated_space_rollup" | "takeoff" | "schedule" | null
       supportedDoorCount: number | null
+      doorCountSource: "trade_finding" | "takeoff" | "schedule" | null
       supportedTrimLf: number | null
+      trimSource: "trade_finding" | "takeoff" | null
       includeCeilings: boolean
       hasCorridorSection: boolean
       hasPrepProtectionSection: boolean
@@ -33,6 +38,11 @@ export type LiveTradePricingInfluence = {
     }
     drywall?: {
       supportedSqft: number | null
+      supportedFinishTextureSqft: number | null
+      assemblySource: "trade_finding" | "takeoff" | null
+      finishTextureSource: "trade_finding" | "takeoff" | null
+      repairSource: "trade_finding" | null
+      ceilingSource: "trade_finding" | "takeoff" | null
       supportedPartitionLf: number | null
       includeCeilings: boolean
       forcePatchRepair: boolean
@@ -42,6 +52,8 @@ export type LiveTradePricingInfluence = {
     }
     wallcovering?: {
       supportedSqft: number | null
+      coverageKind: "full_area" | "corridor_area" | "selected_elevation" | null
+      areaSource: "trade_finding" | "takeoff" | null
       hasRemovalPrepSection: boolean
       hasInstallSection: boolean
       hasCorridorSection: boolean
@@ -216,7 +228,7 @@ function buildPaintingInfluence(args: {
 }): LiveTradePricingInfluence {
   const roomSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
-    label: /\brepeated room package support\b/i,
+    label: /\brepeated (room package|unit prototype) support\b/i,
     unit: "rooms",
   })
   const doorSignal = findExactSignal({
@@ -281,16 +293,43 @@ function buildPaintingInfluence(args: {
                   : null,
               supportedWallSqft,
               supportedCeilingSqft,
+              wallSupportSource: wallSignal?.source === "trade_finding" ? "trade_finding" : wallSignal?.source === "takeoff" ? "takeoff" : null,
+              ceilingSupportSource:
+                ceilingSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : ceilingSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
               supportedRoomCount: Number(roomSignal?.quantity || 0) > 0 ? Math.round(Number(roomSignal?.quantity || 0)) : null,
+              prototypeSupportSource:
+                roomSignal?.source === "room_signal" || roomSignal?.source === "takeoff"
+                  ? "repeated_space_rollup"
+                  : roomSignal?.source === "schedule"
+                    ? "schedule"
+                    : null,
               supportedDoorCount:
                 doorSignal &&
                 args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
                   ? Math.round(Number(doorSignal.quantity || 0))
                   : null,
+              doorCountSource:
+                doorSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : doorSignal?.source === "schedule"
+                    ? "schedule"
+                    : doorSignal?.source === "takeoff"
+                      ? "takeoff"
+                      : null,
               supportedTrimLf:
                 trimSignal && args.executionSections.includes("Trim / casing")
                   ? Math.round(Number(trimSignal.quantity || 0))
                   : null,
+              trimSource:
+                trimSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : trimSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
               includeCeilings: paintScopeOverride === "walls_ceilings",
               hasCorridorSection: args.executionSections.includes("Corridor repaint"),
               hasPrepProtectionSection: args.executionSections.includes("Prep / protection"),
@@ -319,7 +358,7 @@ function buildPaintingInfluence(args: {
         roomSignal
           ? measuredInteriorBase
             ? `Plan-aware pricing kept ${Math.round(roomSignal.quantity || 0)} repeated room(s) as organization support while measured wall area remained the numeric basis.`
-            : `Plan-aware pricing used ${Math.round(roomSignal.quantity || 0)} strongly supported repeated room(s) as scaled interior-base support.`
+            : `Plan-aware pricing used ${Math.round(roomSignal.quantity || 0)} strongly supported repeated unit/room prototypes as scaled interior-base support.`
           : null,
         wallSignal
           ? supportedCeilingSqft
@@ -332,6 +371,9 @@ function buildPaintingInfluence(args: {
           : null,
         args.executionSections.includes("Corridor repaint")
           ? "Corridor repaint remains separately routed in plan-aware painting interpretation, even when current math still prices it inside the main paint run."
+          : null,
+        roomSignal && args.executionSections.includes("Corridor repaint")
+          ? "Repeated-unit prototype support stayed separate from corridor/common-area burden routing."
           : null,
         trimSignal && args.executionSections.includes("Trim / casing")
           ? `Plan-aware pricing used ${Math.round(Number(trimSignal.quantity || 0))} measured trim LF for live trim/casing numeric carry.`
@@ -367,6 +409,11 @@ function buildDrywallInfluence(args: {
     label: /\bmeasured drywall assembly area support\b/i,
     unit: "sqft",
   })
+  const measuredFinishSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bmeasured finish\s*\/\s*texture area support\b/i,
+    unit: "sqft",
+  })
   const measuredCeilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     label: /\bmeasured ceiling drywall area support\b/i,
@@ -398,7 +445,7 @@ function buildDrywallInfluence(args: {
   const installSqft =
     isInstall
       ? Math.round(
-          Number(measuredAssemblySignal?.quantity || wallSignal?.quantity || 0) +
+          Number(measuredAssemblySignal?.quantity || measuredFinishSignal?.quantity || wallSignal?.quantity || 0) +
             Number(includeCeilings ? measuredCeilingSignal?.quantity || ceilingSignal?.quantity || 0 : 0)
         )
       : 0
@@ -423,6 +470,32 @@ function buildDrywallInfluence(args: {
                   : isPatchRepair && patchSqft > 0
                   ? patchSqft
                   : null,
+              supportedFinishTextureSqft:
+                args.executionSections.includes("Finish / texture") &&
+                measuredFinishSignal &&
+                Number(measuredFinishSignal.quantity || 0) > 0
+                  ? Math.round(Number(measuredFinishSignal.quantity || 0))
+                  : null,
+              assemblySource:
+                measuredAssemblySignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : wallSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
+              finishTextureSource:
+                measuredFinishSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : null,
+              repairSource:
+                measuredPatchSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : null,
+              ceilingSource:
+                measuredCeilingSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : ceilingSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
               supportedPartitionLf: partitionSignal ? Math.round(Number(partitionSignal.quantity || 0)) : null,
               includeCeilings: !!includeCeilings,
               forcePatchRepair: isPatchRepair,
@@ -442,6 +515,9 @@ function buildDrywallInfluence(args: {
           : null,
         measuredCeilingSignal && includeCeilings
           ? `Plan-aware drywall pricing used ${Math.round(Number(measuredCeilingSignal.quantity || 0))} measured ceiling drywall sqft for ceiling inclusion.`
+          : null,
+        measuredFinishSignal && args.executionSections.includes("Finish / texture")
+          ? `Plan-aware drywall pricing used ${Math.round(Number(measuredFinishSignal.quantity || 0))} measured finish/texture sqft for finish routing.`
           : null,
         isPatchRepair && patchSqft > 0
           ? `Plan-aware drywall pricing used ${Math.round(patchSqft)} measured repair sqft for patch/repair execution.`
@@ -484,16 +560,38 @@ function buildWallcoveringInfluence(args: {
     label: /\bwall-area support for wallcovering\b/i,
     unit: "sqft",
   })
+  const corridorAreaSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bcorridor wallcovering area support\b/i,
+    unit: "sqft",
+  })
+  const selectedElevationSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bselected-elevation wallcovering area support\b/i,
+    unit: "sqft",
+  })
   const planText = buildPlanText(args.planIntelligence)
   const materialType = detectWallcoveringMaterialType(args.scopeText, planText)
   const hasRemovalPrepSection = args.executionSections.includes("Removal / prep")
   const hasInstallSection = args.executionSections.includes("Install")
   const hasCorridorSection = args.executionSections.includes("Corridor wallcovering")
   const hasFeatureSection = args.executionSections.includes("Feature wall")
+  const coverageKind =
+    selectedElevationSignal && Number(selectedElevationSignal.quantity || 0) > 0
+      ? "selected_elevation"
+      : corridorAreaSignal && Number(corridorAreaSignal.quantity || 0) > 0
+        ? "corridor_area"
+        : wallAreaSignal && Number(wallAreaSignal.quantity || 0) > 0
+          ? "full_area"
+          : null
   const supportedSqft =
-    wallAreaSignal && Number(wallAreaSignal.quantity || 0) > 0
-      ? Math.round(Number(wallAreaSignal.quantity || 0))
-      : null
+    coverageKind === "selected_elevation"
+      ? Math.round(Number(selectedElevationSignal?.quantity || 0))
+      : coverageKind === "corridor_area"
+        ? Math.round(Number(corridorAreaSignal?.quantity || 0))
+        : wallAreaSignal && Number(wallAreaSignal.quantity || 0) > 0
+          ? Math.round(Number(wallAreaSignal.quantity || 0))
+          : null
   const canAffectNumericPricing =
     args.supportLevel !== "weak" &&
     !!supportedSqft &&
@@ -510,6 +608,15 @@ function buildWallcoveringInfluence(args: {
         ? {
             wallcovering: {
               supportedSqft,
+              coverageKind,
+              areaSource:
+                selectedElevationSignal?.source === "trade_finding" ||
+                corridorAreaSignal?.source === "trade_finding" ||
+                wallAreaSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : wallAreaSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
               hasRemovalPrepSection,
               hasInstallSection,
               hasCorridorSection,
@@ -530,7 +637,11 @@ function buildWallcoveringInfluence(args: {
     basisAssumptions: uniqStrings(
       [
         supportedSqft
-          ? `Plan-aware wallcovering pricing used ${supportedSqft} supported wallcovering sqft for live execution input assembly.`
+          ? coverageKind === "selected_elevation"
+            ? `Plan-aware wallcovering pricing used ${supportedSqft} measured selected-elevation sqft for live execution input assembly.`
+            : coverageKind === "corridor_area"
+              ? `Plan-aware wallcovering pricing used ${supportedSqft} measured corridor/common-area sqft for live execution input assembly.`
+              : `Plan-aware wallcovering pricing used ${supportedSqft} supported wallcovering sqft for live execution input assembly.`
           : null,
         hasRemovalPrepSection
           ? "Removal / prep remained explicitly routed in live wallcovering pricing."

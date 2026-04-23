@@ -6521,12 +6521,16 @@ function computeMultiTradeDeterministic(args: {
       overallSqft && overallSqft > 0
         ? { totalSqft: overallSqft }
         : args.measurements ?? null
+    const splitInfluenceMeasurements =
+      args.planIntelligence?.ok
+        ? null
+        : pieceMeasurements
     const splitLiveTradePricingInfluence =
       trade === "painting" || trade === "drywall" || trade === "wallcovering"
         ? buildLiveTradePricingInfluence({
             trade,
             scopeText: scope,
-            measurements: pieceMeasurements,
+            measurements: splitInfluenceMeasurements,
             paintScope: args.paintScope ?? "walls",
             planIntelligence: args.planIntelligence ?? null,
             tradeStack: args.tradeStack ?? null,
@@ -6558,7 +6562,7 @@ function computeMultiTradeDeterministic(args: {
                 splitLiveTradePricingInfluence.engineInputs.drywall.supportedSqft
               ),
             }
-          : null
+          : pieceMeasurements
         : pieceMeasurements
 
     if (!trade || !scope) continue

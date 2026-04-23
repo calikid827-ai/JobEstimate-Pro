@@ -173,6 +173,74 @@ function joinLower(texts: string[]): string {
   return texts.join(" ").toLowerCase()
 }
 
+function isUnitLikeRoomLabel(value: string): boolean {
+  return /\bguest room|guestroom|unit|suite|bed(room)?|typical room\b/i.test(value)
+}
+
+function isCorridorLikeRoomLabel(value: string): boolean {
+  return /\bcorridor|hallway|lobby|common area|common corridor\b/i.test(value)
+}
+
+function buildRepeatedSpaceRoomRollup(planIntelligence: PlanIntelligence | null): {
+  repeatedUnitCount: number | null
+  repeatedUnitSource: "takeoff" | "room_signal" | null
+  hasUnitLikeRooms: boolean
+  hasCorridorLikeRooms: boolean
+} {
+  if (!planIntelligence?.ok) {
+    return {
+      repeatedUnitCount: null,
+      repeatedUnitSource: null,
+      hasUnitLikeRooms: false,
+      hasCorridorLikeRooms: false,
+    }
+  }
+
+  const roomNames = [
+    ...(planIntelligence.detectedRooms || []),
+    ...(planIntelligence.likelyRoomTypes || []),
+    ...(planIntelligence.analyses || []).flatMap((analysis) =>
+      (analysis.rooms || []).map((room) => room.roomName)
+    ),
+  ]
+
+  const unitLikeRoomNames = roomNames.filter((roomName) => isUnitLikeRoomLabel(roomName))
+  const corridorLikeRoomNames = roomNames.filter((roomName) => isCorridorLikeRoomLabel(roomName))
+  const hasPrototypeSignals =
+    (planIntelligence.repeatedSpaceSignals || []).length > 0 ||
+    (planIntelligence.prototypeSignals || []).length > 0
+
+  if (
+    hasPrototypeSignals &&
+    unitLikeRoomNames.length > 0 &&
+    typeof planIntelligence.takeoff.roomCount === "number" &&
+    planIntelligence.takeoff.roomCount > 0
+  ) {
+    return {
+      repeatedUnitCount: Math.round(planIntelligence.takeoff.roomCount),
+      repeatedUnitSource: "takeoff",
+      hasUnitLikeRooms: true,
+      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+    }
+  }
+
+  if (hasPrototypeSignals && unitLikeRoomNames.length >= 2) {
+    return {
+      repeatedUnitCount: unitLikeRoomNames.length,
+      repeatedUnitSource: "room_signal",
+      hasUnitLikeRooms: true,
+      hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+    }
+  }
+
+  return {
+    repeatedUnitCount: null,
+    repeatedUnitSource: null,
+    hasUnitLikeRooms: unitLikeRoomNames.length > 0,
+    hasCorridorLikeRooms: corridorLikeRoomNames.length > 0,
+  }
+}
+
 function buildTakeoffEvidence(planIntelligence: PlanIntelligence | null): PlanEvidenceRef[] {
   return (planIntelligence?.evidence?.quantityRefs || []).slice(0, 3)
 }
@@ -284,6 +352,7 @@ function buildPaintingQuantitySupport(args: {
     "painting",
     /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i
   )
+  const repeatedSpaceRollup = buildRepeatedSpaceRoomRollup(plan)
   const quantifiedWallFinding = paintingFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
@@ -311,6 +380,9 @@ function buildPaintingQuantitySupport(args: {
       finding.quantity > 0 &&
       (finding.unit === "doors" || finding.unit === "each") &&
       /\bdoor|frame|casing/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const quantifiedDoorSchedule = doorSchedules.find(
+    (schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0
   )
 
   const areaSignals: TradeQuantitySignal[] = []
@@ -373,21 +445,19 @@ function buildPaintingQuantitySupport(args: {
     )
   }
 
-  if (
-    (plan?.takeoff.roomCount || 0) > 0 &&
-    ((plan?.repeatedSpaceSignals || []).length > 0 || /\bguest room|unit|suite|bedroom|room type\b/.test(blob))
-  ) {
+  if (repeatedSpaceRollup.repeatedUnitCount && repeatedSpaceRollup.repeatedUnitCount > 0) {
     areaSignals.push(
       buildSignal({
-        label: "Repeated room package support",
-        quantity: plan?.takeoff.roomCount ?? null,
+        label: "Repeated unit prototype support",
+        quantity: repeatedSpaceRollup.repeatedUnitCount,
         unit: "rooms",
         exactQuantity: true,
-        confidence:
-          (plan?.repeatedSpaceSignals || []).length > 0 ? "high" : "medium",
-        source: "takeoff",
+        confidence: "high",
+        source: repeatedSpaceRollup.repeatedUnitSource ?? "room_signal",
         note:
-          "Room count can support repeated-space painting packages, but not paintable area by itself.",
+          repeatedSpaceRollup.hasCorridorLikeRooms
+            ? "Repeated unit count supports prototype painting rollups, while corridor/common-area scope stays separate from direct repeated-unit rows."
+            : "Repeated unit count supports prototype painting rollups, but not measured paintable area by itself.",
         evidenceRefs: evidence,
       })
     )
@@ -435,6 +505,20 @@ function buildPaintingQuantitySupport(args: {
         note:
           "Measured door/frame counts exist in plan findings and can back direct door/frame rows.",
         evidenceRefs: quantifiedDoorFinding.evidence || [],
+      })
+    )
+  } else if (quantifiedDoorSchedule) {
+    openingSignals.push(
+      buildSignal({
+        label: "Door opening support",
+        quantity: quantifiedDoorSchedule.quantity ?? null,
+        unit: "doors",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedDoorSchedule.confidence ?? null, 75),
+        source: "schedule",
+        note:
+          "Exact door schedule counts exist and can back direct door/frame rows without relying on broader takeoff counts.",
+        evidenceRefs: quantifiedDoorSchedule.evidence || [],
       })
     )
   } else if ((plan?.takeoff.doorCount || 0) > 0 && (doorSchedules.length > 0 || /\bdoor|frame|casing\b/.test(blob))) {
@@ -485,6 +569,12 @@ function buildPaintingQuantitySupport(args: {
       packageBuckets.length > 0
         ? `Package buckets may help organize painting quantities around ${packageBuckets.join(", ")}.`
         : null,
+      repeatedSpaceRollup.hasUnitLikeRooms
+        ? "Unit-like room-type signals support prototype/repeated-room painting rollups."
+        : null,
+      repeatedSpaceRollup.hasCorridorLikeRooms
+        ? "Corridor/common-area room-type signals should stay separate from repeated-unit direct rows."
+        : null,
       /\bcorridor\b/.test(blob)
         ? "Corridor painting may need to stay separate from room interiors."
         : null,
@@ -503,14 +593,17 @@ function buildPaintingQuantitySupport(args: {
       areaSignals.every((item) => !item.exactQuantity)
         ? "Painting area is still not hard-counted; verify wall/ceiling sqft before using this for pricing."
         : null,
-      (plan?.takeoff.doorCount || 0) > 0
+      (plan?.takeoff.doorCount || 0) > 0 || !!quantifiedDoorSchedule
         ? "Do not assume door count also covers frames, casing, or adjacent trim without explicit scope support."
         : null,
       linearSignals.length === 0 && /\btrim|baseboard|casing|frame\b/.test(blob)
         ? "Trim/frame language is present, but linear support is still weak."
         : null,
-      (plan?.repeatedSpaceSignals || []).length > 0 && (plan?.takeoff.roomCount || 0) <= 0
+      (plan?.repeatedSpaceSignals || []).length > 0 && !repeatedSpaceRollup.repeatedUnitCount
         ? "Repeated-space cues exist, but repeat counts are still not hard-supported."
+        : null,
+      repeatedSpaceRollup.hasCorridorLikeRooms && repeatedSpaceRollup.repeatedUnitCount
+        ? "Repeated-unit rollups should not absorb corridor/common-area scope."
         : null,
       ...(args.tradePackagePricingPrep?.tradePackageMeasurementHints || []).slice(0, 2),
     ],
@@ -525,8 +618,10 @@ function buildPaintingQuantitySupport(args: {
       openingSignals.some((item) => item.exactQuantity)
         ? "Opening counts are visible in plan support."
         : null,
-      (plan?.repeatedSpaceSignals || []).length > 0
-        ? "Repeated-space signals strengthen package-style quantity support."
+      repeatedSpaceRollup.repeatedUnitCount
+        ? repeatedSpaceRollup.repeatedUnitSource === "room_signal"
+          ? "Room-type signals provide a repeatable unit count for prototype painting support."
+          : "Repeated-space signals strengthen package-style quantity support."
         : null,
       finishSchedules.length > 0
         ? "Finish schedules reinforce paint coverage cues."
@@ -613,6 +708,13 @@ function buildDrywallQuantitySupport(args: {
         [finding.label, ...(finding.notes || [])].join(" ")
       )
   )
+  const quantifiedFinishSqftFinding = drywallFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      /\bfinish|texture|level\s*[45]|skim/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
 
   const patchLike = /\b(patch|repair|hole|crack|texture|skim)\b/.test(blob)
   const installLike = /\b(hang|install|partition|wall type|sheetrock|drywall)\b/.test(blob)
@@ -665,6 +767,22 @@ function buildDrywallQuantitySupport(args: {
         note:
           "Measured ceiling drywall area exists in plan findings and can back direct ceiling drywall rows.",
         evidenceRefs: quantifiedCeilingSqftFinding.evidence || [],
+      })
+    )
+  }
+
+  if (quantifiedFinishSqftFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured finish / texture area support",
+        quantity: quantifiedFinishSqftFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedFinishSqftFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured finish/texture area exists in plan findings and can support direct finish/texture rows more safely than broad assembly inference alone.",
+        evidenceRefs: quantifiedFinishSqftFinding.evidence || [],
       })
     )
   }
@@ -768,6 +886,9 @@ function buildDrywallQuantitySupport(args: {
       /\btexture|orange peel|knockdown|level 5|skim\b/.test(blob)
         ? "Finish/texture cues affect how drywall area should be interpreted."
         : null,
+      quantifiedFinishSqftFinding
+        ? "Measured finish/texture area support exists for drywall finish routing."
+        : null,
       (plan?.repeatedSpaceSignals || []).length > 0 && patchLike
         ? "Repeated-space signals may support repeated-room repair patterns."
         : null,
@@ -822,6 +943,9 @@ function buildDrywallQuantitySupport(args: {
             : null,
           quantifiedRepairSqftFinding
             ? "Measured repair-area support exists for patch routing."
+            : null,
+          quantifiedFinishSqftFinding
+            ? "Measured finish/texture area support exists for finish routing."
             : null,
           linearSignals.some((item) => item.exactQuantity)
             ? "Partition-related linear support exists."
@@ -880,26 +1004,74 @@ function buildWallcoveringQuantitySupport(args: {
       finding.quantity > 0 &&
       finding.unit === "sqft"
   )
+  const selectedElevationFinding =
+    quantifiedWallcoveringSqftFinding &&
+    /\bfeature wall|accent wall|selected elevation|elevation\b/i.test(
+      [quantifiedWallcoveringSqftFinding.label, ...(quantifiedWallcoveringSqftFinding.notes || [])].join(" ")
+    )
+      ? quantifiedWallcoveringSqftFinding
+      : null
+  const corridorWallcoveringFinding =
+    quantifiedWallcoveringSqftFinding &&
+    /\bcorridor|hallway|lobby|common area\b/i.test(
+      [quantifiedWallcoveringSqftFinding.label, ...(quantifiedWallcoveringSqftFinding.notes || [])].join(" ")
+    )
+      ? quantifiedWallcoveringSqftFinding
+      : null
+  const fullAreaWallcoveringFinding =
+    quantifiedWallcoveringSqftFinding &&
+    !selectedElevationFinding &&
+    !corridorWallcoveringFinding
+      ? quantifiedWallcoveringSqftFinding
+      : null
 
   const areaSignals: TradeQuantitySignal[] = []
   const linearSignals: TradeQuantitySignal[] = []
   const openingSignals: TradeQuantitySignal[] = []
 
-  if (quantifiedWallcoveringSqftFinding) {
+  if (selectedElevationFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Selected-elevation wallcovering area support",
+        quantity: selectedElevationFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(selectedElevationFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured selected-elevation or feature-wall area exists in plan findings and stays narrower than gross full-room wall area.",
+        evidenceRefs: selectedElevationFinding.evidence || [],
+      })
+    )
+  } else if (corridorWallcoveringFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Corridor wallcovering area support",
+        quantity: corridorWallcoveringFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(corridorWallcoveringFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured corridor/common-area wallcovering area exists in plan findings and can back corridor install/remove rows while corridor burden stays embedded.",
+        evidenceRefs: corridorWallcoveringFinding.evidence || [],
+      })
+    )
+  } else if (fullAreaWallcoveringFinding) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",
-        quantity: quantifiedWallcoveringSqftFinding.quantity ?? null,
+        quantity: fullAreaWallcoveringFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
-        confidence: getTradeSignalConfidence(quantifiedWallcoveringSqftFinding.confidence ?? null, 75),
+        confidence: getTradeSignalConfidence(fullAreaWallcoveringFinding.confidence ?? null, 75),
         source: "trade_finding",
         note:
           "Measured wallcovering area exists in plan findings and can back direct install/remove rows more safely than gross wall area.",
-        evidenceRefs: quantifiedWallcoveringSqftFinding.evidence || [],
+        evidenceRefs: fullAreaWallcoveringFinding.evidence || [],
       })
     )
-  } else if ((plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue) {
+  } else if ((plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue && !featureCue && !corridorCue) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",
@@ -910,6 +1082,22 @@ function buildWallcoveringQuantitySupport(args: {
         source: "takeoff",
         note:
           "Wall area exists, but confirm whether it represents full-room coverage, corridor coverage, or only selected elevations.",
+        evidenceRefs: evidence,
+      })
+    )
+  } else if ((plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue && (featureCue || corridorCue)) {
+    areaSignals.push(
+      buildSignal({
+        label: featureCue
+          ? "Selected-elevation wallcovering cue"
+          : "Corridor wallcovering cue",
+        quantity: null,
+        unit: "unknown",
+        exactQuantity: false,
+        confidence: "medium",
+        source: "takeoff",
+        note:
+          "Gross wall-area takeoff exists, but it may overstate selected-elevation or corridor wallcovering coverage without narrower measured support.",
         evidenceRefs: evidence,
       })
     )
@@ -951,6 +1139,9 @@ function buildWallcoveringQuantitySupport(args: {
     [
       corridorCue ? "Coverage cues point toward corridor or common-area wallcovering." : null,
       featureCue ? "Coverage cues point toward feature-wall or accent-wall scope rather than full-room coverage." : null,
+      selectedElevationFinding
+        ? "Measured selected-elevation wallcovering support is narrower than full-room wall area."
+        : null,
       wallcoveringCue && !featureCue && !corridorCue
         ? "Coverage cues point toward broader room wallcovering rather than a single feature wall."
         : null,
@@ -973,6 +1164,9 @@ function buildWallcoveringQuantitySupport(args: {
         : null,
       corridorCue && (plan?.takeoff.wallSqft || 0) > 0
         ? "Gross wall area may overstate corridor wallcovering if only selected elevations are covered."
+        : null,
+      selectedElevationFinding
+        ? "Selected-elevation wallcovering should remain narrower than broad wall-area fallback."
         : null,
       removalCue && !installCue
         ? "Removal support is present, but reinstall coverage is not yet equally clear."
@@ -1003,6 +1197,9 @@ function buildWallcoveringQuantitySupport(args: {
           wallcoveringCue ? "Wallcovering-specific cues were detected." : null,
           areaSignals.some((item) => item.exactQuantity)
             ? "Takeoff-backed wall area exists."
+            : null,
+          selectedElevationFinding
+            ? "Selected-elevation wallcovering area is explicitly measured."
             : null,
           corridorCue ? "Corridor/common-area cues were detected." : null,
           featureCue ? "Feature-wall cues were detected." : null,

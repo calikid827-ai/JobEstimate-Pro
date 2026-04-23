@@ -254,17 +254,53 @@ test("painting influence stays non-binding when only descriptive finish cues exi
 test("painting influence can scale from strong repeated-room support without pretending that support is measured", () => {
   const plan = makePlan({
     detectedTrades: ["painting"],
+    detectedRooms: ["Guest Room", "Corridor"],
+    likelyRoomTypes: ["guest room", "corridor"],
     repeatedSpaceSignals: ["repeated guest room type"],
     tradePackageSignals: ["painting"],
     analyses: [
       makeAnalysis({
-        textSnippets: ["Repeated guest room repaint package."],
+        textSnippets: ["Repeated guest room repaint package with separate corridor repaint."],
         notes: ["Prototype room repeats across floors."],
+        rooms: [
+          {
+            roomName: "Guest Room 101",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Guest Room 102",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Guest Room 201",
+            floorLabel: "L2",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Corridor Level 1",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 500,
+            confidence: 80,
+            evidence: [],
+          },
+        ],
         schedules: [
           {
             scheduleType: "door",
             label: "Door schedule",
-            quantity: 18,
+            quantity: 12,
             notes: ["Guest room door set repeats by room type."],
             confidence: 88,
             evidence: [],
@@ -277,11 +313,11 @@ test("painting influence can scale from strong repeated-room support without pre
       wallSqft: null,
       ceilingSqft: null,
       trimLf: null,
-      doorCount: 18,
+      doorCount: null,
       windowCount: null,
       deviceCount: null,
       fixtureCount: null,
-      roomCount: 18,
+      roomCount: null,
       sourceNotes: [],
     },
   })
@@ -298,9 +334,14 @@ test("painting influence can scale from strong repeated-room support without pre
 
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, true)
-  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 18)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 3)
   assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
   assert.equal(influence.engineInputs?.painting?.doorCountSupport, "measured")
+  assert.equal(influence.engineInputs?.painting?.supportedInteriorSqft, null)
+  assert.ok(influence.executionSections.includes("Corridor repaint"))
+  assert.ok(
+    influence.basisAssumptions.some((item) => /prototype support stayed separate from corridor/i.test(item))
+  )
 })
 
 test("drywall influence feeds exact supported sqft into live numeric execution and keeps section routing", () => {
@@ -348,6 +389,15 @@ test("drywall influence feeds exact supported sqft into live numeric execution a
             unit: "sqft",
             evidence: [],
           },
+          {
+            trade: "drywall",
+            label: "Measured finish texture area",
+            confidence: 87,
+            notes: ["Level 4 finish area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
         ],
       }),
     ],
@@ -379,6 +429,7 @@ test("drywall influence feeds exact supported sqft into live numeric execution a
   assert.equal(influence.trade, "drywall")
   assert.equal(influence.canAffectNumericPricing, true)
   assert.equal(influence.engineInputs?.drywall?.supportedSqft, 2000)
+  assert.equal(influence.engineInputs?.drywall?.supportedFinishTextureSqft, 1600)
   assert.equal(influence.engineInputs?.drywall?.forceInstallFinish, true)
   assert.equal(influence.engineInputs?.drywall?.supportedSqftSupport, "measured")
   assert.ok(influence.executionSections.includes("Ceiling drywall"))
@@ -474,6 +525,7 @@ test("wallcovering influence feeds exact area and explicit install-remove routin
   assert.equal(influence.trade, "wallcovering")
   assert.equal(influence.canAffectNumericPricing, true)
   assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 1400)
+  assert.equal(influence.engineInputs?.wallcovering?.coverageKind, "corridor_area")
   assert.equal(influence.engineInputs?.wallcovering?.hasRemovalPrepSection, true)
   assert.equal(influence.engineInputs?.wallcovering?.hasInstallSection, true)
   assert.equal(influence.engineInputs?.wallcovering?.hasCorridorSection, true)
@@ -481,6 +533,96 @@ test("wallcovering influence feeds exact area and explicit install-remove routin
   assert.equal(influence.engineInputs?.wallcovering?.supportedSqftSupport, "measured")
   assert.ok(influence.executionSections.includes("Removal / prep"))
   assert.ok(influence.executionSections.includes("Corridor wallcovering"))
+})
+
+test("wallcovering selected-elevation support stays narrower than gross wall-area fallback", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new wallcovering at feature wall only."],
+        notes: ["Accent wall type W-2."],
+        tradeFindings: [
+          {
+            trade: "general renovation",
+            label: "Feature wall wallcovering area",
+            confidence: 91,
+            notes: ["Selected elevation only."],
+            quantity: 180,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1400,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Install vinyl wallcovering at feature wall only.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 180)
+  assert.equal(influence.engineInputs?.wallcovering?.coverageKind, "selected_elevation")
+})
+
+test("wallcovering feature-wall cues stay non-binding when only gross wall-area fallback exists", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new wallcovering at feature wall only."],
+        notes: ["Accent wall type W-2."],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1400,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Install vinyl wallcovering at feature wall only.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
 })
 
 test("wallcovering corridor package cues stay non-binding without an explicit install section", () => {
@@ -520,7 +662,7 @@ test("wallcovering corridor package cues stay non-binding without an explicit in
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(influence.engineInputs?.wallcovering?.hasInstallSection, false)
-  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 900)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
 })
 
 test("wallcovering influence stays non-binding when only generic finish cues exist", () => {

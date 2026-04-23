@@ -57,6 +57,13 @@ export type EstimateStructuredSection = {
   unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
   quantity?: number
   notes: string[]
+  provenance?: EstimateSectionProvenance
+}
+
+export type EstimateSectionProvenance = {
+  quantitySupport: "measured" | "scaled_prototype" | "support_only"
+  sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
+  summary?: string
 }
 
 export type EstimateRow = {
@@ -70,6 +77,7 @@ export type EstimateRow = {
   unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
   quantity?: number
   notes: string[]
+  provenance?: EstimateSectionProvenance
   pricingBasis: "direct"
   estimatorTreatment: "section_row"
   rowSource: "estimate_sections"
@@ -86,6 +94,7 @@ export type EstimateEmbeddedBurden = {
   unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
   quantity?: number
   notes: string[]
+  provenance?: EstimateSectionProvenance
   pricingBasis: "burden"
   estimatorTreatment: "embedded_burden"
   rowSource: "estimate_sections"

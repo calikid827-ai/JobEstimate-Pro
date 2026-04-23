@@ -199,6 +199,7 @@ function buildEstimateSections(args: {
       unit: section.unit,
       quantity: section.quantity,
       notes: [...(section.notes || [])],
+      provenance: section.provenance,
     }
   })
 }
@@ -225,6 +226,7 @@ function buildEstimateRows(
       unit: section.unit,
       quantity: section.quantity,
       notes: [...section.notes],
+      provenance: section.provenance,
       pricingBasis: "direct" as const,
       estimatorTreatment: "section_row" as const,
       rowSource: "estimate_sections" as const,
@@ -255,6 +257,7 @@ function buildEstimateEmbeddedBurdens(
       unit: section.unit,
       quantity: section.quantity,
       notes: [...section.notes],
+      provenance: section.provenance,
       pricingBasis: "burden" as const,
       estimatorTreatment: "embedded_burden" as const,
       rowSource: "estimate_sections" as const,

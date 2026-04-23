@@ -251,6 +251,16 @@ test("painting live seam changes real totals and carries estimateBasis through o
   )
   assert.ok(decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Walls"))
   assert.ok(decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Ceilings"))
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.quantitySupport,
+    "measured"
+  )
+  assert.deepEqual(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.sourceBasis,
+    ["trade_finding"]
+  )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
 })
 
@@ -332,7 +342,133 @@ test("repeated guest room repaint package can scale from strong repeated-room su
       (section) => section.section === "Corridor repaint" && section.pricingBasis === "burden"
     )
   )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Walls")?.provenance
+      ?.quantitySupport,
+    "scaled_prototype"
+  )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Corridor repaint")
+      ?.provenance?.quantitySupport,
+    "support_only"
+  )
   assert.equal(sumSectionTotals(planAwareBasis), planAware.pricing?.total || 0)
+})
+
+test("room-type prototype rollups can drive painting scale support while keeping corridor burden separate", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    detectedRooms: ["Guest Room", "Corridor"],
+    likelyRoomTypes: ["guest room", "corridor"],
+    repeatedSpaceSignals: ["typical guest room layout repeats by floor"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Prototype guest room repaint package with separate corridor repaint."],
+        notes: ["Typical guest room repeats by floor."],
+        rooms: [
+          {
+            roomName: "Guest Room 101",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Guest Room 102",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Guest Room 201",
+            floorLabel: "L2",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Corridor Level 1",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 500,
+            confidence: 80,
+            evidence: [],
+          },
+        ],
+        schedules: [
+          {
+            scheduleType: "door",
+            label: "Door schedule",
+            quantity: 12,
+            notes: ["Guest room door/frame set repeats by room type."],
+            confidence: 88,
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: null,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Repaint repeated guest rooms and corridor common areas."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText,
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computePaintingDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    paintScope: influence?.paintScopeOverride || "walls",
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.painting || null : null,
+  })
+
+  const planAwareBasis = mergeLiveTradePricingInfluenceIntoBasis({
+    basis: planAware.estimateBasis,
+    influence: influence!,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 3)
+  assert.equal(influence.engineInputs?.painting?.supportedDoorCount, 12)
+  assert.equal(influence.engineInputs?.painting?.interiorBaseSupport, "scaled")
+  assert.ok(planAware.pricing)
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some(
+      (section) => section.section === "Corridor repaint" && section.pricingBasis === "burden"
+    )
+  )
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some(
+      (section) =>
+        section.section === "Walls" &&
+        section.pricingBasis === "direct" &&
+        section.notes?.some((note) => /scaled prototype coverage/i.test(note))
+    )
+  )
 })
 
 test("drywall live seam changes real totals and carries estimateBasis through owner resolution", () => {
@@ -431,6 +567,17 @@ test("drywall live seam changes real totals and carries estimateBasis through ow
       (section) => section.section === "Partition-related scope" && section.pricingBasis === "burden"
     )
   )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Install / hang")
+      ?.provenance?.quantitySupport,
+    "measured"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find(
+      (section) => section.section === "Partition-related scope"
+    )?.provenance?.quantitySupport,
+    "support_only"
+  )
   assert.ok(
     !decision.estimateBasis?.sectionPricing?.some((section) => section.section === "Patch / repair")
   )
@@ -499,6 +646,116 @@ test("drywall repeated-room repair scenario stays non-binding without measured r
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(planAware.pricing, null)
   assert.equal(decision.owner, "ai")
+})
+
+test("drywall mixed repair-install scope keeps repair non-binding when only measured assembly and ceiling area exist", () => {
+  const plan = makePlan({
+    detectedTrades: ["drywall"],
+    tradePackageSignals: ["drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repair damaged drywall at select areas and install new partitions with level 4 finish."],
+        tradeFindings: [
+          {
+            trade: "drywall",
+            label: "Measured wallboard area",
+            confidence: 94,
+            notes: ["New partition board area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured ceiling drywall area",
+            confidence: 89,
+            notes: ["Ceiling board area."],
+            quantity: 400,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured finish texture area",
+            confidence: 87,
+            notes: ["Level 4 finish area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Partition LF",
+            confidence: 88,
+            notes: [],
+            quantity: 180,
+            unit: "linear_ft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 2200,
+      ceilingSqft: 400,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Repair damaged drywall and install new partitions with level 4 finish."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText,
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeDrywallDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: {
+      totalSqft:
+        influence?.engineInputs?.drywall?.supportedSqft || 2000,
+    },
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.drywall || null : null,
+  })
+
+  const planAwareBasis = mergeLiveTradePricingInfluenceIntoBasis({
+    basis: planAware.estimateBasis,
+    influence: influence!,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.drywall?.supportedSqft, 2000)
+  assert.equal(influence.engineInputs?.drywall?.supportedFinishTextureSqft, 1600)
+  assert.ok(planAware.pricing)
+  assert.ok(
+    !planAwareBasis?.sectionPricing?.some((section) => section.section === "Patch / repair")
+  )
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some((section) => section.section === "Finish / texture")
+  )
+  assert.ok(
+    planAwareBasis?.sectionPricing?.some(
+      (section) => section.section === "Partition-related scope" && section.pricingBasis === "burden"
+    )
+  )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Finish / texture")
+      ?.provenance?.quantitySupport,
+    "measured"
+  )
 })
 
 test("wallcovering live seam changes real totals and carries estimateBasis through owner resolution", () => {
@@ -589,7 +846,267 @@ test("wallcovering live seam changes real totals and carries estimateBasis throu
       (section) => section.section === "Corridor burden" && section.pricingBasis === "burden"
     )
   )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Install")
+      ?.provenance?.quantitySupport,
+    "measured"
+  )
+  assert.equal(
+    decision.estimateBasis?.sectionPricing?.find((section) => section.section === "Corridor burden")
+      ?.provenance?.quantitySupport,
+    "support_only"
+  )
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
+})
+
+test("wallcovering selected-elevation scope stays narrower than gross fallback through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install vinyl wallcovering at feature wall only."],
+        notes: ["Accent wall type W-2."],
+        tradeFindings: [
+          {
+            trade: "general renovation",
+            label: "Feature wall wallcovering area",
+            confidence: 91,
+            notes: ["Selected elevation only."],
+            quantity: 180,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1400,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Install vinyl wallcovering at feature wall only."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText,
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeWallcoveringDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    planSectionInputs:
+      influence?.canAffectNumericPricing ? influence.engineInputs?.wallcovering || null : null,
+  })
+
+  const planAwareBasis = mergeLiveTradePricingInfluenceIntoBasis({
+    basis: planAware.estimateBasis,
+    influence: influence!,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 180)
+  assert.equal(influence.engineInputs?.wallcovering?.coverageKind, "selected_elevation")
+  assert.ok(planAware.pricing)
+  assert.ok(
+    planAwareBasis?.assumptions.some((item) => /selected-elevation sqft/i.test(item))
+  )
+  assert.equal(
+    planAwareBasis?.sectionPricing?.find((section) => section.section === "Install")?.provenance
+      ?.summary,
+    "Direct wallcovering row is backed by measured selected-elevation area."
+  )
+})
+
+test("shared-plan painting and drywall influences keep trade-safe quantities isolated in multi-trade style allocation", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall"],
+    detectedRooms: ["Guest Room", "Corridor"],
+    likelyRoomTypes: ["guest room", "corridor"],
+    repeatedSpaceSignals: ["typical guest room layout repeats by floor"],
+    tradePackageSignals: ["painting", "drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms and install new drywall partitions at corridors."],
+        notes: ["Guest room repaint repeats by floor."],
+        rooms: [
+          {
+            roomName: "Guest Room 101",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Guest Room 102",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 320,
+            confidence: 88,
+            evidence: [],
+          },
+          {
+            roomName: "Corridor Level 1",
+            floorLabel: "L1",
+            dimensionsText: null,
+            areaSqft: 500,
+            confidence: 80,
+            evidence: [],
+          },
+        ],
+        tradeFindings: [
+          {
+            trade: "painting",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured wallboard area",
+            confidence: 94,
+            notes: ["New partition board area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 4200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated guest rooms and corridor common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Install new drywall partitions with finish.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(paintingInfluence)
+  assert.ok(drywallInfluence)
+  assert.equal(paintingInfluence.engineInputs?.painting?.supportedWallSqft, 1800)
+  assert.equal(paintingInfluence.engineInputs?.painting?.supportedInteriorSqft, null)
+  assert.equal(drywallInfluence.engineInputs?.drywall?.supportedSqft, 1600)
+  assert.ok(paintingInfluence.executionSections.includes("Corridor repaint"))
+  assert.ok(!drywallInfluence.executionSections.includes("Patch / repair"))
+})
+
+test("shared-plan painting and wallcovering influences avoid whole-job sqft leakage across split trades", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "wallcovering"],
+    detectedRooms: ["Guest Room", "Corridor"],
+    likelyRoomTypes: ["guest room", "corridor"],
+    repeatedSpaceSignals: ["typical guest room layout repeats by floor"],
+    tradePackageSignals: ["painting", "wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms and replace corridor wallcovering."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "general renovation",
+            label: "Measured corridor wallcovering area",
+            confidence: 93,
+            notes: ["Measured corridor elevations only."],
+            quantity: 900,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 4200,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint repeated guest rooms and corridor common areas.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Remove and replace corridor wallcovering.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(paintingInfluence)
+  assert.ok(wallcoveringInfluence)
+  assert.equal(paintingInfluence.engineInputs?.painting?.supportedWallSqft, 1800)
+  assert.equal(wallcoveringInfluence.engineInputs?.wallcovering?.supportedSqft, 900)
+  assert.equal(wallcoveringInfluence.engineInputs?.wallcovering?.coverageKind, "corridor_area")
+  assert.ok(paintingInfluence.executionSections.includes("Corridor repaint"))
+  assert.ok(wallcoveringInfluence.executionSections.includes("Corridor wallcovering"))
 })
 
 test("weak support stays non-binding in the live seam and does not create deterministic owner selection", () => {

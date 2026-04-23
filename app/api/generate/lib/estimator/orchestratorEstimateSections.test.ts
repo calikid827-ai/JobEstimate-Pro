@@ -310,6 +310,11 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
         pricingBasis: "direct",
         unit: "sqft",
         quantity: 1400,
+        provenance: {
+          quantitySupport: "measured",
+          sourceBasis: ["trade_finding"],
+          summary: "Direct wall row is backed by measured wall area.",
+        },
       },
       {
         section: "Prep / protection",
@@ -319,6 +324,11 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
         total: 960,
         pricingBasis: "burden",
         notes: ["Embedded burden"],
+        provenance: {
+          quantitySupport: "support_only",
+          sourceBasis: ["repeated_space_rollup"],
+          summary: "Embedded burden remains non-standalone and non-authoritative.",
+        },
       },
     ],
   })
@@ -347,9 +357,15 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
   assert.equal(payload.estimateRows?.length, 1)
   assert.equal(payload.estimateRows?.[0]?.section, "Walls")
   assert.equal(payload.estimateRows?.[0]?.pricingBasis, "direct")
+  assert.equal(payload.estimateRows?.[0]?.provenance?.quantitySupport, "measured")
+  assert.deepEqual(payload.estimateRows?.[0]?.provenance?.sourceBasis, ["trade_finding"])
   assert.ok(payload.estimateEmbeddedBurdens)
   assert.equal(payload.estimateEmbeddedBurdens?.length, 1)
   assert.equal(payload.estimateEmbeddedBurdens?.[0]?.section, "Prep / protection")
+  assert.equal(
+    payload.estimateEmbeddedBurdens?.[0]?.provenance?.quantitySupport,
+    "support_only"
+  )
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),
     payload.pricing.total
@@ -385,6 +401,11 @@ test("orchestrator payload exposes combined structured estimateSections when mul
               subs: 150,
               total: 2160,
               pricingBasis: "direct",
+              provenance: {
+                quantitySupport: "measured",
+                sourceBasis: ["trade_finding"],
+                summary: "Painting wall row is backed by measured wall area.",
+              },
             },
             {
               section: "wallcovering: Install",
@@ -393,6 +414,11 @@ test("orchestrator payload exposes combined structured estimateSections when mul
               subs: 150,
               total: 2100,
               pricingBasis: "direct",
+              provenance: {
+                quantitySupport: "measured",
+                sourceBasis: ["trade_finding"],
+                summary: "Wallcovering install row is backed by measured corridor area.",
+              },
             },
             {
               section: "painting: Prep / protection",
@@ -401,6 +427,11 @@ test("orchestrator payload exposes combined structured estimateSections when mul
               subs: 200,
               total: 1020,
               pricingBasis: "burden",
+              provenance: {
+                quantitySupport: "support_only",
+                sourceBasis: ["repeated_space_rollup"],
+                summary: "Painting burden remains embedded.",
+              },
             },
           ],
         }),
@@ -440,6 +471,14 @@ test("orchestrator payload exposes combined structured estimateSections when mul
   assert.ok(payload.estimateSections?.some((section) => section.trade === "wallcovering"))
   assert.ok(payload.estimateRows?.some((row) => row.trade === "painting"))
   assert.ok(payload.estimateRows?.some((row) => row.trade === "wallcovering"))
+  assert.equal(
+    payload.estimateRows?.find((row) => row.trade === "painting")?.provenance?.quantitySupport,
+    "measured"
+  )
+  assert.equal(
+    payload.estimateRows?.find((row) => row.trade === "wallcovering")?.provenance?.quantitySupport,
+    "measured"
+  )
   assert.deepEqual(
     payload.estimateRows?.map((row) => row.section).sort(),
     ["painting: Walls", "wallcovering: Install"].sort()
@@ -449,6 +488,11 @@ test("orchestrator payload exposes combined structured estimateSections when mul
   )
   assert.ok(
     payload.estimateEmbeddedBurdens?.some((section) => section.trade === "painting")
+  )
+  assert.equal(
+    payload.estimateEmbeddedBurdens?.find((section) => section.trade === "painting")?.provenance
+      ?.quantitySupport,
+    "support_only"
   )
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),

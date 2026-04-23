@@ -19,6 +19,11 @@ type SectionPricingDetail = SectionBucket & {
   unit?: "sqft" | "days" | "lump_sum"
   quantity?: number
   notes?: string[]
+  provenance?: {
+    quantitySupport: "measured" | "scaled_prototype" | "support_only"
+    sourceBasis: Array<"trade_finding" | "takeoff" | "schedule" | "repeated_space_rollup">
+    summary?: string
+  }
 }
 
 export type WallcoveringDeterministicResult = {
@@ -136,6 +141,8 @@ function buildWallcoveringSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   sqft: number
   supportedSqftSupport?: "measured" | null
+  coverageKind?: "full_area" | "corridor_area" | "selected_elevation" | null
+  areaSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
     if (bucket.section === "Corridor burden") {
@@ -143,6 +150,11 @@ function buildWallcoveringSectionPricing(args: {
         ...bucket,
         pricingBasis: "burden",
         notes: ["Corridor burden is surfaced structurally, but remains embedded in the core wallcovering engine."],
+        provenance: {
+          quantitySupport: "support_only",
+          sourceBasis: [args.areaSource || "trade_finding"],
+          summary: "Corridor burden remains embedded/reference-only and never becomes a standalone direct row.",
+        },
       }
     }
 
@@ -154,6 +166,19 @@ function buildWallcoveringSectionPricing(args: {
       notes:
         args.supportedSqftSupport === "measured"
           ? ["Measured wall-area support backs this direct wallcovering row."]
+          : undefined,
+      provenance:
+        args.supportedSqftSupport === "measured"
+          ? {
+              quantitySupport: "measured",
+              sourceBasis: [args.areaSource || "takeoff"],
+              summary:
+                args.coverageKind === "selected_elevation"
+                  ? "Direct wallcovering row is backed by measured selected-elevation area."
+                  : args.coverageKind === "corridor_area"
+                    ? "Direct wallcovering row is backed by measured corridor/common-area wallcovering area."
+                    : "Direct wallcovering row is backed by measured full-area wallcovering quantity.",
+            }
           : undefined,
     }
   })
@@ -171,6 +196,8 @@ export function computeWallcoveringDeterministic(args: {
     hasFeatureSection?: boolean
     materialType?: WallcoveringMaterialType | null
     supportedSqftSupport?: "measured" | null
+    coverageKind?: "full_area" | "corridor_area" | "selected_elevation" | null
+    areaSource?: "trade_finding" | "takeoff" | null
   } | null
 }): WallcoveringDeterministicResult {
   const scope = String(args.scopeText || "").trim()
@@ -390,6 +417,8 @@ export function computeWallcoveringDeterministic(args: {
       sectionBuckets,
       sqft,
       supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
+      coverageKind: args.planSectionInputs?.coverageKind ?? null,
+      areaSource: args.planSectionInputs?.areaSource ?? null,
     }),
   })
 
