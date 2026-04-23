@@ -83,6 +83,7 @@ function normalizeSections(values: string[]): string[] {
 
 function findExactSignal(args: {
   signals: TradeQuantitySignal[]
+  categories?: Array<NonNullable<TradeQuantitySignal["category"]>>
   label: RegExp
   unit?: TradeQuantitySignal["unit"]
 }): TradeQuantitySignal | null {
@@ -90,7 +91,8 @@ function findExactSignal(args: {
     args.signals.find(
       (signal) =>
         signal.exactQuantity &&
-        args.label.test(signal.label) &&
+        ((!args.categories || (signal.category ? args.categories.includes(signal.category) : false)) ||
+          args.label.test(signal.label)) &&
         (!args.unit || signal.unit === args.unit) &&
         typeof signal.quantity === "number" &&
         signal.quantity > 0
@@ -228,27 +230,32 @@ function buildPaintingInfluence(args: {
 }): LiveTradePricingInfluence {
   const roomSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["repeated_unit_count"],
     label: /\brepeated (room package|unit prototype) support\b/i,
     unit: "rooms",
   })
   const doorSignal = findExactSignal({
     signals: args.support.tradeOpeningSignals,
+    categories: ["door_openings"],
     label: /\bdoor opening support\b/i,
     unit: "doors",
   })
   const ceilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["ceiling_area"],
     label: /\bceiling coverage support\b/i,
     unit: "sqft",
   })
 
   const trimSignal = findExactSignal({
     signals: args.support.tradeLinearSignals,
+    categories: ["trim_lf"],
     label: /\btrim\s*\/\s*frame linear support\b/i,
     unit: "linear_ft",
   })
   const wallSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["wall_area"],
     label: /\bwall coverage support\b/i,
     unit: "sqft",
   })
@@ -399,41 +406,49 @@ function buildDrywallInfluence(args: {
 }): LiveTradePricingInfluence {
   const wallSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["assembly_area"],
     label: /\bwall-area drywall support\b/i,
     unit: "sqft",
   })
   const measuredPatchSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["repair_area"],
     label: /\bmeasured patch\s*\/\s*repair area support\b/i,
     unit: "sqft",
   })
   const measuredAssemblySignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["assembly_area"],
     label: /\bmeasured drywall assembly area support\b/i,
     unit: "sqft",
   })
   const measuredFinishSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["finish_texture_area"],
     label: /\bmeasured finish\s*\/\s*texture area support\b/i,
     unit: "sqft",
   })
   const measuredCeilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["ceiling_area"],
     label: /\bmeasured ceiling drywall area support\b/i,
     unit: "sqft",
   })
   const ceilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["ceiling_area"],
     label: /\bceiling drywall support\b/i,
     unit: "sqft",
   })
   const repeatedRepairSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["repeated_unit_count"],
     label: /\brepeated room repair pattern support\b/i,
     unit: "rooms",
   })
   const partitionSignal = findExactSignal({
     signals: args.support.tradeLinearSignals,
+    categories: ["partition_lf"],
     label: /\bpartition linear support\b/i,
     unit: "linear_ft",
   })
@@ -452,11 +467,16 @@ function buildDrywallInfluence(args: {
     Number(measuredCeilingSignal?.quantity || 0) > 0 ||
     Number(ceilingSignal?.quantity || 0) > 0 ||
     Number(partitionSignal?.quantity || 0) > 0
+  const repairOnlyPattern =
+    Number(repeatedRepairSignal?.quantity || 0) > 0 &&
+    Number(measuredPatchSignal?.quantity || 0) <= 0 &&
+    !hasAdditionalInstallEvidence
   const hasSafeInstallBasis =
-    hasAdditionalInstallEvidence ||
+    !repairOnlyPattern &&
+    (hasAdditionalInstallEvidence ||
     (!forcePatchRepair &&
-      (!isPatchRepair || hasAdditionalInstallEvidence) &&
-      Number(wallSignal?.quantity || 0) > 0)
+      !isPatchRepair &&
+      Number(wallSignal?.quantity || 0) > 0))
   const installSqft =
     isInstall && hasSafeInstallBasis
       ? Math.round(
@@ -578,16 +598,19 @@ function buildWallcoveringInfluence(args: {
 }): LiveTradePricingInfluence {
   const wallAreaSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["wall_area"],
     label: /\bwall-area support for wallcovering\b/i,
     unit: "sqft",
   })
   const corridorAreaSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["corridor_area"],
     label: /\bcorridor wallcovering area support\b/i,
     unit: "sqft",
   })
   const selectedElevationSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
+    categories: ["selected_elevation_area"],
     label: /\bselected-elevation wallcovering area support\b/i,
     unit: "sqft",
   })

@@ -3,6 +3,7 @@ import type {
   PlanIntelligence,
   PlanScheduleItem,
   PlanSheetAnalysis,
+  PlanTradeFindingCategory,
   PlanTradeFinding,
 } from "../plans/types"
 import type { EstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
@@ -35,6 +36,9 @@ type TradeQuantitySignalSource =
 
 export type TradeQuantitySignal = {
   label: string
+  category?:
+    | PlanTradeFindingCategory
+    | "repeated_unit_count"
   quantity: number | null
   unit: TradeQuantitySignalUnit
   exactQuantity: boolean
@@ -267,19 +271,91 @@ function collectScheduleSignals(
 function collectTradeFindings(
   analyses: PlanSheetAnalysis[],
   matchTrade: PlanTradeFinding["trade"] | null,
-  pattern: RegExp
+  pattern: RegExp,
+  categories: PlanTradeFindingCategory[] = [],
+  allowedTrades: PlanTradeFinding["trade"][] | null = null
 ): PlanTradeFinding[] {
   return analyses.flatMap((analysis) =>
     (analysis.tradeFindings || []).filter((finding) => {
+      if (allowedTrades && !allowedTrades.includes(finding.trade)) return false
       if (matchTrade && finding.trade === matchTrade) return true
+      if (categories.length > 0) {
+        const findingCategory = getTradeFindingCategory(finding)
+        if (findingCategory && categories.includes(findingCategory)) return true
+      }
       const blob = [finding.label, ...(finding.notes || [])].join(" ")
       return pattern.test(blob)
     })
   )
 }
 
+function getFindingBlob(finding: PlanTradeFinding): string {
+  return [finding.label, ...(finding.notes || [])].join(" ")
+}
+
+function inferTradeFindingCategory(
+  finding: PlanTradeFinding
+): PlanTradeFindingCategory | undefined {
+  const blob = getFindingBlob(finding).toLowerCase()
+
+  if (finding.unit === "linear_ft" && /\bpartition|gyp|gypsum|wall type\b/.test(blob)) {
+    return "partition_lf"
+  }
+  if (finding.unit === "linear_ft" && /\btrim|base|baseboard|casing|frame\b/.test(blob)) {
+    return "trim_lf"
+  }
+  if ((finding.unit === "doors" || finding.unit === "each") && /\bdoor|frame|casing\b/.test(blob)) {
+    return "door_openings"
+  }
+  if (
+    finding.unit === "sqft" &&
+    /\bfeature wall|accent wall|selected elevation|elevation\b/.test(blob)
+  ) {
+    return "selected_elevation_area"
+  }
+  if (finding.unit === "sqft" && /\bcorridor|hallway|lobby|common area\b/.test(blob)) {
+    return "corridor_area"
+  }
+  if (finding.unit === "sqft" && /\bpatch|repair|hole|crack\b/.test(blob)) {
+    return "repair_area"
+  }
+  if (finding.unit === "sqft" && /\bfinish|texture|level\s*[45]|skim\b/.test(blob)) {
+    return "finish_texture_area"
+  }
+  if (finding.unit === "sqft" && /\bceiling|rcp|soffit\b/.test(blob)) {
+    return "ceiling_area"
+  }
+  if (
+    finding.trade === "drywall" &&
+    finding.unit === "sqft" &&
+    /\bdrywall|sheetrock|partition|wallboard|board area\b/.test(blob)
+  ) {
+    return "assembly_area"
+  }
+  if (finding.unit === "sqft" && /\bwall|paint|wallcover(?:ing)?|wallpaper\b/.test(blob)) {
+    return "wall_area"
+  }
+
+  return undefined
+}
+
+function getTradeFindingCategory(
+  finding: PlanTradeFinding
+): PlanTradeFindingCategory | undefined {
+  return finding.category || inferTradeFindingCategory(finding)
+}
+
+function findingHasCategory(
+  finding: PlanTradeFinding,
+  categories: PlanTradeFindingCategory[]
+): boolean {
+  const category = getTradeFindingCategory(finding)
+  return !!category && categories.includes(category)
+}
+
 function buildSignal(args: {
   label: string
+  category?: TradeQuantitySignal["category"]
   quantity: number | null
   unit: TradeQuantitySignalUnit
   exactQuantity: boolean
@@ -290,6 +366,7 @@ function buildSignal(args: {
 }): TradeQuantitySignal {
   return {
     label: args.label,
+    category: args.category,
     quantity: args.quantity,
     unit: args.unit,
     exactQuantity: args.exactQuantity,
@@ -357,7 +434,8 @@ function buildPaintingQuantitySupport(args: {
   const paintingFindings = collectTradeFindings(
     analyses,
     "painting",
-    /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i
+    /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i,
+    ["wall_area", "ceiling_area", "trim_lf", "door_openings"]
   )
   const repeatedSpaceRollup = buildRepeatedSpaceRoomRollup(plan)
   const quantifiedWallFinding = paintingFindings.find(
@@ -365,28 +443,32 @@ function buildPaintingQuantitySupport(args: {
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bwall/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["wall_area"]) ||
+        /\bwall/i.test(getFindingBlob(finding)))
   )
   const quantifiedCeilingFinding = paintingFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bceiling|rcp|soffit/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["ceiling_area"]) ||
+        /\bceiling|rcp|soffit/i.test(getFindingBlob(finding)))
   )
   const quantifiedTrimFinding = paintingFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "linear_ft" &&
-      /\btrim|base|baseboard|casing|frame/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["trim_lf"]) ||
+        /\btrim|base|baseboard|casing|frame/i.test(getFindingBlob(finding)))
   )
   const quantifiedDoorFinding = paintingFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       (finding.unit === "doors" || finding.unit === "each") &&
-      /\bdoor|frame|casing/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["door_openings"]) ||
+        /\bdoor|frame|casing/i.test(getFindingBlob(finding)))
   )
   const quantifiedDoorSchedule = doorSchedules.find(
     (schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0
@@ -400,6 +482,7 @@ function buildPaintingQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Wall coverage support",
+        category: "wall_area",
         quantity: quantifiedWallFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -413,6 +496,7 @@ function buildPaintingQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Wall coverage support",
+        category: "wall_area",
         quantity: plan?.takeoff.wallSqft ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -428,6 +512,7 @@ function buildPaintingQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Ceiling coverage support",
+        category: "ceiling_area",
         quantity: quantifiedCeilingFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -441,6 +526,7 @@ function buildPaintingQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Ceiling coverage support",
+        category: "ceiling_area",
         quantity: plan?.takeoff.ceilingSqft ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -456,6 +542,7 @@ function buildPaintingQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Repeated unit prototype support",
+        category: "repeated_unit_count",
         quantity: repeatedSpaceRollup.repeatedUnitCount,
         unit: "rooms",
         exactQuantity: true,
@@ -474,6 +561,7 @@ function buildPaintingQuantitySupport(args: {
     linearSignals.push(
       buildSignal({
         label: "Trim / frame linear support",
+        category: "trim_lf",
         quantity: quantifiedTrimFinding.quantity ?? null,
         unit: "linear_ft",
         exactQuantity: true,
@@ -488,6 +576,7 @@ function buildPaintingQuantitySupport(args: {
     linearSignals.push(
       buildSignal({
         label: "Trim / frame linear support",
+        category: "trim_lf",
         quantity: plan?.takeoff.trimLf ?? null,
         unit: "linear_ft",
         exactQuantity: true,
@@ -504,6 +593,7 @@ function buildPaintingQuantitySupport(args: {
     openingSignals.push(
       buildSignal({
         label: "Door opening support",
+        category: "door_openings",
         quantity: quantifiedDoorFinding.quantity ?? null,
         unit: "doors",
         exactQuantity: true,
@@ -518,6 +608,7 @@ function buildPaintingQuantitySupport(args: {
     openingSignals.push(
       buildSignal({
         label: "Door opening support",
+        category: "door_openings",
         quantity: quantifiedDoorSchedule.quantity ?? null,
         unit: "doors",
         exactQuantity: true,
@@ -532,6 +623,7 @@ function buildPaintingQuantitySupport(args: {
     openingSignals.push(
       buildSignal({
         label: "Door opening support",
+        category: "door_openings",
         quantity: plan?.takeoff.doorCount ?? null,
         unit: "doors",
         exactQuantity: true,
@@ -685,44 +777,48 @@ function buildDrywallQuantitySupport(args: {
   const drywallFindings = collectTradeFindings(
     analyses,
     "drywall",
-    /\bdrywall|sheetrock|partition|patch|texture|skim\b/i
+    /\bdrywall|sheetrock|partition|patch|texture|skim\b/i,
+    ["repair_area", "assembly_area", "finish_texture_area", "ceiling_area", "partition_lf"]
   )
   const partitionFindings = collectTradeFindings(
     analyses,
     null,
-    /\bpartition|gyp|gypsum|wall type\b/i
+    /\bpartition|gyp|gypsum|wall type\b/i,
+    ["partition_lf"]
   )
   const quantifiedRepairSqftFinding = drywallFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bpatch|repair|hole|crack\b/i.test(
-        [finding.label, ...(finding.notes || [])].join(" ")
-      )
+      (findingHasCategory(finding, ["repair_area"]) ||
+        /\bpatch|repair|hole|crack\b/i.test(getFindingBlob(finding)))
   )
   const quantifiedCeilingSqftFinding = drywallFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bceiling|soffit/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["ceiling_area"]) ||
+        /\bceiling|soffit/i.test(getFindingBlob(finding)))
   )
   const quantifiedAssemblySqftFinding = drywallFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      !/\bpatch|repair|hole|crack|texture|skim|ceiling|soffit/i.test(
-        [finding.label, ...(finding.notes || [])].join(" ")
-      )
+      (findingHasCategory(finding, ["assembly_area"]) ||
+        !/\bpatch|repair|hole|crack|texture|skim|ceiling|soffit/i.test(
+          getFindingBlob(finding)
+        ))
   )
   const quantifiedFinishSqftFinding = drywallFindings.find(
     (finding) =>
       typeof finding.quantity === "number" &&
       finding.quantity > 0 &&
       finding.unit === "sqft" &&
-      /\bfinish|texture|level\s*[45]|skim/i.test([finding.label, ...(finding.notes || [])].join(" "))
+      (findingHasCategory(finding, ["finish_texture_area"]) ||
+        /\bfinish|texture|level\s*[45]|skim/i.test(getFindingBlob(finding)))
   )
 
   const patchLike = /\b(patch|repair|hole|crack|texture|skim)\b/.test(blob)
@@ -736,6 +832,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Measured patch / repair area support",
+        category: "repair_area",
         quantity: quantifiedRepairSqftFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -752,6 +849,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Measured drywall assembly area support",
+        category: "assembly_area",
         quantity: quantifiedAssemblySqftFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -768,6 +866,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Measured ceiling drywall area support",
+        category: "ceiling_area",
         quantity: quantifiedCeilingSqftFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -784,6 +883,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Measured finish / texture area support",
+        category: "finish_texture_area",
         quantity: quantifiedFinishSqftFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -796,10 +896,20 @@ function buildDrywallQuantitySupport(args: {
     )
   }
 
-  if ((plan?.takeoff.wallSqft || 0) > 0 && (installLike || partitionFindings.length > 0)) {
+  if (
+    (plan?.takeoff.wallSqft || 0) > 0 &&
+    (
+      (installLike && !patchLike) ||
+      partitionFindings.length > 0 ||
+      !!quantifiedAssemblySqftFinding ||
+      !!quantifiedFinishSqftFinding ||
+      !!quantifiedCeilingSqftFinding
+    )
+  ) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area drywall support",
+        category: "assembly_area",
         quantity: plan?.takeoff.wallSqft ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -818,6 +928,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Ceiling drywall support",
+        category: "ceiling_area",
         quantity: plan?.takeoff.ceilingSqft ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -834,6 +945,7 @@ function buildDrywallQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Repeated room repair pattern support",
+        category: "repeated_unit_count",
         quantity: plan?.takeoff.roomCount ?? null,
         unit: "rooms",
         exactQuantity: true,
@@ -853,6 +965,7 @@ function buildDrywallQuantitySupport(args: {
     linearSignals.push(
       buildSignal({
         label: "Partition linear support",
+        category: "partition_lf",
         quantity: best?.quantity ?? null,
         unit: "linear_ft",
         exactQuantity: true,
@@ -1005,7 +1118,9 @@ function buildWallcoveringQuantitySupport(args: {
   const wallcoveringFindings = collectTradeFindings(
     analyses,
     null,
-    /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i
+    /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i,
+    ["wall_area", "corridor_area", "selected_elevation_area"],
+    ["wallcovering", "general renovation"]
   )
   const quantifiedWallcoveringSqftFinding = wallcoveringFindings.find(
     (finding) =>
@@ -1015,20 +1130,24 @@ function buildWallcoveringQuantitySupport(args: {
   )
   const selectedElevationFinding =
     quantifiedWallcoveringSqftFinding &&
-    /\bfeature wall|accent wall|selected elevation|elevation\b/i.test(
-      [quantifiedWallcoveringSqftFinding.label, ...(quantifiedWallcoveringSqftFinding.notes || [])].join(" ")
-    )
+    (findingHasCategory(quantifiedWallcoveringSqftFinding, ["selected_elevation_area"]) ||
+      /\bfeature wall|accent wall|selected elevation|elevation\b/i.test(
+        getFindingBlob(quantifiedWallcoveringSqftFinding)
+      ))
       ? quantifiedWallcoveringSqftFinding
       : null
   const corridorWallcoveringFinding =
     quantifiedWallcoveringSqftFinding &&
-    /\bcorridor|hallway|lobby|common area\b/i.test(
-      [quantifiedWallcoveringSqftFinding.label, ...(quantifiedWallcoveringSqftFinding.notes || [])].join(" ")
-    )
+    (findingHasCategory(quantifiedWallcoveringSqftFinding, ["corridor_area"]) ||
+      /\bcorridor|hallway|lobby|common area\b/i.test(
+        getFindingBlob(quantifiedWallcoveringSqftFinding)
+      ))
       ? quantifiedWallcoveringSqftFinding
       : null
   const fullAreaWallcoveringFinding =
     quantifiedWallcoveringSqftFinding &&
+    (findingHasCategory(quantifiedWallcoveringSqftFinding, ["wall_area"]) ||
+      !getTradeFindingCategory(quantifiedWallcoveringSqftFinding)) &&
     !selectedElevationFinding &&
     !corridorWallcoveringFinding
       ? quantifiedWallcoveringSqftFinding
@@ -1042,6 +1161,7 @@ function buildWallcoveringQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Selected-elevation wallcovering area support",
+        category: "selected_elevation_area",
         quantity: selectedElevationFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -1056,6 +1176,7 @@ function buildWallcoveringQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Corridor wallcovering area support",
+        category: "corridor_area",
         quantity: corridorWallcoveringFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -1070,6 +1191,7 @@ function buildWallcoveringQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",
+        category: "wall_area",
         quantity: fullAreaWallcoveringFinding.quantity ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -1084,6 +1206,7 @@ function buildWallcoveringQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",
+        category: "wall_area",
         quantity: plan?.takeoff.wallSqft ?? null,
         unit: "sqft",
         exactQuantity: true,
@@ -1100,6 +1223,7 @@ function buildWallcoveringQuantitySupport(args: {
         label: featureCue
           ? "Selected-elevation wallcovering cue"
           : "Corridor wallcovering cue",
+        category: featureCue ? "selected_elevation_area" : "corridor_area",
         quantity: null,
         unit: "unknown",
         exactQuantity: false,
@@ -1116,6 +1240,7 @@ function buildWallcoveringQuantitySupport(args: {
     areaSignals.push(
       buildSignal({
         label: "Repeated room wallcovering support",
+        category: "repeated_unit_count",
         quantity: plan?.takeoff.roomCount ?? null,
         unit: "rooms",
         exactQuantity: true,

@@ -690,3 +690,231 @@ test("wallcovering influence stays non-binding when only generic finish cues exi
   assert.equal(influence.canAffectNumericPricing, false)
   assert.ok(!influence.engineInputs?.wallcovering?.supportedSqft)
 })
+
+test("typed painting findings can drive live support without relying on freeform labels", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    tradePackageSignals: ["painting"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Paint guest room surfaces per finish package."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            category: "wall_area",
+            label: "Area A",
+            confidence: 92,
+            notes: ["Guest room finish package quantity."],
+            quantity: 2400,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            category: "ceiling_area",
+            label: "Area B",
+            confidence: 90,
+            notes: ["Ceiling finish package quantity."],
+            quantity: 1200,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            category: "door_openings",
+            label: "Opening set",
+            confidence: 88,
+            notes: ["Door package quantity."],
+            quantity: 24,
+            unit: "doors",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            category: "trim_lf",
+            label: "Linear set",
+            confidence: 86,
+            notes: ["Trim package quantity."],
+            quantity: 360,
+            unit: "linear_ft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest room walls, ceilings, doors, and trim.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedWallSqft, 2400)
+  assert.equal(influence.engineInputs?.painting?.supportedCeilingSqft, 1200)
+  assert.equal(influence.engineInputs?.painting?.supportedDoorCount, 24)
+  assert.equal(influence.engineInputs?.painting?.supportedTrimLf, 360)
+})
+
+test("typed drywall findings can drive assembly routing without relying on freeform labels", () => {
+  const plan = makePlan({
+    detectedTrades: ["drywall"],
+    tradePackageSignals: ["drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Drywall tenant improvement package."],
+        tradeFindings: [
+          {
+            trade: "drywall",
+            category: "assembly_area",
+            label: "Area A",
+            confidence: 94,
+            notes: ["Partition board package quantity."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            category: "finish_texture_area",
+            label: "Area B",
+            confidence: 90,
+            notes: ["Finish package quantity."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            category: "ceiling_area",
+            label: "Area C",
+            confidence: 88,
+            notes: ["Ceiling board package quantity."],
+            quantity: 400,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            category: "partition_lf",
+            label: "Linear D",
+            confidence: 84,
+            notes: ["Partition layout quantity."],
+            quantity: 180,
+            unit: "linear_ft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Install new drywall partitions with level 4 finish and ceiling drywall.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.drywall?.supportedSqft, 2000)
+  assert.equal(influence.engineInputs?.drywall?.supportedFinishTextureSqft, 1600)
+  assert.equal(influence.engineInputs?.drywall?.supportedPartitionLf, 180)
+  assert.equal(influence.engineInputs?.drywall?.supportedSqftSupport, "measured")
+})
+
+test("typed wallcovering findings can keep selected-elevation support narrower than gross fallback", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install vinyl wallcovering at feature wall only."],
+        tradeFindings: [
+          {
+            trade: "general renovation",
+            category: "selected_elevation_area",
+            label: "Area E",
+            confidence: 91,
+            notes: ["Feature package quantity."],
+            quantity: 180,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1400,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Install vinyl wallcovering at feature wall only.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 180)
+  assert.equal(influence.engineInputs?.wallcovering?.coverageKind, "selected_elevation")
+})
+
+test("legacy label-based findings still remain compatible without typed categories", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting"],
+    analyses: [
+      makeAnalysis({
+        tradeFindings: [
+          {
+            trade: "painting",
+            label: "Measured guest room wall paint area",
+            confidence: 92,
+            notes: ["Measured guest room wall area only."],
+            quantity: 1200,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest room walls.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.painting?.supportedWallSqft, 1200)
+})

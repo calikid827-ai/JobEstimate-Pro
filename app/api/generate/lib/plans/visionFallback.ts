@@ -8,6 +8,7 @@ import type {
   PlanSheetAnalysis,
   PlanSheetDiscipline,
   PlanSheetIndexEntry,
+  PlanTradeFindingCategory,
   PlanTradeFinding,
 } from "./types"
 
@@ -39,6 +40,7 @@ type PlanVisionEnhancement = {
 type VisionTrade = PlanTradeFinding["trade"]
 type VisionSchedule = PlanScheduleItem["scheduleType"]
 type VisionUnit = PlanTradeFinding["unit"]
+type VisionTradeFindingCategory = NonNullable<PlanTradeFinding["category"]>
 
 const BATHROOM_FIXTURE_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\bvanity\b/i, label: "Vanity" },
@@ -73,6 +75,7 @@ function isPlanTrade(value: unknown): value is VisionTrade {
   return (
     value === "painting" ||
     value === "drywall" ||
+    value === "wallcovering" ||
     value === "flooring" ||
     value === "electrical" ||
     value === "plumbing" ||
@@ -119,6 +122,67 @@ function isDiscipline(value: unknown): value is PlanSheetDiscipline {
     value === "general" ||
     value === "unknown"
   )
+}
+
+function isTradeFindingCategory(value: unknown): value is VisionTradeFindingCategory {
+  return (
+    value === "wall_area" ||
+    value === "ceiling_area" ||
+    value === "repair_area" ||
+    value === "assembly_area" ||
+    value === "finish_texture_area" ||
+    value === "partition_lf" ||
+    value === "corridor_area" ||
+    value === "selected_elevation_area" ||
+    value === "door_openings" ||
+    value === "trim_lf"
+  )
+}
+
+function inferTradeFindingCategory(args: {
+  trade: VisionTrade
+  label: string
+  unit: VisionUnit
+  notes: string[]
+}): PlanTradeFindingCategory | undefined {
+  const blob = [args.label, ...(args.notes || [])].join(" ").toLowerCase()
+
+  if (args.unit === "linear_ft" && /\bpartition|gyp|gypsum|wall type\b/.test(blob)) {
+    return "partition_lf"
+  }
+  if (args.unit === "linear_ft" && /\btrim|base|baseboard|casing|frame\b/.test(blob)) {
+    return "trim_lf"
+  }
+  if ((args.unit === "doors" || args.unit === "each") && /\bdoor|frame|casing\b/.test(blob)) {
+    return "door_openings"
+  }
+  if (args.unit === "sqft" && /\bfeature wall|accent wall|selected elevation|elevation\b/.test(blob)) {
+    return "selected_elevation_area"
+  }
+  if (args.unit === "sqft" && /\bcorridor|hallway|lobby|common area\b/.test(blob)) {
+    return "corridor_area"
+  }
+  if (args.unit === "sqft" && /\bpatch|repair|hole|crack\b/.test(blob)) {
+    return "repair_area"
+  }
+  if (args.unit === "sqft" && /\bfinish|texture|level\s*[45]|skim\b/.test(blob)) {
+    return "finish_texture_area"
+  }
+  if (args.unit === "sqft" && /\bceiling|rcp|soffit\b/.test(blob)) {
+    return "ceiling_area"
+  }
+  if (
+    args.trade === "drywall" &&
+    args.unit === "sqft" &&
+    /\bdrywall|sheetrock|partition|wallboard|board area\b/.test(blob)
+  ) {
+    return "assembly_area"
+  }
+  if (args.unit === "sqft" && /\bwall|paint|wallcover(?:ing)?|wallpaper\b/.test(blob)) {
+    return "wall_area"
+  }
+
+  return undefined
 }
 
 function buildEvidence(args: VisionSeed, excerpt: string, confidence: number): PlanEvidenceRef {
@@ -235,13 +299,22 @@ function sanitizeTrades(args: VisionSeed, value: unknown): PlanTradeFinding[] {
       typeof record?.excerpt === "string" && record.excerpt.trim()
         ? record.excerpt.trim().slice(0, 180)
         : label
+    const notes = cleanStrings(record?.notes, 4)
 
     out.push({
       trade: record.trade,
       label,
       quantity: quantity && quantity > 0 ? quantity : null,
       unit: record.unit,
-      notes: cleanStrings(record?.notes, 4),
+      category: isTradeFindingCategory(record?.category)
+        ? record.category
+        : inferTradeFindingCategory({
+            trade: record.trade,
+            label,
+            unit: record.unit,
+            notes,
+          }),
+      notes,
       confidence,
       evidence: [buildEvidence(args, excerpt, confidence)],
     })
@@ -455,10 +528,11 @@ Return ONLY valid JSON with this exact shape:
   ],
   "tradeFindings": [
     {
-      "trade": "painting | drywall | flooring | electrical | plumbing | carpentry | tile | general renovation",
+      "trade": "painting | drywall | wallcovering | flooring | electrical | plumbing | carpentry | tile | general renovation",
       "label": "Tile finish plan referenced",
       "quantity": null,
       "unit": "sqft | linear_ft | rooms | doors | fixtures | devices | each | unknown",
+      "category": "wall_area | ceiling_area | repair_area | assembly_area | finish_texture_area | partition_lf | corridor_area | selected_elevation_area | door_openings | trim_lf | null",
       "confidence": 0,
       "excerpt": "FINISH PLAN",
       "notes": ["..."]
@@ -619,7 +693,8 @@ export function mergePlanVisionEnhancement(args: {
 
   const nextTradeFindings = uniqBy(
     [...args.base.tradeFindings, ...args.enhancement.tradeFindings],
-    (item) => `${item.trade}:${item.label.trim().toLowerCase()}`
+    (item) =>
+      `${item.trade}:${item.category || "uncategorized"}:${item.label.trim().toLowerCase()}`
   )
 
   const enhancementConfidence = clampConfidence(args.enhancement.confidence, args.base.confidence)

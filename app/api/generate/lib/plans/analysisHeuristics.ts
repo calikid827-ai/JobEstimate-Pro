@@ -198,6 +198,7 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
         label: "Doors referenced",
         quantity: qty,
         unit: qty ? "doors" : "unknown",
+        category: qty ? "door_openings" : undefined,
         notes: ["Door-related sheet content detected."],
         confidence,
         evidence: [buildEvidence(args, signal.text, confidence)],
@@ -354,7 +355,7 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
   )
   const uniqueTrades = uniqBy(
     tradeFindings,
-    (item) => `${item.trade}:${item.label.toLowerCase()}`
+    (item) => `${item.trade}:${item.category || "uncategorized"}:${item.label.toLowerCase()}`
   )
 
   const scaleTextSignal =

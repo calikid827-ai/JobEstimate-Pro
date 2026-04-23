@@ -79,10 +79,23 @@ export type PlanScheduleItem = {
   evidence: PlanEvidenceRef[]
 }
 
+export type PlanTradeFindingCategory =
+  | "wall_area"
+  | "ceiling_area"
+  | "repair_area"
+  | "assembly_area"
+  | "finish_texture_area"
+  | "partition_lf"
+  | "corridor_area"
+  | "selected_elevation_area"
+  | "door_openings"
+  | "trim_lf"
+
 export type PlanTradeFinding = {
   trade:
     | "painting"
     | "drywall"
+    | "wallcovering"
     | "flooring"
     | "electrical"
     | "plumbing"
@@ -100,6 +113,7 @@ export type PlanTradeFinding = {
     | "devices"
     | "each"
     | "unknown"
+  category?: PlanTradeFindingCategory
   notes: string[]
   confidence: number
   evidence: PlanEvidenceRef[]
