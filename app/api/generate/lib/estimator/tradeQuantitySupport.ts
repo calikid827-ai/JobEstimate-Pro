@@ -1306,7 +1306,10 @@ function buildWallcoveringQuantitySupport(args: {
     (findingHasCategory(quantifiedWallcoveringSqftFinding, ["selected_elevation_area"]) ||
       /\bfeature wall|accent wall|selected elevation|elevation\b/i.test(
         getFindingBlob(quantifiedWallcoveringSqftFinding)
-      ))
+      )) &&
+    !/\bgeneral wall area|full(?:-|\s)?area|overall wall area\b/i.test(
+      getFindingBlob(quantifiedWallcoveringSqftFinding)
+    )
       ? quantifiedWallcoveringSqftFinding
       : null
   const corridorWallcoveringFinding =
@@ -1314,7 +1317,10 @@ function buildWallcoveringQuantitySupport(args: {
     (findingHasCategory(quantifiedWallcoveringSqftFinding, ["corridor_area"]) ||
       /\bcorridor|hallway|lobby|common area\b/i.test(
         getFindingBlob(quantifiedWallcoveringSqftFinding)
-      ))
+      )) &&
+    !/\bgeneral wall area|full(?:-|\s)?area|overall wall area\b/i.test(
+      getFindingBlob(quantifiedWallcoveringSqftFinding)
+    )
       ? quantifiedWallcoveringSqftFinding
       : null
   const fullAreaWallcoveringFinding =
@@ -1360,7 +1366,7 @@ function buildWallcoveringQuantitySupport(args: {
         evidenceRefs: corridorWallcoveringFinding.evidence || [],
       })
     )
-  } else if (fullAreaWallcoveringFinding) {
+  } else if (fullAreaWallcoveringFinding && !featureCue && !corridorCue) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area support for wallcovering",
@@ -1372,6 +1378,23 @@ function buildWallcoveringQuantitySupport(args: {
         source: "trade_finding",
         note:
           "Measured wallcovering area exists in plan findings and can back direct install/remove rows more safely than gross wall area.",
+        evidenceRefs: fullAreaWallcoveringFinding.evidence || [],
+      })
+    )
+  } else if (fullAreaWallcoveringFinding && (featureCue || corridorCue)) {
+    areaSignals.push(
+      buildSignal({
+        label: featureCue
+          ? "Selected-elevation wallcovering ambiguity cue"
+          : "Corridor wallcovering ambiguity cue",
+        category: featureCue ? "selected_elevation_area" : "corridor_area",
+        quantity: null,
+        unit: "unknown",
+        exactQuantity: false,
+        confidence: getTradeSignalConfidence(fullAreaWallcoveringFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "A measured wallcovering finding exists, but narrower feature-wall or corridor cues remain unresolved, so full-area quantity stays non-binding until coverage is explicit.",
         evidenceRefs: fullAreaWallcoveringFinding.evidence || [],
       })
     )
@@ -1474,6 +1497,9 @@ function buildWallcoveringQuantitySupport(args: {
         : null,
       selectedElevationFinding
         ? "Selected-elevation wallcovering should remain narrower than broad wall-area fallback."
+        : null,
+      fullAreaWallcoveringFinding && (featureCue || corridorCue)
+        ? "A full-area wallcovering finding exists, but narrower feature/corridor scope still needs explicit coverage before numeric pricing."
         : null,
       removalCue && !installCue
         ? "Removal support is present, but reinstall coverage is not yet equally clear."

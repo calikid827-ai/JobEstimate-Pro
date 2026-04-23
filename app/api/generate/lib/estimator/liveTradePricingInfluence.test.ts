@@ -916,6 +916,51 @@ test("drywall patch cues stay non-binding when plans do not provide measured rep
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(influence.engineInputs, undefined)
+  assert.ok(
+    influence.basisAssumptions.some((item) => /no measured repair area/i.test(item))
+  )
+})
+
+test("drywall install-like wording stays non-binding when only generic wall takeoff exists", () => {
+  const plan = makePlan({
+    detectedTrades: ["drywall"],
+    tradePackageSignals: ["drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new drywall partitions with finish at corridor walls."],
+        notes: ["Scope language suggests install and finish, but no measured drywall findings are present."],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1800,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Install new drywall partitions with finish.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(influence.engineInputs, undefined)
+  assert.ok(
+    influence.basisAssumptions.some((item) => /generic wall takeoff/i.test(item))
+  )
 })
 
 test("wallcovering influence feeds exact area and explicit install-remove routing into live numeric execution", () => {
@@ -1066,6 +1111,53 @@ test("wallcovering feature-wall cues stay non-binding when only gross wall-area 
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
+  assert.match(
+    influence.engineInputs?.wallcovering?.blocker || "",
+    /no exact supported wall area/i
+  )
+})
+
+test("wallcovering full-area findings stay non-binding when feature-wall scope remains narrower", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new wallcovering at feature wall only."],
+        notes: ["Accent wall type W-2."],
+        tradeFindings: [
+          {
+            trade: "wallcovering",
+            category: "wall_area",
+            label: "Measured wallcovering area",
+            confidence: 90,
+            notes: ["General wall area only; feature wall scope is called out elsewhere."],
+            quantity: 900,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Install vinyl wallcovering at feature wall only.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
+  assert.match(
+    influence.engineInputs?.wallcovering?.blocker || "",
+    /no exact supported wall area/i
+  )
 })
 
 test("wallcovering corridor package cues stay non-binding without an explicit install section", () => {

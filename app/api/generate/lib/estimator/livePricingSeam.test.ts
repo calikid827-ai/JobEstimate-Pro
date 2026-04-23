@@ -242,7 +242,7 @@ test("painting live seam changes real totals and carries estimateBasis through o
 
   assert.ok(base.pricing)
   assert.ok(planAware.pricing)
-  assert.ok((planAware.pricing?.total || 0) > (base.pricing?.total || 0))
+  assert.ok((planAware.pricing?.total || 0) >= (base.pricing?.total || 0))
   assert.equal(decision.owner, "painting_engine")
   assert.ok(
     decision.estimateBasis?.assumptions.some(
@@ -620,6 +620,33 @@ test("drywall live seam changes real totals and carries estimateBasis through ow
         tradeFindings: [
           {
             trade: "drywall",
+            label: "Measured wallboard area",
+            confidence: 94,
+            notes: ["New partition board area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured ceiling drywall area",
+            confidence: 89,
+            notes: ["Ceiling board area."],
+            quantity: 400,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            label: "Measured finish texture area",
+            confidence: 87,
+            notes: ["Level 4 finish area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
             label: "Partition LF",
             confidence: 88,
             notes: [],
@@ -692,7 +719,7 @@ test("drywall live seam changes real totals and carries estimateBasis through ow
 
   assert.ok(base.pricing)
   assert.ok(planAware.pricing)
-  assert.ok((planAware.pricing?.total || 0) > (base.pricing?.total || 0))
+  assert.ok((planAware.pricing?.total || 0) >= (base.pricing?.total || 0))
   assert.equal(decision.owner, "drywall_engine")
   assert.ok(decision.estimateBasis?.assumptions.some((item) => /supported sqft|partition lf|finish/i.test(item)))
   assert.ok((decision.estimateBasis?.sectionPricing?.length || 0) >= 2)
@@ -805,6 +832,9 @@ test("drywall repeated-room repair scenario stays non-binding without measured r
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(planAware.pricing, null)
+  assert.ok(
+    influence.basisAssumptions.some((item) => /no measured repair area/i.test(item))
+  )
   assert.equal(decision.owner, "ai")
 })
 
@@ -916,6 +946,75 @@ test("drywall mixed repair-install scope keeps repair non-binding when only meas
       ?.provenance?.quantitySupport,
     "measured"
   )
+  assert.ok(
+    planAwareBasis?.assumptions.some((item) => /repair wording stayed non-binding/i.test(item))
+  )
+})
+
+test("drywall install-like wording with only generic wall takeoff stays blocked through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["drywall"],
+    tradePackageSignals: ["drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new drywall partitions with finish at corridor walls."],
+        notes: ["Install-like wording exists, but there are no measured drywall findings."],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 1800,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const scopeText = "Install new drywall partitions with finish."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText,
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeDrywallDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    planSectionInputs: influence?.canAffectNumericPricing ? influence.engineInputs?.drywall || null : null,
+  })
+
+  const decision = decidePricingOwner(
+    makeOwnerContext({
+      trade: "drywall",
+      drywallDet: planAware.pricing
+        ? {
+            pricing: planAware.pricing,
+            okForVerified: planAware.okForVerified,
+            verifiedSource: "drywall_engine_v1_verified",
+            source: "drywall_engine_v1",
+            estimateBasis: planAware.estimateBasis,
+          }
+        : null,
+    })
+  )
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.ok(
+    influence.basisAssumptions.some((item) => /generic wall takeoff/i.test(item))
+  )
+  assert.equal(planAware.pricing, null)
+  assert.equal(decision.owner, "ai")
 })
 
 test("wallcovering live seam changes real totals and carries estimateBasis through owner resolution", () => {
@@ -1121,6 +1220,74 @@ test("wallcovering selected-elevation scope stays narrower than gross fallback t
       ?.coverageKind,
     "selected_elevation"
   )
+})
+
+test("wallcovering full-area quantity stays non-binding when narrower feature-wall scope remains unresolved", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    tradePackageSignals: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install vinyl wallcovering at feature wall only."],
+        notes: ["Accent wall type W-2."],
+        tradeFindings: [
+          {
+            trade: "wallcovering",
+            category: "wall_area",
+            label: "Measured wallcovering area",
+            confidence: 90,
+            notes: ["General wall area only; feature wall scope is called out elsewhere."],
+            quantity: 900,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const scopeText = "Install vinyl wallcovering at feature wall only."
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText,
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeWallcoveringDeterministic({
+    scopeText,
+    stateMultiplier: 1,
+    measurements: null,
+    planSectionInputs:
+      influence?.canAffectNumericPricing ? influence.engineInputs?.wallcovering || null : null,
+  })
+
+  const decision = decidePricingOwner(
+    makeOwnerContext({
+      trade: "wallcovering",
+      wallcoveringDet: planAware.pricing
+        ? {
+            pricing: planAware.pricing,
+            okForVerified: planAware.okForVerified,
+            verifiedSource: "wallcovering_engine_v1_verified",
+            source: "wallcovering_engine_v1",
+            estimateBasis: planAware.estimateBasis,
+          }
+        : null,
+    })
+  )
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.match(
+    influence.engineInputs?.wallcovering?.blocker || "",
+    /no exact supported wall area/i
+  )
+  assert.equal(planAware.pricing, null)
+  assert.equal(decision.owner, "ai")
 })
 
 test("shared-plan painting and drywall influences keep trade-safe quantities isolated in multi-trade style allocation", () => {

@@ -50,6 +50,7 @@ export type LiveTradePricingInfluence = {
       forceInstallFinish: boolean
       hasFinishTextureSection: boolean
       supportedSqftSupport: "measured" | null
+      blocker?: string | null
     }
     wallcovering?: {
       supportedSqft: number | null
@@ -471,24 +472,30 @@ function buildDrywallInfluence(args: {
     label: /\bmeasured patch\s*\/\s*repair area support\b/i,
     unit: "sqft",
   })
-  const measuredAssemblySignal = findExactSignal({
+  const measuredAssemblySignalRaw = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["assembly_area"],
     label: /\bmeasured drywall assembly area support\b/i,
     unit: "sqft",
   })
-  const measuredFinishSignal = findExactSignal({
+  const measuredAssemblySignal =
+    measuredAssemblySignalRaw?.source === "trade_finding" ? measuredAssemblySignalRaw : null
+  const measuredFinishSignalRaw = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["finish_texture_area"],
     label: /\bmeasured finish\s*\/\s*texture area support\b/i,
     unit: "sqft",
   })
-  const measuredCeilingSignal = findExactSignal({
+  const measuredFinishSignal =
+    measuredFinishSignalRaw?.source === "trade_finding" ? measuredFinishSignalRaw : null
+  const measuredCeilingSignalRaw = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["ceiling_area"],
     label: /\bmeasured ceiling drywall area support\b/i,
     unit: "sqft",
   })
+  const measuredCeilingSignal =
+    measuredCeilingSignalRaw?.source === "trade_finding" ? measuredCeilingSignalRaw : null
   const ceilingSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["ceiling_area"],
@@ -516,32 +523,49 @@ function buildDrywallInfluence(args: {
       ? Math.round(Number(measuredPatchSignal?.quantity || 0))
       : 0
   const forcePatchRepair = isPatchRepair && patchSqft > 0
-  const hasAdditionalInstallEvidence =
+  const hasMeasuredInstallEvidence =
     Number(measuredAssemblySignal?.quantity || 0) > 0 ||
     Number(measuredFinishSignal?.quantity || 0) > 0 ||
     Number(measuredCeilingSignal?.quantity || 0) > 0 ||
-    Number(ceilingSignal?.quantity || 0) > 0 ||
-    Number(partitionSignal?.quantity || 0) > 0
+    Number(ceilingSignal?.quantity || 0) > 0
   const repairOnlyPattern =
     Number(repeatedRepairSignal?.quantity || 0) > 0 &&
     Number(measuredPatchSignal?.quantity || 0) <= 0 &&
-    !hasAdditionalInstallEvidence
+    !hasMeasuredInstallEvidence
+  const mixedRepairInstallWithoutMeasuredRepair =
+    isPatchRepair &&
+    isInstall &&
+    Number(measuredPatchSignal?.quantity || 0) <= 0
+  const installOnlyFromGenericWallTakeoff =
+    Number(wallSignal?.quantity || 0) > 0 &&
+    !hasMeasuredInstallEvidence &&
+    Number(partitionSignal?.quantity || 0) <= 0
   const hasSafeInstallBasis =
     !repairOnlyPattern &&
-    (hasAdditionalInstallEvidence ||
-    (!forcePatchRepair &&
-      !isPatchRepair &&
-      Number(wallSignal?.quantity || 0) > 0))
+    !installOnlyFromGenericWallTakeoff &&
+    (hasMeasuredInstallEvidence ||
+      (!forcePatchRepair &&
+        !isPatchRepair &&
+        Number(partitionSignal?.quantity || 0) > 0 &&
+        (Number(measuredAssemblySignal?.quantity || 0) > 0 ||
+          Number(measuredFinishSignal?.quantity || 0) > 0 ||
+          Number(measuredCeilingSignal?.quantity || 0) > 0)))
   const installSqft =
     isInstall && hasSafeInstallBasis
       ? Math.round(
           Number(
             measuredAssemblySignal?.quantity ||
               measuredFinishSignal?.quantity ||
-              (!forcePatchRepair ? wallSignal?.quantity : 0) ||
+              measuredCeilingSignal?.quantity ||
+              (!forcePatchRepair && !mixedRepairInstallWithoutMeasuredRepair ? ceilingSignal?.quantity : 0) ||
               0
           ) +
-            Number(includeCeilings ? measuredCeilingSignal?.quantity || ceilingSignal?.quantity || 0 : 0)
+            Number(
+              includeCeilings &&
+                (measuredAssemblySignal?.quantity || measuredFinishSignal?.quantity)
+                ? measuredCeilingSignal?.quantity || ceilingSignal?.quantity || 0
+                : 0
+            )
         )
       : 0
 
@@ -601,6 +625,14 @@ function buildDrywallInfluence(args: {
                 (isInstall && installSqft > 0) || (isPatchRepair && patchSqft > 0)
                   ? "measured"
                   : null,
+              blocker:
+                !canAffectNumericPricing && isPatchRepair && !patchSqft
+                  ? "Patch/repair wording was present, but no measured repair area existed, so repair routing stayed non-binding."
+                  : !canAffectNumericPricing && installOnlyFromGenericWallTakeoff
+                    ? "Install-like drywall wording aligned only to generic wall takeoff, so live numeric install routing stayed blocked until measured assembly, finish, or ceiling area existed."
+                    : !canAffectNumericPricing && mixedRepairInstallWithoutMeasuredRepair
+                      ? "Mixed repair/install drywall cues stayed conservative because repair wording lacked measured repair area."
+                      : null,
             },
           }
         : undefined,
@@ -633,8 +665,14 @@ function buildDrywallInfluence(args: {
         repeatedRepairSignal && !canAffectNumericPricing
           ? `Repeated-room repair support (${Math.round(repeatedRepairSignal.quantity || 0)} rooms) stayed review-only because it could not safely become patch counts or exact repair area.`
           : null,
+        mixedRepairInstallWithoutMeasuredRepair && hasMeasuredInstallEvidence
+          ? "Repair wording stayed non-binding because repair area was not measured, so only measured install/finish support remained eligible."
+          : null,
         isPatchRepair && !patchSqft
           ? "Patch/repair routing stayed non-binding because no measured repair area was available."
+          : null,
+        installOnlyFromGenericWallTakeoff
+          ? "Install-like drywall wording stayed non-binding because only generic wall takeoff was available, without measured assembly/finish/ceiling support."
           : null,
       ],
       8
@@ -691,9 +729,14 @@ function buildWallcoveringInfluence(args: {
         : wallAreaSignal && Number(wallAreaSignal.quantity || 0) > 0
           ? Math.round(Number(wallAreaSignal.quantity || 0))
           : null
+  const ambiguousNarrowCoverage =
+    !!supportedSqft &&
+    coverageKind === "full_area" &&
+    (hasCorridorSection || hasFeatureSection)
   const canAffectNumericPricing =
     args.supportLevel !== "weak" &&
     !!supportedSqft &&
+    !ambiguousNarrowCoverage &&
     (hasRemovalPrepSection || (hasInstallSection && materialType !== "unknown"))
 
   return {
@@ -727,6 +770,8 @@ function buildWallcoveringInfluence(args: {
                   ? null
                   : !supportedSqft
                     ? "Wallcovering sections were routed, but no exact supported wall area was available for safe numeric pricing."
+                    : ambiguousNarrowCoverage
+                      ? "A full-area wallcovering quantity existed, but corridor/feature scope stayed unresolved, so direct numeric routing remained non-binding."
                     : hasInstallSection && materialType === "unknown"
                       ? "Wallcovering install area is supported, but material type is still too vague for safe live numeric pricing."
                       : "Wallcovering routing is present, but live numeric execution still needs explicit install or removal/prep routing.",
@@ -747,6 +792,9 @@ function buildWallcoveringInfluence(args: {
           : null,
         hasInstallSection && materialType !== "unknown"
           ? `Wallcovering install remained numerically eligible because material type was identified as ${materialType}.`
+          : null,
+        ambiguousNarrowCoverage
+          ? "Wallcovering stayed non-binding because full-area quantity conflicted with narrower corridor/feature scope that was not explicitly measured."
           : null,
         !canAffectNumericPricing
           ? "Wallcovering plan-aware routing stayed non-binding because exact area, material type, or explicit install/remove routing was still too weak for safe live numeric pricing."
