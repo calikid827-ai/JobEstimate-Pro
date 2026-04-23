@@ -343,9 +343,20 @@ test("orchestrator payload exposes estimateSections from winning deterministic b
   assert.equal(payload.estimateSections?.length, 2)
   assert.equal(payload.estimateSections?.[0]?.estimatorTreatment, "section_row")
   assert.equal(payload.estimateSections?.[1]?.estimatorTreatment, "embedded_burden")
+  assert.ok(payload.estimateRows)
+  assert.equal(payload.estimateRows?.length, 1)
+  assert.equal(payload.estimateRows?.[0]?.section, "Walls")
+  assert.equal(payload.estimateRows?.[0]?.pricingBasis, "direct")
+  assert.ok(payload.estimateEmbeddedBurdens)
+  assert.equal(payload.estimateEmbeddedBurdens?.length, 1)
+  assert.equal(payload.estimateEmbeddedBurdens?.[0]?.section, "Prep / protection")
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),
     payload.pricing.total
+  )
+  assert.equal(
+    payload.estimateRows?.reduce((sum, row) => sum + row.amount, 0),
+    1200
   )
 })
 
@@ -423,10 +434,21 @@ test("orchestrator payload exposes combined structured estimateSections when mul
 
   assert.equal(payload.pricing.total, 5280)
   assert.ok(payload.estimateSections)
+  assert.ok(payload.estimateRows)
+  assert.ok(payload.estimateEmbeddedBurdens)
   assert.ok(payload.estimateSections?.some((section) => section.trade === "painting"))
   assert.ok(payload.estimateSections?.some((section) => section.trade === "wallcovering"))
+  assert.ok(payload.estimateRows?.some((row) => row.trade === "painting"))
+  assert.ok(payload.estimateRows?.some((row) => row.trade === "wallcovering"))
+  assert.ok(
+    payload.estimateEmbeddedBurdens?.some((section) => section.trade === "painting")
+  )
   assert.equal(
     payload.estimateSections?.reduce((sum, section) => sum + section.amount, 0),
     payload.pricing.total
+  )
+  assert.equal(
+    payload.estimateRows?.reduce((sum, row) => sum + row.amount, 0),
+    4260
   )
 })

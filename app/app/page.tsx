@@ -21,6 +21,9 @@ import type {
   EffectivePaintScope,
   DocumentType,
   MeasureRow,
+  EstimateEmbeddedBurden,
+  EstimateRow,
+  EstimateStructuredSection,
   Invoice,
   JobBudget,
   JobActuals,
@@ -77,6 +80,12 @@ import {
   buildEstimateConfidence,
   normalizeProfitProtection,
 } from "./lib/estimate-utils"
+import {
+  getEstimateSectionTreatmentLabel,
+  normalizeEstimateEmbeddedBurdens,
+  normalizeEstimateRows,
+  normalizeEstimateSections,
+} from "./lib/estimate-sections"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -956,6 +965,9 @@ function startChangeOrderFromJob(jobId: string) {
     setState(source.state || "")
     setScopeChange("")
     setResult(null)
+    setEstimateRows(null)
+    setEstimateEmbeddedBurdens(null)
+    setEstimateSections(null)
     setSchedule(source.schedule ?? null)
 
     setPricing({
@@ -1298,6 +1310,11 @@ const [result, setResult] = useState<{
     protectionReasons?: string[]
   } | null
 } | null>(null)
+const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
+const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
+  useState<EstimateEmbeddedBurden[] | null>(null)
+const [estimateSections, setEstimateSections] =
+  useState<EstimateStructuredSection[] | null>(null)
 const [schedule, setSchedule] = useState<Schedule | null>(null)
 const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 
@@ -1541,6 +1558,9 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     profitProtection: profitProtection ?? null,
     scopeXRay: scopeXRay ?? null,
     tradePricingPrepAnalysis: tradePricingPrepAnalysis ?? null,
+    estimateRows: estimateRows ?? null,
+    estimateEmbeddedBurdens: estimateEmbeddedBurdens ?? null,
+    estimateSections: estimateSections ?? null,
     changeOrderDetection: changeOrderDetection ?? null,
     tax: {
       enabled: taxEnabled,
@@ -1578,6 +1598,9 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   profitProtection,
   scopeXRay,
   tradePricingPrepAnalysis,
+  estimateRows,
+  estimateEmbeddedBurdens,
+  estimateSections,
   changeOrderDetection,
   taxEnabled,
   taxRate,
@@ -2032,6 +2055,11 @@ useEffect(() => {
       subtotal: Number(x?.subtotal ?? 0),
       total: Number(x?.total ?? 0),
       notes: String(x?.notes ?? ""),
+      estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
+      estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
+        x?.estimateEmbeddedBurdens ?? x?.estimateSections
+      ),
+      estimateSections: normalizeEstimateSections(x?.estimateSections),
       deposit: x?.deposit ?? undefined,
       status: normalizeInvoiceStatus(x),
       paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
@@ -2078,6 +2106,11 @@ useEffect(() => {
             subtotal: Number(x?.subtotal ?? 0),
             total: Number(x?.total ?? 0),
             notes: String(x?.notes ?? ""),
+            estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
+            estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
+              x?.estimateEmbeddedBurdens ?? x?.estimateSections
+            ),
+            estimateSections: normalizeEstimateSections(x?.estimateSections),
             deposit: x?.deposit ?? undefined,
             status: normalizeInvoiceStatus(x),
             paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
@@ -2324,6 +2357,9 @@ async function generate(scopeOverride?: string) {
   setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
   setResult(null)
+  setEstimateRows(null)
+  setEstimateEmbeddedBurdens(null)
+  setEstimateSections(null)
   setPricingSource("ai")
   setShowPriceGuardDetails(false)
   setPriceGuard(null)
@@ -2993,6 +3029,14 @@ const normalizedTradePricingPrepAnalysis = data?.tradePricingPrepAnalysis
     }
   : null
 
+const normalizedEstimateRows = normalizeEstimateRows(
+  data?.estimateRows ?? data?.estimateSections
+)
+const normalizedEstimateEmbeddedBurdens = normalizeEstimateEmbeddedBurdens(
+  data?.estimateEmbeddedBurdens ?? data?.estimateSections
+)
+const normalizedEstimateSections = normalizeEstimateSections(data?.estimateSections)
+
 setScopeXRay(normalizedScopeXRay)
 setMissedScopeDetector(normalizedMissedScopeDetector)
 setProfitLeakDetector(normalizedProfitLeakDetector)
@@ -3000,6 +3044,9 @@ setEstimateSkeletonHandoff(normalizedEstimateSkeletonHandoff)
 setEstimateStructureConsumption(normalizedEstimateStructureConsumption)
 setEstimateDefenseMode(normalizedEstimateDefenseMode)
 setTradePricingPrepAnalysis(normalizedTradePricingPrepAnalysis)
+setEstimateRows(normalizedEstimateRows)
+setEstimateEmbeddedBurdens(normalizedEstimateEmbeddedBurdens)
+setEstimateSections(normalizedEstimateSections)
 setPricing(nextPricing)
 setPricingSource(nextPricingSource)
 
@@ -3192,6 +3239,9 @@ const estItem: EstimateHistoryItem = {
   profitLeakDetector: normalizedProfitLeakDetector,
   estimateDefenseMode: normalizedEstimateDefenseMode,
   tradePricingPrepAnalysis: normalizedTradePricingPrepAnalysis,
+  estimateRows: normalizedEstimateRows,
+  estimateEmbeddedBurdens: normalizedEstimateEmbeddedBurdens,
+  estimateSections: normalizedEstimateSections,
   changeOrderDetection,
 
   pricingSource: nextPricingSource,
@@ -3590,6 +3640,11 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
           ),
         }
       : null,
+    estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
+    estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
+      x?.estimateEmbeddedBurdens ?? x?.estimateSections
+    ),
+    estimateSections: normalizeEstimateSections(x?.estimateSections),
     estimateDefenseMode: x?.estimateDefenseMode
       ? {
           whyThisPriceHolds: normalizeDefenseLists(x.estimateDefenseMode?.whyThisPriceHolds),
@@ -3782,6 +3837,9 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   text: item.result || "",
   explanation: item.explanation || null,
 })
+  setEstimateRows(item.estimateRows ?? null)
+  setEstimateEmbeddedBurdens(item.estimateEmbeddedBurdens ?? null)
+  setEstimateSections(item.estimateSections ?? null)
   setPricing(item.pricing)
   setSchedule(item.schedule ?? null)
 
@@ -3888,6 +3946,106 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     .replaceAll("'", "&#039;")
 
     const safeResult = esc(result?.text || "")
+    const pdfEstimateRows = estimateRows ?? []
+    const pdfEstimateEmbeddedBurdens = estimateEmbeddedBurdens ?? []
+    const pdfHasMultipleSectionTrades =
+      new Set(
+        [...pdfEstimateRows, ...pdfEstimateEmbeddedBurdens]
+          .map((section) => section.trade.trim().toLowerCase())
+          .filter(Boolean)
+      ).size > 1
+
+    const estimateSectionsHtml =
+      pdfEstimateRows.length > 0 || pdfEstimateEmbeddedBurdens.length > 0
+        ? `
+          <div class="section">
+            <div class="muted" style="margin-bottom:6px;">Estimate Rows</div>
+            ${
+              pdfEstimateRows.length > 0
+                ? `<table>
+              <tr>
+                <th>Row</th>
+                <th>Quantity</th>
+                <th style="text-align:right;">Amount</th>
+              </tr>
+              ${pdfEstimateRows
+                .map((section) => {
+                  const displayLabel =
+                    pdfHasMultipleSectionTrades && section.trade
+                      ? `${section.trade}: ${section.label}`
+                      : section.label
+                  const quantityLabel =
+                    section.quantity != null && section.unit
+                      ? `${section.quantity.toLocaleString()} ${section.unit}`
+                      : "—"
+                  const notes =
+                    section.notes.length > 0
+                      ? `<div style="margin-top:4px; font-size:11px; color:#666;">${esc(
+                          section.notes.join(" • ")
+                        )}</div>`
+                      : ""
+
+                  return `
+                    <tr>
+                      <td>
+                        <div style="font-weight:700;">${esc(displayLabel)}</div>
+                        ${notes}
+                      </td>
+                      <td>${esc(quantityLabel)}</td>
+                      <td style="text-align:right; font-weight:700;">$${Number(
+                        section.amount || 0
+                      ).toLocaleString()}</td>
+                    </tr>
+                  `
+                })
+                .join("")}
+            </table>`
+                : ""
+            }
+            ${
+              pdfEstimateEmbeddedBurdens.length > 0
+                ? `<div class="muted" style="margin-top:8px; margin-bottom:4px;">Embedded burden reference</div>
+            <table>
+              <tr>
+                <th>Section</th>
+                <th>Treatment</th>
+                <th style="text-align:right;">Amount</th>
+              </tr>
+              ${pdfEstimateEmbeddedBurdens
+                .map((section) => {
+                  const displayLabel =
+                    pdfHasMultipleSectionTrades && section.trade
+                      ? `${section.trade}: ${section.label}`
+                      : section.label
+                  const notes =
+                    section.notes.length > 0
+                      ? `<div style="margin-top:4px; font-size:11px; color:#666;">${esc(
+                          section.notes.join(" • ")
+                        )}</div>`
+                      : ""
+                  return `
+                    <tr>
+                      <td>
+                        <div style="font-weight:700;">${esc(displayLabel)}</div>
+                        ${notes}
+                      </td>
+                      <td>${esc(getEstimateSectionTreatmentLabel(section))}</td>
+                      <td style="text-align:right; font-weight:700;">$${Number(
+                        section.amount || 0
+                      ).toLocaleString()}</td>
+                    </tr>
+                  `
+                })
+                .join("")}
+            </table>`
+                : ""
+            }
+            <div class="muted" style="margin-top:8px; line-height:1.4;">
+              Embedded burden rows remain included in the total, but are not standalone priced scope lines.
+            </div>
+          </div>
+        `
+        : ""
 
     const scheduleHtml = (s: Schedule | null) => {
   if (!s) return ""
@@ -4228,6 +4386,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 
           ${scheduleHtml(schedule)}
 
+          ${estimateSectionsHtml}
+
           <div class="section">
             <div class="muted" style="margin-bottom:6px;">Pricing Summary</div>
             <table>
@@ -4408,6 +4568,89 @@ ${
     )
     .join("")
 
+  const invoiceEstimateRows = inv.estimateRows ?? []
+  const invoiceEstimateEmbeddedBurdens = inv.estimateEmbeddedBurdens ?? []
+  const invoiceHasMultipleSectionTrades =
+    new Set(
+      [...invoiceEstimateRows, ...invoiceEstimateEmbeddedBurdens]
+        .map((section) => section.trade.trim().toLowerCase())
+        .filter(Boolean)
+    ).size > 1
+  const estimateSectionsReferenceHtml =
+    invoiceEstimateRows.length > 0 || invoiceEstimateEmbeddedBurdens.length > 0
+      ? `
+        <div style="margin-top:16px;">
+          <div class="muted" style="margin-bottom:6px;">Estimate Row Reference</div>
+          ${
+            invoiceEstimateRows.length > 0
+              ? `<table>
+            <tr><th>Row</th><th style="text-align:right;">Amount</th></tr>
+            ${invoiceEstimateRows
+              .map((section) => {
+                const label =
+                  invoiceHasMultipleSectionTrades && section.trade
+                    ? `${section.trade}: ${section.label}`
+                    : section.label
+                const notes =
+                  section.notes.length > 0
+                    ? `<div style="margin-top:4px; font-size:11px; color:#666;">${esc(
+                        section.notes.join(" • ")
+                      )}</div>`
+                    : ""
+
+                return `
+                  <tr>
+                    <td>
+                      <div style="font-weight:700;">${esc(label)}</div>
+                      ${notes}
+                    </td>
+                    <td style="text-align:right;">${money(section.amount)}</td>
+                  </tr>
+                `
+              })
+              .join("")}
+          </table>`
+              : ""
+          }
+          ${
+            invoiceEstimateEmbeddedBurdens.length > 0
+              ? `<table style="margin-top:10px;">
+            <tr><th>Embedded burden</th><th>Treatment</th><th style="text-align:right;">Amount</th></tr>
+            ${invoiceEstimateEmbeddedBurdens
+              .map((section) => {
+                const label =
+                  invoiceHasMultipleSectionTrades && section.trade
+                    ? `${section.trade}: ${section.label}`
+                    : section.label
+                const notes =
+                  section.notes.length > 0
+                    ? `<div style="margin-top:4px; font-size:11px; color:#666;">${esc(
+                        section.notes.join(" • ")
+                      )}</div>`
+                    : ""
+
+                return `
+                  <tr>
+                    <td>
+                      <div style="font-weight:700;">${esc(label)}</div>
+                      ${notes}
+                    </td>
+                    <td>${esc(getEstimateSectionTreatmentLabel(section))}</td>
+                    <td style="text-align:right;">${money(section.amount)}</td>
+                  </tr>
+                `
+              })
+              .join("")}
+          </table>`
+              : ""
+          }
+          <div class="box" style="margin-top:8px;">
+            Embedded burden rows remain included in the estimate total and are shown here as reference only.
+          </div>
+        </div>
+      `
+      : ""
+
   win.document.write(`
     <html>
       <head>
@@ -4472,6 +4715,8 @@ ${
             <tr class="totalRow"><td>Total Due</td><td style="text-align:right;">${money(inv.total)}</td></tr>
           </table>
         </div>
+
+        ${estimateSectionsReferenceHtml}
 
         ${
   inv.deposit?.enabled
@@ -4625,6 +4870,9 @@ function createInvoiceFromEstimate(est: EstimateHistoryItem) {
     // subtotal is what’s shown before total-due line; for deposit invoice it’s the deposit
     subtotal: depEnabled ? depDue : Math.round(markedUp),
     total: depEnabled ? depDue : estimateTotal,
+    estimateRows: est.estimateRows ?? null,
+    estimateEmbeddedBurdens: est.estimateEmbeddedBurdens ?? null,
+    estimateSections: est.estimateSections ?? null,
 
     notes: depEnabled
       ? `Deposit invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Remaining balance after deposit: $${depRemain.toLocaleString()}. Payment terms: ${
@@ -4727,6 +4975,9 @@ function createBalanceInvoiceFromEstimate(est: EstimateHistoryItem) {
     lineItems,
     subtotal: balanceDue,
     total: balanceDue,
+    estimateRows: est.estimateRows ?? null,
+    estimateEmbeddedBurdens: est.estimateEmbeddedBurdens ?? null,
+    estimateSections: est.estimateSections ?? null,
 
     notes: `Balance invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Deposit paid/required: $${depDue.toLocaleString()}. Remaining balance due: $${balanceDue.toLocaleString()}. Payment terms: ${
       companyProfile.paymentTerms?.trim() || "Due upon approval."
@@ -6950,6 +7201,147 @@ function ReviewInsightsCard({
   )
 }
 
+function EstimateSectionsCard({
+  estimateRows,
+  estimateEmbeddedBurdens,
+}: {
+  estimateRows: EstimateRow[] | null
+  estimateEmbeddedBurdens: EstimateEmbeddedBurden[] | null
+}) {
+  const rows = estimateRows ?? []
+  const burdens = estimateEmbeddedBurdens ?? []
+  if (rows.length === 0 && burdens.length === 0) return null
+
+  const hasMultipleTrades =
+    new Set(
+      [...rows, ...burdens]
+        .map((section) => section.trade.trim().toLowerCase())
+        .filter(Boolean)
+    ).size > 1
+
+  const sectionTotal = rows.reduce(
+    (sum, section) => sum + Number(section.amount || 0),
+    0
+  )
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15 }}>Estimate Rows</div>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+        Direct section rows come from the winning estimate basis. Embedded burden
+        items remain included in the total, but are not standalone priced scope lines.
+      </div>
+
+      {rows.length > 0 ? (
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
+        <thead>
+          <tr style={{ fontSize: 12, color: "#555" }}>
+            <th style={{ textAlign: "left", padding: "8px 6px" }}>Row</th>
+            <th style={{ textAlign: "left", padding: "8px 6px" }}>Quantity</th>
+            <th style={{ textAlign: "right", padding: "8px 6px" }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((section, index) => {
+            const quantityLabel =
+              section.quantity != null && section.unit
+                ? `${section.quantity.toLocaleString()} ${section.unit}`
+                : "—"
+
+            const label = hasMultipleTrades && section.trade
+              ? `${section.trade}: ${section.label}`
+              : section.label
+
+            const notes =
+              section.notes.length > 0 ? section.notes.join(" • ") : null
+
+            return (
+              <tr
+                key={`${section.trade}-${section.section}-${index}`}
+                style={{
+                  borderTop: "1px solid #e5e7eb",
+                  background: "#fff",
+                }}
+              >
+                <td style={{ padding: "10px 6px", verticalAlign: "top" }}>
+                  <div style={{ fontWeight: 700 }}>{label}</div>
+                  {notes ? (
+                    <div style={{ marginTop: 4, fontSize: 12, color: "#666" }}>
+                      {notes}
+                    </div>
+                  ) : null}
+                </td>
+                <td style={{ padding: "10px 6px", verticalAlign: "top" }}>
+                  {quantityLabel}
+                </td>
+                <td
+                  style={{
+                    padding: "10px 6px",
+                    textAlign: "right",
+                    verticalAlign: "top",
+                    fontWeight: 700,
+                  }}
+                >
+                  {money(section.amount)}
+                </td>
+              </tr>
+            )
+          })}
+          <tr style={{ borderTop: "2px solid #111" }}>
+            <td
+              colSpan={3}
+              style={{ padding: "10px 6px", fontWeight: 800, textAlign: "right" }}
+            >
+              Structured section total
+            </td>
+            <td style={{ padding: "10px 6px", textAlign: "right", fontWeight: 800 }}>
+              {money(sectionTotal)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      ) : null}
+
+      {burdens.length > 0 ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 13 }}>Embedded burden reference</div>
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
+            {burdens.map((section, index) => {
+              const label = hasMultipleTrades && section.trade
+                ? `${section.trade}: ${section.label}`
+                : section.label
+              const noteText = section.notes.length > 0 ? ` — ${section.notes.join(" • ")}` : ""
+
+              return (
+                <li key={`${section.trade}-${section.section}-burden-${index}`}>
+                  <strong>{label}</strong>: {money(section.amount)} ({getEstimateSectionTreatmentLabel(section)})
+                  {noteText}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function AdvancedAnalysisSection({
   photoAnalysis,
   photoScopeAssist,
@@ -8256,6 +8648,11 @@ function PlanIntelligenceCard({
       pdfPriceGuardLabel={pdfPriceGuardLabel}
       isUserEdited={isUserEdited}
       downloadPDF={downloadPDF}
+    />
+
+    <EstimateSectionsCard
+      estimateRows={estimateRows}
+      estimateEmbeddedBurdens={estimateEmbeddedBurdens}
     />
 
     {schedule && (

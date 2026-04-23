@@ -44,6 +44,53 @@ export type SavedDoc = {
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue"
 
+export type EstimateStructuredSection = {
+  trade: string
+  section: string
+  label: string
+  pricingBasis: "direct" | "burden"
+  estimatorTreatment: "section_row" | "embedded_burden"
+  amount: number
+  labor: number
+  materials: number
+  subs: number
+  unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
+  quantity?: number
+  notes: string[]
+}
+
+export type EstimateRow = {
+  trade: string
+  section: string
+  label: string
+  amount: number
+  labor: number
+  materials: number
+  subs: number
+  unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
+  quantity?: number
+  notes: string[]
+  pricingBasis: "direct"
+  estimatorTreatment: "section_row"
+  rowSource: "estimate_sections"
+}
+
+export type EstimateEmbeddedBurden = {
+  trade: string
+  section: string
+  label: string
+  amount: number
+  labor: number
+  materials: number
+  subs: number
+  unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "fixtures" | "devices" | "days" | "lump_sum"
+  quantity?: number
+  notes: string[]
+  pricingBasis: "burden"
+  estimatorTreatment: "embedded_burden"
+  rowSource: "estimate_sections"
+}
+
 export type Invoice = {
   id: string
   createdAt: number
@@ -61,6 +108,9 @@ export type Invoice = {
   notes: string
   status: InvoiceStatus
   paidAt?: number
+  estimateRows?: EstimateRow[] | null
+  estimateEmbeddedBurdens?: EstimateEmbeddedBurden[] | null
+  estimateSections?: EstimateStructuredSection[] | null
   deposit?: {
     enabled: boolean
     type: "percent" | "fixed"
@@ -412,6 +462,9 @@ export type EstimateHistoryItem = {
   profitLeakDetector?: ProfitLeakDetector
   estimateDefenseMode?: EstimateDefenseMode
   tradePricingPrepAnalysis?: TradePricingPrepAnalysis
+  estimateRows?: EstimateRow[] | null
+  estimateEmbeddedBurdens?: EstimateEmbeddedBurden[] | null
+  estimateSections?: EstimateStructuredSection[] | null
   changeOrderDetection?: ChangeOrderDetection | null
   pricingSource?: PricingSource
   priceGuardVerified?: boolean

@@ -74,6 +74,38 @@ export type EstimateStructuredSection = {
   notes: string[]
 }
 
+export type EstimateRow = {
+  trade: string
+  section: string
+  label: string
+  amount: number
+  labor: number
+  materials: number
+  subs: number
+  unit?: PricingUnit
+  quantity?: number
+  notes: string[]
+  pricingBasis: "direct"
+  estimatorTreatment: "section_row"
+  rowSource: "estimate_sections"
+}
+
+export type EstimateEmbeddedBurden = {
+  trade: string
+  section: string
+  label: string
+  amount: number
+  labor: number
+  materials: number
+  subs: number
+  unit?: PricingUnit
+  quantity?: number
+  notes: string[]
+  pricingBasis: "burden"
+  estimatorTreatment: "embedded_burden"
+  rowSource: "estimate_sections"
+}
+
 export type EstimateBasis = {
   units: PricingUnit[]
   quantities: Partial<Record<PricingUnit, number>>
@@ -662,6 +694,8 @@ export type EstimatorPayload = {
     perTrade: MultiTradeDetTradeResult[]
     notes: string[]
   } | null
+  estimateRows?: EstimateRow[] | null
+  estimateEmbeddedBurdens?: EstimateEmbeddedBurden[] | null
   estimateSections?: EstimateStructuredSection[] | null
   estimateBasis?: EstimateBasis | null
   pricingSource: "ai" | "deterministic" | "merged"

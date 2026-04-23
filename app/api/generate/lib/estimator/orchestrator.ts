@@ -43,6 +43,8 @@ import type {
   EstimatorPayload,
   EstimateExplanation,
   EstimateBasis,
+  EstimateEmbeddedBurden,
+  EstimateRow,
   EstimateStructuredSection,
   PriceGuardReport,
   ScheduleBlock,
@@ -199,6 +201,66 @@ function buildEstimateSections(args: {
       notes: [...(section.notes || [])],
     }
   })
+}
+
+function buildEstimateRows(
+  sections: EstimateStructuredSection[] | null
+): EstimateRow[] | null {
+  if (!sections?.length) return null
+
+  const rows = sections
+    .filter(
+      (section) =>
+        section.pricingBasis === "direct" &&
+        section.estimatorTreatment === "section_row"
+    )
+    .map((section) => ({
+      trade: section.trade,
+      section: section.section,
+      label: section.label,
+      amount: Number(section.amount || 0),
+      labor: Number(section.labor || 0),
+      materials: Number(section.materials || 0),
+      subs: Number(section.subs || 0),
+      unit: section.unit,
+      quantity: section.quantity,
+      notes: [...section.notes],
+      pricingBasis: "direct" as const,
+      estimatorTreatment: "section_row" as const,
+      rowSource: "estimate_sections" as const,
+    }))
+
+  return rows.length ? rows : null
+}
+
+function buildEstimateEmbeddedBurdens(
+  sections: EstimateStructuredSection[] | null
+): EstimateEmbeddedBurden[] | null {
+  if (!sections?.length) return null
+
+  const burdens = sections
+    .filter(
+      (section) =>
+        section.pricingBasis === "burden" &&
+        section.estimatorTreatment === "embedded_burden"
+    )
+    .map((section) => ({
+      trade: section.trade,
+      section: section.section,
+      label: section.label,
+      amount: Number(section.amount || 0),
+      labor: Number(section.labor || 0),
+      materials: Number(section.materials || 0),
+      subs: Number(section.subs || 0),
+      unit: section.unit,
+      quantity: section.quantity,
+      notes: [...section.notes],
+      pricingBasis: "burden" as const,
+      estimatorTreatment: "embedded_burden" as const,
+      rowSource: "estimate_sections" as const,
+    }))
+
+  return burdens.length ? burdens : null
 }
 
 function coerceDraft(draft: AIResponse): AIResponse {
@@ -422,6 +484,9 @@ export async function runEstimatorOrchestrator(args: {
     trade: ctx.trade,
     basis: finalBasis,
   })
+  const estimateRows = buildEstimateRows(estimateSections)
+  const estimateEmbeddedBurdens =
+    buildEstimateEmbeddedBurdens(estimateSections)
 
   const description = await finalizeDescription({
   draft,
@@ -676,6 +741,8 @@ if (ctx.planIntelligence?.ok) {
           notes: ctx.multiTradeDet.notes,
         }
       : null,
+    estimateRows,
+    estimateEmbeddedBurdens,
     estimateSections,
     pricingSource: resolvedPricing.pricingSource,
     detSource: resolvedPricing.detSource,
