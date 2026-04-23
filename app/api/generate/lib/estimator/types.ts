@@ -47,6 +47,18 @@ export type PricingUnit =
   | "days"
   | "lump_sum"
 
+export type EstimateBasisSection = {
+  section: string
+  labor: number
+  materials: number
+  subs: number
+  total: number
+  pricingBasis: "direct" | "burden"
+  unit?: PricingUnit
+  quantity?: number
+  notes?: string[]
+}
+
 export type EstimateBasis = {
   units: PricingUnit[]
   quantities: Partial<Record<PricingUnit, number>>
@@ -55,6 +67,7 @@ export type EstimateBasis = {
   crewDays?: number
   mobilization: number
   assumptions: string[]
+  sectionPricing?: EstimateBasisSection[]
 }
 
 export type ScheduleBlock = {
@@ -92,6 +105,7 @@ export type MultiTradeDetTradeResult = {
   crewDays: number
   source: string
   notes: string[]
+  estimateBasis?: EstimateBasis | null
 }
 
 export type MultiTradeDeterministicResult = {
@@ -503,6 +517,7 @@ export type PricingOwner =
   | "painting_doors_only"
   | "painting_big_job"
   | "painting_engine"
+  | "wallcovering_engine"
   | "flooring_engine"
   | "electrical_engine"
   | "plumbing_engine"
@@ -529,6 +544,7 @@ export type PricingOwnerContext = {
   multiTradeDet: MultiTradeDeterministicResult | null
 
   paintingDet: DeterministicPricingCandidate | null
+  wallcoveringDet: DeterministicPricingCandidate | null
   flooringDet: DeterministicPricingCandidate | null
   electricalDet: DeterministicPricingCandidate | null
   plumbingDet: DeterministicPricingCandidate | null

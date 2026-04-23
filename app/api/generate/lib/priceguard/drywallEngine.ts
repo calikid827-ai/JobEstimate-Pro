@@ -7,6 +7,19 @@ type Pricing = {
   markup: number
   total: number
 }
+type SectionBucket = {
+  section: string
+  labor: number
+  materials: number
+  subs: number
+  total: number
+}
+type SectionPricingDetail = SectionBucket & {
+  pricingBasis: "direct" | "burden"
+  unit?: "sqft" | "linear_ft" | "days" | "lump_sum"
+  quantity?: number
+  notes?: string[]
+}
 
 export type DrywallDeterministicResult = {
   okForDeterministic: boolean
@@ -24,6 +37,7 @@ export type DrywallDeterministicResult = {
     crewDays: number
     mobilization: number
     assumptions: string[]
+    sectionPricing?: SectionPricingDetail[]
   } | null
   jobType: "install_finish" | "patch_repair" | "unknown"
   signals: {
@@ -36,6 +50,7 @@ export type DrywallDeterministicResult = {
     isCeilingPatch?: boolean
   }
   notes: string[]
+  sectionBuckets?: SectionBucket[]
 }
 
 function clampPricing(pricing: Pricing): Pricing {
@@ -47,6 +62,31 @@ function clampPricing(pricing: Pricing): Pricing {
     markup: Math.min(25, Math.max(15, pricing.markup)),
     total: Math.min(MAX_TOTAL, Math.max(0, pricing.total)),
   }
+}
+
+function finalizeSectionBuckets(args: {
+  sections: Array<Omit<SectionBucket, "total">>
+  pricing: Pricing
+}): SectionBucket[] {
+  const positive = args.sections.filter(
+    (section) => section.labor > 0 || section.materials > 0 || section.subs > 0
+  )
+  let totalAssigned = 0
+  return positive.map((section, index) => {
+    const base = section.labor + section.materials + section.subs
+    const total =
+      index === positive.length - 1
+        ? Math.max(0, args.pricing.total - totalAssigned)
+        : Math.max(0, Math.round(base * (1 + args.pricing.markup / 100)))
+    totalAssigned += total
+    return {
+      section: section.section,
+      labor: Math.round(section.labor),
+      materials: Math.round(section.materials),
+      subs: Math.round(section.subs),
+      total,
+    }
+  })
 }
 
 function sumMatches(text: string, re: RegExp): number {
@@ -141,6 +181,7 @@ function buildEstimateBasis(args: {
   crewDays: number
   mobilization: number
   assumptions: string[]
+  sectionPricing?: SectionPricingDetail[]
 }): DrywallDeterministicResult["estimateBasis"] {
   const impliedLaborHours =
     args.laborRate > 0 ? Number(args.pricing.labor || 0) / args.laborRate : 0
@@ -160,7 +201,30 @@ function buildEstimateBasis(args: {
     crewDays: args.crewDays,
     mobilization: args.mobilization,
     assumptions: args.assumptions,
+    sectionPricing: args.sectionPricing,
   }
+}
+
+function buildDrywallSectionPricing(args: {
+  sectionBuckets: SectionBucket[]
+  partitionLf: number | null
+}): SectionPricingDetail[] {
+  return args.sectionBuckets.map((bucket) => {
+    if (bucket.section === "Partition-related scope") {
+      return {
+        ...bucket,
+        pricingBasis: "burden",
+        unit: args.partitionLf && args.partitionLf > 0 ? "linear_ft" : undefined,
+        quantity: args.partitionLf && args.partitionLf > 0 ? args.partitionLf : undefined,
+        notes: ["Partition section remains burden-based and does not imply full board/finish assembly pricing."],
+      }
+    }
+
+    return {
+      ...bucket,
+      pricingBasis: "direct",
+    }
+  })
 }
 
 // -----------------------------
@@ -170,6 +234,14 @@ export function computeDrywallDeterministic(args: {
   scopeText: string
   stateMultiplier: number
   measurements?: { totalSqft?: number | null } | null
+  planSectionInputs?: {
+    supportedSqft?: number | null
+    supportedPartitionLf?: number | null
+    includeCeilings?: boolean
+    forcePatchRepair?: boolean
+    forceInstallFinish?: boolean
+    hasFinishTextureSection?: boolean
+  } | null
 }): DrywallDeterministicResult {
   const scope = (args.scopeText || "").trim()
   if (!scope) {
@@ -189,26 +261,36 @@ export function computeDrywallDeterministic(args: {
     args.measurements?.totalSqft && Number(args.measurements.totalSqft) > 0
       ? Number(args.measurements.totalSqft)
       : null
+  const supportedSqft =
+    typeof args.planSectionInputs?.supportedSqft === "number" &&
+    args.planSectionInputs.supportedSqft > 0
+      ? Math.round(args.planSectionInputs.supportedSqft)
+      : null
 
   const textSqft = parseSqftFromText(scope)
   const sheetsInfo = parseSheets(scope)
   const patchCount = parsePatchCount(scope)
 
   const finishLevel = parseFinishLevel(scope)
-  const ceilingFlag = includesCeilings(scope)
-  const textureFlag = isTextureMatch(scope)
+  const ceilingFlag =
+    typeof args.planSectionInputs?.includeCeilings === "boolean"
+      ? args.planSectionInputs.includeCeilings
+      : includesCeilings(scope)
+  const textureFlag =
+    !!args.planSectionInputs?.hasFinishTextureSection || isTextureMatch(scope)
   const ceilingPatchFlag = isCeilingPatch(scope)
 
   // Decide a working sqft
   const sqftFromSheets = sheetsInfo ? Math.round(sheetsInfo.sheets * sheetsInfo.sheetSqft) : null
   const sqft =
     measSqft ??
+    supportedSqft ??
     textSqft ??
     sqftFromSheets ??
     null
 
-  const patchLike = hasPatchSignals(scope)
-  const installLike = hasInstallFinishSignals(scope)
+  const patchLike = args.planSectionInputs?.forcePatchRepair || hasPatchSignals(scope)
+  const installLike = args.planSectionInputs?.forceInstallFinish || hasInstallFinishSignals(scope)
 
   // -----------------------------
   // Job type selection
@@ -233,6 +315,7 @@ export function computeDrywallDeterministic(args: {
           isCeilingPatch: ceilingPatchFlag,
         },
         notes: ["Patch/repair language present but no explicit quantities (count/sqft/sheets) → avoid deterministic"],
+        sectionBuckets: [],
       }
     }
 
@@ -264,11 +347,22 @@ export function computeDrywallDeterministic(args: {
       mobilization,
       assumptions: [
         patchCount ? `${patchCount} patch / repair location(s) informed the live drywall pricing route.` : null,
-        sqft ? `${sqft} repair sqft informed the live drywall pricing route.` : null,
+        sqft
+          ? supportedSqft && !textSqft && !measSqft
+            ? `${sqft} repair sqft came from plan-aware section support.`
+            : `${sqft} repair sqft informed the live drywall pricing route.`
+          : null,
         finishLevel ? `Finish level ${finishLevel} was carried into patch / repair pricing.` : null,
         textureFlag ? "Texture-match burden was included in patch / repair pricing." : null,
         ceilingPatchFlag ? "Ceiling patch routing stayed separate inside drywall pricing." : null,
+        args.planSectionInputs?.supportedPartitionLf
+          ? `${Math.round(args.planSectionInputs.supportedPartitionLf)} partition LF was identified, but partition LF remains routing-only until a safe LF-to-board model exists.`
+          : null,
       ].filter(Boolean) as string[],
+      sectionPricing: buildDrywallSectionPricing({
+        sectionBuckets: pricing.sectionBuckets,
+        partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+      }),
     })
 
     const okForVerified = !!patchCount || !!textSqft || !!sheetsInfo // measurement-only sqft is deterministic but not “verified”
@@ -287,7 +381,13 @@ export function computeDrywallDeterministic(args: {
         isTextureMatch: textureFlag,
         isCeilingPatch: ceilingPatchFlag,
       },
-      notes: ["Drywall patch/repair pricing applied"],
+      notes: [
+        "Drywall patch/repair pricing applied",
+        args.planSectionInputs?.forcePatchRepair
+          ? "Plan-aware section routing kept drywall in patch / repair pricing."
+          : null,
+      ].filter(Boolean) as string[],
+      sectionBuckets: pricing.sectionBuckets,
     }
   }
 
@@ -311,6 +411,7 @@ export function computeDrywallDeterministic(args: {
           isCeilingPatch: false,
         },
         notes: ["Install/finish language present but no sqft/sheets parsed → avoid deterministic"],
+        sectionBuckets: [],
       }
     }
 
@@ -320,6 +421,7 @@ export function computeDrywallDeterministic(args: {
       includesCeilings: ceilingFlag,
       finishLevel,
       textureMatch: textureFlag,
+      partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
     })
     const laborRate = 95
     const baseLaborHours =
@@ -338,11 +440,22 @@ export function computeDrywallDeterministic(args: {
       crewDays,
       mobilization,
       assumptions: [
-        `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        supportedSqft && !textSqft && !measSqft
+          ? `${sqft} drywall sqft came from plan-aware section support.`
+          : `${sqft} drywall sqft informed the live install / finish pricing route.`,
         ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
         finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
-        textureFlag ? "Texture-match burden was included in install / finish pricing." : null,
+        textureFlag || args.planSectionInputs?.hasFinishTextureSection
+          ? "Finish / texture burden was included in install / finish pricing."
+          : null,
+        args.planSectionInputs?.supportedPartitionLf
+          ? `${Math.round(args.planSectionInputs.supportedPartitionLf)} partition LF increased install fragmentation burden without converting LF into invented board area.`
+          : null,
       ].filter(Boolean) as string[],
+      sectionPricing: buildDrywallSectionPricing({
+        sectionBuckets: pricing.sectionBuckets,
+        partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+      }),
     })
 
     // Verified if sqft was explicit in text or sheets were explicit (measurement-only sqft = deterministic, not verified)
@@ -362,7 +475,13 @@ export function computeDrywallDeterministic(args: {
         isTextureMatch: textureFlag,
         isCeilingPatch: false,
       },
-      notes: ["Drywall install + finish pricing applied"],
+      notes: [
+        "Drywall install + finish pricing applied",
+        args.planSectionInputs?.forceInstallFinish
+          ? "Plan-aware section routing kept drywall in install / hang pricing."
+          : null,
+      ].filter(Boolean) as string[],
+      sectionBuckets: pricing.sectionBuckets,
     }
   }
 
@@ -374,6 +493,7 @@ export function computeDrywallDeterministic(args: {
       includesCeilings: ceilingFlag,
       finishLevel,
       textureMatch: textureFlag,
+      partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
     })
     const laborRate = 95
     const baseLaborHours =
@@ -392,11 +512,22 @@ export function computeDrywallDeterministic(args: {
       crewDays,
       mobilization,
       assumptions: [
-        `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        supportedSqft && !textSqft && !measSqft
+          ? `${sqft} drywall sqft came from plan-aware section support.`
+          : `${sqft} drywall sqft informed the live install / finish pricing route.`,
         ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
         finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
-        textureFlag ? "Texture-match burden was included in install / finish pricing." : null,
+        textureFlag || args.planSectionInputs?.hasFinishTextureSection
+          ? "Finish / texture burden was included in install / finish pricing."
+          : null,
+        args.planSectionInputs?.supportedPartitionLf
+          ? `${Math.round(args.planSectionInputs.supportedPartitionLf)} partition LF increased install fragmentation burden without converting LF into invented board area.`
+          : null,
       ].filter(Boolean) as string[],
+      sectionPricing: buildDrywallSectionPricing({
+        sectionBuckets: pricing.sectionBuckets,
+        partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+      }),
     })
 
     const okForVerified = !!textSqft || !!sheetsInfo
@@ -416,6 +547,7 @@ export function computeDrywallDeterministic(args: {
         isCeilingPatch: false,
       },
       notes: ["Drywall mentioned; sqft available → applied install/finish baseline"],
+      sectionBuckets: pricing.sectionBuckets,
     }
   }
 
@@ -435,6 +567,7 @@ export function computeDrywallDeterministic(args: {
       isCeilingPatch: ceilingPatchFlag,
     },
     notes: ["No deterministic drywall pattern matched"],
+    sectionBuckets: [],
   }
 }
 
@@ -447,45 +580,129 @@ function priceDrywallInstallFinish(args: {
   includesCeilings: boolean
   finishLevel: 3 | 4 | 5 | null
   textureMatch: boolean
+  partitionLf?: number | null
+}): Pricing & { sectionBuckets: SectionBucket[] } {
+  const pricing = computeDrywallInstallFinishCore(args)
+
+  const baselineFinishLevel = args.finishLevel === 3 ? 3 : 4
+  const baseNoCeiling =
+    args.includesCeilings || args.textureMatch || baselineFinishLevel !== args.finishLevel || (args.partitionLf || 0) > 0
+      ? computeDrywallInstallFinishCore({
+          sqft: args.sqft,
+          stateMultiplier: args.stateMultiplier,
+          includesCeilings: false,
+          finishLevel: baselineFinishLevel,
+          textureMatch: false,
+          partitionLf: 0,
+        })
+      : pricing
+  const withCeilingsNoFinish =
+    args.includesCeilings
+      ? computeDrywallInstallFinishCore({
+          sqft: args.sqft,
+          stateMultiplier: args.stateMultiplier,
+          includesCeilings: true,
+          finishLevel: baselineFinishLevel,
+          textureMatch: false,
+          partitionLf: 0,
+        })
+      : baseNoCeiling
+  const withFinishNoPartition =
+    args.textureMatch || args.finishLevel !== baselineFinishLevel
+      ? computeDrywallInstallFinishCore({
+          sqft: args.sqft,
+          stateMultiplier: args.stateMultiplier,
+          includesCeilings: args.includesCeilings,
+          finishLevel: args.finishLevel,
+          textureMatch: args.textureMatch,
+          partitionLf: 0,
+        })
+      : withCeilingsNoFinish
+
+  const ceilingBucket = {
+    section: "Ceiling drywall",
+    labor: Math.max(0, withCeilingsNoFinish.labor - baseNoCeiling.labor),
+    materials: Math.max(0, withCeilingsNoFinish.materials - baseNoCeiling.materials),
+    subs: Math.max(0, withCeilingsNoFinish.subs - baseNoCeiling.subs),
+  }
+  const finishBucket = {
+    section: "Finish / texture",
+    labor: Math.max(0, withFinishNoPartition.labor - withCeilingsNoFinish.labor),
+    materials: Math.max(0, withFinishNoPartition.materials - withCeilingsNoFinish.materials),
+    subs: Math.max(0, withFinishNoPartition.subs - withCeilingsNoFinish.subs),
+  }
+  const partitionBucket = {
+    section: "Partition-related scope",
+    labor: Math.max(0, pricing.labor - withFinishNoPartition.labor),
+    materials: Math.max(0, pricing.materials - withFinishNoPartition.materials),
+    subs: Math.max(0, pricing.subs - withFinishNoPartition.subs),
+  }
+  const installBucket = {
+    section: "Install / hang",
+    labor: Math.max(
+      0,
+      pricing.labor - ceilingBucket.labor - finishBucket.labor - partitionBucket.labor
+    ),
+    materials: Math.max(
+      0,
+      pricing.materials - ceilingBucket.materials - finishBucket.materials - partitionBucket.materials
+    ),
+    subs: Math.max(0, pricing.subs - ceilingBucket.subs - finishBucket.subs - partitionBucket.subs),
+  }
+
+  return {
+    ...pricing,
+    sectionBuckets: finalizeSectionBuckets({
+      pricing,
+      sections: [installBucket, ceilingBucket, finishBucket, partitionBucket],
+    }),
+  }
+}
+
+function computeDrywallInstallFinishCore(args: {
+  sqft: number
+  stateMultiplier: number
+  includesCeilings: boolean
+  finishLevel: 3 | 4 | 5 | null
+  textureMatch: boolean
+  partitionLf?: number | null
 }): Pricing {
   const laborRate = 95
   const markup = 25
-
-  // Base labor hours per sqft (hang + tape + finish) mid-market
   let hrsPerSqft = 0.09
-
-  // Ceilings are slower
   if (args.includesCeilings) hrsPerSqft += 0.02
-
-  // Finish level adjustments (Level 4 common, Level 5 more skim)
   if (args.finishLevel === 3) hrsPerSqft -= 0.01
   if (args.finishLevel === 5) hrsPerSqft += 0.03
-
-  // Texture match adds time
   if (args.textureMatch) hrsPerSqft += 0.015
 
-  const laborHrs = args.sqft * hrsPerSqft + 4.5 // setup, masking, cleanup, trip time
+  const partitionLf =
+    typeof args.partitionLf === "number" && args.partitionLf > 0
+      ? Math.round(args.partitionLf)
+      : 0
+  const partitionDensity = partitionLf > 0 ? partitionLf / Math.max(1, args.sqft) : 0
+
+  let laborHrs = args.sqft * hrsPerSqft + 4.5
+  if (partitionDensity > 0) {
+    const fragmentationFactor = Math.min(0.14, partitionDensity * 0.8)
+    laborHrs *= 1 + fragmentationFactor
+    laborHrs += Math.min(4, partitionLf / 180)
+  }
   let labor = Math.round(laborHrs * laborRate)
   labor = Math.round(labor * args.stateMultiplier)
 
-  // Materials per sqft: board + mud + tape + screws + beads
-  // Keep this “allowance-like” since sqft may be measured area rather than sheet count
-  const matPerSqft = 1.05
-  const materials = Math.round(args.sqft * matPerSqft + 160)
+  let materials = Math.round(args.sqft * 1.05 + 160)
+  if (partitionLf > 0) {
+    materials += Math.round(Math.min(180, partitionLf * 0.12))
+  }
 
-  // Subs/overhead: mobilization + disposal + supervision
   const mobilization =
     args.sqft <= 150 ? 275 :
     args.sqft <= 400 ? 425 :
     650
-
   const dumpFee = args.sqft >= 350 ? 180 : 0
   const supervision = Math.round((labor + materials) * 0.06)
   const subs = mobilization + dumpFee + supervision
-
-  const base = labor + materials + subs
-  const total = Math.round(base * (1 + markup / 100))
-
+  const total = Math.round((labor + materials + subs) * (1 + markup / 100))
   return clampPricing({ labor, materials, subs, markup, total })
 }
 
@@ -496,7 +713,7 @@ function priceDrywallPatchRepair(args: {
   finishLevel: 3 | 4 | 5 | null
   textureMatch: boolean
   ceilingPatch: boolean
-}): Pricing {
+}): Pricing & { sectionBuckets: SectionBucket[] } {
   const laborRate = 95
   const markup = 25
 
@@ -542,6 +759,31 @@ function priceDrywallPatchRepair(args: {
 
   const base = labor + materials + subs
   const total = Math.round(base * (1 + markup / 100))
+  const pricing = clampPricing({ labor, materials, subs, markup, total })
+  const finishBucket = {
+    section: "Finish / texture",
+    labor: args.textureMatch ? Math.round(labor * 0.12) : 0,
+    materials: args.textureMatch ? 35 : 0,
+    subs: 0,
+  }
+  const ceilingBucket = {
+    section: "Ceiling drywall",
+    labor: args.ceilingPatch ? Math.round(labor * 0.08) : 0,
+    materials: 0,
+    subs: 0,
+  }
+  const patchBucket = {
+    section: "Patch / repair",
+    labor: Math.max(0, pricing.labor - finishBucket.labor - ceilingBucket.labor),
+    materials: Math.max(0, pricing.materials - finishBucket.materials),
+    subs: pricing.subs,
+  }
 
-  return clampPricing({ labor, materials, subs, markup, total })
+  return {
+    ...pricing,
+    sectionBuckets: finalizeSectionBuckets({
+      pricing,
+      sections: [patchBucket, finishBucket, ceilingBucket],
+    }),
+  }
 }

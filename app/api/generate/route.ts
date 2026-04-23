@@ -27,6 +27,7 @@ import {
 
 import { computeDrywallDeterministic } from "./lib/priceguard/drywallEngine"
 import { computePaintingDeterministic } from "./lib/priceguard/paintingEngine"
+import { computeWallcoveringDeterministic } from "./lib/priceguard/wallcoveringEngine"
 import { applyMinimumCharge } from "./lib/priceguard/minimumCharges"
 import { detectScopeSignals } from "./lib/priceguard/scopeSignals"
 
@@ -49,6 +50,7 @@ import {
   type OrchestratorDeps,
 } from "./lib/estimator/orchestrator"
 import { runPlanIntelligence } from "./lib/plans/orchestrator"
+import type { PlanIntelligence } from "./lib/plans/types"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -136,6 +138,7 @@ type MultiTradeDetTradeResult = {
   crewDays: number
   source: string
   notes: string[]
+  estimateBasis?: EstimateBasis | null
 }
 
 type MultiTradeDeterministicResult = {
@@ -1192,6 +1195,17 @@ type EstimateBasis = {
   crewDays?: number                    // optional when days-based
   mobilization: number
   assumptions: string[]
+  sectionPricing?: Array<{
+    section: string
+    labor: number
+    materials: number
+    subs: number
+    total: number
+    pricingBasis: "direct" | "burden"
+    unit?: PricingUnit
+    quantity?: number
+    notes?: string[]
+  }>
 }
 
 type AIResponse = {
@@ -3789,6 +3803,69 @@ function normalizeEstimateBasisUnits(basis: EstimateBasis): EstimateBasis {
   }
 }
 
+function normalizeEstimateBasisSectionPricing(
+  sections: EstimateBasis["sectionPricing"] | undefined
+): EstimateBasis["sectionPricing"] | undefined {
+  if (!Array.isArray(sections) || !sections.length) return undefined
+
+  const normalized = sections
+    .map((section) => ({
+      ...section,
+      section: String(section.section || "").trim(),
+      labor: Math.max(0, Math.round(Number(section.labor || 0))),
+      materials: Math.max(0, Math.round(Number(section.materials || 0))),
+      subs: Math.max(0, Math.round(Number(section.subs || 0))),
+      total: Math.max(0, Math.round(Number(section.total || 0))),
+      notes: Array.isArray(section.notes) ? section.notes.filter(Boolean) : undefined,
+    }))
+    .filter((section) => section.section)
+
+  return normalized.length ? normalized : undefined
+}
+
+function alignEstimateBasisSectionPricing(args: {
+  pricing: Pricing
+  basis: EstimateBasis | null
+}): EstimateBasis | null {
+  const basis = args.basis
+  if (!basis || !Array.isArray(basis.sectionPricing) || !basis.sectionPricing.length) return basis
+
+  const sectionPricing = normalizeEstimateBasisSectionPricing(basis.sectionPricing)
+  if (!sectionPricing?.length) {
+    return {
+      ...basis,
+      sectionPricing: undefined,
+    }
+  }
+
+  const aligned = sectionPricing.map((section) => ({ ...section }))
+  const burdenIndex = [...aligned]
+    .reverse()
+    .findIndex((section) => section.pricingBasis === "burden")
+  const targetIndex =
+    burdenIndex >= 0
+      ? aligned.length - 1 - burdenIndex
+      : aligned.length - 1
+
+  const sumLabor = aligned.reduce((sum, section) => sum + Number(section.labor || 0), 0)
+  const sumMaterials = aligned.reduce((sum, section) => sum + Number(section.materials || 0), 0)
+  const sumSubs = aligned.reduce((sum, section) => sum + Number(section.subs || 0), 0)
+  const sumTotal = aligned.reduce((sum, section) => sum + Number(section.total || 0), 0)
+
+  aligned[targetIndex].labor = Math.max(0, aligned[targetIndex].labor + (Math.round(args.pricing.labor) - sumLabor))
+  aligned[targetIndex].materials = Math.max(
+    0,
+    aligned[targetIndex].materials + (Math.round(args.pricing.materials) - sumMaterials)
+  )
+  aligned[targetIndex].subs = Math.max(0, aligned[targetIndex].subs + (Math.round(args.pricing.subs) - sumSubs))
+  aligned[targetIndex].total = Math.max(0, aligned[targetIndex].total + (Math.round(args.pricing.total) - sumTotal))
+
+  return {
+    ...basis,
+    sectionPricing: aligned,
+  }
+}
+
 function syncEstimateBasisMath(args: {
   pricing: Pricing
   basis: EstimateBasis | null
@@ -3796,12 +3873,18 @@ function syncEstimateBasisMath(args: {
   const raw = args.basis
   if (!raw || !isValidEstimateBasis(raw)) return raw
 
-  const b = normalizeEstimateBasisUnits(raw)
+  const b = {
+    ...normalizeEstimateBasisUnits(raw),
+    sectionPricing: normalizeEstimateBasisSectionPricing(raw.sectionPricing),
+  }
   const labor = Number(args.pricing?.labor ?? 0)
   const laborRate = Number(b.laborRate ?? 0)
 
   if (!Number.isFinite(laborRate) || laborRate <= 0) {
-    return b
+    return alignEstimateBasisSectionPricing({
+      pricing: args.pricing,
+      basis: b,
+    })
   }
 
   // Days-based jobs: crewDays is the real driver, so hoursPerUnit should stay 0
@@ -3812,7 +3895,9 @@ function syncEstimateBasisMath(args: {
         ? Math.round(crewDaysRaw * 2) / 2
         : 1
 
-    return {
+    return alignEstimateBasisSectionPricing({
+      pricing: args.pricing,
+      basis: {
       ...b,
       crewDays,
       quantities: {
@@ -3820,31 +3905,41 @@ function syncEstimateBasisMath(args: {
         days: crewDays,
       },
       hoursPerUnit: 0,
-    }
+      },
+    })
   }
 
   const primaryUnit = b.units[0]
   const qty = Number(b.quantities?.[primaryUnit] ?? 0)
 
   if (!Number.isFinite(qty) || qty <= 0) {
-    return {
+    return alignEstimateBasisSectionPricing({
+      pricing: args.pricing,
+      basis: {
       ...b,
       hoursPerUnit: 0,
-    }
+      },
+    })
   }
 
   const impliedLaborHours = labor / laborRate
   const hoursPerUnit = Math.round((impliedLaborHours / qty) * 1000) / 1000
 
-  return {
+  return alignEstimateBasisSectionPricing({
+    pricing: args.pricing,
+    basis: {
     ...b,
     hoursPerUnit,
-  }
+    },
+  })
 }
 
 function normalizeBasisSafe(basis: any): any {
   return basis && isValidEstimateBasis(basis)
-    ? normalizeEstimateBasisUnits(basis)
+    ? {
+        ...normalizeEstimateBasisUnits(basis),
+        sectionPricing: normalizeEstimateBasisSectionPricing(basis.sectionPricing),
+      }
     : basis
 }
 
@@ -6325,6 +6420,16 @@ function buildCombinedEstimateBasisFromTrades(
       : 95
 
   const crewDays = Math.max(1, Math.round(totalCrewDays * 2) / 2)
+  const sectionPricing = perTrade.flatMap((item) =>
+    (item.estimateBasis?.sectionPricing || []).map((section) => ({
+      ...section,
+      section: `${item.trade}: ${section.section}`,
+      notes: [
+        ...(section.notes || []),
+        `Combined from ${item.trade} deterministic pricing.`,
+      ],
+    }))
+  )
 
   return {
     units: ["days"],
@@ -6339,7 +6444,39 @@ function buildCombinedEstimateBasisFromTrades(
       "Multi-trade estimate combined from split scope pricing.",
       ...perTrade.map((x) => `${x.trade}: ${x.source}`),
     ],
+    sectionPricing: sectionPricing.length ? sectionPricing : undefined,
   }
+}
+
+function toDeterministicCandidate(args: {
+  pricing: Pricing | null
+  okForVerified?: boolean | null
+  verifiedSource: string
+  source: string
+  estimateBasis?: EstimateBasis | null
+}) {
+  if (!args.pricing) return null
+
+  return {
+    pricing: args.pricing,
+    okForVerified: !!args.okForVerified,
+    verifiedSource: args.verifiedSource,
+    source: args.source,
+    estimateBasis: args.estimateBasis ?? null,
+  }
+}
+
+function mergeInfluencedDeterministicBasis(args: {
+  basis: EstimateBasis | null | undefined
+  influence: ReturnType<typeof buildLiveTradePricingInfluence>
+  trade: "painting" | "drywall" | "wallcovering"
+}) {
+  if (!args.basis) return null
+
+  return mergeLiveTradePricingInfluenceIntoBasis({
+    basis: args.basis,
+    influence: args.influence?.trade === args.trade ? args.influence : null,
+  })
 }
 
 function computeMultiTradeDeterministic(args: {
@@ -6348,6 +6485,9 @@ function computeMultiTradeDeterministic(args: {
   stateMultiplier: number
   measurements?: any | null
   paintScope?: PaintScope | null
+  planIntelligence?: PlanIntelligence | null
+  tradeStack?: EstimatorTradeStack | null
+  complexityProfile?: EstimatorComplexityProfile | null
 }): MultiTradeDeterministicResult {
   const pieces = (args.splitScopes || []).filter(
     (x) => x && typeof x.scope === "string" && x.scope.trim()
@@ -6377,8 +6517,29 @@ function computeMultiTradeDeterministic(args: {
   for (const piece of pieces) {
     const trade = String(piece.trade || "").toLowerCase().trim()
     const scope = String(piece.scope || "").trim()
+    const pieceMeasurements =
+      overallSqft && overallSqft > 0
+        ? { totalSqft: overallSqft }
+        : args.measurements ?? null
+    const splitLiveTradePricingInfluence =
+      trade === "painting" || trade === "drywall" || trade === "wallcovering"
+        ? buildLiveTradePricingInfluence({
+            trade,
+            scopeText: scope,
+            measurements: pieceMeasurements,
+            paintScope: args.paintScope ?? "walls",
+            planIntelligence: args.planIntelligence ?? null,
+            tradeStack: args.tradeStack ?? null,
+            complexityProfile: args.complexityProfile ?? null,
+          })
+        : null
 
     if (!trade || !scope) continue
+
+    // Multi-trade uses the same live plan-aware seam as the single-trade path:
+    // route existing plan-aware execution sections directly into the real
+    // deterministic engines, then let owner resolution and final protections
+    // remain authoritative on the combined output.
 
         if (trade === "flooring") {
       const det = computeFlooringDeterministic({
@@ -6423,19 +6584,23 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "painting") {
       const det = computePaintingDeterministic({
-        scopeText:
-          overallSqft && !parseSqft(scope)
-            ? `${scope} ${overallSqft} square feet`
-            : scope,
+        scopeText: scope,
         stateMultiplier: args.stateMultiplier,
-        measurements:
-          overallSqft && overallSqft > 0
-            ? { totalSqft: overallSqft }
-            : args.measurements ?? null,
+        measurements: pieceMeasurements,
         paintScope: args.paintScope ?? "walls",
+        planSectionInputs:
+          splitLiveTradePricingInfluence?.trade === "painting" &&
+          splitLiveTradePricingInfluence.canAffectNumericPricing
+            ? splitLiveTradePricingInfluence.engineInputs?.painting || null
+            : null,
       })
 
       if (det?.okForDeterministic && det.pricing) {
+        const paintingBasis = mergeInfluencedDeterministicBasis({
+          basis: det.estimateBasis,
+          influence: splitLiveTradePricingInfluence,
+          trade: "painting",
+        })
         perTrade.push({
           trade,
           scope,
@@ -6443,7 +6608,13 @@ function computeMultiTradeDeterministic(args: {
           laborRate: Number(det.estimateBasis?.laborRate || 75),
           crewDays: Number(det.estimateBasis?.crewDays ?? det.estimateBasis?.quantities?.days ?? 1),
           source: det.okForVerified ? "painting_engine_v1_verified" : "painting_engine_v1",
-          notes: det.notes || [],
+          estimateBasis: paintingBasis,
+          notes: [
+            ...(det.notes || []),
+            ...(splitLiveTradePricingInfluence?.trade === "painting"
+              ? splitLiveTradePricingInfluence.basisAssumptions.slice(0, 2)
+              : []),
+          ],
         })
         pricedCount++
         continue
@@ -6453,18 +6624,25 @@ function computeMultiTradeDeterministic(args: {
       continue
     }
 
-        if (trade === "drywall") {
+    if (trade === "drywall") {
       const det = computeDrywallDeterministic({
         scopeText: scope,
         stateMultiplier: args.stateMultiplier,
-        measurements:
-          overallSqft && overallSqft > 0
-            ? { totalSqft: overallSqft }
-            : args.measurements ?? null,
+        measurements: pieceMeasurements,
+        planSectionInputs:
+          splitLiveTradePricingInfluence?.trade === "drywall" &&
+          splitLiveTradePricingInfluence.canAffectNumericPricing
+            ? splitLiveTradePricingInfluence.engineInputs?.drywall || null
+            : null,
       })
 
       if (det?.okForDeterministic && det.pricing) {
         const drywallPricing = clampPricing(coercePricing(det.pricing))
+        const drywallBasis = mergeInfluencedDeterministicBasis({
+          basis: det.estimateBasis,
+          influence: splitLiveTradePricingInfluence,
+          trade: "drywall",
+        })
         const drywallLaborRate = 70
         const drywallLaborHours =
           drywallLaborRate > 0
@@ -6486,13 +6664,68 @@ function computeMultiTradeDeterministic(args: {
           laborRate: drywallLaborRate,
           crewDays: drywallCrewDays,
           source: det.okForVerified ? "drywall_engine_v1_verified" : "drywall_engine_v1",
-          notes: det.notes || [],
+          estimateBasis: drywallBasis,
+          notes: [
+            ...(det.notes || []),
+            ...(splitLiveTradePricingInfluence?.trade === "drywall"
+              ? splitLiveTradePricingInfluence.basisAssumptions.slice(0, 2)
+              : []),
+          ],
         })
         pricedCount++
         continue
       }
 
       notes.push(`Unable to deterministically price drywall split: ${scope}`)
+      continue
+    }
+
+    if (trade === "wallcovering") {
+      const det = computeWallcoveringDeterministic({
+        scopeText: scope,
+        stateMultiplier: args.stateMultiplier,
+        measurements: null,
+        planSectionInputs:
+          splitLiveTradePricingInfluence?.trade === "wallcovering" &&
+          splitLiveTradePricingInfluence.canAffectNumericPricing
+            ? splitLiveTradePricingInfluence.engineInputs?.wallcovering || null
+            : null,
+      })
+
+      if (det?.okForDeterministic && det.pricing) {
+        const wallcoveringPricing = clampPricing(coercePricing(det.pricing))
+        const wallcoveringBasis = mergeInfluencedDeterministicBasis({
+          basis: det.estimateBasis,
+          influence: splitLiveTradePricingInfluence,
+          trade: "wallcovering",
+        })
+        const wallcoveringLaborRate = Number(det.estimateBasis?.laborRate || 95)
+        const wallcoveringCrewDays = Number(
+          det.estimateBasis?.crewDays ?? det.estimateBasis?.quantities?.days ?? 1
+        )
+
+        perTrade.push({
+          trade,
+          scope,
+          pricing: wallcoveringPricing,
+          laborRate: wallcoveringLaborRate,
+          crewDays: wallcoveringCrewDays,
+          source: det.okForVerified
+            ? "wallcovering_engine_v1_verified"
+            : "wallcovering_engine_v1",
+          estimateBasis: wallcoveringBasis,
+          notes: [
+            ...(det.notes || []),
+            ...(splitLiveTradePricingInfluence?.trade === "wallcovering"
+              ? splitLiveTradePricingInfluence.basisAssumptions.slice(0, 2)
+              : []),
+          ],
+        })
+        pricedCount++
+        continue
+      }
+
+      notes.push(`Unable to deterministically price wallcovering split: ${scope}`)
       continue
     }
 
@@ -7046,6 +7279,9 @@ const multiTradeDet =
         stateMultiplier,
         measurements,
         paintScope: paintScopeForJob ?? "walls",
+        planIntelligence,
+        tradeStack,
+        complexityProfile,
       })
     : null
 
@@ -7139,63 +7375,76 @@ const liveTradePricingInfluence = buildLiveTradePricingInfluence({
   complexityProfile,
 })
 
+// Live uploaded-plan pricing starts here. The older prep/bridge/draft chain
+// feeds buildLiveTradePricingInfluence(), and from this point forward the route
+// sends only numeric-safe section inputs into the real trade engines.
+// Pricing owner selection and final protections still decide what survives.
+
     // Drywall deterministic engine (PriceGuard™)
 const drywallDetMeasurements =
-  liveTradePricingInfluence?.trade === "drywall" &&
-  liveTradePricingInfluence.canAffectNumericPricing &&
-  liveTradePricingInfluence.measurementsOverride
-    ? liveTradePricingInfluence.measurementsOverride
-    : quantityInputs.effectiveWallSqft && quantityInputs.effectiveWallSqft > 0
+  quantityInputs.effectiveWallSqft && quantityInputs.effectiveWallSqft > 0
     ? { ...(measurements || {}), totalSqft: quantityInputs.effectiveWallSqft }
     : measurements
 
 const drywallDet =
   trade === "drywall"
     ? computeDrywallDeterministic({
-        scopeText:
-          liveTradePricingInfluence?.trade === "drywall" &&
-          liveTradePricingInfluence.canAffectNumericPricing &&
-          liveTradePricingInfluence.scopeTextOverride
-            ? liveTradePricingInfluence.scopeTextOverride
-            : scopeChange,
+        scopeText: scopeChange,
         stateMultiplier,
         measurements: drywallDetMeasurements,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "drywall" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.drywall || null
+            : null,
       })
     : null
 
-const drywallDetBasis = drywallDet?.estimateBasis
-  ? mergeLiveTradePricingInfluenceIntoBasis({
-      basis: drywallDet.estimateBasis,
-      influence:
-        liveTradePricingInfluence?.trade === "drywall"
-          ? liveTradePricingInfluence
-          : null,
-    })
-  : null
+const drywallDetBasis = mergeInfluencedDeterministicBasis({
+  basis: drywallDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "drywall",
+})
 
 const drywallDetPricing: Pricing | null =
   drywallDet?.okForDeterministic
     ? clampPricing(coercePricing(drywallDet.pricing))
     : null
 
+const wallcoveringDet =
+  trade === "wallcovering"
+    ? computeWallcoveringDeterministic({
+        scopeText: scopeChange,
+        stateMultiplier,
+        measurements: null,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "wallcovering" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.wallcovering || null
+            : null,
+      })
+    : null
+
+const wallcoveringDetBasis = mergeInfluencedDeterministicBasis({
+  basis: wallcoveringDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "wallcovering",
+})
+
+const wallcoveringDetPricing: Pricing | null =
+  wallcoveringDet?.okForDeterministic
+    ? clampPricing(coercePricing(wallcoveringDet.pricing))
+    : null
+
 const paintingDetMeasurements =
-  liveTradePricingInfluence?.trade === "painting" &&
-  liveTradePricingInfluence.canAffectNumericPricing &&
-  liveTradePricingInfluence.measurementsOverride
-    ? liveTradePricingInfluence.measurementsOverride
-    : quantityInputs.effectivePaintSqft && quantityInputs.effectivePaintSqft > 0
+  quantityInputs.effectivePaintSqft && quantityInputs.effectivePaintSqft > 0
     ? { ...(measurements || {}), totalSqft: quantityInputs.effectivePaintSqft }
     : measurements
 
 const paintingDet =
   trade === "painting"
     ? computePaintingDeterministic({
-        scopeText:
-          liveTradePricingInfluence?.trade === "painting" &&
-          liveTradePricingInfluence.canAffectNumericPricing &&
-          liveTradePricingInfluence.scopeTextOverride
-            ? liveTradePricingInfluence.scopeTextOverride
-            : scopeChange,
+        scopeText: scopeChange,
         stateMultiplier,
         measurements: paintingDetMeasurements,
         paintScope:
@@ -7205,18 +7454,19 @@ const paintingDet =
             ? liveTradePricingInfluence.paintScopeOverride
             : paintScopeForJob ?? "walls",
         photoAnalysis,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "painting" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.painting || null
+            : null,
       })
     : null
 
-const paintingDetBasis = paintingDet?.estimateBasis
-  ? mergeLiveTradePricingInfluenceIntoBasis({
-      basis: paintingDet.estimateBasis,
-      influence:
-        liveTradePricingInfluence?.trade === "painting"
-          ? liveTradePricingInfluence
-          : null,
-    })
-  : null
+const paintingDetBasis = mergeInfluencedDeterministicBasis({
+  basis: paintingDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "painting",
+})
 
 const paintingDetPricing: Pricing | null =
   paintingDet?.okForDeterministic
@@ -7232,9 +7482,11 @@ const paintingDetPricing: Pricing | null =
   electrical_ok: electricalDet?.okForDeterministic,
   plumbing_ok: plumbingDet?.okForDeterministic,
   drywall_ok: drywallDet?.okForDeterministic,
+  wallcovering_ok: wallcoveringDet?.okForDeterministic,
   painting_type: paintingDet?.jobType,
   plumbing_type: plumbingDet?.jobType,
   drywall_type: drywallDet?.jobType,
+  wallcovering_type: wallcoveringDet?.jobType,
 })
 
 // Only treat as painting when the final trade is painting
@@ -7491,55 +7743,53 @@ const ctxPhotos: CtxPhoto[] | null =
   anchorHit,
   multiTradeDet,
 
-  paintingDet: paintingDetPricing
-    ? {
-        pricing: paintingDetPricing,
-        okForVerified: !!paintingDet?.okForVerified,
-        verifiedSource: "painting_engine_v1_verified",
-        source: "painting_engine_v1",
-        estimateBasis: paintingDetBasis,
-      }
-    : null,
+  paintingDet: toDeterministicCandidate({
+    pricing: paintingDetPricing,
+    okForVerified: paintingDet?.okForVerified,
+    verifiedSource: "painting_engine_v1_verified",
+    source: "painting_engine_v1",
+    estimateBasis: paintingDetBasis,
+  }),
 
-  flooringDet: flooringDetPricing
-    ? {
-        pricing: flooringDetPricing,
-        okForVerified: !!flooringDet?.okForVerified,
-        verifiedSource: "flooring_engine_v1_verified",
-        source: "flooring_engine_v1",
-        estimateBasis: null,
-      }
-    : null,
+  wallcoveringDet: toDeterministicCandidate({
+    pricing: wallcoveringDetPricing,
+    okForVerified: wallcoveringDet?.okForVerified,
+    verifiedSource: "wallcovering_engine_v1_verified",
+    source: "wallcovering_engine_v1",
+    estimateBasis: wallcoveringDetBasis,
+  }),
 
-  electricalDet: electricalDetPricing
-    ? {
-        pricing: electricalDetPricing,
-        okForVerified: !!electricalDet?.okForVerified,
-        verifiedSource: "electrical_engine_v1_verified",
-        source: "electrical_engine_v1",
-        estimateBasis: null,
-      }
-    : null,
+  flooringDet: toDeterministicCandidate({
+    pricing: flooringDetPricing,
+    okForVerified: flooringDet?.okForVerified,
+    verifiedSource: "flooring_engine_v1_verified",
+    source: "flooring_engine_v1",
+    estimateBasis: null,
+  }),
 
-  plumbingDet: plumbingDetPricing
-    ? {
-        pricing: plumbingDetPricing,
-        okForVerified: !!plumbingDet?.okForVerified,
-        verifiedSource: "plumbing_engine_v1_verified",
-        source: "plumbing_engine_v1",
-        estimateBasis: null,
-      }
-    : null,
+  electricalDet: toDeterministicCandidate({
+    pricing: electricalDetPricing,
+    okForVerified: electricalDet?.okForVerified,
+    verifiedSource: "electrical_engine_v1_verified",
+    source: "electrical_engine_v1",
+    estimateBasis: null,
+  }),
 
-  drywallDet: drywallDetPricing
-    ? {
-        pricing: drywallDetPricing,
-        okForVerified: !!drywallDet?.okForVerified,
-        verifiedSource: "drywall_engine_v1_verified",
-        source: "drywall_engine_v1",
-        estimateBasis: drywallDetBasis,
-      }
-    : null,
+  plumbingDet: toDeterministicCandidate({
+    pricing: plumbingDetPricing,
+    okForVerified: plumbingDet?.okForVerified,
+    verifiedSource: "plumbing_engine_v1_verified",
+    source: "plumbing_engine_v1",
+    estimateBasis: null,
+  }),
+
+  drywallDet: toDeterministicCandidate({
+    pricing: drywallDetPricing,
+    okForVerified: drywallDet?.okForVerified,
+    verifiedSource: "drywall_engine_v1_verified",
+    source: "drywall_engine_v1",
+    estimateBasis: drywallDetBasis,
+  }),
 
   mixedPaintPricing,
   doorPricing,
@@ -8037,6 +8287,7 @@ const deps = {
     enforcePhaseVisitCrewDaysFloor,
     clampPricing,
     coercePricing,
+    alignEstimateBasisSectionPricing,
     applyPermitBuffer,
     applyMinimumCharge,
   },

@@ -188,8 +188,13 @@ test("painting influence upgrades live paint scope and carries section routing w
   assert.equal(influence.trade, "painting")
   assert.equal(influence.canAffectNumericPricing, true)
   assert.equal(influence.paintScopeOverride, "walls_ceilings")
-  assert.match(influence.scopeTextOverride || "", /paint 24 rooms/i)
+  assert.equal(influence.engineInputs?.painting?.supportedRoomCount, 24)
+  assert.equal(influence.engineInputs?.painting?.supportedDoorCount, 48)
+  assert.ok(influence.executionSections.includes("Ceilings"))
+  assert.ok(influence.executionSections.includes("Doors / frames"))
+  assert.ok(influence.executionSections.includes("Trim / casing"))
   assert.ok(influence.executionSections.includes("Corridor repaint"))
+  assert.ok(influence.executionSections.includes("Prep / protection"))
 })
 
 test("painting influence stays non-binding when only descriptive finish cues exist", () => {
@@ -210,7 +215,7 @@ test("painting influence stays non-binding when only descriptive finish cues exi
 
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
-  assert.equal(influence.scopeTextOverride, null)
+  assert.equal(influence.engineInputs, undefined)
 })
 
 test("drywall influence feeds exact supported sqft into live numeric execution and keeps section routing", () => {
@@ -270,12 +275,12 @@ test("drywall influence feeds exact supported sqft into live numeric execution a
   assert.ok(influence)
   assert.equal(influence.trade, "drywall")
   assert.equal(influence.canAffectNumericPricing, true)
-  assert.equal(influence.measurementsOverride?.totalSqft, 2000)
-  assert.match(influence.scopeTextOverride || "", /hang install finish drywall/i)
+  assert.equal(influence.engineInputs?.drywall?.supportedSqft, 2000)
+  assert.equal(influence.engineInputs?.drywall?.forceInstallFinish, true)
   assert.ok(influence.executionSections.includes("Ceiling drywall"))
 })
 
-test("wallcovering influence stays routing-only even when plan support is strong", () => {
+test("wallcovering influence feeds exact area and explicit install-remove routing into live numeric execution", () => {
   const plan = makePlan({
     detectedTrades: ["wallcovering"],
     repeatedSpaceSignals: ["repeated corridor segment"],
@@ -312,6 +317,38 @@ test("wallcovering influence stays routing-only even when plan support is strong
 
   assert.ok(influence)
   assert.equal(influence.trade, "wallcovering")
-  assert.equal(influence.canAffectNumericPricing, false)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, 1400)
+  assert.equal(influence.engineInputs?.wallcovering?.hasRemovalPrepSection, true)
+  assert.equal(influence.engineInputs?.wallcovering?.hasInstallSection, true)
+  assert.equal(influence.engineInputs?.wallcovering?.hasCorridorSection, true)
+  assert.equal(influence.engineInputs?.wallcovering?.materialType, "vinyl")
   assert.ok(influence.executionSections.includes("Removal / prep"))
+  assert.ok(influence.executionSections.includes("Corridor wallcovering"))
+})
+
+test("wallcovering influence stays non-binding when only generic finish cues exist", () => {
+  const plan = makePlan({
+    detectedTrades: ["wallcovering"],
+    analyses: [
+      makeAnalysis({
+        notes: ["Review finish plan for accent wall finish selection."],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Review lobby finish updates.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.trade, "wallcovering")
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.ok(!influence.engineInputs?.wallcovering?.supportedSqft)
 })

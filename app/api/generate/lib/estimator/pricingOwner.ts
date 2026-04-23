@@ -146,6 +146,19 @@ export function decidePricingOwner(ctx: PricingOwnerContext): PricingOwnerDecisi
     }
   }
 
+  if (ctx.wallcoveringDet?.pricing) {
+    return {
+      owner: "wallcovering_engine",
+      detSource: ctx.wallcoveringDet.okForVerified
+        ? ctx.wallcoveringDet.verifiedSource
+        : ctx.wallcoveringDet.source,
+      anchorId: null,
+      verified: !!ctx.wallcoveringDet.okForVerified,
+      baselinePricing: ctx.wallcoveringDet.pricing,
+      estimateBasis: ctx.wallcoveringDet.estimateBasis ?? null,
+    }
+  }
+
   if (ctx.flooringDet?.pricing) {
     return {
       owner: "flooring_engine",

@@ -66,6 +66,10 @@ export type PricingFinalizeHelpers = {
 
   clampPricing: (pricing: Pricing) => Pricing
   coercePricing: (value: unknown) => Pricing
+  alignEstimateBasisSectionPricing: (args: {
+    pricing: Pricing
+    basis: EstimateBasis | null
+  }) => EstimateBasis | null
 
   applyPermitBuffer: (args: {
     pricing: Pricing
@@ -248,6 +252,7 @@ export function applyFinalPricingProtections(args: {
     clampPricing,
     applyAiRealism,
     compressCrossTradeMobilization,
+    alignEstimateBasisSectionPricing,
     applyPermitBuffer,
     applyMinimumCharge,
   } = args.helpers
@@ -313,6 +318,11 @@ export function applyFinalPricingProtections(args: {
       total,
     })
   }
+
+  basis = alignEstimateBasisSectionPricing({
+    pricing,
+    basis,
+  })
 
   return {
     pricing,

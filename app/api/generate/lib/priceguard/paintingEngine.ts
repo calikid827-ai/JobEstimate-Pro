@@ -25,6 +25,19 @@ type PaintingPhotoAnalysis = {
 }
 
 type PaintScope = "walls" | "walls_ceilings" | "full"
+type SectionBucket = {
+  section: string
+  labor: number
+  materials: number
+  subs: number
+  total: number
+}
+type SectionPricingDetail = SectionBucket & {
+  pricingBasis: "direct" | "burden"
+  unit?: "sqft" | "linear_ft" | "rooms" | "doors" | "days" | "lump_sum"
+  quantity?: number
+  notes?: string[]
+}
 
 export type PaintingDeterministicResult = {
   okForDeterministic: boolean
@@ -44,6 +57,7 @@ export type PaintingDeterministicResult = {
     crewDays: number
     mobilization: number
     assumptions: string[]
+    sectionPricing?: SectionPricingDetail[]
   } | null
   jobType:
     | "interior_repaint"
@@ -72,6 +86,7 @@ export type PaintingDeterministicResult = {
     approxBodyWallSqft?: number | null
   }
   notes: string[]
+  sectionBuckets?: SectionBucket[]
 }
 
 function clampPricing(pricing: Pricing): Pricing {
@@ -85,13 +100,41 @@ function clampPricing(pricing: Pricing): Pricing {
   }
 }
 
-function sumMatches(text: string, re: RegExp): number {
-  let total = 0
-  for (const m of text.matchAll(re)) {
-    const n = Number(m[1])
-    if (Number.isFinite(n) && n > 0) total += n
-  }
-  return total
+function diffPricing(next: Pricing, prev: Pricing): Pricing {
+  return clampPricing({
+    labor: next.labor - prev.labor,
+    materials: next.materials - prev.materials,
+    subs: next.subs - prev.subs,
+    markup: next.markup,
+    total: 0,
+  })
+}
+
+function finalizeSectionBuckets(args: {
+  sections: Array<Omit<SectionBucket, "total">>
+  pricing: Pricing
+}): SectionBucket[] {
+  const positive = args.sections
+    .map((section) => ({
+      ...section,
+      labor: Math.max(0, Math.round(section.labor)),
+      materials: Math.max(0, Math.round(section.materials)),
+      subs: Math.max(0, Math.round(section.subs)),
+    }))
+    .filter((section) => section.labor > 0 || section.materials > 0 || section.subs > 0)
+
+  if (!positive.length) return []
+
+  let totalAssigned = 0
+  return positive.map((section, index) => {
+    const base = section.labor + section.materials + section.subs
+    const total =
+      index === positive.length - 1
+        ? Math.max(0, args.pricing.total - totalAssigned)
+        : Math.max(0, Math.round(base * (1 + args.pricing.markup / 100)))
+    totalAssigned += total
+    return { ...section, total }
+  })
 }
 
 function parseSqftFromText(scopeText: string): number | null {
@@ -400,6 +443,7 @@ function buildEstimateBasis(args: {
   mobilization: number
   preferredUnit: "sqft" | "rooms" | "doors" | "days"
   assumptions: string[]
+  sectionPricing?: SectionPricingDetail[]
 }): PaintingDeterministicResult["estimateBasis"] {
   const impliedLaborHours =
     args.laborRate > 0 ? Number(args.pricing.labor || 0) / args.laborRate : 0
@@ -427,7 +471,47 @@ function buildEstimateBasis(args: {
     crewDays: args.crewDays,
     mobilization: args.mobilization,
     assumptions: args.assumptions,
+    sectionPricing: args.sectionPricing,
   }
+}
+
+function buildPaintingSectionPricing(args: {
+  sectionBuckets: SectionBucket[]
+  doorCount: number | null
+  trimLf: number | null
+}): SectionPricingDetail[] {
+  return args.sectionBuckets.map((bucket) => {
+    if (bucket.section === "Doors / frames") {
+      return {
+        ...bucket,
+        pricingBasis: "direct",
+        unit: args.doorCount && args.doorCount > 0 ? "doors" : undefined,
+        quantity: args.doorCount && args.doorCount > 0 ? args.doorCount : undefined,
+      }
+    }
+
+    if (bucket.section === "Trim / casing") {
+      return {
+        ...bucket,
+        pricingBasis: "direct",
+        unit: args.trimLf && args.trimLf > 0 ? "linear_ft" : undefined,
+        quantity: args.trimLf && args.trimLf > 0 ? args.trimLf : undefined,
+      }
+    }
+
+    if (bucket.section === "Corridor repaint" || bucket.section === "Prep / protection") {
+      return {
+        ...bucket,
+        pricingBasis: "burden",
+        notes: ["Section remains embedded in the interior paint engine, but is now surfaced structurally."],
+      }
+    }
+
+    return {
+      ...bucket,
+      pricingBasis: "direct",
+    }
+  })
 }
 
 // -----------------------------
@@ -436,11 +520,18 @@ function buildEstimateBasis(args: {
 export function computePaintingDeterministic(args: {
   scopeText: string
   stateMultiplier: number
-  measurements?: any | null
+  measurements?: { totalSqft?: number | null } | null
   paintScope?: PaintScope | null
   photoAnalysis?: PaintingPhotoAnalysis | null
+  planSectionInputs?: {
+    supportedRoomCount?: number | null
+    supportedDoorCount?: number | null
+    supportedTrimLf?: number | null
+    includeCeilings?: boolean
+    hasCorridorSection?: boolean
+    hasPrepProtectionSection?: boolean
+  } | null
 }): PaintingDeterministicResult {
-  const notes: string[] = []
   const scope = (args.scopeText || "").trim()
 
   if (!scope) {
@@ -475,12 +566,30 @@ export function computePaintingDeterministic(args: {
   const textSqft = parseSqftFromText(scope)
   const sqft = measSqft ?? textSqft ?? null
 
-  const rooms = parseRoomCount(scope)
-  const doors = parseDoorCount(scope)
+  const parsedRooms = parseRoomCount(scope)
+  const parsedDoors = parseDoorCount(scope)
+  const supportedRooms =
+    typeof args.planSectionInputs?.supportedRoomCount === "number" &&
+    args.planSectionInputs.supportedRoomCount > 0
+      ? Math.round(args.planSectionInputs.supportedRoomCount)
+      : null
+  const supportedDoors =
+    typeof args.planSectionInputs?.supportedDoorCount === "number" &&
+    args.planSectionInputs.supportedDoorCount > 0
+      ? Math.round(args.planSectionInputs.supportedDoorCount)
+      : null
+  const rooms = parsedRooms ?? supportedRooms
+  const doors = parsedDoors ?? supportedDoors
   const coats = parseCoats(scope)
-  const isVacant = parseVacancy(scope)
-  const prepLevel = parsePrepLevel(scope)
-  const finalPaintScope = inferPaintScope(scope, args.paintScope ?? null)
+  const isVacant = args.planSectionInputs?.hasCorridorSection ? false : parseVacancy(scope)
+  const parsedPrepLevel = parsePrepLevel(scope)
+  const prepLevel =
+    args.planSectionInputs?.hasPrepProtectionSection && parsedPrepLevel === "light"
+      ? "medium"
+      : parsedPrepLevel
+  const finalPaintScope = args.planSectionInputs?.includeCeilings
+    ? "walls_ceilings"
+    : inferPaintScope(scope, args.paintScope ?? null)
   const doorsOnly = isDoorsOnlyIntent(scope, doors)
 
     const exteriorJob = looksLikeExteriorPainting(scope, args.photoAnalysis ?? null)
@@ -567,6 +676,7 @@ export function computePaintingDeterministic(args: {
           ? "Exterior price is photo-assisted and should be treated as non-verified until dimensions are confirmed."
           : "Exterior price used supplied sqft input.",
       ],
+      sectionBuckets: [],
     }
   }
 
@@ -594,6 +704,11 @@ export function computePaintingDeterministic(args: {
         `Prep level: ${prepLevel}.`,
         `Door pricing includes frames/casing baseline.`,
       ],
+      sectionPricing: buildPaintingSectionPricing({
+        sectionBuckets: priced.sectionBuckets,
+        doorCount: doors,
+        trimLf: null,
+      }),
     })
 
     return {
@@ -612,11 +727,14 @@ export function computePaintingDeterministic(args: {
         paintScope: "walls",
       },
       notes: ["Painting doors-only deterministic pricing applied"],
+      sectionBuckets: priced.sectionBuckets,
     }
   }
 
-  // mixed rooms + doors deterministic
-  if (rooms && rooms > 0 && doors && doors > 0) {
+  const hasInteriorBase = !!((sqft && sqft > 0) || (rooms && rooms > 0))
+
+  // mixed interior + doors deterministic
+  if (hasInteriorBase && doors && doors > 0) {
     const roomPriced = pricePaintingInterior({
       sqft,
       rooms,
@@ -625,6 +743,9 @@ export function computePaintingDeterministic(args: {
       coats,
       isVacant,
       prepLevel,
+      hasCorridorSection: !!args.planSectionInputs?.hasCorridorSection,
+      hasPrepProtectionSection: !!args.planSectionInputs?.hasPrepProtectionSection,
+      supportedTrimLf: args.planSectionInputs?.supportedTrimLf ?? null,
     })
 
     const doorPriced = pricePaintingDoors({
@@ -645,6 +766,24 @@ export function computePaintingDeterministic(args: {
     const crewDays = Math.max(roomPriced.crewDays, doorPriced.crewDays)
     const mobilization = Math.max(roomPriced.mobilization, doorPriced.mobilization)
 
+    const sectionBuckets = finalizeSectionBuckets({
+      pricing,
+      sections: [
+        ...roomPriced.sectionBuckets.map((bucket) => ({
+          section: bucket.section,
+          labor: bucket.labor,
+          materials: bucket.materials,
+          subs: bucket.subs,
+        })),
+        ...doorPriced.sectionBuckets.map((bucket) => ({
+          section: bucket.section,
+          labor: bucket.labor,
+          materials: bucket.materials,
+          subs: bucket.subs,
+        })),
+      ],
+    })
+
     const estimateBasis = buildEstimateBasis({
       pricing,
       laborRate: roomPriced.laborRate,
@@ -655,13 +794,35 @@ export function computePaintingDeterministic(args: {
       mobilization,
       preferredUnit: sqft ? "sqft" : "rooms",
       assumptions: [
-        `${rooms} room(s) parsed from scope text.`,
-        `${doors} door(s) parsed from scope text.`,
+        rooms
+          ? parsedRooms
+            ? `${rooms} room(s) parsed from scope text.`
+            : `${rooms} room(s) supported by plan-aware repeated-room routing.`
+          : sqft
+          ? `${sqft} sqft used for interior painting basis.`
+          : null,
+        parsedDoors
+          ? `${doors} door(s) parsed from scope text.`
+          : `${doors} door(s) supported by plan-aware door/frame routing.`,
         `${coats} coat(s) assumed.`,
         `Paint scope: ${finalPaintScope}.`,
         `Prep level: ${prepLevel}.`,
+        args.planSectionInputs?.supportedTrimLf && args.planSectionInputs.supportedTrimLf > 0
+          ? `${Math.round(args.planSectionInputs.supportedTrimLf)} trim LF was carried into live trim/casing numeric pricing.`
+          : null,
+        args.planSectionInputs?.hasCorridorSection
+          ? "Corridor repaint remains separately routed in live prep, but corridor-specific numeric pricing still shares the main painting engine."
+          : null,
+        args.planSectionInputs?.hasPrepProtectionSection
+          ? "Plan-aware prep / protection routing raised the live painting prep interpretation to at least medium."
+          : null,
         isVacant ? "Vacant unit productivity applied." : "Occupied/interior protection productivity applied.",
-      ],
+      ].filter(Boolean) as string[],
+      sectionPricing: buildPaintingSectionPricing({
+        sectionBuckets,
+        doorCount: doors,
+        trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+      }),
     })
 
     return {
@@ -679,7 +840,13 @@ export function computePaintingDeterministic(args: {
         prepLevel,
         paintScope: finalPaintScope,
       },
-      notes: ["Painting mixed-scope deterministic pricing applied"],
+      notes: [
+        "Painting mixed-scope deterministic pricing applied",
+        !parsedDoors && supportedDoors
+          ? "Plan-aware door/frame support activated separate live numeric door pricing."
+          : null,
+      ].filter(Boolean) as string[],
+      sectionBuckets,
     }
   }
 
@@ -693,6 +860,9 @@ export function computePaintingDeterministic(args: {
       coats,
       isVacant,
       prepLevel,
+      hasCorridorSection: !!args.planSectionInputs?.hasCorridorSection,
+      hasPrepProtectionSection: !!args.planSectionInputs?.hasPrepProtectionSection,
+      supportedTrimLf: args.planSectionInputs?.supportedTrimLf ?? null,
     })
 
     const estimateBasis = buildEstimateBasis({
@@ -705,12 +875,30 @@ export function computePaintingDeterministic(args: {
       mobilization: priced.mobilization,
       preferredUnit: sqft ? "sqft" : "rooms",
       assumptions: [
-        sqft ? `${sqft} sqft used for pricing basis.` : `${rooms} room(s) used for pricing basis.`,
+        sqft
+          ? `${sqft} sqft used for pricing basis.`
+          : parsedRooms
+          ? `${rooms} room(s) used for pricing basis.`
+          : `${rooms} room(s) supported by plan-aware repeated-room routing.`,
         `${coats} coat(s) assumed.`,
         `Paint scope: ${finalPaintScope}.`,
         `Prep level: ${prepLevel}.`,
+        args.planSectionInputs?.supportedTrimLf && args.planSectionInputs.supportedTrimLf > 0
+          ? `${Math.round(args.planSectionInputs.supportedTrimLf)} trim LF was carried into live trim/casing numeric pricing.`
+          : null,
+        args.planSectionInputs?.hasCorridorSection
+          ? "Corridor repaint remains separately routed in live prep, but corridor-specific numeric pricing still shares the main painting engine."
+          : null,
+        args.planSectionInputs?.hasPrepProtectionSection
+          ? "Plan-aware prep / protection routing raised the live painting prep interpretation to at least medium."
+          : null,
         isVacant ? "Vacant unit productivity applied." : "Occupied/interior protection productivity applied.",
-      ],
+      ].filter(Boolean) as string[],
+      sectionPricing: buildPaintingSectionPricing({
+        sectionBuckets: priced.sectionBuckets,
+        doorCount: null,
+        trimLf: args.planSectionInputs?.supportedTrimLf ?? null,
+      }),
     })
 
     const okForVerified = !!textSqft || !!rooms
@@ -735,7 +923,13 @@ export function computePaintingDeterministic(args: {
         prepLevel,
         paintScope: finalPaintScope,
       },
-      notes: ["Painting interior deterministic pricing applied"],
+      notes: [
+        "Painting interior deterministic pricing applied",
+        args.planSectionInputs?.includeCeilings && args.paintScope !== "walls_ceilings"
+          ? "Plan-aware ceiling support changed live numeric painting scope from walls-only to walls plus ceilings."
+          : null,
+      ].filter(Boolean) as string[],
+      sectionBuckets: priced.sectionBuckets,
     }
   }
 
@@ -755,6 +949,7 @@ export function computePaintingDeterministic(args: {
       paintScope: finalPaintScope,
     },
     notes: ["Painting scope detected but no usable sqft, room count, or door count found"],
+    sectionBuckets: [],
   }
 }
 
@@ -769,12 +964,135 @@ function pricePaintingInterior(args: {
   coats: number
   isVacant: boolean
   prepLevel: "light" | "medium" | "heavy"
+  hasCorridorSection?: boolean
+  hasPrepProtectionSection?: boolean
+  supportedTrimLf?: number | null
 }): {
   pricing: Pricing
   laborRate: number
   crewDays: number
   mobilization: number
+  sectionBuckets: SectionBucket[]
 } {
+  const core = computePaintingInteriorCore(args)
+  const { pricing, laborRate, crewDays, mobilization, wallAreaBase, ceilingAreaBase, trimPricing } =
+    core
+
+  const noPlanBurden = computePaintingInteriorCore({
+    ...args,
+    hasCorridorSection: false,
+    hasPrepProtectionSection: false,
+    supportedTrimLf: 0,
+  }).pricing
+  const corridorOnly =
+    args.hasCorridorSection
+      ? computePaintingInteriorCore({
+          ...args,
+          hasCorridorSection: true,
+          hasPrepProtectionSection: false,
+          supportedTrimLf: 0,
+        }).pricing
+      : null
+  const prepOnly =
+    args.hasPrepProtectionSection
+      ? computePaintingInteriorCore({
+          ...args,
+          hasCorridorSection: !!args.hasCorridorSection,
+          hasPrepProtectionSection: true,
+          supportedTrimLf: 0,
+        }).pricing
+      : null
+
+  const safeTrimPricing =
+    trimPricing ??
+    clampPricing({ labor: 0, materials: 0, subs: 0, markup: pricing.markup, total: 0 })
+  const corridorPricing =
+    corridorOnly
+      ? diffPricing(corridorOnly, noPlanBurden)
+      : clampPricing({ labor: 0, materials: 0, subs: 0, markup: pricing.markup, total: 0 })
+  const prepPricing =
+    prepOnly && corridorOnly
+      ? diffPricing(prepOnly, corridorOnly)
+      : prepOnly && !corridorOnly
+        ? diffPricing(prepOnly, noPlanBurden)
+        : clampPricing({ labor: 0, materials: 0, subs: 0, markup: pricing.markup, total: 0 })
+
+  const residualBaseLabor =
+    pricing.labor - safeTrimPricing.labor - corridorPricing.labor - prepPricing.labor
+  const residualBaseMaterials =
+    pricing.materials - safeTrimPricing.materials - corridorPricing.materials - prepPricing.materials
+  const residualBaseSubs =
+    pricing.subs - safeTrimPricing.subs - corridorPricing.subs - prepPricing.subs
+
+  const wallAreaShare =
+    wallAreaBase + ceilingAreaBase > 0 ? wallAreaBase / (wallAreaBase + ceilingAreaBase) : 1
+  const wallBase = {
+    section: "Walls",
+    labor: Math.max(0, Math.round(residualBaseLabor * wallAreaShare)),
+    materials: Math.max(0, Math.round(residualBaseMaterials * wallAreaShare)),
+    subs: Math.max(0, Math.round(residualBaseSubs * wallAreaShare)),
+  }
+  const ceilingBase =
+    ceilingAreaBase > 0
+      ? {
+          section: "Ceilings",
+          labor: Math.max(0, residualBaseLabor - wallBase.labor),
+          materials: Math.max(0, residualBaseMaterials - wallBase.materials),
+          subs: Math.max(0, residualBaseSubs - wallBase.subs),
+        }
+      : null
+
+  return {
+    pricing,
+    laborRate,
+    crewDays,
+    mobilization,
+    sectionBuckets: finalizeSectionBuckets({
+      pricing,
+      sections: [
+        wallBase,
+        ceilingBase,
+        safeTrimPricing.labor > 0 || safeTrimPricing.materials > 0
+          ? {
+              section: "Trim / casing",
+              labor: safeTrimPricing.labor,
+              materials: safeTrimPricing.materials,
+              subs: safeTrimPricing.subs,
+            }
+          : null,
+        args.hasCorridorSection && (corridorPricing.labor > 0 || corridorPricing.materials > 0)
+          ? {
+              section: "Corridor repaint",
+              labor: corridorPricing.labor,
+              materials: corridorPricing.materials,
+              subs: corridorPricing.subs,
+            }
+          : null,
+        args.hasPrepProtectionSection && (prepPricing.labor > 0 || prepPricing.materials > 0)
+          ? {
+              section: "Prep / protection",
+              labor: prepPricing.labor,
+              materials: prepPricing.materials,
+              subs: prepPricing.subs,
+            }
+          : null,
+      ].filter(Boolean) as Array<Omit<SectionBucket, "total">>,
+    }),
+  }
+}
+
+function computePaintingInteriorCore(args: {
+  sqft: number | null
+  rooms: number | null
+  stateMultiplier: number
+  paintScope: PaintScope
+  coats: number
+  isVacant: boolean
+  prepLevel: "light" | "medium" | "heavy"
+  hasCorridorSection?: boolean
+  hasPrepProtectionSection?: boolean
+  supportedTrimLf?: number | null
+}) {
   const laborRate = 75
   const markup = 25
 
@@ -794,20 +1112,25 @@ function pricePaintingInterior(args: {
 
   // Convert floor sqft into estimated paintable surface area
   // These multipliers are intentionally more realistic for interior residential repainting
-  let scopeMultiplier =
+  const scopeMultiplier =
     args.paintScope === "walls"
       ? 1.75
       : args.paintScope === "walls_ceilings"
       ? 2.15
       : 2.45
 
-  let effectivePaintArea = sqft * scopeMultiplier
-
   // Coat factor
   const coatFactor =
     args.coats <= 1 ? 0.78 :
     args.coats === 2 ? 1.0 :
     1.22
+
+  let effectivePaintArea = sqft * scopeMultiplier
+  const wallAreaBase = sqft * 1.75 * coatFactor
+  const ceilingAreaBase =
+    args.paintScope === "walls_ceilings" || args.paintScope === "full"
+      ? sqft * 0.4 * coatFactor
+      : 0
 
   effectivePaintArea *= coatFactor
 
@@ -827,21 +1150,37 @@ function pricePaintingInterior(args: {
     sqftPerLaborHour *= 0.82
   }
 
+  if (args.hasCorridorSection) {
+    sqftPerLaborHour *= 0.92
+  }
+
   // Prep adjustment
   if (args.prepLevel === "light") sqftPerLaborHour *= 1.08
   if (args.prepLevel === "heavy") sqftPerLaborHour *= 0.72
+  if (args.hasPrepProtectionSection) sqftPerLaborHour *= 0.94
 
   // Setup / masking / cleanup / cut-in / handling time
-  const setupHrs =
+  let setupHrs =
     sqft <= 700
       ? 6
       : sqft <= 1400
       ? 10
       : 14
 
-  const laborHrs = effectivePaintArea / sqftPerLaborHour + setupHrs
+  if (args.hasCorridorSection) setupHrs += 2
+  if (args.hasPrepProtectionSection) setupHrs += 1.5
 
-  let labor = Math.round(laborHrs * laborRate)
+  const laborHrs = effectivePaintArea / sqftPerLaborHour + setupHrs
+  const trimLf =
+    typeof args.supportedTrimLf === "number" && args.supportedTrimLf > 0
+      ? Math.round(args.supportedTrimLf)
+      : 0
+  const trimLaborHrs =
+    trimLf > 0
+      ? Math.min(18, trimLf / 85 + (trimLf >= 120 ? 0.75 : 0.35))
+      : 0
+
+  let labor = Math.round((laborHrs + trimLaborHrs) * laborRate)
   labor = Math.round(labor * args.stateMultiplier)
 
   // Materials
@@ -868,6 +1207,9 @@ function pricePaintingInterior(args: {
 
   if (args.prepLevel === "medium") materials += 100
   if (args.prepLevel === "heavy") materials += 225
+  if (args.hasPrepProtectionSection) materials += 85
+  if (args.hasCorridorSection) materials += 45
+  if (trimLf > 0) materials += Math.round(trimLf * 0.2 + 24)
 
   // Mobilization / overhead
   const mobilization =
@@ -893,16 +1235,18 @@ function pricePaintingInterior(args: {
   const total = Math.round(base * (1 + markup / 100))
 
   // Crew-day realism
+  const totalLaborHrs = laborHrs + trimLaborHrs
+
   let crewDays =
-    laborHrs <= 8
+    totalLaborHrs <= 8
       ? 1
-      : laborHrs <= 16
+      : totalLaborHrs <= 16
       ? 2
-      : laborHrs <= 24
+      : totalLaborHrs <= 24
       ? 3
-      : laborHrs <= 32
+      : totalLaborHrs <= 32
       ? 4
-      : Math.ceil(laborHrs / 8)
+      : Math.ceil(totalLaborHrs / 8)
 
   // Minimum duration floors for more realistic condo / house repaint schedules
   if (sqft >= 900 && args.paintScope === "walls") {
@@ -932,6 +1276,18 @@ function pricePaintingInterior(args: {
     laborRate,
     crewDays,
     mobilization,
+    wallAreaBase,
+    ceilingAreaBase,
+    trimPricing:
+      trimLf > 0
+        ? clampPricing({
+            labor: Math.round(trimLaborHrs * laborRate * args.stateMultiplier),
+            materials: Math.round(trimLf * 0.2 + 24),
+            subs: 0,
+            markup,
+            total: 0,
+          })
+        : null,
   }
 }
 
@@ -945,6 +1301,7 @@ function pricePaintingDoors(args: {
   laborRate: number
   crewDays: number
   mobilization: number
+  sectionBuckets: SectionBucket[]
 } {
   const laborRate = 75
   const markup = 25
@@ -985,11 +1342,23 @@ function pricePaintingDoors(args: {
 
   crewDays = Math.round(crewDays * 2) / 2
 
+  const pricing = clampPricing({ labor, materials, subs, markup, total })
   return {
-    pricing: clampPricing({ labor, materials, subs, markup, total }),
+    pricing,
     laborRate,
     crewDays,
     mobilization,
+    sectionBuckets: finalizeSectionBuckets({
+      pricing,
+      sections: [
+        {
+          section: "Doors / frames",
+          labor,
+          materials,
+          subs,
+        },
+      ],
+    }),
   }
 }
 

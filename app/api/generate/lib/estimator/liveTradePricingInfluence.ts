@@ -6,10 +6,6 @@ import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
 import { buildTradeQuantitySupport, type TradeQuantitySignal, type TradeQuantitySupport } from "./tradeQuantitySupport"
 import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
 import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
-import { buildTradePreparedPricingInputs } from "./tradePreparedPricingInputs"
-import { buildTradeAssembledPricingInputs } from "./tradeAssembledPricingInputs"
-import { buildTradeEstimateGenerationInputs } from "./tradeEstimateGenerationInputs"
-import { buildTradeExecutionPricingPrep } from "./tradeExecutionPricingPrep"
 
 type SupportedTrade = "painting" | "drywall" | "wallcovering"
 type ExactTradeQuantitySupport = NonNullable<TradeQuantitySupport>
@@ -19,9 +15,34 @@ export type LiveTradePricingInfluence = {
   supportLevel: "strong" | "moderate" | "weak"
   executionSections: string[]
   canAffectNumericPricing: boolean
-  scopeTextOverride: string | null
-  measurementsOverride: MeasurementInput | null
   paintScopeOverride: PaintScope | null
+  engineInputs?: {
+    painting?: {
+      supportedRoomCount: number | null
+      supportedDoorCount: number | null
+      supportedTrimLf: number | null
+      includeCeilings: boolean
+      hasCorridorSection: boolean
+      hasPrepProtectionSection: boolean
+    }
+    drywall?: {
+      supportedSqft: number | null
+      supportedPartitionLf: number | null
+      includeCeilings: boolean
+      forcePatchRepair: boolean
+      forceInstallFinish: boolean
+      hasFinishTextureSection: boolean
+    }
+    wallcovering?: {
+      supportedSqft: number | null
+      hasRemovalPrepSection: boolean
+      hasInstallSection: boolean
+      hasCorridorSection: boolean
+      hasFeatureSection: boolean
+      materialType: "vinyl" | "paper" | "unknown" | null
+      blocker?: string | null
+    }
+  }
   basisAssumptions: string[]
   notes: string[]
 } | null
@@ -57,11 +78,46 @@ function findExactSignal(args: {
   )
 }
 
-function appendScopeTokens(scopeText: string, additions: string[]): string {
-  const base = String(scopeText || "").trim()
-  const tokens = uniqStrings(additions, 8)
-  if (tokens.length === 0) return base
-  return `${base} ${tokens.join(". ")}.`.trim()
+function buildPlanText(planIntelligence: PlanIntelligence | null): string {
+  if (!planIntelligence?.ok) return ""
+  return [
+    ...(planIntelligence.notes || []),
+    ...(planIntelligence.tradePackageSignals || []),
+    ...(planIntelligence.packageScopeCandidates || []),
+    ...(planIntelligence.analyses || []).flatMap((analysis) => [
+      analysis.sheetTitle,
+      ...(analysis.textSnippets || []),
+      ...(analysis.notes || []),
+      ...(analysis.schedules || []).flatMap((schedule) => [
+        schedule.label,
+        ...(schedule.notes || []),
+      ]),
+      ...(analysis.tradeFindings || []).flatMap((finding) => [
+        finding.label,
+        finding.notes || "",
+      ]),
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" \n ")
+}
+
+function detectWallcoveringMaterialType(
+  scopeText: string,
+  planText: string
+): "vinyl" | "paper" | "unknown" {
+  const text = `${scopeText}\n${planText}`.toLowerCase()
+  if (
+    /\b(vinyl wallcovering|vinyl type|type w[-\s]?\d+|type wc[-\s]?\d+|type vwc[-\s]?\d+)\b/.test(
+      text
+    )
+  ) {
+    return "vinyl"
+  }
+  if (/\b(wallpaper|paper wallcovering|patterned paper|fabric-backed paper)\b/.test(text)) {
+    return "paper"
+  }
+  return "unknown"
 }
 
 function buildPipeline(args: {
@@ -122,41 +178,20 @@ function buildPipeline(args: {
     tradeStack: args.tradeStack,
     complexityProfile: args.complexityProfile,
   })
-  const tradePreparedPricingInputs = buildTradePreparedPricingInputs({
-    tradePricingInputDraft,
-    tradePricingBasisBridge,
-    tradePackagePricingPrep,
-    estimateSkeletonHandoff,
-    estimateStructureConsumption,
-    planIntelligence: args.planIntelligence,
-    tradeStack: args.tradeStack,
-    complexityProfile: args.complexityProfile,
-  })
-  const tradeAssembledPricingInputs = buildTradeAssembledPricingInputs({
-    tradePreparedPricingInputs,
-    tradeStack: args.tradeStack,
-    complexityProfile: args.complexityProfile,
-  })
-  const tradeEstimateGenerationInputs = buildTradeEstimateGenerationInputs({
-    tradeAssembledPricingInputs,
-    tradeStack: args.tradeStack,
-    complexityProfile: args.complexityProfile,
-  })
-  const tradeExecutionPricingPrep = buildTradeExecutionPricingPrep({
-    tradeEstimateGenerationInputs,
-    tradeStack: args.tradeStack,
-    complexityProfile: args.complexityProfile,
-  })
+  if (!tradePricingInputDraft) return null
 
-  if (!tradeExecutionPricingPrep) return null
-
+  // The live numeric path stops here. Older staging layers still exist for
+  // compatibility / trace surfaces elsewhere, but the route only needs support
+  // level, normalized sections, and a small note set to build numeric-safe
+  // engine inputs.
   return {
     tradeQuantitySupport,
-    supportLevel: tradeExecutionPricingPrep.supportLevel,
-    executionSections: normalizeSections(tradeExecutionPricingPrep.tradeExecutionSections),
+    supportLevel: tradePricingInputDraft.supportLevel,
+    executionSections: normalizeSections(tradePricingInputDraft.tradeScopePricingSections),
     executionNotes: uniqStrings(
       [
-        ...tradeExecutionPricingPrep.tradeExecutionPricingNotes,
+        ...tradePricingInputDraft.tradePricingInputDraft,
+        ...tradePricingInputDraft.tradePricingInputNotes,
         ...tradeQuantitySupport.tradeQuantityReviewNotes,
       ],
       8
@@ -165,9 +200,7 @@ function buildPipeline(args: {
 }
 
 function buildPaintingInfluence(args: {
-  scopeText: string
   measurements: MeasurementInput | null
-  paintScope: PaintScope | null
   support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
   executionSections: string[]
@@ -189,6 +222,11 @@ function buildPaintingInfluence(args: {
     unit: "sqft",
   })
 
+  const trimSignal = findExactSignal({
+    signals: args.support.tradeLinearSignals,
+    label: /\btrim\s*\/\s*frame linear support\b/i,
+    unit: "linear_ft",
+  })
   const hasBaseQuantity =
     Number(args.measurements?.totalSqft || 0) > 0 ||
     Number(roomSignal?.quantity || 0) > 0 ||
@@ -197,19 +235,6 @@ function buildPaintingInfluence(args: {
   const paintScopeOverride =
     args.executionSections.includes("Ceilings") && ceilingSignal ? "walls_ceilings" : null
 
-  const scopeAdditions = uniqStrings(
-    [
-      roomSignal ? `paint ${Math.round(roomSignal.quantity || 0)} rooms` : null,
-      doorSignal &&
-      args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
-        ? `paint ${Math.round(doorSignal.quantity || 0)} doors`
-        : null,
-      paintScopeOverride === "walls_ceilings" ? "include walls and ceilings" : null,
-      args.executionSections.includes("Corridor repaint") ? "corridor repaint remains separate" : null,
-    ],
-    5
-  )
-
   const canAffectNumericPricing = args.supportLevel !== "weak" && hasBaseQuantity
 
   return {
@@ -217,12 +242,27 @@ function buildPaintingInfluence(args: {
     supportLevel: args.supportLevel,
     executionSections: args.executionSections,
     canAffectNumericPricing,
-    scopeTextOverride:
-      canAffectNumericPricing && scopeAdditions.length > 0
-        ? appendScopeTokens(args.scopeText, scopeAdditions)
-        : null,
-    measurementsOverride: null,
     paintScopeOverride: canAffectNumericPricing ? paintScopeOverride : null,
+    engineInputs:
+      canAffectNumericPricing
+        ? {
+            painting: {
+              supportedRoomCount: Number(roomSignal?.quantity || 0) > 0 ? Math.round(Number(roomSignal?.quantity || 0)) : null,
+              supportedDoorCount:
+                doorSignal &&
+                args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
+                  ? Math.round(Number(doorSignal.quantity || 0))
+                  : null,
+              supportedTrimLf:
+                trimSignal && args.executionSections.includes("Trim / casing")
+                  ? Math.round(Number(trimSignal.quantity || 0))
+                  : null,
+              includeCeilings: paintScopeOverride === "walls_ceilings",
+              hasCorridorSection: args.executionSections.includes("Corridor repaint"),
+              hasPrepProtectionSection: args.executionSections.includes("Prep / protection"),
+            },
+          }
+        : undefined,
     basisAssumptions: uniqStrings(
       [
         args.executionSections.includes("Ceilings") && ceilingSignal
@@ -238,6 +278,9 @@ function buildPaintingInfluence(args: {
         args.executionSections.includes("Corridor repaint")
           ? "Corridor repaint remains separately routed in plan-aware painting interpretation, even when current math still prices it inside the main paint run."
           : null,
+        trimSignal && args.executionSections.includes("Trim / casing")
+          ? `Plan-aware pricing used ${Math.round(Number(trimSignal.quantity || 0))} supported trim LF for live trim/casing numeric carry.`
+          : null,
         !canAffectNumericPricing
           ? "Plan-aware painting routing stayed non-binding because the available signals could not safely drive numeric pricing inputs."
           : null,
@@ -249,8 +292,6 @@ function buildPaintingInfluence(args: {
 }
 
 function buildDrywallInfluence(args: {
-  scopeText: string
-  measurements: MeasurementInput | null
   support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
   executionSections: string[]
@@ -271,22 +312,17 @@ function buildDrywallInfluence(args: {
     label: /\brepeated room repair pattern support\b/i,
     unit: "rooms",
   })
+  const partitionSignal = findExactSignal({
+    signals: args.support.tradeLinearSignals,
+    label: /\bpartition linear support\b/i,
+    unit: "linear_ft",
+  })
 
   const isPatchRepair = args.executionSections.includes("Patch / repair")
   const isInstall = args.executionSections.includes("Install / hang")
   const includeCeilings = args.executionSections.includes("Ceiling drywall") && ceilingSignal
   const exactSqft =
     Number(wallSignal?.quantity || 0) + Number(includeCeilings ? ceilingSignal?.quantity || 0 : 0)
-
-  const scopeAdditions = uniqStrings(
-    [
-      isPatchRepair ? "drywall patch repair" : null,
-      isInstall ? "hang install finish drywall" : null,
-      args.executionSections.includes("Finish / texture") ? "texture match finish" : null,
-      includeCeilings ? "include ceilings" : null,
-    ],
-    5
-  )
 
   const canAffectNumericPricing =
     args.supportLevel !== "weak" &&
@@ -298,19 +334,20 @@ function buildDrywallInfluence(args: {
     supportLevel: args.supportLevel,
     executionSections: args.executionSections,
     canAffectNumericPricing,
-    scopeTextOverride:
-      canAffectNumericPricing && scopeAdditions.length > 0
-        ? appendScopeTokens(args.scopeText, scopeAdditions)
-        : null,
-    measurementsOverride:
+    paintScopeOverride: null,
+    engineInputs:
       canAffectNumericPricing
         ? {
-            units: args.measurements?.units || "ft",
-            totalSqft: Math.round(exactSqft),
-            rows: args.measurements?.rows || [],
+            drywall: {
+              supportedSqft: Math.round(exactSqft),
+              supportedPartitionLf: partitionSignal ? Math.round(Number(partitionSignal.quantity || 0)) : null,
+              includeCeilings: !!includeCeilings,
+              forcePatchRepair: isPatchRepair,
+              forceInstallFinish: isInstall,
+              hasFinishTextureSection: args.executionSections.includes("Finish / texture"),
+            },
           }
-        : null,
-    paintScopeOverride: null,
+        : undefined,
     basisAssumptions: uniqStrings(
       [
         exactSqft > 0
@@ -325,6 +362,9 @@ function buildDrywallInfluence(args: {
         args.executionSections.includes("Finish / texture")
           ? "Finish / texture remained explicitly routed in drywall execution input assembly."
           : null,
+        partitionSignal
+          ? `Plan-aware pricing used ${Math.round(Number(partitionSignal.quantity || 0))} supported partition LF to increase live install fragmentation burden without inventing board area.`
+          : null,
         repeatedRepairSignal && !canAffectNumericPricing
           ? `Repeated-room repair support (${Math.round(repeatedRepairSignal.quantity || 0)} rooms) stayed review-only because it could not safely become patch counts or exact repair area.`
           : null,
@@ -336,23 +376,80 @@ function buildDrywallInfluence(args: {
 }
 
 function buildWallcoveringInfluence(args: {
+  scopeText: string
+  support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
   executionSections: string[]
   executionNotes: string[]
+  planIntelligence: PlanIntelligence | null
 }): LiveTradePricingInfluence {
+  const wallAreaSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    label: /\bwall-area support for wallcovering\b/i,
+    unit: "sqft",
+  })
+  const planText = buildPlanText(args.planIntelligence)
+  const materialType = detectWallcoveringMaterialType(args.scopeText, planText)
+  const hasRemovalPrepSection = args.executionSections.includes("Removal / prep")
+  const hasInstallSection =
+    args.executionSections.includes("Install") ||
+    args.executionSections.includes("Room wallcovering") ||
+    args.executionSections.includes("Corridor wallcovering") ||
+    args.executionSections.includes("Feature wall")
+  const hasCorridorSection = args.executionSections.includes("Corridor wallcovering")
+  const hasFeatureSection = args.executionSections.includes("Feature wall")
+  const supportedSqft =
+    wallAreaSignal && Number(wallAreaSignal.quantity || 0) > 0
+      ? Math.round(Number(wallAreaSignal.quantity || 0))
+      : null
+  const canAffectNumericPricing =
+    args.supportLevel !== "weak" &&
+    !!supportedSqft &&
+    (hasRemovalPrepSection || (hasInstallSection && materialType !== "unknown"))
+
   return {
     trade: "wallcovering",
     supportLevel: args.supportLevel,
     executionSections: args.executionSections,
-    canAffectNumericPricing: false,
-    scopeTextOverride: null,
-    measurementsOverride: null,
+    canAffectNumericPricing,
     paintScopeOverride: null,
+    engineInputs:
+      canAffectNumericPricing || supportedSqft || hasRemovalPrepSection || hasInstallSection
+        ? {
+            wallcovering: {
+              supportedSqft,
+              hasRemovalPrepSection,
+              hasInstallSection,
+              hasCorridorSection,
+              hasFeatureSection,
+              materialType: hasInstallSection ? materialType : null,
+              blocker:
+                canAffectNumericPricing
+                  ? null
+                  : !supportedSqft
+                    ? "Wallcovering sections were routed, but no exact supported wall area was available for safe numeric pricing."
+                    : hasInstallSection && materialType === "unknown"
+                      ? "Wallcovering install area is supported, but material type is still too vague for safe live numeric pricing."
+                      : "Wallcovering routing is present, but live numeric execution still needs explicit install or removal/prep routing.",
+            },
+          }
+        : undefined,
     basisAssumptions: uniqStrings(
       [
-        "Wallcovering plan-aware routing is available, but live numeric pricing remains unchanged because there is no existing wallcovering engine to drive safely.",
+        supportedSqft
+          ? `Plan-aware wallcovering pricing used ${supportedSqft} supported wallcovering sqft for live execution input assembly.`
+          : null,
+        hasRemovalPrepSection
+          ? "Removal / prep remained explicitly routed in live wallcovering pricing."
+          : null,
+        hasInstallSection && materialType !== "unknown"
+          ? `Wallcovering install remained numerically eligible because material type was identified as ${materialType}.`
+          : null,
+        !canAffectNumericPricing
+          ? "Wallcovering plan-aware routing stayed non-binding because exact area, material type, or explicit install/remove routing was still too weak for safe live numeric pricing."
+          : null,
       ],
-      4
+      6
     ),
     notes: args.executionNotes,
   }
@@ -385,9 +482,7 @@ export function buildLiveTradePricingInfluence(args: {
 
   if (trade === "painting") {
     return buildPaintingInfluence({
-      scopeText: args.scopeText,
       measurements: args.measurements,
-      paintScope: args.paintScope,
       support: pipeline.tradeQuantitySupport,
       supportLevel: pipeline.supportLevel,
       executionSections: pipeline.executionSections,
@@ -397,8 +492,6 @@ export function buildLiveTradePricingInfluence(args: {
 
   if (trade === "drywall") {
     return buildDrywallInfluence({
-      scopeText: args.scopeText,
-      measurements: args.measurements,
       support: pipeline.tradeQuantitySupport,
       supportLevel: pipeline.supportLevel,
       executionSections: pipeline.executionSections,
@@ -407,9 +500,12 @@ export function buildLiveTradePricingInfluence(args: {
   }
 
   return buildWallcoveringInfluence({
+    scopeText: args.scopeText,
+    support: pipeline.tradeQuantitySupport,
     supportLevel: pipeline.supportLevel,
     executionSections: pipeline.executionSections,
     executionNotes: pipeline.executionNotes,
+    planIntelligence: args.planIntelligence,
   })
 }
 
