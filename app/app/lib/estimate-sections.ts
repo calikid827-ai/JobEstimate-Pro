@@ -4,6 +4,12 @@ import type {
   EstimateStructuredSection,
 } from "./types"
 
+type EstimateRowPayload = {
+  estimateRows?: unknown
+  estimateEmbeddedBurdens?: unknown
+  estimateSections?: unknown
+}
+
 type EstimateSectionUnit = NonNullable<EstimateStructuredSection["unit"]>
 
 const ALLOWED_UNITS = new Set([
@@ -36,6 +42,17 @@ function normalizeEstimateUnit(value: unknown): EstimateSectionUnit | undefined 
 
 function normalizeEstimateQuantity(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
+function hasOwnRecordProperty(
+  value: unknown,
+  key: keyof EstimateRowPayload
+): value is EstimateRowPayload {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Object.prototype.hasOwnProperty.call(value, key)
+  )
 }
 
 export function normalizeEstimateSections(
@@ -214,4 +231,33 @@ export function normalizeEstimateEmbeddedBurdens(
     }))
 
   return burdens.length ? burdens : null
+}
+
+export function resolveCanonicalEstimateOutput(
+  value: unknown
+): {
+  estimateRows: EstimateRow[] | null
+  estimateEmbeddedBurdens: EstimateEmbeddedBurden[] | null
+  estimateSections: EstimateStructuredSection[] | null
+} {
+  const estimateSections = hasOwnRecordProperty(value, "estimateSections")
+    ? normalizeEstimateSections(value.estimateSections)
+    : null
+
+  const estimateRows = hasOwnRecordProperty(value, "estimateRows")
+    ? normalizeEstimateRows(value.estimateRows)
+    : normalizeEstimateRows(estimateSections)
+
+  const estimateEmbeddedBurdens = hasOwnRecordProperty(
+    value,
+    "estimateEmbeddedBurdens"
+  )
+    ? normalizeEstimateEmbeddedBurdens(value.estimateEmbeddedBurdens)
+    : normalizeEstimateEmbeddedBurdens(estimateSections)
+
+  return {
+    estimateRows,
+    estimateEmbeddedBurdens,
+    estimateSections,
+  }
 }

@@ -135,6 +135,7 @@ function buildEstimateBasis(args: {
 function buildWallcoveringSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   sqft: number
+  supportedSqftSupport?: "measured" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
     if (bucket.section === "Corridor burden") {
@@ -150,6 +151,10 @@ function buildWallcoveringSectionPricing(args: {
       pricingBasis: "direct",
       unit: "sqft",
       quantity: args.sqft,
+      notes:
+        args.supportedSqftSupport === "measured"
+          ? ["Measured wall-area support backs this direct wallcovering row."]
+          : undefined,
     }
   })
 }
@@ -165,6 +170,7 @@ export function computeWallcoveringDeterministic(args: {
     hasCorridorSection?: boolean
     hasFeatureSection?: boolean
     materialType?: WallcoveringMaterialType | null
+    supportedSqftSupport?: "measured" | null
   } | null
 }): WallcoveringDeterministicResult {
   const scope = String(args.scopeText || "").trim()
@@ -376,10 +382,14 @@ export function computeWallcoveringDeterministic(args: {
       hasRemoval ? "Removal / substrate prep was included in live wallcovering pricing." : null,
       corridor ? "Corridor wallcovering burden was included in live pricing." : null,
       featureWall ? "Feature-wall routing stayed limited to the exact supported area." : null,
+      args.planSectionInputs?.supportedSqftSupport === "measured"
+        ? "Wallcovering area support remained measured rather than inferred from room/package cues."
+        : null,
     ].filter(Boolean) as string[],
     sectionPricing: buildWallcoveringSectionPricing({
       sectionBuckets,
       sqft,
+      supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
     }),
   })
 

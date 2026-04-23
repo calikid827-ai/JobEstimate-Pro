@@ -6,6 +6,7 @@ import {
   normalizeEstimateEmbeddedBurdens,
   normalizeEstimateRows,
   normalizeEstimateSections,
+  resolveCanonicalEstimateOutput,
 } from "./estimate-sections"
 
 test("normalizeEstimateSections keeps structured and burden rows usable for app outputs", () => {
@@ -190,9 +191,7 @@ test("downstream row consumption uses explicit estimateRows when present", () =>
     ],
   }
 
-  const rows = normalizeEstimateRows(
-    payload.estimateRows ?? payload.estimateSections
-  )
+  const { estimateRows: rows } = resolveCanonicalEstimateOutput(payload)
 
   assert.ok(rows)
   assert.equal(rows.length, 1)
@@ -238,12 +237,166 @@ test("downstream burden consumption uses explicit estimateEmbeddedBurdens when p
     ],
   }
 
-  const burdens = normalizeEstimateEmbeddedBurdens(
-    payload.estimateEmbeddedBurdens ?? payload.estimateSections
-  )
+  const { estimateEmbeddedBurdens: burdens } = resolveCanonicalEstimateOutput(payload)
 
   assert.ok(burdens)
   assert.equal(burdens.length, 1)
   assert.equal(burdens[0].section, "Corridor burden")
   assert.equal(burdens[0].amount, 275)
+})
+
+test("canonical consumption does not fall back when explicit row fields are present but null", () => {
+  const resolved = resolveCanonicalEstimateOutput({
+    estimateRows: null,
+    estimateEmbeddedBurdens: null,
+    estimateSections: [
+      {
+        trade: "painting",
+        section: "Walls",
+        label: "Walls",
+        pricingBasis: "direct",
+        estimatorTreatment: "section_row",
+        amount: 4200,
+        labor: 3000,
+        materials: 900,
+        subs: 300,
+        notes: ["Legacy section only."],
+      },
+      {
+        trade: "painting",
+        section: "Prep / protection",
+        label: "Prep / protection",
+        pricingBasis: "burden",
+        estimatorTreatment: "embedded_burden",
+        amount: 600,
+        labor: 600,
+        materials: 0,
+        subs: 0,
+        notes: ["Legacy burden only."],
+      },
+    ],
+  })
+
+  assert.equal(resolved.estimateRows, null)
+  assert.equal(resolved.estimateEmbeddedBurdens, null)
+  assert.ok(resolved.estimateSections)
+  assert.equal(resolved.estimateSections.length, 2)
+})
+
+test("canonical consumption falls back to estimateSections only when explicit row fields are absent", () => {
+  const resolved = resolveCanonicalEstimateOutput({
+    estimateSections: [
+      {
+        trade: "painting",
+        section: "Walls",
+        label: "Walls",
+        pricingBasis: "direct",
+        estimatorTreatment: "section_row",
+        amount: 3200,
+        labor: 2400,
+        materials: 600,
+        subs: 200,
+        notes: [],
+      },
+      {
+        trade: "painting",
+        section: "Corridor repaint",
+        label: "Corridor repaint",
+        pricingBasis: "burden",
+        estimatorTreatment: "embedded_burden",
+        amount: 400,
+        labor: 400,
+        materials: 0,
+        subs: 0,
+        notes: ["Reference only."],
+      },
+    ],
+  })
+
+  assert.ok(resolved.estimateRows)
+  assert.equal(resolved.estimateRows.length, 1)
+  assert.equal(resolved.estimateRows[0].section, "Walls")
+  assert.ok(resolved.estimateEmbeddedBurdens)
+  assert.equal(resolved.estimateEmbeddedBurdens.length, 1)
+  assert.equal(resolved.estimateEmbeddedBurdens[0].section, "Corridor repaint")
+})
+
+test("canonical consumption keeps mixed payloads deduplicated and trade-labeled", () => {
+  const payload = {
+    pricing: {
+      total: 9800,
+    },
+    estimateRows: [
+      {
+        trade: "painting",
+        section: "Walls",
+        label: "Walls",
+        pricingBasis: "direct",
+        estimatorTreatment: "section_row",
+        amount: 4200,
+        labor: 3000,
+        materials: 900,
+        subs: 300,
+        notes: [],
+        rowSource: "estimate_sections",
+      },
+      {
+        trade: "wallcovering",
+        section: "Install",
+        label: "Install",
+        pricingBasis: "direct",
+        estimatorTreatment: "section_row",
+        amount: 3100,
+        labor: 1800,
+        materials: 700,
+        subs: 600,
+        notes: ["Trade label must survive."],
+        rowSource: "estimate_sections",
+      },
+    ],
+    estimateEmbeddedBurdens: [
+      {
+        trade: "painting",
+        section: "Prep / protection",
+        label: "Prep / protection",
+        pricingBasis: "burden",
+        estimatorTreatment: "embedded_burden",
+        amount: 700,
+        labor: 700,
+        materials: 0,
+        subs: 0,
+        notes: ["Reference only."],
+        rowSource: "estimate_sections",
+      },
+    ],
+    estimateSections: [
+      {
+        trade: "painting",
+        section: "Stale legacy section",
+        label: "Stale legacy section",
+        pricingBasis: "direct",
+        estimatorTreatment: "section_row",
+        amount: 999999,
+        labor: 999999,
+        materials: 0,
+        subs: 0,
+        notes: ["Must not duplicate."],
+      },
+    ],
+  }
+  const resolved = resolveCanonicalEstimateOutput(payload)
+
+  assert.ok(resolved.estimateRows)
+  assert.equal(resolved.estimateRows.length, 2)
+  assert.deepEqual(
+    resolved.estimateRows.map((row) => row.trade),
+    ["painting", "wallcovering"]
+  )
+  assert.ok(resolved.estimateEmbeddedBurdens)
+  assert.equal(resolved.estimateEmbeddedBurdens.length, 1)
+  assert.equal(
+    resolved.estimateRows.reduce((sum, row) => sum + row.amount, 0),
+    7300
+  )
+  assert.equal(payload.pricing.total, 9800)
 })

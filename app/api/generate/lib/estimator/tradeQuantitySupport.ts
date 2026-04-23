@@ -500,6 +500,12 @@ function buildDrywallQuantitySupport(args: {
     null,
     /\bpartition|gyp|gypsum|wall type\b/i
   )
+  const quantifiedSqftFinding = drywallFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft"
+  )
 
   const patchLike = /\b(patch|repair|hole|crack|texture|skim)\b/.test(blob)
   const installLike = /\b(hang|install|partition|wall type|sheetrock|drywall)\b/.test(blob)
@@ -508,7 +514,27 @@ function buildDrywallQuantitySupport(args: {
   const linearSignals: TradeQuantitySignal[] = []
   const openingSignals: TradeQuantitySignal[] = []
 
-  if ((plan?.takeoff.wallSqft || 0) > 0 && (drywallFindings.length > 0 || installLike)) {
+  if (quantifiedSqftFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: patchLike && !installLike
+          ? "Measured patch / repair area support"
+          : "Measured drywall assembly area support",
+        quantity: quantifiedSqftFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(quantifiedSqftFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          patchLike && !installLike
+            ? "Measured repair area exists in plan findings and can support patch/repair routing without inventing patch counts."
+            : "Measured drywall area exists in plan findings and can support install/hang routing more safely than gross wall takeoff alone.",
+        evidenceRefs: quantifiedSqftFinding.evidence || [],
+      })
+    )
+  }
+
+  if ((plan?.takeoff.wallSqft || 0) > 0 && (installLike || partitionFindings.length > 0)) {
     areaSignals.push(
       buildSignal({
         label: "Wall-area drywall support",
@@ -619,6 +645,9 @@ function buildDrywallQuantitySupport(args: {
       patchLike
         ? "Do not convert repeated room support into patch counts or exact patch area without stronger evidence."
         : null,
+      patchLike && !quantifiedSqftFinding
+        ? "Patch/repair routing should stay non-binding until measured repair area exists."
+        : null,
       installLike && areaSignals.every((item) => !item.exactQuantity)
         ? "Install/hang cues exist, but measured drywall area is still weak."
         : null,
@@ -655,6 +684,9 @@ function buildDrywallQuantitySupport(args: {
         [
           areaSignals.some((item) => item.exactQuantity)
             ? "Exact area support exists for at least part of the drywall scope."
+            : null,
+          quantifiedSqftFinding && patchLike && !installLike
+            ? "Measured repair-area support exists for patch routing."
             : null,
           linearSignals.some((item) => item.exactQuantity)
             ? "Partition-related linear support exists."

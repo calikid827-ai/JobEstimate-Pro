@@ -82,9 +82,7 @@ import {
 } from "./lib/estimate-utils"
 import {
   getEstimateSectionTreatmentLabel,
-  normalizeEstimateEmbeddedBurdens,
-  normalizeEstimateRows,
-  normalizeEstimateSections,
+  resolveCanonicalEstimateOutput,
 } from "./lib/estimate-sections"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
@@ -2041,6 +2039,7 @@ useEffect(() => {
     if (!Array.isArray(parsed)) return
 
     const cleaned: Invoice[] = parsed.map((x: any) => ({
+      ...resolveCanonicalEstimateOutput(x),
       id: String(x?.id ?? crypto.randomUUID()),
       createdAt: Number(x?.createdAt ?? Date.now()),
       jobId: x?.jobId ? String(x.jobId) : undefined,
@@ -2055,11 +2054,6 @@ useEffect(() => {
       subtotal: Number(x?.subtotal ?? 0),
       total: Number(x?.total ?? 0),
       notes: String(x?.notes ?? ""),
-      estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
-      estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
-        x?.estimateEmbeddedBurdens ?? x?.estimateSections
-      ),
-      estimateSections: normalizeEstimateSections(x?.estimateSections),
       deposit: x?.deposit ?? undefined,
       status: normalizeInvoiceStatus(x),
       paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
@@ -2092,6 +2086,7 @@ useEffect(() => {
         const parsedInv = JSON.parse(invRaw)
         if (Array.isArray(parsedInv)) {
           const cleanedInvoices: Invoice[] = parsedInv.map((x: any) => ({
+            ...resolveCanonicalEstimateOutput(x),
             id: String(x?.id ?? crypto.randomUUID()),
             createdAt: Number(x?.createdAt ?? Date.now()),
             jobId: x?.jobId ? String(x.jobId) : undefined,
@@ -2106,11 +2101,6 @@ useEffect(() => {
             subtotal: Number(x?.subtotal ?? 0),
             total: Number(x?.total ?? 0),
             notes: String(x?.notes ?? ""),
-            estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
-            estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
-              x?.estimateEmbeddedBurdens ?? x?.estimateSections
-            ),
-            estimateSections: normalizeEstimateSections(x?.estimateSections),
             deposit: x?.deposit ?? undefined,
             status: normalizeInvoiceStatus(x),
             paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
@@ -3029,13 +3019,11 @@ const normalizedTradePricingPrepAnalysis = data?.tradePricingPrepAnalysis
     }
   : null
 
-const normalizedEstimateRows = normalizeEstimateRows(
-  data?.estimateRows ?? data?.estimateSections
-)
-const normalizedEstimateEmbeddedBurdens = normalizeEstimateEmbeddedBurdens(
-  data?.estimateEmbeddedBurdens ?? data?.estimateSections
-)
-const normalizedEstimateSections = normalizeEstimateSections(data?.estimateSections)
+const {
+  estimateRows: normalizedEstimateRows,
+  estimateEmbeddedBurdens: normalizedEstimateEmbeddedBurdens,
+  estimateSections: normalizedEstimateSections,
+} = resolveCanonicalEstimateOutput(data)
 
 setScopeXRay(normalizedScopeXRay)
 setMissedScopeDetector(normalizedMissedScopeDetector)
@@ -3640,11 +3628,7 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
           ),
         }
       : null,
-    estimateRows: normalizeEstimateRows(x?.estimateRows ?? x?.estimateSections),
-    estimateEmbeddedBurdens: normalizeEstimateEmbeddedBurdens(
-      x?.estimateEmbeddedBurdens ?? x?.estimateSections
-    ),
-    estimateSections: normalizeEstimateSections(x?.estimateSections),
+    ...resolveCanonicalEstimateOutput(x),
     estimateDefenseMode: x?.estimateDefenseMode
       ? {
           whyThisPriceHolds: normalizeDefenseLists(x.estimateDefenseMode?.whyThisPriceHolds),
@@ -3946,8 +3930,16 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     .replaceAll("'", "&#039;")
 
     const safeResult = esc(result?.text || "")
-    const pdfEstimateRows = estimateRows ?? []
-    const pdfEstimateEmbeddedBurdens = estimateEmbeddedBurdens ?? []
+    const {
+      estimateRows: resolvedPdfEstimateRows,
+      estimateEmbeddedBurdens: resolvedPdfEstimateEmbeddedBurdens,
+    } = resolveCanonicalEstimateOutput({
+      estimateRows,
+      estimateEmbeddedBurdens,
+      estimateSections,
+    })
+    const pdfEstimateRows = resolvedPdfEstimateRows ?? []
+    const pdfEstimateEmbeddedBurdens = resolvedPdfEstimateEmbeddedBurdens ?? []
     const pdfHasMultipleSectionTrades =
       new Set(
         [...pdfEstimateRows, ...pdfEstimateEmbeddedBurdens]
@@ -4568,8 +4560,12 @@ ${
     )
     .join("")
 
-  const invoiceEstimateRows = inv.estimateRows ?? []
-  const invoiceEstimateEmbeddedBurdens = inv.estimateEmbeddedBurdens ?? []
+  const {
+    estimateRows: resolvedInvoiceEstimateRows,
+    estimateEmbeddedBurdens: resolvedInvoiceEstimateEmbeddedBurdens,
+  } = resolveCanonicalEstimateOutput(inv)
+  const invoiceEstimateRows = resolvedInvoiceEstimateRows ?? []
+  const invoiceEstimateEmbeddedBurdens = resolvedInvoiceEstimateEmbeddedBurdens ?? []
   const invoiceHasMultipleSectionTrades =
     new Set(
       [...invoiceEstimateRows, ...invoiceEstimateEmbeddedBurdens]
@@ -7204,12 +7200,22 @@ function ReviewInsightsCard({
 function EstimateSectionsCard({
   estimateRows,
   estimateEmbeddedBurdens,
+  estimateSections,
 }: {
   estimateRows: EstimateRow[] | null
   estimateEmbeddedBurdens: EstimateEmbeddedBurden[] | null
+  estimateSections: EstimateStructuredSection[] | null
 }) {
-  const rows = estimateRows ?? []
-  const burdens = estimateEmbeddedBurdens ?? []
+  const {
+    estimateRows: resolvedEstimateRows,
+    estimateEmbeddedBurdens: resolvedEstimateEmbeddedBurdens,
+  } = resolveCanonicalEstimateOutput({
+    estimateRows,
+    estimateEmbeddedBurdens,
+    estimateSections,
+  })
+  const rows = resolvedEstimateRows ?? []
+  const burdens = resolvedEstimateEmbeddedBurdens ?? []
   if (rows.length === 0 && burdens.length === 0) return null
 
   const hasMultipleTrades =
@@ -8653,6 +8659,7 @@ function PlanIntelligenceCard({
     <EstimateSectionsCard
       estimateRows={estimateRows}
       estimateEmbeddedBurdens={estimateEmbeddedBurdens}
+      estimateSections={estimateSections}
     />
 
     {schedule && (

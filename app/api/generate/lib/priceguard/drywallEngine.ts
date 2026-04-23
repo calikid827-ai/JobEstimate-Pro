@@ -208,6 +208,7 @@ function buildEstimateBasis(args: {
 function buildDrywallSectionPricing(args: {
   sectionBuckets: SectionBucket[]
   partitionLf: number | null
+  supportedSqftSupport?: "measured" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
     if (bucket.section === "Partition-related scope") {
@@ -223,6 +224,10 @@ function buildDrywallSectionPricing(args: {
     return {
       ...bucket,
       pricingBasis: "direct",
+      notes:
+        args.supportedSqftSupport === "measured"
+          ? ["Measured drywall support backs this direct row."]
+          : undefined,
     }
   })
 }
@@ -241,6 +246,7 @@ export function computeDrywallDeterministic(args: {
     forcePatchRepair?: boolean
     forceInstallFinish?: boolean
     hasFinishTextureSection?: boolean
+    supportedSqftSupport?: "measured" | null
   } | null
 }): DrywallDeterministicResult {
   const scope = (args.scopeText || "").trim()
@@ -352,6 +358,9 @@ export function computeDrywallDeterministic(args: {
             ? `${sqft} repair sqft came from plan-aware section support.`
             : `${sqft} repair sqft informed the live drywall pricing route.`
           : null,
+        args.planSectionInputs?.supportedSqftSupport === "measured"
+          ? "Repair sqft support remained measured rather than inferred from repeated rooms or generic wall area."
+          : null,
         finishLevel ? `Finish level ${finishLevel} was carried into patch / repair pricing.` : null,
         textureFlag ? "Texture-match burden was included in patch / repair pricing." : null,
         ceilingPatchFlag ? "Ceiling patch routing stayed separate inside drywall pricing." : null,
@@ -362,6 +371,7 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
       }),
     })
 
@@ -443,6 +453,9 @@ export function computeDrywallDeterministic(args: {
         supportedSqft && !textSqft && !measSqft
           ? `${sqft} drywall sqft came from plan-aware section support.`
           : `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        args.planSectionInputs?.supportedSqftSupport === "measured"
+          ? "Install/hang sqft support remained measured rather than inferred from repeated-room or partition cues alone."
+          : null,
         ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
         finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
         textureFlag || args.planSectionInputs?.hasFinishTextureSection
@@ -455,6 +468,7 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
       }),
     })
 
@@ -515,6 +529,9 @@ export function computeDrywallDeterministic(args: {
         supportedSqft && !textSqft && !measSqft
           ? `${sqft} drywall sqft came from plan-aware section support.`
           : `${sqft} drywall sqft informed the live install / finish pricing route.`,
+        args.planSectionInputs?.supportedSqftSupport === "measured"
+          ? "Install/hang sqft support remained measured rather than inferred from repeated-room or partition cues alone."
+          : null,
         ceilingFlag ? "Ceiling drywall was included in the live install / finish route." : null,
         finishLevel ? `Finish level ${finishLevel} was carried into install / finish pricing.` : null,
         textureFlag || args.planSectionInputs?.hasFinishTextureSection
@@ -527,6 +544,7 @@ export function computeDrywallDeterministic(args: {
       sectionPricing: buildDrywallSectionPricing({
         sectionBuckets: pricing.sectionBuckets,
         partitionLf: args.planSectionInputs?.supportedPartitionLf ?? null,
+        supportedSqftSupport: args.planSectionInputs?.supportedSqftSupport ?? null,
       }),
     })
 
