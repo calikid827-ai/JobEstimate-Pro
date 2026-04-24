@@ -550,6 +550,252 @@ test("shared-plan repeated guest-room painting support does not leak into drywal
   )
 })
 
+test("strong typed painting evidence beats weak drywall wording in a shared-plan scenario", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall"],
+    tradePackageSignals: ["painting", "drywall review"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Repaint guest rooms. Review adjacent drywall only if needed."],
+        notes: ["Drywall wording is descriptive only."],
+        tradeFindings: [
+          {
+            trade: "painting",
+            category: "wall_area",
+            label: "Measured guest room wall paint area",
+            confidence: 94,
+            notes: ["Measured guest room walls only."],
+            quantity: 2200,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "painting",
+            category: "ceiling_area",
+            label: "Measured guest room ceiling paint area",
+            confidence: 91,
+            notes: ["Measured guest room ceilings."],
+            quantity: 1100,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Repaint guest rooms.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Review drywall only if needed.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(paintingInfluence)
+  assert.equal(paintingInfluence.supportLevel, "strong")
+  assert.equal(paintingInfluence.canAffectNumericPricing, true)
+  assert.ok(
+    paintingInfluence.basisAssumptions.some((item) => /painting trade certainty stayed strong/i.test(item))
+  )
+  assert.ok(drywallInfluence)
+  assert.equal(drywallInfluence.supportLevel, "weak")
+  assert.equal(drywallInfluence.canAffectNumericPricing, false)
+  assert.ok(
+    drywallInfluence.basisAssumptions.some((item) => /drywall wording was present, but wording alone stayed low-authority|drywall trade certainty stayed weak/i.test(item))
+  )
+})
+
+test("strong measured drywall assembly evidence beats weak painting wording", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall"],
+    tradePackageSignals: ["paint review", "drywall"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install new drywall partitions with finish. Paint review only."],
+        tradeFindings: [
+          {
+            trade: "drywall",
+            category: "assembly_area",
+            label: "Measured wallboard area",
+            confidence: 95,
+            notes: ["Partition board area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "drywall",
+            category: "finish_texture_area",
+            label: "Measured finish texture area",
+            confidence: 90,
+            notes: ["Level 4 finish area."],
+            quantity: 1600,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Install drywall partitions with finish.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Review paint only if needed.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(drywallInfluence)
+  assert.equal(drywallInfluence.supportLevel, "strong")
+  assert.equal(drywallInfluence.canAffectNumericPricing, true)
+  assert.ok(
+    drywallInfluence.basisAssumptions.some((item) => /drywall trade certainty stayed strong/i.test(item))
+  )
+  assert.ok(paintingInfluence)
+  assert.equal(paintingInfluence.supportLevel, "weak")
+  assert.equal(paintingInfluence.canAffectNumericPricing, false)
+})
+
+test("wallcovering corridor evidence stays trade-specific without inflating painting certainty", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "wallcovering"],
+    tradePackageSignals: ["paint review", "wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Replace corridor wallcovering. Paint review only."],
+        notes: ["Vinyl corridor wallcovering type W-1."],
+        tradeFindings: [
+          {
+            trade: "wallcovering",
+            category: "corridor_area",
+            label: "Measured corridor wallcovering area",
+            confidence: 93,
+            notes: ["Measured corridor elevations only."],
+            quantity: 900,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 3000,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Remove and replace corridor wallcovering.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Review paint only if needed.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(wallcoveringInfluence)
+  assert.equal(wallcoveringInfluence.supportLevel, "moderate")
+  assert.equal(wallcoveringInfluence.canAffectNumericPricing, true)
+  assert.ok(
+    wallcoveringInfluence.basisAssumptions.some((item) => /wallcovering trade certainty stayed strong/i.test(item))
+  )
+  assert.ok(paintingInfluence)
+  assert.equal(paintingInfluence.supportLevel, "weak")
+  assert.equal(paintingInfluence.canAffectNumericPricing, false)
+})
+
+test("weak wording-only trade cues stay non-binding when typed or measured evidence is absent", () => {
+  const plan = makePlan({
+    detectedTrades: ["painting", "drywall", "wallcovering"],
+    tradePackageSignals: ["possible paint", "possible drywall", "possible wallcovering"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Review possible paint, drywall, and wallcovering scope."],
+        notes: ["No measured findings or schedules yet."],
+      }),
+    ],
+  })
+
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Review possible paint scope.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Review possible drywall scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+  const wallcoveringInfluence = buildLiveTradePricingInfluence({
+    trade: "wallcovering",
+    scopeText: "Review possible wallcovering scope.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("wallcovering"),
+    complexityProfile: defaultComplexity,
+  })
+
+  for (const influence of [paintingInfluence, drywallInfluence, wallcoveringInfluence]) {
+    assert.ok(influence)
+    assert.equal(influence.supportLevel, "weak")
+    assert.equal(influence.canAffectNumericPricing, false)
+    assert.ok(
+      influence.basisAssumptions.some((item) => /trade certainty stayed weak/i.test(item))
+    )
+  }
+})
+
 test("multi-trade split allocation keeps measured painting support isolated from drywall install quantities", () => {
   const plan = makePlan({
     detectedTrades: ["painting", "drywall"],

@@ -213,6 +213,8 @@ function buildPipeline(args: {
 }): {
   tradeQuantitySupport: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
   executionSections: string[]
   executionNotes: string[]
 } | null {
@@ -271,12 +273,15 @@ function buildPipeline(args: {
   return {
     tradeQuantitySupport,
     supportLevel: tradePricingInputDraft.supportLevel,
+    certaintyLevel: tradeQuantitySupport.tradeCertainty.level,
+    certaintyReasons: tradeQuantitySupport.tradeCertainty.reasons,
     executionSections: normalizeSections(tradePricingInputDraft.tradeScopePricingSections),
     executionNotes: uniqStrings(
       [
         ...tradePricingInputDraft.tradePricingInputDraft,
         ...tradePricingInputDraft.tradePricingInputNotes,
         ...tradeQuantitySupport.tradeQuantityReviewNotes,
+        ...tradeQuantitySupport.tradeCertainty.reasons,
       ],
       8
     ),
@@ -287,6 +292,8 @@ function buildPaintingInfluence(args: {
   measurements: MeasurementInput | null
   support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
   executionSections: string[]
   executionNotes: string[]
 }): LiveTradePricingInfluence {
@@ -455,6 +462,8 @@ function buildPaintingInfluence(args: {
         !canAffectNumericPricing
           ? "Plan-aware painting routing stayed non-binding because the available signals could not safely drive numeric pricing inputs."
           : null,
+        `Painting trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
       ],
       8
     ),
@@ -465,6 +474,8 @@ function buildPaintingInfluence(args: {
 function buildDrywallInfluence(args: {
   support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
   executionSections: string[]
   executionNotes: string[]
 }): LiveTradePricingInfluence {
@@ -683,6 +694,8 @@ function buildDrywallInfluence(args: {
         installOnlyFromGenericWallTakeoff
           ? "Install-like drywall wording stayed non-binding because only generic wall takeoff was available, without measured assembly/finish/ceiling support."
           : null,
+        `Drywall trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
       ],
       8
     ),
@@ -694,6 +707,8 @@ function buildWallcoveringInfluence(args: {
   scopeText: string
   support: ExactTradeQuantitySupport
   supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
   executionSections: string[]
   executionNotes: string[]
   planIntelligence: PlanIntelligence | null
@@ -809,6 +824,8 @@ function buildWallcoveringInfluence(args: {
         !canAffectNumericPricing
           ? "Wallcovering plan-aware routing stayed non-binding because exact area, material type, or explicit install/remove routing was still too weak for safe live numeric pricing."
           : null,
+        `Wallcovering trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
       ],
       6
     ),
@@ -846,6 +863,8 @@ export function buildLiveTradePricingInfluence(args: {
       measurements: args.measurements,
       support: pipeline.tradeQuantitySupport,
       supportLevel: pipeline.supportLevel,
+      certaintyLevel: pipeline.certaintyLevel,
+      certaintyReasons: pipeline.certaintyReasons,
       executionSections: pipeline.executionSections,
       executionNotes: pipeline.executionNotes,
     })
@@ -855,6 +874,8 @@ export function buildLiveTradePricingInfluence(args: {
     return buildDrywallInfluence({
       support: pipeline.tradeQuantitySupport,
       supportLevel: pipeline.supportLevel,
+      certaintyLevel: pipeline.certaintyLevel,
+      certaintyReasons: pipeline.certaintyReasons,
       executionSections: pipeline.executionSections,
       executionNotes: pipeline.executionNotes,
     })
@@ -864,6 +885,8 @@ export function buildLiveTradePricingInfluence(args: {
     scopeText: args.scopeText,
     support: pipeline.tradeQuantitySupport,
     supportLevel: pipeline.supportLevel,
+    certaintyLevel: pipeline.certaintyLevel,
+    certaintyReasons: pipeline.certaintyReasons,
     executionSections: pipeline.executionSections,
     executionNotes: pipeline.executionNotes,
     planIntelligence: args.planIntelligence,

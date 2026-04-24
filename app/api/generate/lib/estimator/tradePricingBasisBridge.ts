@@ -428,7 +428,7 @@ export function buildTradePricingBasisBridge(args: {
 
   if (!trade) return null
 
-  const supportLevel = args.tradeQuantitySupport.tradeQuantityConfidence.level
+  const supportLevel = args.tradeQuantitySupport.supportLevel
   const bucketHints = getBucketHints({
     handoff: args.estimateSkeletonHandoff,
     structure: args.estimateStructureConsumption,

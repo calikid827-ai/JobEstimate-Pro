@@ -53,9 +53,16 @@ export type TradeQuantityConfidence = {
   reasons: string[]
 }
 
+export type TradeCertainty = {
+  level: "strong" | "moderate" | "weak"
+  score: number
+  reasons: string[]
+}
+
 export type TradeQuantitySupport = {
   trade: TradeQuantitySupportTrade
   supportLevel: "strong" | "moderate" | "weak"
+  tradeCertainty: TradeCertainty
   tradeAreaSignals: TradeQuantitySignal[]
   tradeLinearSignals: TradeQuantitySignal[]
   tradeOpeningSignals: TradeQuantitySignal[]
@@ -98,21 +105,112 @@ function getTradeSignalConfidence(value: number | null, highThreshold = 80): Tra
   return "low"
 }
 
+function getSupportLevelRank(level: "strong" | "moderate" | "weak"): number {
+  if (level === "strong") return 3
+  if (level === "moderate") return 2
+  return 1
+}
+
+function takeMoreConservativeLevel(
+  left: "strong" | "moderate" | "weak",
+  right: "strong" | "moderate" | "weak"
+): "strong" | "moderate" | "weak" {
+  return getSupportLevelRank(left) <= getSupportLevelRank(right) ? left : right
+}
+
+function hasTradeCueText(trade: TradeQuantitySupportTrade, text: string): boolean {
+  if (trade === "painting") return /\b(paint|painting|prime|primer)\b/.test(text)
+  if (trade === "drywall") {
+    return /\b(drywall|sheetrock|partition|wallboard|texture|skim|patch|repair)\b/.test(text)
+  }
+  return /\b(wallcover(?:ing)?|wallpaper|feature wall|accent wall|vinyl wallcovering)\b/.test(text)
+}
+
+function computeTradeCertainty(args: {
+  trade: TradeQuantitySupportTrade
+  exactMeasuredSignals: number
+  typedFindingSignals: number
+  scheduleSignals?: number
+  takeoffAlignedSignals?: number
+  repeatedPrototypeSignals?: number
+  roomContextSignals?: number
+  planTradeSignals?: number
+  scopeCueSignals?: number
+  blockers?: string[]
+}): TradeCertainty {
+  const scheduleSignals = args.scheduleSignals || 0
+  const takeoffAlignedSignals = args.takeoffAlignedSignals || 0
+  const repeatedPrototypeSignals = args.repeatedPrototypeSignals || 0
+  const roomContextSignals = args.roomContextSignals || 0
+  const planTradeSignals = args.planTradeSignals || 0
+  const scopeCueSignals = args.scopeCueSignals || 0
+  const blockers = uniqStrings(args.blockers || [], 4)
+
+  const score =
+    args.exactMeasuredSignals * 4 +
+    args.typedFindingSignals * 2 +
+    scheduleSignals * 2 +
+    takeoffAlignedSignals +
+    repeatedPrototypeSignals * 3 +
+    roomContextSignals +
+    planTradeSignals +
+    scopeCueSignals -
+    blockers.length * 2
+
+  const level: TradeCertainty["level"] =
+    score >= 7 ? "strong" : score >= 4 ? "moderate" : "weak"
+
+  return {
+    level,
+    score,
+    reasons: uniqStrings(
+      [
+        args.exactMeasuredSignals > 0
+          ? `${args.exactMeasuredSignals} exact measured ${args.trade} support signal${args.exactMeasuredSignals === 1 ? "" : "s"} increased trade certainty.`
+          : null,
+        args.typedFindingSignals > 0
+          ? `Typed ${args.trade} findings increased trade certainty beyond wording-only detection.`
+          : null,
+        scheduleSignals > 0
+          ? `${args.trade} schedule evidence reinforced trade certainty.`
+          : null,
+        takeoffAlignedSignals > 0
+          ? `Takeoff alignment supported ${args.trade} only where trade-specific cues already existed.`
+          : null,
+        repeatedPrototypeSignals > 0
+          ? `Repeated-space / prototype support increased ${args.trade} certainty without acting as measured quantity.`
+          : null,
+        roomContextSignals > 0
+          ? `Room-type context strengthened ${args.trade} certainty.`
+          : null,
+        planTradeSignals > 0
+          ? `Plan trade cues explicitly pointed to ${args.trade}.`
+          : null,
+        scopeCueSignals > 0 && args.exactMeasuredSignals <= 0 && args.typedFindingSignals <= 0
+          ? `${args.trade} wording was present, but wording alone stayed low-authority.`
+          : null,
+        ...blockers,
+      ],
+      6
+    ),
+  }
+}
+
 function detectTargetTrade(args: {
   trade: string
   scopeText: string
   planIntelligence: PlanIntelligence | null
   tradePackagePricingPrep: TradePackagePricingPrep
 }): TradeQuantitySupportTrade | null {
-  if (args.tradePackagePricingPrep?.trade) {
-    return args.tradePackagePricingPrep.trade
-  }
-
   const directTrade = String(args.trade || "").trim().toLowerCase()
   if (directTrade === "painting" || directTrade === "drywall") {
     return directTrade
   }
   if (directTrade === "wallcovering") return "wallcovering"
+
+  if (args.tradePackagePricingPrep?.trade) {
+    return args.tradePackagePricingPrep.trade
+  }
 
   const corpus = [
     args.scopeText,
@@ -127,20 +225,53 @@ function detectTargetTrade(args: {
       ...(analysis.tradeFindings || []).map((item) => item.label),
     ]),
   ]
-    .join(" ")
-    .toLowerCase()
+  const corpusText = corpus.join(" ").toLowerCase()
+  const analyses = args.planIntelligence?.analyses || []
 
-  if (/\b(wallcover(?:ing)?|wallpaper|feature wall)\b/.test(corpus)) {
-    return "wallcovering"
-  }
-  if (/\b(drywall|sheetrock|partition|patch|texture|skim coat)\b/.test(corpus)) {
-    return "drywall"
-  }
-  if (/\b(paint|painting|finish schedule|prime|primer)\b/.test(corpus)) {
-    return "painting"
+  const scoreTrade = (trade: TradeQuantitySupportTrade): number => {
+    const detectedTradeSignals = (args.planIntelligence?.detectedTrades || []).filter((value) =>
+      String(value || "").toLowerCase().includes(trade === "wallcovering" ? "wallcover" : trade)
+    ).length
+    const packageSignals = [
+      ...(args.planIntelligence?.tradePackageSignals || []),
+      ...(args.planIntelligence?.packageScopeCandidates || []),
+    ].filter((value) =>
+      hasTradeCueText(trade, String(value || "").toLowerCase())
+    ).length
+    const typedFindingSignals = collectTradeFindings(
+      analyses,
+      trade === "wallcovering" ? null : trade,
+      trade === "painting"
+        ? /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i
+        : trade === "drywall"
+          ? /\bdrywall|sheetrock|partition|patch|texture|skim\b/i
+          : /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i,
+      trade === "painting"
+        ? ["wall_area", "ceiling_area", "trim_lf", "door_openings"]
+        : trade === "drywall"
+          ? ["repair_area", "assembly_area", "finish_texture_area", "ceiling_area", "partition_lf"]
+          : ["wall_area", "corridor_area", "selected_elevation_area"],
+      trade === "wallcovering" ? ["wallcovering", "general renovation"] : null
+    ).length
+
+    return detectedTradeSignals * 2 + packageSignals + typedFindingSignals * 3 + (hasTradeCueText(trade, corpusText) ? 1 : 0)
   }
 
-  return null
+  const scoredTrades = (["painting", "drywall", "wallcovering"] as TradeQuantitySupportTrade[]).map(
+    (trade) => ({ trade, score: scoreTrade(trade) })
+  )
+  const sortedTrades = scoredTrades.sort((left, right) => right.score - left.score)
+  if ((sortedTrades[0]?.score || 0) >= 2 && (sortedTrades[0]?.score || 0) > (sortedTrades[1]?.score || 0)) {
+    return sortedTrades[0]?.trade || null
+  }
+
+  return hasTradeCueText("wallcovering", corpusText)
+    ? "wallcovering"
+    : hasTradeCueText("drywall", corpusText)
+      ? "drywall"
+      : hasTradeCueText("painting", corpusText)
+        ? "painting"
+        : null
 }
 
 function getPlanTexts(planIntelligence: PlanIntelligence | null): string[] {
@@ -422,7 +553,7 @@ function collectTradeFindings(
   return analyses.flatMap((analysis) =>
     (analysis.tradeFindings || []).filter((finding) => {
       if (allowedTrades && !allowedTrades.includes(finding.trade)) return false
-      if (matchTrade && finding.trade === matchTrade) return true
+      if (!allowedTrades && matchTrade && finding.trade !== matchTrade) return false
       if (categories.length > 0) {
         const findingCategory = getTradeFindingCategory(finding)
         if (findingCategory && categories.includes(findingCategory)) return true
@@ -904,7 +1035,7 @@ function buildPaintingQuantitySupport(args: {
     repeatedSpaceRollup.repeatedUnitCount >= 2 &&
     repeatedSpaceRollup.repeatedUnitSource === "room_signal"
 
-  const supportLevel: TradeQuantityConfidence["level"] =
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
     areaSignals.filter((item) => item.exactQuantity).length >= 2 ||
     strongPrototypeSupport ||
     (areaSignals.some((item) => item.exactQuantity) &&
@@ -913,16 +1044,61 @@ function buildPaintingQuantitySupport(args: {
       : areaSignals.length > 0 || openingSignals.length > 0 || coverageHints.length > 1
       ? "moderate"
       : "weak"
+  const tradeCertainty = computeTradeCertainty({
+    trade: "painting",
+    exactMeasuredSignals:
+      [quantifiedWallFinding, quantifiedCeilingFinding, quantifiedTrimFinding, quantifiedDoorFinding].filter(Boolean).length +
+      (quantifiedDoorSchedule ? 1 : 0),
+    typedFindingSignals: paintingFindings.filter((finding) =>
+      findingHasCategory(finding, ["wall_area", "ceiling_area", "trim_lf", "door_openings"])
+    ).length,
+    scheduleSignals: finishSchedules.length + (quantifiedDoorSchedule ? 1 : 0),
+    takeoffAlignedSignals:
+      ((plan?.takeoff.wallSqft || 0) > 0 ? 1 : 0) +
+      ((plan?.takeoff.ceilingSqft || 0) > 0 ? 1 : 0) +
+      ((plan?.takeoff.trimLf || 0) > 0 ? 1 : 0) +
+      ((plan?.takeoff.doorCount || 0) > 0 ? 1 : 0),
+    repeatedPrototypeSignals: strongPrototypeSupport ? 1 : 0,
+    roomContextSignals:
+      repeatedSpaceRollup.hasUnitLikeRooms || repeatedSpaceRollup.repeatedUnitGroupLabel ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /paint/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /paint/i.test(String(value || ""))).length,
+    scopeCueSignals: /\bpaint|painting|prime|primer\b/.test(blob) ? 1 : 0,
+    blockers: [
+      (plan?.repeatedSpaceSignals || []).length > 0 && !repeatedSpaceRollup.repeatedUnitCount
+        ? "Repeated-room wording stayed low-authority because no single measured room group was clear."
+        : null,
+      repeatedSpaceRollup.hasMixedPrototypeCandidates && !repeatedSpaceRollup.repeatedUnitCount
+        ? "Multiple repeatable room groups were present, so painting trade certainty stayed conservative."
+        : null,
+      !quantifiedWallFinding &&
+      !quantifiedCeilingFinding &&
+      !quantifiedTrimFinding &&
+      !quantifiedDoorFinding &&
+      !quantifiedDoorSchedule &&
+      finishSchedules.length === 0 &&
+      !strongPrototypeSupport &&
+      ((plan?.takeoff.wallSqft || 0) > 0 ||
+        (plan?.takeoff.ceilingSqft || 0) > 0 ||
+        (plan?.takeoff.trimLf || 0) > 0 ||
+        (plan?.takeoff.doorCount || 0) > 0)
+        ? "Painting certainty stayed conservative because only broad takeoff support existed without typed findings, schedules, or qualified prototype evidence."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
 
   return {
     trade: "painting",
     supportLevel,
+    tradeCertainty,
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
-      level: supportLevel,
+      level: quantitySupportLevel,
       reasons: quantityReasonParts,
     },
     tradeQuantityReviewNotes: reviewNotes,
@@ -1213,7 +1389,7 @@ function buildDrywallQuantitySupport(args: {
     6
   )
 
-  const supportLevel: TradeQuantityConfidence["level"] =
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
     areaSignals.filter((item) => item.exactQuantity).length >= 2 ||
     (areaSignals.some((item) => item.exactQuantity) &&
       linearSignals.some((item) => item.exactQuantity))
@@ -1221,16 +1397,46 @@ function buildDrywallQuantitySupport(args: {
       : areaSignals.length > 0 || linearSignals.length > 0 || coverageHints.length > 1
       ? "moderate"
       : "weak"
+  const tradeCertainty = computeTradeCertainty({
+    trade: "drywall",
+    exactMeasuredSignals:
+      [quantifiedRepairSqftFinding, quantifiedAssemblySqftFinding, quantifiedFinishSqftFinding, quantifiedCeilingSqftFinding].filter(Boolean).length,
+    typedFindingSignals: drywallFindings.filter((finding) =>
+      findingHasCategory(finding, ["repair_area", "assembly_area", "finish_texture_area", "ceiling_area", "partition_lf"])
+    ).length,
+    takeoffAlignedSignals:
+      ((plan?.takeoff.wallSqft || 0) > 0 && installLike && !patchLike ? 1 : 0) +
+      ((plan?.takeoff.ceilingSqft || 0) > 0 && /\bceiling|soffit\b/.test(blob) ? 1 : 0),
+    roomContextSignals:
+      (plan?.repeatedSpaceSignals || []).length > 0 && patchLike ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /drywall|sheetrock/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /drywall|sheetrock/i.test(String(value || ""))).length,
+    scopeCueSignals: patchLike || installLike ? 1 : 0,
+    blockers: [
+      patchLike && !quantifiedRepairSqftFinding
+        ? "Repair wording existed, but measured repair area was missing."
+        : null,
+      installLike &&
+      !quantifiedAssemblySqftFinding &&
+      !quantifiedFinishSqftFinding &&
+      !quantifiedCeilingSqftFinding
+        ? "Install wording relied on generic drywall cues without measured assembly support."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
 
   return {
     trade: "drywall",
     supportLevel,
+    tradeCertainty,
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
-      level: supportLevel,
+      level: quantitySupportLevel,
       reasons: uniqStrings(
         [
           areaSignals.some((item) => item.exactQuantity)
@@ -1509,22 +1715,49 @@ function buildWallcoveringQuantitySupport(args: {
     6
   )
 
-  const supportLevel: TradeQuantityConfidence["level"] =
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
     areaSignals.some((item) => item.exactQuantity) && coverageHints.length >= 2
       ? "moderate"
       : areaSignals.length > 0 || coverageHints.length > 1
       ? "moderate"
       : "weak"
+  const tradeCertainty = computeTradeCertainty({
+    trade: "wallcovering",
+    exactMeasuredSignals:
+      [selectedElevationFinding, corridorWallcoveringFinding, fullAreaWallcoveringFinding].filter(Boolean).length,
+    typedFindingSignals: wallcoveringFindings.filter((finding) =>
+      findingHasCategory(finding, ["wall_area", "corridor_area", "selected_elevation_area"])
+    ).length,
+    scheduleSignals: finishSchedules.length,
+    takeoffAlignedSignals: (plan?.takeoff.wallSqft || 0) > 0 && wallcoveringCue ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /wallcover|wallpaper/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /wallcover|wallpaper/i.test(String(value || ""))).length,
+    scopeCueSignals: wallcoveringCue ? 1 : 0,
+    blockers: [
+      fullAreaWallcoveringFinding && (featureCue || corridorCue)
+        ? "Full-area wallcovering wording conflicted with narrower feature or corridor cues."
+        : null,
+      corridorCue && !corridorWallcoveringFinding && !selectedElevationFinding && !fullAreaWallcoveringFinding
+        ? "Corridor/common-area wording existed without exact corridor wallcovering area."
+        : null,
+      featureCue && !selectedElevationFinding
+        ? "Feature-wall wording existed without exact selected-elevation wallcovering support."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
 
   return {
     trade: "wallcovering",
     supportLevel,
+    tradeCertainty,
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
-      level: supportLevel,
+      level: quantitySupportLevel,
       reasons: uniqStrings(
         [
           wallcoveringCue ? "Wallcovering-specific cues were detected." : null,
