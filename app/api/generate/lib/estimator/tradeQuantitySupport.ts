@@ -14,6 +14,9 @@ export type TradeQuantitySupportTrade =
   | "painting"
   | "drywall"
   | "wallcovering"
+  | "flooring"
+  | "electrical"
+  | "plumbing"
 
 type TradeQuantitySignalUnit =
   | "sqft"
@@ -21,6 +24,8 @@ type TradeQuantitySignalUnit =
   | "rooms"
   | "doors"
   | "openings"
+  | "devices"
+  | "fixtures"
   | "each"
   | "unknown"
 
@@ -66,6 +71,7 @@ export type TradeQuantitySupport = {
   tradeAreaSignals: TradeQuantitySignal[]
   tradeLinearSignals: TradeQuantitySignal[]
   tradeOpeningSignals: TradeQuantitySignal[]
+  tradeCountSignals: TradeQuantitySignal[]
   tradeCoverageHints: string[]
   tradeQuantityConfidence: TradeQuantityConfidence
   tradeQuantityReviewNotes: string[]
@@ -123,7 +129,16 @@ function hasTradeCueText(trade: TradeQuantitySupportTrade, text: string): boolea
   if (trade === "drywall") {
     return /\b(drywall|sheetrock|partition|wallboard|texture|skim|patch|repair)\b/.test(text)
   }
-  return /\b(wallcover(?:ing)?|wallpaper|feature wall|accent wall|vinyl wallcovering)\b/.test(text)
+  if (trade === "wallcovering") {
+    return /\b(wallcover(?:ing)?|wallpaper|feature wall|accent wall|vinyl wallcovering)\b/.test(text)
+  }
+  if (trade === "flooring") {
+    return /\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor|floor tile|wall tile|backsplash|shower tile|tub surround)\b/.test(text)
+  }
+  if (trade === "electrical") {
+    return /\b(electrical|power|lighting|outlet|receptacle|switch|device|fixture|panel|circuit|rough[-\s]*in)\b/.test(text)
+  }
+  return /\b(plumb|plumbing|fixture|toilet|faucet|sink|vanity|shower valve|rough[-\s]*in|trim[-\s]*out|kitchen|bath)\b/.test(text)
 }
 
 function computeTradeCertainty(args: {
@@ -203,10 +218,12 @@ function detectTargetTrade(args: {
   tradePackagePricingPrep: TradePackagePricingPrep
 }): TradeQuantitySupportTrade | null {
   const directTrade = String(args.trade || "").trim().toLowerCase()
-  if (directTrade === "painting" || directTrade === "drywall") {
+  if (directTrade === "painting" || directTrade === "drywall" || directTrade === "flooring") {
     return directTrade
   }
+  if (directTrade === "electrical" || directTrade === "plumbing") return directTrade
   if (directTrade === "wallcovering") return "wallcovering"
+  if (directTrade === "tile") return "flooring"
 
   if (args.tradePackagePricingPrep?.trade) {
     return args.tradePackagePricingPrep.trade
@@ -240,24 +257,44 @@ function detectTargetTrade(args: {
     ).length
     const typedFindingSignals = collectTradeFindings(
       analyses,
-      trade === "wallcovering" ? null : trade,
+      trade === "wallcovering" || trade === "flooring" ? null : trade,
       trade === "painting"
         ? /\bpaint|painting|wall|ceiling|door|frame|trim|casing\b/i
         : trade === "drywall"
           ? /\bdrywall|sheetrock|partition|patch|texture|skim\b/i
-          : /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i,
+          : trade === "wallcovering"
+            ? /\bwallcover(?:ing)?|wallpaper|feature wall|accent wall|corridor\b/i
+            : trade === "flooring"
+              ? /\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile|backsplash|shower|surround|underlayment|base)\b/i
+              : trade === "electrical"
+                ? /\b(electrical|lighting|power|device|outlet|receptacle|switch|fixture|panel|circuit)\b/i
+                : /\b(plumb|plumbing|fixture|toilet|faucet|sink|vanity|shower valve|rough[-\s]*in|trim[-\s]*out)\b/i,
       trade === "painting"
         ? ["wall_area", "ceiling_area", "trim_lf", "door_openings"]
         : trade === "drywall"
           ? ["repair_area", "assembly_area", "finish_texture_area", "ceiling_area", "partition_lf"]
-          : ["wall_area", "corridor_area", "selected_elevation_area"],
-      trade === "wallcovering" ? ["wallcovering", "general renovation"] : null
+          : trade === "wallcovering"
+            ? ["wall_area", "corridor_area", "selected_elevation_area"]
+            : trade === "flooring"
+              ? ["floor_area", "wall_tile_area", "shower_tile_area", "backsplash_area", "base_lf", "demolition_area", "underlayment_prep_area"]
+              : trade === "electrical"
+                ? ["device_count", "switch_count", "receptacle_count", "electrical_fixture_count"]
+                : ["plumbing_fixture_count"],
+      trade === "wallcovering"
+        ? ["wallcovering", "general renovation"]
+        : trade === "flooring"
+          ? ["flooring", "tile", "general renovation"]
+          : trade === "electrical"
+            ? ["electrical", "general renovation"]
+            : trade === "plumbing"
+              ? ["plumbing", "general renovation"]
+          : null
     ).length
 
     return detectedTradeSignals * 2 + packageSignals + typedFindingSignals * 3 + (hasTradeCueText(trade, corpusText) ? 1 : 0)
   }
 
-  const scoredTrades = (["painting", "drywall", "wallcovering"] as TradeQuantitySupportTrade[]).map(
+  const scoredTrades = (["painting", "drywall", "wallcovering", "flooring", "electrical", "plumbing"] as TradeQuantitySupportTrade[]).map(
     (trade) => ({ trade, score: scoreTrade(trade) })
   )
   const sortedTrades = scoredTrades.sort((left, right) => right.score - left.score)
@@ -267,8 +304,14 @@ function detectTargetTrade(args: {
 
   return hasTradeCueText("wallcovering", corpusText)
     ? "wallcovering"
-    : hasTradeCueText("drywall", corpusText)
-      ? "drywall"
+      : hasTradeCueText("drywall", corpusText)
+        ? "drywall"
+      : hasTradeCueText("electrical", corpusText)
+        ? "electrical"
+      : hasTradeCueText("plumbing", corpusText)
+        ? "plumbing"
+      : hasTradeCueText("flooring", corpusText)
+        ? "flooring"
       : hasTradeCueText("painting", corpusText)
         ? "painting"
         : null
@@ -573,8 +616,54 @@ function inferTradeFindingCategory(
 ): PlanTradeFindingCategory | undefined {
   const blob = getFindingBlob(finding).toLowerCase()
 
+  if (finding.unit === "devices" && /\breceptacle|outlet|plug\b/.test(blob)) {
+    return "receptacle_count"
+  }
+  if (finding.unit === "devices" && /\bswitch\b/.test(blob)) {
+    return "switch_count"
+  }
+  if (finding.unit === "fixtures" && finding.trade === "electrical") {
+    return "electrical_fixture_count"
+  }
+  if (finding.unit === "fixtures" && finding.trade === "plumbing") {
+    return "plumbing_fixture_count"
+  }
+  if (finding.unit === "devices" && finding.trade === "electrical") {
+    return "device_count"
+  }
+
   if (finding.unit === "linear_ft" && /\bpartition|gyp|gypsum|wall type\b/.test(blob)) {
     return "partition_lf"
+  }
+  if (finding.unit === "linear_ft" && /\bbase|baseboard|cove base|rubber base\b/.test(blob)) {
+    return "base_lf"
+  }
+  if (
+    finding.unit === "sqft" &&
+    /\b(remove|removal|demo|demolition|tear out|pull up|rip out)\b/.test(blob)
+  ) {
+    return "demolition_area"
+  }
+  if (
+    finding.unit === "sqft" &&
+    /\bunderlayment|leveler|self[-\s]?level|prep|subfloor|backer board\b/.test(blob)
+  ) {
+    return "underlayment_prep_area"
+  }
+  if (finding.unit === "sqft" && /\bbacksplash\b/.test(blob)) {
+    return "backsplash_area"
+  }
+  if (finding.unit === "sqft" && /\bshower|tub surround|wet area|wet-area\b/.test(blob)) {
+    return "shower_tile_area"
+  }
+  if (finding.unit === "sqft" && /\bwall tile|feature tile|tile wall\b/.test(blob)) {
+    return "wall_tile_area"
+  }
+  if (
+    finding.unit === "sqft" &&
+    /\bfloor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor|floor tile\b/.test(blob)
+  ) {
+    return "floor_area"
   }
   if (finding.unit === "linear_ft" && /\btrim|base|baseboard|casing|frame\b/.test(blob)) {
     return "trim_lf"
@@ -662,7 +751,13 @@ function getPackageBucketHints(args: {
       ? /\bpainting\b|\bfinish\b/i
       : args.trade === "drywall"
       ? /\bdrywall\b/i
-      : /\bwallcover(?:ing)?\b|\bfinish\b/i
+      : args.trade === "wallcovering"
+        ? /\bwallcover(?:ing)?\b|\bfinish\b/i
+        : args.trade === "electrical"
+          ? /\belectrical\b|\blighting\b|\bpower\b/i
+          : args.trade === "plumbing"
+            ? /\bplumb(?:ing)?\b|\bfixture\b|\bbath\b|\bkitchen\b/i
+        : /\bflooring\b|\btile\b|\bfinish\b/i
 
   const fromHandoff = (args.handoff?.estimatorBucketDrafts || [])
     .filter((bucket) =>
@@ -1096,6 +1191,7 @@ function buildPaintingQuantitySupport(args: {
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: [],
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
       level: quantitySupportLevel,
@@ -1434,6 +1530,7 @@ function buildDrywallQuantitySupport(args: {
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: [],
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
       level: quantitySupportLevel,
@@ -1755,6 +1852,7 @@ function buildWallcoveringQuantitySupport(args: {
     tradeAreaSignals: uniqSignals(areaSignals),
     tradeLinearSignals: uniqSignals(linearSignals),
     tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: [],
     tradeCoverageHints: coverageHints,
     tradeQuantityConfidence: {
       level: quantitySupportLevel,
@@ -1774,6 +1872,891 @@ function buildWallcoveringQuantitySupport(args: {
             : null,
         ],
         4
+      ),
+    },
+    tradeQuantityReviewNotes: reviewNotes,
+  }
+}
+
+function buildFlooringQuantitySupport(args: {
+  planIntelligence: PlanIntelligence | null
+  handoff: EstimateSkeletonHandoff | null
+  structure: EstimateStructureConsumption | null
+  tradePackagePricingPrep: TradePackagePricingPrep
+  scopeText: string
+}): TradeQuantitySupport {
+  const plan = args.planIntelligence
+  const analyses = plan?.analyses || []
+  const texts = getPlanTexts(plan)
+  const blob = joinLower(texts.concat(args.scopeText))
+  const evidence = buildTakeoffEvidence(plan)
+  const packageBuckets = getPackageBucketHints({
+    handoff: args.handoff,
+    structure: args.structure,
+    trade: "wallcovering",
+  })
+  const floorCue =
+    /\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor|floor tile)\b/.test(blob)
+  const wallTileCue = /\bwall tile|tile wall|feature tile\b/.test(blob)
+  const showerCue = /\bshower tile|shower wall|tub surround|wet area|wet-area\b/.test(blob)
+  const backsplashCue = /\bbacksplash\b/.test(blob)
+  const removalCue = /\b(remove|removal|demo|demolition|tear out|pull up|rip out)\b/.test(blob)
+  const prepCue = /\bunderlayment|leveler|self[-\s]?level|prep|subfloor|backer board\b/.test(blob)
+  const wetAreaCue = showerCue || /\bshower|wet area|wet-area|tub surround\b/.test(blob)
+
+  const flooringFindings = collectTradeFindings(
+    analyses,
+    null,
+    /\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile|backsplash|shower|surround|underlayment|base)\b/i,
+    [
+      "floor_area",
+      "wall_tile_area",
+      "shower_tile_area",
+      "backsplash_area",
+      "base_lf",
+      "demolition_area",
+      "underlayment_prep_area",
+    ],
+    ["flooring", "tile", "general renovation"]
+  )
+
+  const floorAreaFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      (findingHasCategory(finding, ["floor_area"]) ||
+        (/\bfloor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor|floor tile\b/i.test(
+          getFindingBlob(finding)
+        ) &&
+          !/\bwall tile|backsplash|shower|tub surround|wet area|wet-area\b/i.test(
+            getFindingBlob(finding)
+          )))
+  )
+  const wallTileFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      findingHasCategory(finding, ["wall_tile_area"])
+  )
+  const showerTileFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      findingHasCategory(finding, ["shower_tile_area"])
+  )
+  const backsplashFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      findingHasCategory(finding, ["backsplash_area"])
+  )
+  const removalFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      findingHasCategory(finding, ["demolition_area"])
+  )
+  const prepFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "sqft" &&
+      findingHasCategory(finding, ["underlayment_prep_area"])
+  )
+  const baseFinding = flooringFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "linear_ft" &&
+      findingHasCategory(finding, ["base_lf"])
+  )
+
+  const areaSignals: TradeQuantitySignal[] = []
+  const linearSignals: TradeQuantitySignal[] = []
+  const openingSignals: TradeQuantitySignal[] = []
+
+  if (floorAreaFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured floor area support",
+        category: "floor_area",
+        quantity: floorAreaFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(floorAreaFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured floor area exists in plan findings and can back direct flooring rows without inflating wall tile scope.",
+        evidenceRefs: floorAreaFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.floorSqft || 0) > 0 && floorCue && !wallTileCue && !showerCue && !backsplashCue) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured floor area support",
+        category: "floor_area",
+        quantity: plan?.takeoff.floorSqft ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: "high",
+        source: "takeoff",
+        note:
+          "Floor takeoff aligns with flooring scope and can support direct flooring rows when narrower wall-tile scope is absent.",
+        evidenceRefs: evidence,
+      })
+    )
+  }
+
+  if (wallTileFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured wall tile area support",
+        category: "wall_tile_area",
+        quantity: wallTileFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(wallTileFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured wall-tile area exists in plan findings and stays separate from general floor area support.",
+        evidenceRefs: wallTileFinding.evidence || [],
+      })
+    )
+  }
+
+  if (showerTileFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured shower tile area support",
+        category: "shower_tile_area",
+        quantity: showerTileFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(showerTileFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured shower or wet-area tile exists in plan findings and stays narrower than broad floor or wall tile scope.",
+        evidenceRefs: showerTileFinding.evidence || [],
+      })
+    )
+  }
+
+  if (backsplashFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured backsplash tile area support",
+        category: "backsplash_area",
+        quantity: backsplashFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(backsplashFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured backsplash tile area exists in plan findings and stays narrower than broad kitchen wall area.",
+        evidenceRefs: backsplashFinding.evidence || [],
+      })
+    )
+  }
+
+  if (removalFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured flooring/tile removal area support",
+        category: "demolition_area",
+        quantity: removalFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(removalFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured removal area exists and can support separate removal/demo routing where direct install scope is also explicit.",
+        evidenceRefs: removalFinding.evidence || [],
+      })
+    )
+  } else if (removalCue) {
+    areaSignals.push(
+      buildSignal({
+        label: "Flooring/tile removal cue",
+        category: "demolition_area",
+        quantity: null,
+        unit: "unknown",
+        exactQuantity: false,
+        confidence: "medium",
+        source: "scope_text",
+        note:
+          "Removal/demo wording exists, but direct removal rows stay non-binding until measured removal area is explicit.",
+        evidenceRefs: evidence,
+      })
+    )
+  }
+
+  if (prepFinding) {
+    areaSignals.push(
+      buildSignal({
+        label: "Measured underlayment / prep support",
+        category: "underlayment_prep_area",
+        quantity: prepFinding.quantity ?? null,
+        unit: "sqft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(prepFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured prep/underlayment area exists, but prep still stays embedded unless direct install support is also safe.",
+        evidenceRefs: prepFinding.evidence || [],
+      })
+    )
+  } else if (prepCue) {
+    areaSignals.push(
+      buildSignal({
+        label: "Underlayment / prep cue",
+        category: "underlayment_prep_area",
+        quantity: null,
+        unit: "unknown",
+        exactQuantity: false,
+        confidence: "medium",
+        source: "scope_text",
+        note:
+          "Prep/underlayment wording exists, but it remains support-only until measured prep or direct install support is explicit.",
+        evidenceRefs: evidence,
+      })
+    )
+  }
+
+  if (baseFinding) {
+    linearSignals.push(
+      buildSignal({
+        label: "Measured base / trim linear support",
+        category: "base_lf",
+        quantity: baseFinding.quantity ?? null,
+        unit: "linear_ft",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(baseFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note:
+          "Measured base/cove base footage exists and can stay separate from floor-area support.",
+        evidenceRefs: baseFinding.evidence || [],
+      })
+    )
+  }
+
+  const coverageHints = uniqStrings(
+    [
+      floorCue ? "Flooring cues point toward floor-area scope." : null,
+      wallTileCue ? "Wall-tile cues point toward vertical tile scope, not general floor area." : null,
+      showerCue ? "Wet-area / shower cues point toward narrower shower tile scope." : null,
+      backsplashCue ? "Backsplash cues point toward narrow kitchen wall tile scope." : null,
+      wetAreaCue ? "Wet-area context should stay separate from general flooring quantities." : null,
+      packageBuckets.length > 0
+        ? `Package buckets may help organize flooring/tile quantities around ${packageBuckets.join(", ")}.`
+        : null,
+    ],
+    6
+  )
+
+  const reviewNotes = uniqStrings(
+    [
+      wallTileCue && !wallTileFinding && !showerTileFinding && !backsplashFinding
+        ? "Wall/shower/backsplash tile wording exists, but narrower measured tile coverage is still missing."
+        : null,
+      backsplashCue && !backsplashFinding
+        ? "Backsplash cues should stay narrower than broad kitchen wall area until measured backsplash support exists."
+        : null,
+      wetAreaCue && !showerTileFinding
+        ? "Wet-area / shower tile should stay non-binding until measured shower-tile coverage exists."
+        : null,
+      removalCue && !removalFinding
+        ? "Removal/demo wording should stay non-binding until measured removal area exists."
+        : null,
+      prepCue && !prepFinding
+        ? "Prep/underlayment wording remains support-only until measured prep support exists."
+        : null,
+      ...(args.tradePackagePricingPrep?.tradePackageMeasurementHints || []).slice(0, 2),
+    ],
+    6
+  )
+
+  const exactDirectScopedAreaCount = areaSignals.filter(
+    (item) =>
+      item.exactQuantity &&
+      (item.category === "floor_area" ||
+        item.category === "wall_tile_area" ||
+        item.category === "shower_tile_area" ||
+        item.category === "backsplash_area")
+  ).length
+
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
+    exactDirectScopedAreaCount >= 1 ||
+    areaSignals.filter((item) => item.exactQuantity).length >= 2 ||
+    (areaSignals.some((item) => item.category === "floor_area" && item.exactQuantity) &&
+      linearSignals.some((item) => item.exactQuantity))
+      ? "strong"
+      : areaSignals.length > 0 || linearSignals.length > 0 || coverageHints.length > 1
+        ? "moderate"
+        : "weak"
+  const tradeCertainty = computeTradeCertainty({
+    trade: "flooring",
+    exactMeasuredSignals:
+      [floorAreaFinding, wallTileFinding, showerTileFinding, backsplashFinding, removalFinding, prepFinding].filter(Boolean).length,
+    typedFindingSignals: flooringFindings.filter((finding) =>
+      findingHasCategory(finding, [
+        "floor_area",
+        "wall_tile_area",
+        "shower_tile_area",
+        "backsplash_area",
+        "base_lf",
+        "demolition_area",
+        "underlayment_prep_area",
+      ])
+    ).length,
+    takeoffAlignedSignals: (plan?.takeoff.floorSqft || 0) > 0 && floorCue && !wallTileCue && !showerCue && !backsplashCue ? 1 : 0,
+    roomContextSignals: wetAreaCue ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /\bflooring\b|\btile\b/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /\bflooring\b|\btile\b/i.test(String(value || ""))).length,
+    scopeCueSignals:
+      [floorCue, wallTileCue, showerCue, backsplashCue, removalCue, prepCue].filter(Boolean).length > 0
+        ? 1
+        : 0,
+    blockers: [
+      wallTileCue && !wallTileFinding && !showerTileFinding && !backsplashFinding
+        ? "Tile wording stayed low-authority because narrower wall, shower, or backsplash coverage was not measured."
+        : null,
+      wetAreaCue && !showerTileFinding
+        ? "Wet-area wording stayed non-binding because exact shower tile support was not measured."
+        : null,
+      removalCue && !removalFinding
+        ? "Removal/demo wording stayed non-binding because exact removal area was not measured."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
+
+  return {
+    trade: "flooring",
+    supportLevel,
+    tradeCertainty,
+    tradeAreaSignals: uniqSignals(areaSignals),
+    tradeLinearSignals: uniqSignals(linearSignals),
+    tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: [],
+    tradeCoverageHints: coverageHints,
+    tradeQuantityConfidence: {
+      level: quantitySupportLevel,
+      reasons: uniqStrings(
+        [
+          floorAreaFinding ? "Exact floor-area support exists." : null,
+          wallTileFinding ? "Exact wall-tile area support exists." : null,
+          showerTileFinding ? "Exact shower/wet-area tile support exists." : null,
+          backsplashFinding ? "Exact backsplash tile support exists." : null,
+          removalFinding ? "Measured removal/demo area support exists." : null,
+          prepFinding ? "Measured prep/underlayment support exists." : null,
+          reviewNotes.length > 0 && !areaSignals.some((item) => item.exactQuantity)
+            ? "Review guidance still outweighs measured flooring/tile support."
+            : null,
+        ],
+        5
+      ),
+    },
+    tradeQuantityReviewNotes: reviewNotes,
+  }
+}
+
+function sumCountMatches(text: string, re: RegExp): number {
+  let total = 0
+  for (const match of text.matchAll(re)) {
+    const n = Number(match[1])
+    if (Number.isFinite(n) && n > 0) total += n
+  }
+  return total
+}
+
+function parseElectricalCountBreakdown(text: string) {
+  const blob = String(text || "").toLowerCase()
+  const receptacles = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?(?:outlet|receptacle|plug)s?\b/g)
+  const switches = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?switch(?:es)?\b/g)
+  const fixtures = sumCountMatches(
+    blob,
+    /(\d{1,4})\s+(?:new\s+)?(?:light\s*fixture|fixture|sconce|ceiling\s*fan|fan)s?\b/g
+  )
+  const total = receptacles + switches + fixtures
+  return total > 0 ? { receptacles, switches, fixtures, total } : null
+}
+
+function parsePlumbingFixtureCountBreakdown(text: string) {
+  const blob = String(text || "").toLowerCase()
+  const toilets = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?(?:toilet|commode)s?\b/g)
+  const faucets = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?faucets?\b/g)
+  const sinks = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?sinks?\b/g)
+  const vanities = sumCountMatches(blob, /(\d{1,4})\s+(?:new\s+)?(?:vanity|vanities)\b/g)
+  const showerValves = sumCountMatches(
+    blob,
+    /(\d{1,4})\s+(?:new\s+)?(?:shower\s*valve|mixing\s*valve|diverter|trim\s*kit|cartridge)s?\b/g
+  )
+  const total = toilets + faucets + sinks + vanities + showerValves
+  return total > 0 ? { toilets, faucets, sinks, vanities, showerValves, total } : null
+}
+
+function buildElectricalQuantitySupport(args: {
+  planIntelligence: PlanIntelligence | null
+  handoff: EstimateSkeletonHandoff | null
+  structure: EstimateStructureConsumption | null
+  tradePackagePricingPrep: TradePackagePricingPrep
+  scopeText: string
+}): TradeQuantitySupport {
+  const plan = args.planIntelligence
+  const analyses = plan?.analyses || []
+  const texts = getPlanTexts(plan)
+  const blob = joinLower(texts.concat(args.scopeText))
+  const evidence = buildTakeoffEvidence(plan)
+  const packageBuckets = getPackageBucketHints({
+    handoff: args.handoff,
+    structure: args.structure,
+    trade: "electrical",
+  })
+  const roughInCue = /\brough[-\s]*in|new circuit|home run\b/.test(blob)
+  const trimOutCue = /\btrim[-\s]*out|device trim|device install|finish electrical\b/.test(blob)
+  const deviceCue = /\bdevice|outlet|receptacle|switch|fixture|lighting\b/.test(blob)
+  const bathKitchenCue = /\bbath|bathroom|kitchen|vanity|shower|island\b/.test(blob)
+
+  const electricalFindings = collectTradeFindings(
+    analyses,
+    "electrical",
+    /\b(electrical|lighting|power|device|outlet|receptacle|switch|fixture)\b/i,
+    ["device_count", "switch_count", "receptacle_count", "electrical_fixture_count"],
+    ["electrical"]
+  )
+  const electricalSchedules = collectScheduleSignals(
+    analyses,
+    /\belectrical schedule\b|\bpower plan\b|\blighting plan\b|\bfixture schedule\b/i
+  )
+
+  const countSignals: TradeQuantitySignal[] = []
+  const areaSignals: TradeQuantitySignal[] = []
+  const linearSignals: TradeQuantitySignal[] = []
+  const openingSignals: TradeQuantitySignal[] = []
+
+  const totalDeviceFinding = electricalFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      finding.unit === "devices" &&
+      findingHasCategory(finding, ["device_count"])
+  )
+  const receptacleFinding = electricalFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      findingHasCategory(finding, ["receptacle_count"])
+  )
+  const switchFinding = electricalFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      findingHasCategory(finding, ["switch_count"])
+  )
+  const fixtureFinding = electricalFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      findingHasCategory(finding, ["electrical_fixture_count"])
+  )
+  const scheduleQty = electricalSchedules.find(
+    (schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0
+  )
+  const scheduleBreakdown = electricalSchedules
+    .map((schedule) => parseElectricalCountBreakdown([schedule.label, ...(schedule.notes || [])].join(" ")))
+    .find(Boolean)
+
+  if (totalDeviceFinding) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured electrical device count support",
+        category: "device_count",
+        quantity: totalDeviceFinding.quantity ?? null,
+        unit: "devices",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(totalDeviceFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note: "Exact electrical device counts exist in typed plan findings and can back device-level direct rows.",
+        evidenceRefs: totalDeviceFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.deviceCount || 0) > 0 && deviceCue) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured electrical device count support",
+        category: "device_count",
+        quantity: plan?.takeoff.deviceCount ?? null,
+        unit: "devices",
+        exactQuantity: true,
+        confidence: "high",
+        source: "takeoff",
+        note: "Electrical device takeoff aligns with explicit device scope and can support direct device pricing.",
+        evidenceRefs: evidence,
+      })
+    )
+  } else if (scheduleQty) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured electrical device count support",
+        category: "device_count",
+        quantity: scheduleQty.quantity ?? null,
+        unit: "devices",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(scheduleQty.confidence ?? null, 75),
+        source: "schedule",
+        note: "Electrical schedule count can back direct device pricing when wording alone would be too weak.",
+        evidenceRefs: scheduleQty.evidence || [],
+      })
+    )
+  }
+
+  if (receptacleFinding || scheduleBreakdown?.receptacles) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured receptacle count support",
+        category: "receptacle_count",
+        quantity: receptacleFinding?.quantity ?? scheduleBreakdown?.receptacles ?? null,
+        unit: "devices",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(receptacleFinding?.confidence ?? scheduleQty?.confidence ?? null, 75),
+        source: receptacleFinding ? "trade_finding" : "schedule",
+        note: "Receptacle counts stay trade-specific and support device-level pricing without relying on loose wording.",
+        evidenceRefs: receptacleFinding?.evidence || scheduleQty?.evidence || evidence,
+      })
+    )
+  }
+
+  if (switchFinding || scheduleBreakdown?.switches) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured switch count support",
+        category: "switch_count",
+        quantity: switchFinding?.quantity ?? scheduleBreakdown?.switches ?? null,
+        unit: "devices",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(switchFinding?.confidence ?? scheduleQty?.confidence ?? null, 75),
+        source: switchFinding ? "trade_finding" : "schedule",
+        note: "Switch counts stay trade-specific and support direct electrical pricing without generic area fallback.",
+        evidenceRefs: switchFinding?.evidence || scheduleQty?.evidence || evidence,
+      })
+    )
+  }
+
+  if (fixtureFinding || scheduleBreakdown?.fixtures) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured electrical fixture count support",
+        category: "electrical_fixture_count",
+        quantity: fixtureFinding?.quantity ?? scheduleBreakdown?.fixtures ?? null,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(fixtureFinding?.confidence ?? scheduleQty?.confidence ?? null, 75),
+        source: fixtureFinding ? "trade_finding" : "schedule",
+        note: "Electrical fixture counts stay trade-specific and do not inflate painting or finish certainty.",
+        evidenceRefs: fixtureFinding?.evidence || scheduleQty?.evidence || evidence,
+      })
+    )
+  }
+
+  const coverageHints = uniqStrings(
+    [
+      roughInCue ? "Electrical rough-in wording was detected." : null,
+      trimOutCue ? "Electrical trim-out / finish-device wording was detected." : null,
+      bathKitchenCue ? "Bathroom/kitchen context exists, but electrical certainty stays trade-specific." : null,
+      packageBuckets.length > 0
+        ? `Package buckets may help organize electrical count support around ${packageBuckets.join(", ")}.`
+        : null,
+    ],
+    6
+  )
+  const reviewNotes = uniqStrings(
+    [
+      roughInCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Rough-in wording stayed non-binding because no explicit counted electrical devices or schedule counts were extracted."
+        : null,
+      trimOutCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Trim-out/device wording stayed non-binding because no explicit counted electrical support was extracted."
+        : null,
+      deviceCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Electrical wording alone stayed low-authority until counted device or schedule support existed."
+        : null,
+      ...(args.tradePackagePricingPrep?.tradePackageMeasurementHints || []).slice(0, 2),
+    ],
+    6
+  )
+
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
+    countSignals.some((item) => item.category === "device_count" && item.exactQuantity) ||
+    countSignals.filter((item) => item.exactQuantity).length >= 2
+      ? "strong"
+      : countSignals.length > 0 || coverageHints.length > 0
+        ? "moderate"
+        : "weak"
+
+  const tradeCertainty = computeTradeCertainty({
+    trade: "electrical",
+    exactMeasuredSignals: countSignals.filter((item) => item.exactQuantity).length,
+    typedFindingSignals: electricalFindings.filter((finding) =>
+      findingHasCategory(finding, ["device_count", "switch_count", "receptacle_count", "electrical_fixture_count"])
+    ).length,
+    scheduleSignals: electricalSchedules.filter((schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0).length,
+    takeoffAlignedSignals: (plan?.takeoff.deviceCount || 0) > 0 && deviceCue ? 1 : 0,
+    roomContextSignals: bathKitchenCue ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /\belectrical\b/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /\belectrical\b/i.test(String(value || ""))).length,
+    scopeCueSignals: [roughInCue, trimOutCue, deviceCue].filter(Boolean).length > 0 ? 1 : 0,
+    blockers: [
+      roughInCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Electrical rough-in wording stayed low-authority because no counted devices or schedule-driven counts were extracted."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
+
+  return {
+    trade: "electrical",
+    supportLevel,
+    tradeCertainty,
+    tradeAreaSignals: uniqSignals(areaSignals),
+    tradeLinearSignals: uniqSignals(linearSignals),
+    tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: uniqSignals(countSignals),
+    tradeCoverageHints: coverageHints,
+    tradeQuantityConfidence: {
+      level: quantitySupportLevel,
+      reasons: uniqStrings(
+        [
+          countSignals.some((item) => item.category === "device_count" && item.exactQuantity)
+            ? "Exact electrical device counts exist."
+            : null,
+          countSignals.some((item) => item.category === "receptacle_count" && item.exactQuantity)
+            ? "Receptacle counts exist."
+            : null,
+          countSignals.some((item) => item.category === "switch_count" && item.exactQuantity)
+            ? "Switch counts exist."
+            : null,
+          countSignals.some((item) => item.category === "electrical_fixture_count" && item.exactQuantity)
+            ? "Fixture counts exist."
+            : null,
+        ],
+        5
+      ),
+    },
+    tradeQuantityReviewNotes: reviewNotes,
+  }
+}
+
+function buildPlumbingQuantitySupport(args: {
+  planIntelligence: PlanIntelligence | null
+  handoff: EstimateSkeletonHandoff | null
+  structure: EstimateStructureConsumption | null
+  tradePackagePricingPrep: TradePackagePricingPrep
+  scopeText: string
+}): TradeQuantitySupport {
+  const plan = args.planIntelligence
+  const analyses = plan?.analyses || []
+  const texts = getPlanTexts(plan)
+  const blob = joinLower(texts.concat(args.scopeText))
+  const evidence = buildTakeoffEvidence(plan)
+  const packageBuckets = getPackageBucketHints({
+    handoff: args.handoff,
+    structure: args.structure,
+    trade: "plumbing",
+  })
+  const roughInCue = /\brough[-\s]*in|relocat|move\s+(drain|valve|supply)\b/.test(blob)
+  const trimOutCue = /\btrim[-\s]*out|fixture swap|replace fixture|replace plumbing fixture\b/.test(blob)
+  const wetAreaCue = /\bbath|bathroom|kitchen|vanity|toilet|sink|faucet|shower|tub\b/.test(blob)
+
+  const plumbingFindings = collectTradeFindings(
+    analyses,
+    "plumbing",
+    /\b(plumb|plumbing|fixture|toilet|faucet|sink|vanity|shower valve|lav)\b/i,
+    ["plumbing_fixture_count"],
+    ["plumbing"]
+  )
+  const fixtureSchedules = collectScheduleSignals(
+    analyses,
+    /\bfixture schedule\b|\bfixture plan\b|\bplumbing\b/i
+  )
+  const scheduleBreakdown = fixtureSchedules
+    .map((schedule) => parsePlumbingFixtureCountBreakdown([schedule.label, ...(schedule.notes || [])].join(" ")))
+    .find(Boolean)
+
+  const countSignals: TradeQuantitySignal[] = []
+  const areaSignals: TradeQuantitySignal[] = []
+  const linearSignals: TradeQuantitySignal[] = []
+  const openingSignals: TradeQuantitySignal[] = []
+
+  const totalFixtureFinding = plumbingFindings.find(
+    (finding) =>
+      typeof finding.quantity === "number" &&
+      finding.quantity > 0 &&
+      findingHasCategory(finding, ["plumbing_fixture_count"])
+  )
+  const scheduleQty = fixtureSchedules.find(
+    (schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0
+  )
+
+  if (totalFixtureFinding) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured plumbing fixture count support",
+        category: "plumbing_fixture_count",
+        quantity: totalFixtureFinding.quantity ?? null,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(totalFixtureFinding.confidence ?? null, 75),
+        source: "trade_finding",
+        note: "Exact plumbing fixture counts exist in typed plan findings and can back fixture-level direct rows.",
+        evidenceRefs: totalFixtureFinding.evidence || [],
+      })
+    )
+  } else if ((plan?.takeoff.fixtureCount || 0) > 0 && wetAreaCue) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured plumbing fixture count support",
+        category: "plumbing_fixture_count",
+        quantity: plan?.takeoff.fixtureCount ?? null,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: "high",
+        source: "takeoff",
+        note: "Fixture takeoff aligns with plumbing fixture scope and can support direct trim-out pricing.",
+        evidenceRefs: evidence,
+      })
+    )
+  } else if (scheduleQty) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured plumbing fixture count support",
+        category: "plumbing_fixture_count",
+        quantity: scheduleQty.quantity ?? null,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: getTradeSignalConfidence(scheduleQty.confidence ?? null, 75),
+        source: "schedule",
+        note: "Fixture schedule counts can back direct plumbing trim-out pricing when wording alone would be too weak.",
+        evidenceRefs: scheduleQty.evidence || [],
+      })
+    )
+  }
+
+  const fixtureBreakdown = totalFixtureFinding
+    ? parsePlumbingFixtureCountBreakdown(getFindingBlob(totalFixtureFinding))
+    : scheduleBreakdown
+  if (fixtureBreakdown?.toilets) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured toilet fixture count support",
+        category: "plumbing_fixture_count",
+        quantity: fixtureBreakdown.toilets,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: "high",
+        source: totalFixtureFinding ? "trade_finding" : "schedule",
+        note: "Toilet counts stay plumbing-specific and do not inflate unrelated trade certainty.",
+        evidenceRefs: totalFixtureFinding?.evidence || scheduleQty?.evidence || evidence,
+      })
+    )
+  }
+  if (fixtureBreakdown?.faucets) {
+    countSignals.push(
+      buildSignal({
+        label: "Measured faucet fixture count support",
+        category: "plumbing_fixture_count",
+        quantity: fixtureBreakdown.faucets,
+        unit: "fixtures",
+        exactQuantity: true,
+        confidence: "high",
+        source: totalFixtureFinding ? "trade_finding" : "schedule",
+        note: "Faucet counts stay plumbing-specific and support fixture-level trim-out pricing.",
+        evidenceRefs: totalFixtureFinding?.evidence || scheduleQty?.evidence || evidence,
+      })
+    )
+  }
+
+  const coverageHints = uniqStrings(
+    [
+      roughInCue ? "Plumbing rough-in/relocation wording was detected." : null,
+      trimOutCue ? "Plumbing fixture trim-out wording was detected." : null,
+      wetAreaCue ? "Bathroom/kitchen fixture context exists, but plumbing certainty stays trade-specific." : null,
+      packageBuckets.length > 0
+        ? `Package buckets may help organize plumbing count support around ${packageBuckets.join(", ")}.`
+        : null,
+    ],
+    6
+  )
+  const reviewNotes = uniqStrings(
+    [
+      roughInCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Rough-in/relocation wording stayed non-binding because no counted plumbing fixtures or rough-in counts were extracted."
+        : null,
+      trimOutCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Fixture trim-out wording stayed non-binding because no counted plumbing support was extracted."
+        : null,
+      wetAreaCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Bathroom/kitchen plumbing wording alone stayed low-authority until counted fixture support existed."
+        : null,
+      ...(args.tradePackagePricingPrep?.tradePackageMeasurementHints || []).slice(0, 2),
+    ],
+    6
+  )
+
+  const quantitySupportLevel: TradeQuantityConfidence["level"] =
+    countSignals.some((item) => item.category === "plumbing_fixture_count" && item.exactQuantity)
+      ? "strong"
+      : countSignals.length > 0 || coverageHints.length > 0
+        ? "moderate"
+        : "weak"
+  const tradeCertainty = computeTradeCertainty({
+    trade: "plumbing",
+    exactMeasuredSignals: countSignals.filter((item) => item.exactQuantity).length,
+    typedFindingSignals: plumbingFindings.filter((finding) =>
+      findingHasCategory(finding, ["plumbing_fixture_count"])
+    ).length,
+    scheduleSignals: fixtureSchedules.filter((schedule) => typeof schedule.quantity === "number" && schedule.quantity > 0).length,
+    takeoffAlignedSignals: (plan?.takeoff.fixtureCount || 0) > 0 && wetAreaCue ? 1 : 0,
+    roomContextSignals: wetAreaCue ? 1 : 0,
+    planTradeSignals:
+      (plan?.detectedTrades || []).filter((value) => /\bplumb(?:ing)?\b/i.test(String(value || ""))).length +
+      (plan?.tradePackageSignals || []).filter((value) => /\bplumb(?:ing)?\b/i.test(String(value || ""))).length,
+    scopeCueSignals: [roughInCue, trimOutCue, wetAreaCue].filter(Boolean).length > 0 ? 1 : 0,
+    blockers: [
+      roughInCue && !countSignals.some((item) => item.exactQuantity)
+        ? "Plumbing rough-in wording stayed low-authority because counted fixture or explicit rough-in support was missing."
+        : null,
+    ].filter(Boolean) as string[],
+  })
+  const supportLevel = takeMoreConservativeLevel(quantitySupportLevel, tradeCertainty.level)
+
+  return {
+    trade: "plumbing",
+    supportLevel,
+    tradeCertainty,
+    tradeAreaSignals: uniqSignals(areaSignals),
+    tradeLinearSignals: uniqSignals(linearSignals),
+    tradeOpeningSignals: uniqSignals(openingSignals),
+    tradeCountSignals: uniqSignals(countSignals),
+    tradeCoverageHints: coverageHints,
+    tradeQuantityConfidence: {
+      level: quantitySupportLevel,
+      reasons: uniqStrings(
+        [
+          countSignals.some((item) => item.category === "plumbing_fixture_count" && item.exactQuantity)
+            ? "Exact plumbing fixture counts exist."
+            : null,
+          roughInCue && !countSignals.some((item) => item.exactQuantity)
+            ? "Rough-in wording remained review-only without counted support."
+            : null,
+        ],
+        5
       ),
     },
     tradeQuantityReviewNotes: reviewNotes,
@@ -1812,6 +2795,36 @@ export function buildTradeQuantitySupport(args: {
 
   if (targetTrade === "drywall") {
     return buildDrywallQuantitySupport({
+      planIntelligence: plan,
+      handoff: args.estimateSkeletonHandoff,
+      structure: args.estimateStructureConsumption,
+      tradePackagePricingPrep: args.tradePackagePricingPrep,
+      scopeText: args.scopeText,
+    })
+  }
+
+  if (targetTrade === "flooring") {
+    return buildFlooringQuantitySupport({
+      planIntelligence: plan,
+      handoff: args.estimateSkeletonHandoff,
+      structure: args.estimateStructureConsumption,
+      tradePackagePricingPrep: args.tradePackagePricingPrep,
+      scopeText: args.scopeText,
+    })
+  }
+
+  if (targetTrade === "electrical") {
+    return buildElectricalQuantitySupport({
+      planIntelligence: plan,
+      handoff: args.estimateSkeletonHandoff,
+      structure: args.estimateStructureConsumption,
+      tradePackagePricingPrep: args.tradePackagePricingPrep,
+      scopeText: args.scopeText,
+    })
+  }
+
+  if (targetTrade === "plumbing") {
+    return buildPlumbingQuantitySupport({
       planIntelligence: plan,
       handoff: args.estimateSkeletonHandoff,
       structure: args.estimateStructureConsumption,

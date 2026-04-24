@@ -80,6 +80,18 @@ export type PlanScheduleItem = {
 }
 
 export type PlanTradeFindingCategory =
+  | "device_count"
+  | "switch_count"
+  | "receptacle_count"
+  | "electrical_fixture_count"
+  | "plumbing_fixture_count"
+  | "floor_area"
+  | "wall_tile_area"
+  | "shower_tile_area"
+  | "backsplash_area"
+  | "base_lf"
+  | "demolition_area"
+  | "underlayment_prep_area"
   | "wall_area"
   | "ceiling_area"
   | "repair_area"

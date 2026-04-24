@@ -1,6 +1,7 @@
 import type { PlanIntelligence } from "../plans/types"
 import {
   getTradeExecutionSectionIds,
+  formatTradeExecutionSectionLabel,
   type PaintScope,
   type EstimateBasis,
   type MeasurementInput,
@@ -14,7 +15,13 @@ import { buildTradeQuantitySupport, type TradeQuantitySignal, type TradeQuantity
 import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
 import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
 
-type SupportedTrade = "painting" | "drywall" | "wallcovering"
+type SupportedTrade =
+  | "painting"
+  | "drywall"
+  | "wallcovering"
+  | "flooring"
+  | "electrical"
+  | "plumbing"
 type ExactTradeQuantitySupport = NonNullable<TradeQuantitySupport>
 
 export type LiveTradePricingInfluence = {
@@ -71,6 +78,50 @@ export type LiveTradePricingInfluence = {
       supportedSqftSupport: "measured" | null
       blocker?: string | null
     }
+    flooring?: {
+      supportedFloorSqft: number | null
+      supportedWallTileSqft: number | null
+      supportedShowerTileSqft: number | null
+      supportedBacksplashSqft: number | null
+      supportedRemovalSqft: number | null
+      supportedPrepSqft: number | null
+      supportedBaseLf: number | null
+      areaSource: "trade_finding" | "takeoff" | null
+      hasFlooringSection: boolean
+      hasWallTileSection: boolean
+      hasShowerTileSection: boolean
+      hasBacksplashSection: boolean
+      hasRemovalDemoSection: boolean
+      hasUnderlaymentPrepSection: boolean
+      hasBaseSection: boolean
+      wetAreaContext: boolean
+      supportedSqftSupport: "measured" | null
+      blocker?: string | null
+    }
+    electrical?: {
+      supportedDeviceCount: number | null
+      supportedReceptacleCount: number | null
+      supportedSwitchCount: number | null
+      supportedFixtureCount: number | null
+      countSource: "trade_finding" | "schedule" | "takeoff" | null
+      hasDevicesSection: boolean
+      roughInCue: boolean
+      trimOutCue: boolean
+      supportedCountSupport: "measured" | null
+      blocker?: string | null
+    }
+    plumbing?: {
+      supportedFixtureCount: number | null
+      supportedToiletCount: number | null
+      supportedFaucetCount: number | null
+      countSource: "trade_finding" | "schedule" | "takeoff" | null
+      hasFixtureSection: boolean
+      roughInCue: boolean
+      trimOutCue: boolean
+      wetAreaContext: boolean
+      supportedCountSupport: "measured" | null
+      blocker?: string | null
+    }
   }
   basisAssumptions: string[]
   notes: string[]
@@ -115,6 +166,18 @@ export function selectTradeScopedSplitMeasurements(args: {
   }
 
   if (args.trade === "wallcovering" && args.influence?.trade === "wallcovering") {
+    return null
+  }
+
+  if (args.trade === "flooring" && args.influence?.trade === "flooring") {
+    const measuredFloorSqft = Number(args.influence.engineInputs?.flooring?.supportedFloorSqft || 0)
+    if (measuredFloorSqft > 0) {
+      return { totalSqft: Math.round(measuredFloorSqft) }
+    }
+    return null
+  }
+
+  if (args.trade === "electrical" || args.trade === "plumbing") {
     return null
   }
 
@@ -218,6 +281,87 @@ function buildPipeline(args: {
   executionSections: string[]
   executionNotes: string[]
 } | null {
+  if (
+    args.trade === "flooring" ||
+    args.trade === "electrical" ||
+    args.trade === "plumbing"
+  ) {
+    const estimateSkeletonHandoff = buildEstimateSkeletonHandoff(args.planIntelligence)
+    const estimateStructureConsumption = buildEstimateStructureConsumption(
+      estimateSkeletonHandoff
+    )
+    const tradeQuantitySupport = buildTradeQuantitySupport({
+      trade: args.trade,
+      scopeText: args.scopeText,
+      planIntelligence: args.planIntelligence,
+      estimateSkeletonHandoff,
+      estimateStructureConsumption,
+      tradePackagePricingPrep: null,
+    })
+    if (!tradeQuantitySupport) return null
+
+    const executionSections =
+      args.trade === "flooring"
+        ? uniqStrings(
+            [
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "floor_area" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "flooring")
+                : null,
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "wall_tile_area" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "wall_tile")
+                : null,
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "shower_tile_area" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "shower_tile")
+                : null,
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "backsplash_area" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "backsplash_tile")
+                : null,
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "demolition_area" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "removal_demo")
+                : null,
+              tradeQuantitySupport.tradeAreaSignals.some((item) => item.category === "underlayment_prep_area")
+                ? formatTradeExecutionSectionLabel("flooring", "underlayment_prep")
+                : null,
+              tradeQuantitySupport.tradeLinearSignals.some((item) => item.category === "base_lf" && item.exactQuantity)
+                ? formatTradeExecutionSectionLabel("flooring", "base_trim")
+                : null,
+            ],
+            8
+          )
+        : args.trade === "electrical"
+          ? uniqStrings(
+              [
+                tradeQuantitySupport.tradeCountSignals.some((item) => item.exactQuantity)
+                  ? formatTradeExecutionSectionLabel("electrical", "devices_fixtures")
+                  : null,
+              ],
+              6
+            )
+          : uniqStrings(
+              [
+                tradeQuantitySupport.tradeCountSignals.some((item) => item.exactQuantity)
+                  ? formatTradeExecutionSectionLabel("plumbing", "fixture_trim_out")
+                  : null,
+              ],
+              6
+            )
+
+    return {
+      tradeQuantitySupport,
+      supportLevel: tradeQuantitySupport.supportLevel,
+      certaintyLevel: tradeQuantitySupport.tradeCertainty.level,
+      certaintyReasons: tradeQuantitySupport.tradeCertainty.reasons,
+      executionSections,
+      executionNotes: uniqStrings(
+        [
+          ...tradeQuantitySupport.tradeQuantityReviewNotes,
+          ...tradeQuantitySupport.tradeCertainty.reasons,
+        ],
+        8
+      ),
+    }
+  }
+
   const estimateSkeletonHandoff = buildEstimateSkeletonHandoff(args.planIntelligence)
   const estimateStructureConsumption = buildEstimateStructureConsumption(
     estimateSkeletonHandoff
@@ -833,6 +977,411 @@ function buildWallcoveringInfluence(args: {
   }
 }
 
+function buildFlooringInfluence(args: {
+  support: ExactTradeQuantitySupport
+  supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
+  executionSections: string[]
+  executionNotes: string[]
+}): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("flooring", args.executionSections)
+  const floorSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["floor_area"],
+    label: /\bmeasured floor area support\b/i,
+    unit: "sqft",
+  })
+  const wallTileSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["wall_tile_area"],
+    label: /\bmeasured wall tile area support\b/i,
+    unit: "sqft",
+  })
+  const showerTileSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["shower_tile_area"],
+    label: /\bmeasured shower tile area support\b/i,
+    unit: "sqft",
+  })
+  const backsplashSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["backsplash_area"],
+    label: /\bmeasured backsplash tile area support\b/i,
+    unit: "sqft",
+  })
+  const removalSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["demolition_area"],
+    label: /\bmeasured flooring\/tile removal area support\b/i,
+    unit: "sqft",
+  })
+  const prepSignal = findExactSignal({
+    signals: args.support.tradeAreaSignals,
+    categories: ["underlayment_prep_area"],
+    label: /\bmeasured underlayment \/ prep support\b/i,
+    unit: "sqft",
+  })
+  const baseSignal = findExactSignal({
+    signals: args.support.tradeLinearSignals,
+    categories: ["base_lf"],
+    label: /\bmeasured base \/ trim linear support\b/i,
+    unit: "linear_ft",
+  })
+
+  const hasFlooringSection = executionSectionIds.includes("flooring")
+  const hasWallTileSection = executionSectionIds.includes("wall_tile")
+  const hasShowerTileSection = executionSectionIds.includes("shower_tile")
+  const hasBacksplashSection = executionSectionIds.includes("backsplash_tile")
+  const hasRemovalDemoSection = executionSectionIds.includes("removal_demo")
+  const hasUnderlaymentPrepSection = executionSectionIds.includes("underlayment_prep")
+  const hasBaseSection = executionSectionIds.includes("base_trim")
+  const hasRemovalCue = args.support.tradeAreaSignals.some((item) => item.category === "demolition_area")
+  const hasPrepCue = args.support.tradeAreaSignals.some((item) => item.category === "underlayment_prep_area")
+  const wetAreaContext = hasShowerTileSection
+  const supportedFloorSqft =
+    hasFlooringSection && Number(floorSignal?.quantity || 0) > 0
+      ? Math.round(Number(floorSignal?.quantity || 0))
+      : null
+  const supportedWallTileSqft =
+    hasWallTileSection && Number(wallTileSignal?.quantity || 0) > 0
+      ? Math.round(Number(wallTileSignal?.quantity || 0))
+      : null
+  const supportedShowerTileSqft =
+    hasShowerTileSection && Number(showerTileSignal?.quantity || 0) > 0
+      ? Math.round(Number(showerTileSignal?.quantity || 0))
+      : null
+  const supportedBacksplashSqft =
+    hasBacksplashSection && Number(backsplashSignal?.quantity || 0) > 0
+      ? Math.round(Number(backsplashSignal?.quantity || 0))
+      : null
+  const supportedRemovalSqft =
+    hasRemovalDemoSection && Number(removalSignal?.quantity || 0) > 0
+      ? Math.round(Number(removalSignal?.quantity || 0))
+      : null
+  const supportedPrepSqft =
+    hasUnderlaymentPrepSection && Number(prepSignal?.quantity || 0) > 0
+      ? Math.round(Number(prepSignal?.quantity || 0))
+      : null
+  const supportedBaseLf =
+    hasBaseSection && Number(baseSignal?.quantity || 0) > 0
+      ? Math.round(Number(baseSignal?.quantity || 0))
+      : null
+  const hasDirectScopedArea =
+    !!supportedFloorSqft || !!supportedWallTileSqft || !!supportedShowerTileSqft || !!supportedBacksplashSqft
+  const canAffectNumericPricing = args.supportLevel !== "weak" && hasDirectScopedArea
+
+  return {
+    trade: "flooring",
+    supportLevel: args.supportLevel,
+    executionSections: args.executionSections,
+    canAffectNumericPricing,
+    paintScopeOverride: null,
+    engineInputs:
+      canAffectNumericPricing || !!supportedRemovalSqft || !!supportedPrepSqft || !!supportedBaseLf
+        ? {
+            flooring: {
+              supportedFloorSqft,
+              supportedWallTileSqft,
+              supportedShowerTileSqft,
+              supportedBacksplashSqft,
+              supportedRemovalSqft,
+              supportedPrepSqft,
+              supportedBaseLf,
+              areaSource:
+                floorSignal?.source === "trade_finding" ||
+                wallTileSignal?.source === "trade_finding" ||
+                showerTileSignal?.source === "trade_finding" ||
+                backsplashSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : floorSignal?.source === "takeoff"
+                    ? "takeoff"
+                    : null,
+              hasFlooringSection,
+              hasWallTileSection,
+              hasShowerTileSection,
+              hasBacksplashSection,
+              hasRemovalDemoSection,
+              hasUnderlaymentPrepSection,
+              hasBaseSection,
+              wetAreaContext,
+              supportedSqftSupport: hasDirectScopedArea ? "measured" : null,
+              blocker:
+                canAffectNumericPricing
+                  ? null
+                  : hasRemovalDemoSection && !supportedRemovalSqft
+                    ? "Flooring/tile removal wording was routed, but no measured removal area existed, so removal stayed non-binding."
+                    : wetAreaContext && !supportedShowerTileSqft
+                      ? "Wet-area tile cues were present, but exact shower tile coverage was not measured, so numeric routing stayed non-binding."
+                      : hasWallTileSection && !supportedWallTileSqft
+                        ? "Wall-tile cues were present, but exact wall-tile coverage was not measured, so flooring rows did not inherit wall tile authority."
+                        : hasBacksplashSection && !supportedBacksplashSqft
+                          ? "Backsplash cues were present, but exact backsplash coverage was not measured."
+                          : "Flooring/tile routing stayed non-binding because only weak or ambiguous support existed.",
+            },
+          }
+        : undefined,
+    basisAssumptions: uniqStrings(
+      [
+        supportedFloorSqft
+          ? `Plan-aware flooring pricing used ${supportedFloorSqft} measured floor-area sqft for live execution input assembly.`
+          : null,
+        supportedWallTileSqft
+          ? `Plan-aware flooring pricing used ${supportedWallTileSqft} measured wall-tile sqft without inflating floor-area scope.`
+          : null,
+        supportedShowerTileSqft
+          ? `Plan-aware flooring pricing used ${supportedShowerTileSqft} measured shower/wet-area tile sqft as a narrow direct section.`
+          : null,
+        supportedBacksplashSqft
+          ? `Plan-aware flooring pricing used ${supportedBacksplashSqft} measured backsplash tile sqft and kept it narrower than broad kitchen wall area.`
+          : null,
+        hasRemovalDemoSection && !supportedRemovalSqft
+          ? "Removal/demo stayed non-binding because no measured removal area was available."
+          : null,
+        hasRemovalCue && !supportedRemovalSqft
+          ? "Removal/demo stayed non-binding because no measured removal area was available."
+          : null,
+        wetAreaContext && !supportedShowerTileSqft
+          ? "Wet-area tile stayed non-binding because exact shower tile support was not measured."
+          : null,
+        hasPrepCue && !supportedPrepSqft
+          ? "Prep / underlayment remained support-only because measured prep area was not available."
+          : null,
+        `Flooring trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
+      ],
+      8
+    ),
+    notes: args.executionNotes,
+  }
+}
+
+function buildElectricalInfluence(args: {
+  support: ExactTradeQuantitySupport
+  supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
+  executionSections: string[]
+  executionNotes: string[]
+}): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("electrical", args.executionSections)
+  const deviceSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["device_count"],
+    label: /\bdevice count support\b/i,
+    unit: "devices",
+  })
+  const receptacleSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["receptacle_count"],
+    label: /\breceptacle count support\b/i,
+    unit: "devices",
+  })
+  const switchSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["switch_count"],
+    label: /\bswitch count support\b/i,
+    unit: "devices",
+  })
+  const fixtureSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["electrical_fixture_count"],
+    label: /\bfixture count support\b/i,
+    unit: "fixtures",
+  })
+  const roughInCue = args.support.tradeCoverageHints.some((item) => /\brough-in\b/i.test(item))
+  const trimOutCue = args.support.tradeCoverageHints.some((item) => /\btrim-out\b/i.test(item))
+  const supportedDeviceCount =
+    deviceSignal?.quantity != null
+      ? Math.round(Number(deviceSignal.quantity || 0))
+      : Math.round(
+          Number(receptacleSignal?.quantity || 0) +
+            Number(switchSignal?.quantity || 0) +
+            Number(fixtureSignal?.quantity || 0)
+        ) || null
+  const hasDevicesSection = executionSectionIds.includes("devices_fixtures")
+  const canAffectNumericPricing =
+    args.supportLevel !== "weak" &&
+    hasDevicesSection &&
+    Number(supportedDeviceCount || 0) > 0
+
+  return {
+    trade: "electrical",
+    supportLevel: args.supportLevel,
+    executionSections: args.executionSections,
+    canAffectNumericPricing,
+    paintScopeOverride: null,
+    engineInputs:
+      canAffectNumericPricing || roughInCue || trimOutCue
+        ? {
+            electrical: {
+              supportedDeviceCount,
+              supportedReceptacleCount:
+                receptacleSignal?.quantity != null ? Math.round(Number(receptacleSignal.quantity || 0)) : null,
+              supportedSwitchCount:
+                switchSignal?.quantity != null ? Math.round(Number(switchSignal.quantity || 0)) : null,
+              supportedFixtureCount:
+                fixtureSignal?.quantity != null ? Math.round(Number(fixtureSignal.quantity || 0)) : null,
+              countSource:
+                deviceSignal?.source === "trade_finding" ||
+                receptacleSignal?.source === "trade_finding" ||
+                switchSignal?.source === "trade_finding" ||
+                fixtureSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : deviceSignal?.source === "schedule" ||
+                      receptacleSignal?.source === "schedule" ||
+                      switchSignal?.source === "schedule" ||
+                      fixtureSignal?.source === "schedule"
+                    ? "schedule"
+                    : deviceSignal?.source === "takeoff"
+                      ? "takeoff"
+                      : null,
+              hasDevicesSection,
+              roughInCue,
+              trimOutCue,
+              supportedCountSupport: canAffectNumericPricing ? "measured" : null,
+              blocker:
+                canAffectNumericPricing
+                  ? null
+                  : roughInCue || trimOutCue
+                    ? "Electrical rough-in/trim-out wording stayed non-binding because no counted device or schedule support was extracted."
+                    : "Electrical wording stayed non-binding because no counted device support was available for safe numeric pricing.",
+            },
+          }
+        : undefined,
+    basisAssumptions: uniqStrings(
+      [
+        supportedDeviceCount
+          ? `Plan-aware electrical pricing used ${supportedDeviceCount} counted devices/fixtures for live device-level execution input assembly.`
+          : null,
+        receptacleSignal?.quantity
+          ? `Electrical plan support included ${Math.round(Number(receptacleSignal.quantity || 0))} receptacle(s).`
+          : null,
+        switchSignal?.quantity
+          ? `Electrical plan support included ${Math.round(Number(switchSignal.quantity || 0))} switch(es).`
+          : null,
+        fixtureSignal?.quantity
+          ? `Electrical plan support included ${Math.round(Number(fixtureSignal.quantity || 0))} fixture(s).`
+          : null,
+        !canAffectNumericPricing
+          ? "Electrical plan-aware routing stayed non-binding because wording or room context existed without sufficient counted support."
+          : null,
+        `Electrical trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
+      ],
+      8
+    ),
+    notes: args.executionNotes,
+  }
+}
+
+function buildPlumbingInfluence(args: {
+  support: ExactTradeQuantitySupport
+  supportLevel: "strong" | "moderate" | "weak"
+  certaintyLevel: "strong" | "moderate" | "weak"
+  certaintyReasons: string[]
+  executionSections: string[]
+  executionNotes: string[]
+}): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("plumbing", args.executionSections)
+  const fixtureSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["plumbing_fixture_count"],
+    label: /\bfixture count support\b/i,
+    unit: "fixtures",
+  })
+  const toiletSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["plumbing_fixture_count"],
+    label: /\btoilet fixture count support\b/i,
+    unit: "fixtures",
+  })
+  const faucetSignal = findExactSignal({
+    signals: args.support.tradeCountSignals,
+    categories: ["plumbing_fixture_count"],
+    label: /\bfaucet fixture count support\b/i,
+    unit: "fixtures",
+  })
+  const roughInCue = args.support.tradeCoverageHints.some((item) => /\brough-in\b/i.test(item))
+  const trimOutCue = args.support.tradeCoverageHints.some((item) => /\btrim-out\b/i.test(item))
+  const wetAreaContext = args.support.tradeCoverageHints.some((item) => /\bbathroom\/kitchen|bathroom|kitchen\b/i.test(item))
+  const supportedFixtureCount =
+    fixtureSignal?.quantity != null
+      ? Math.round(Number(fixtureSignal.quantity || 0))
+      : Math.round(Number(toiletSignal?.quantity || 0) + Number(faucetSignal?.quantity || 0)) || null
+  const hasFixtureSection = executionSectionIds.includes("fixture_trim_out")
+  const canAffectNumericPricing =
+    args.supportLevel !== "weak" &&
+    hasFixtureSection &&
+    Number(supportedFixtureCount || 0) > 0
+
+  return {
+    trade: "plumbing",
+    supportLevel: args.supportLevel,
+    executionSections: args.executionSections,
+    canAffectNumericPricing,
+    paintScopeOverride: null,
+    engineInputs:
+      canAffectNumericPricing || roughInCue || trimOutCue
+        ? {
+            plumbing: {
+              supportedFixtureCount,
+              supportedToiletCount:
+                toiletSignal?.quantity != null ? Math.round(Number(toiletSignal.quantity || 0)) : null,
+              supportedFaucetCount:
+                faucetSignal?.quantity != null ? Math.round(Number(faucetSignal.quantity || 0)) : null,
+              countSource:
+                fixtureSignal?.source === "trade_finding" ||
+                toiletSignal?.source === "trade_finding" ||
+                faucetSignal?.source === "trade_finding"
+                  ? "trade_finding"
+                  : fixtureSignal?.source === "schedule" ||
+                      toiletSignal?.source === "schedule" ||
+                      faucetSignal?.source === "schedule"
+                    ? "schedule"
+                    : fixtureSignal?.source === "takeoff"
+                      ? "takeoff"
+                      : null,
+              hasFixtureSection,
+              roughInCue,
+              trimOutCue,
+              wetAreaContext,
+              supportedCountSupport: canAffectNumericPricing ? "measured" : null,
+              blocker:
+                canAffectNumericPricing
+                  ? null
+                  : roughInCue
+                    ? "Plumbing rough-in wording stayed non-binding because no counted fixture or explicit rough-in support was extracted."
+                    : "Plumbing wording stayed non-binding because no counted fixture support was available for safe numeric pricing.",
+            },
+          }
+        : undefined,
+    basisAssumptions: uniqStrings(
+      [
+        supportedFixtureCount
+          ? `Plan-aware plumbing pricing used ${supportedFixtureCount} counted fixtures for live trim-out execution input assembly.`
+          : null,
+        toiletSignal?.quantity
+          ? `Plumbing plan support included ${Math.round(Number(toiletSignal.quantity || 0))} toilet fixture(s).`
+          : null,
+        faucetSignal?.quantity
+          ? `Plumbing plan support included ${Math.round(Number(faucetSignal.quantity || 0))} faucet fixture(s).`
+          : null,
+        wetAreaContext
+          ? "Bathroom/kitchen fixture context stayed trade-specific and did not become finish-trade certainty."
+          : null,
+        !canAffectNumericPricing
+          ? "Plumbing plan-aware routing stayed non-binding because wording or wet-area context existed without sufficient counted fixture support."
+          : null,
+        `Plumbing trade certainty stayed ${args.certaintyLevel} at the live seam.`,
+        ...args.certaintyReasons,
+      ],
+      8
+    ),
+    notes: args.executionNotes,
+  }
+}
+
 export function buildLiveTradePricingInfluence(args: {
   trade: string
   scopeText: string
@@ -843,7 +1392,14 @@ export function buildLiveTradePricingInfluence(args: {
   complexityProfile: ComplexityProfile | null
 }): LiveTradePricingInfluence {
   const trade = String(args.trade || "").trim().toLowerCase()
-  if (trade !== "painting" && trade !== "drywall" && trade !== "wallcovering") {
+  if (
+    trade !== "painting" &&
+    trade !== "drywall" &&
+    trade !== "wallcovering" &&
+    trade !== "flooring" &&
+    trade !== "electrical" &&
+    trade !== "plumbing"
+  ) {
     return null
   }
   if (!args.planIntelligence?.ok) return null
@@ -872,6 +1428,39 @@ export function buildLiveTradePricingInfluence(args: {
 
   if (trade === "drywall") {
     return buildDrywallInfluence({
+      support: pipeline.tradeQuantitySupport,
+      supportLevel: pipeline.supportLevel,
+      certaintyLevel: pipeline.certaintyLevel,
+      certaintyReasons: pipeline.certaintyReasons,
+      executionSections: pipeline.executionSections,
+      executionNotes: pipeline.executionNotes,
+    })
+  }
+
+  if (trade === "flooring") {
+    return buildFlooringInfluence({
+      support: pipeline.tradeQuantitySupport,
+      supportLevel: pipeline.supportLevel,
+      certaintyLevel: pipeline.certaintyLevel,
+      certaintyReasons: pipeline.certaintyReasons,
+      executionSections: pipeline.executionSections,
+      executionNotes: pipeline.executionNotes,
+    })
+  }
+
+  if (trade === "electrical") {
+    return buildElectricalInfluence({
+      support: pipeline.tradeQuantitySupport,
+      supportLevel: pipeline.supportLevel,
+      certaintyLevel: pipeline.certaintyLevel,
+      certaintyReasons: pipeline.certaintyReasons,
+      executionSections: pipeline.executionSections,
+      executionNotes: pipeline.executionNotes,
+    })
+  }
+
+  if (trade === "plumbing") {
+    return buildPlumbingInfluence({
       support: pipeline.tradeQuantitySupport,
       supportLevel: pipeline.supportLevel,
       certaintyLevel: pipeline.certaintyLevel,

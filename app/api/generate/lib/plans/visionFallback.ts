@@ -126,6 +126,18 @@ function isDiscipline(value: unknown): value is PlanSheetDiscipline {
 
 function isTradeFindingCategory(value: unknown): value is VisionTradeFindingCategory {
   return (
+    value === "device_count" ||
+    value === "switch_count" ||
+    value === "receptacle_count" ||
+    value === "electrical_fixture_count" ||
+    value === "plumbing_fixture_count" ||
+    value === "floor_area" ||
+    value === "wall_tile_area" ||
+    value === "shower_tile_area" ||
+    value === "backsplash_area" ||
+    value === "base_lf" ||
+    value === "demolition_area" ||
+    value === "underlayment_prep_area" ||
     value === "wall_area" ||
     value === "ceiling_area" ||
     value === "repair_area" ||
@@ -147,8 +159,63 @@ function inferTradeFindingCategory(args: {
 }): PlanTradeFindingCategory | undefined {
   const blob = [args.label, ...(args.notes || [])].join(" ").toLowerCase()
 
+  if (args.unit === "devices" && /\breceptacle|outlet|plug\b/.test(blob)) {
+    return "receptacle_count"
+  }
+  if (args.unit === "devices" && /\bswitch\b/.test(blob)) {
+    return "switch_count"
+  }
+  if (args.unit === "fixtures" && args.trade === "electrical") {
+    return "electrical_fixture_count"
+  }
+  if (args.unit === "fixtures" && args.trade === "plumbing") {
+    return "plumbing_fixture_count"
+  }
+  if (args.unit === "devices" && args.trade === "electrical") {
+    return "device_count"
+  }
+
   if (args.unit === "linear_ft" && /\bpartition|gyp|gypsum|wall type\b/.test(blob)) {
     return "partition_lf"
+  }
+  if (args.unit === "linear_ft" && /\bbase|baseboard|cove base|rubber base\b/.test(blob)) {
+    return "base_lf"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\b(remove|removal|demo|demolition|tear out|pull up|rip out)\b/.test(blob)
+  ) {
+    return "demolition_area"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\bunderlayment|leveler|self[-\s]?level|prep|subfloor|backer board\b/.test(blob)
+  ) {
+    return "underlayment_prep_area"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\bbacksplash\b/.test(blob)
+  ) {
+    return "backsplash_area"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\bshower|tub surround|wet area|wet-area\b/.test(blob)
+  ) {
+    return "shower_tile_area"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\bwall tile|feature tile|tile wall\b/.test(blob)
+  ) {
+    return "wall_tile_area"
+  }
+  if (
+    args.unit === "sqft" &&
+    /\bfloor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor|floor tile\b/.test(blob)
+  ) {
+    return "floor_area"
   }
   if (args.unit === "linear_ft" && /\btrim|base|baseboard|casing|frame\b/.test(blob)) {
     return "trim_lf"

@@ -1469,6 +1469,296 @@ test("wallcovering corridor package cues stay non-binding without an explicit in
   assert.equal(influence.engineInputs?.wallcovering?.supportedSqft, null)
 })
 
+test("measured flooring floor-area support drives flooring rows without wall-tile inflation", () => {
+  const plan = makePlan({
+    detectedTrades: ["flooring", "tile"],
+    tradePackageSignals: ["flooring"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Replace flooring in guest rooms only."],
+        tradeFindings: [
+          {
+            trade: "flooring",
+            category: "floor_area",
+            label: "Measured guest room flooring area",
+            confidence: 93,
+            notes: ["Measured finished floor area only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: 1800,
+      wallSqft: 2600,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: 10,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Replace guest room flooring.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.trade, "flooring")
+  assert.equal(influence.supportLevel, "strong")
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.flooring?.supportedFloorSqft, 1800)
+  assert.equal(influence.engineInputs?.flooring?.supportedWallTileSqft, null)
+  assert.ok(influence.executionSections.includes("Flooring"))
+  assert.ok(!influence.executionSections.includes("Wall tile"))
+})
+
+test("shower / wet-area tile support stays separate from general floor tile scope", () => {
+  const plan = makePlan({
+    detectedTrades: ["tile", "flooring"],
+    tradePackageSignals: ["tile"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Tile shower walls and replace adjacent bathroom floor tile."],
+        tradeFindings: [
+          {
+            trade: "tile",
+            category: "shower_tile_area",
+            label: "Measured shower tile area",
+            confidence: 94,
+            notes: ["Measured shower wall elevations only."],
+            quantity: 220,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "flooring",
+            category: "floor_area",
+            label: "Measured bathroom floor tile area",
+            confidence: 91,
+            notes: ["Measured bathroom floor tile only."],
+            quantity: 90,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Install shower wall tile and bathroom floor tile.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.flooring?.supportedFloorSqft, 90)
+  assert.equal(influence.engineInputs?.flooring?.supportedShowerTileSqft, 220)
+  assert.equal(influence.engineInputs?.flooring?.wetAreaContext, true)
+  assert.ok(influence.executionSections.includes("Shower tile"))
+  assert.ok(
+    influence.basisAssumptions.some((item) => /wet-area tile/i.test(item))
+  )
+})
+
+test("backsplash tile support stays narrower than broad kitchen wall fallback", () => {
+  const plan = makePlan({
+    detectedTrades: ["tile"],
+    tradePackageSignals: ["tile"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Install kitchen backsplash tile only."],
+        tradeFindings: [
+          {
+            trade: "tile",
+            category: "backsplash_area",
+            label: "Measured backsplash tile area",
+            confidence: 92,
+            notes: ["Measured backsplash area only."],
+            quantity: 48,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: 460,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Install backsplash tile only.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.flooring?.supportedBacksplashSqft, 48)
+  assert.equal(influence.engineInputs?.flooring?.supportedFloorSqft, null)
+  assert.ok(influence.executionSections.includes("Backsplash tile"))
+})
+
+test("flooring/tile demolition stays non-binding without sufficient measured support", () => {
+  const plan = makePlan({
+    detectedTrades: ["flooring"],
+    tradePackageSignals: ["flooring"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Remove existing flooring and prep substrate."],
+        notes: ["Removal and prep only; no measured area."],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Remove flooring and prep substrate.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, false)
+  assert.ok(
+    influence.basisAssumptions.some((item) => /removal\/demo stayed non-binding/i.test(item))
+  )
+})
+
+test("mixed flooring and painting shared-plan scenario keeps flooring evidence trade-specific", () => {
+  const plan = makePlan({
+    detectedTrades: ["flooring", "painting"],
+    tradePackageSignals: ["flooring", "painting review"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Replace flooring in guest rooms. Paint review only."],
+        tradeFindings: [
+          {
+            trade: "flooring",
+            category: "floor_area",
+            label: "Measured guest room flooring area",
+            confidence: 93,
+            notes: ["Measured flooring only."],
+            quantity: 1800,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const flooringInfluence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Replace guest room flooring.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+  const paintingInfluence = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Review paint only if needed.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(flooringInfluence)
+  assert.equal(flooringInfluence.supportLevel, "strong")
+  assert.equal(flooringInfluence.canAffectNumericPricing, true)
+  assert.ok(paintingInfluence)
+  assert.equal(paintingInfluence.supportLevel, "weak")
+  assert.equal(paintingInfluence.canAffectNumericPricing, false)
+})
+
+test("mixed tile and drywall shared-plan scenario keeps shower/wall tile evidence from inflating drywall certainty", () => {
+  const plan = makePlan({
+    detectedTrades: ["tile", "drywall"],
+    tradePackageSignals: ["tile", "drywall review"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Tile shower walls. Review adjacent drywall only if needed."],
+        tradeFindings: [
+          {
+            trade: "tile",
+            category: "shower_tile_area",
+            label: "Measured shower tile area",
+            confidence: 94,
+            notes: ["Measured shower wall elevations only."],
+            quantity: 180,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const flooringInfluence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Install shower wall tile.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+  const drywallInfluence = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Review adjacent drywall only if needed.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(flooringInfluence)
+  assert.equal(flooringInfluence.supportLevel, "strong")
+  assert.equal(flooringInfluence.engineInputs?.flooring?.supportedShowerTileSqft, 180)
+  assert.ok(drywallInfluence)
+  assert.equal(drywallInfluence.supportLevel, "weak")
+  assert.equal(drywallInfluence.canAffectNumericPricing, false)
+})
+
 test("wallcovering influence stays non-binding when only generic finish cues exist", () => {
   const plan = makePlan({
     detectedTrades: ["wallcovering"],
@@ -1721,4 +2011,236 @@ test("legacy label-based findings still remain compatible without typed categori
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, true)
   assert.equal(influence.engineInputs?.painting?.supportedWallSqft, 1200)
+})
+
+test("electrical counted schedule support beats wording-only electrical review cues", () => {
+  const strongPlan = makePlan({
+    detectedTrades: ["electrical", "drywall"],
+    tradePackageSignals: ["electrical device refresh"],
+    analyses: [
+      makeAnalysis({
+        discipline: "electrical",
+        textSnippets: ["Electrical schedule with receptacles and switches."],
+        schedules: [
+          {
+            scheduleType: "electrical",
+            label: "Electrical schedule: 12 receptacles, 8 switches, 4 fixtures",
+            quantity: 24,
+            notes: ["Device count extracted from sheet."],
+            confidence: 91,
+            evidence: [],
+          },
+        ],
+        tradeFindings: [
+          {
+            trade: "electrical",
+            category: "device_count",
+            label: "Electrical schedule device count",
+            quantity: 24,
+            unit: "devices",
+            notes: ["Counted devices from plan schedule."],
+            confidence: 92,
+            evidence: [],
+          },
+        ],
+      }),
+      makeAnalysis({
+        discipline: "architectural",
+        textSnippets: ["Review drywall around devices."],
+      }),
+    ],
+  })
+
+  const strongElectrical = buildLiveTradePricingInfluence({
+    trade: "electrical",
+    scopeText: "Electrical review for switches and receptacles.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: strongPlan,
+    tradeStack: makeTradeStack("electrical"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const weakDrywall = buildLiveTradePricingInfluence({
+    trade: "drywall",
+    scopeText: "Patch drywall near devices as needed.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: strongPlan,
+    tradeStack: makeTradeStack("drywall"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(strongElectrical)
+  assert.equal(strongElectrical.canAffectNumericPricing, true)
+  assert.equal(strongElectrical.engineInputs?.electrical?.supportedDeviceCount, 24)
+  assert.ok(strongElectrical.basisAssumptions.some((item) => /24 counted devices/i.test(item)))
+  assert.ok(weakDrywall)
+  assert.equal(weakDrywall.canAffectNumericPricing, false)
+})
+
+test("plumbing fixture-count support beats wording-only plumbing review cues", () => {
+  const plan = makePlan({
+    detectedTrades: ["plumbing"],
+    analyses: [
+      makeAnalysis({
+        discipline: "plumbing",
+        textSnippets: ["Fixture schedule for bathroom trim-out."],
+        schedules: [
+          {
+            scheduleType: "fixture",
+            label: "Fixture schedule: 2 toilets, 3 faucets",
+            quantity: 5,
+            notes: ["Fixture count extracted from plan."],
+            confidence: 90,
+            evidence: [],
+          },
+        ],
+        tradeFindings: [
+          {
+            trade: "plumbing",
+            category: "plumbing_fixture_count",
+            label: "Plumbing fixture schedule count",
+            quantity: 5,
+            unit: "fixtures",
+            notes: ["Counted plumbing fixtures from plan schedule."],
+            confidence: 91,
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "plumbing",
+    scopeText: "Plumbing fixture trim-out review.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("plumbing"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.canAffectNumericPricing, true)
+  assert.equal(influence.engineInputs?.plumbing?.supportedFixtureCount, 5)
+  assert.ok(influence.basisAssumptions.some((item) => /counted fixtures/i.test(item)))
+})
+
+test("weak wording-only electrical and plumbing cues stay non-binding without counted evidence", () => {
+  const plan = makePlan({
+    detectedTrades: ["electrical", "plumbing"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Electrical review as required."],
+        notes: ["Plumbing review as needed."],
+      }),
+    ],
+  })
+
+  const electrical = buildLiveTradePricingInfluence({
+    trade: "electrical",
+    scopeText: "Review electrical rough-in as needed.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("electrical"),
+    complexityProfile: defaultComplexity,
+  })
+  const plumbing = buildLiveTradePricingInfluence({
+    trade: "plumbing",
+    scopeText: "Review plumbing trim-out as needed.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("plumbing"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(electrical)
+  assert.equal(electrical.canAffectNumericPricing, false)
+  assert.match(electrical.engineInputs?.electrical?.blocker || "", /non-binding/i)
+  assert.ok(plumbing)
+  assert.equal(plumbing.canAffectNumericPricing, false)
+  assert.match(plumbing.engineInputs?.plumbing?.blocker || "", /non-binding/i)
+})
+
+test("counted bathroom and kitchen support stays isolated by trade in shared-plan scenarios", () => {
+  const plan = makePlan({
+    detectedTrades: ["plumbing", "electrical", "painting"],
+    analyses: [
+      makeAnalysis({
+        discipline: "plumbing",
+        textSnippets: ["Bathroom fixture schedule."],
+        tradeFindings: [
+          {
+            trade: "plumbing",
+            category: "plumbing_fixture_count",
+            label: "Bathroom fixture schedule count",
+            quantity: 4,
+            unit: "fixtures",
+            notes: ["Bathroom fixture count."],
+            confidence: 89,
+            evidence: [],
+          },
+        ],
+      }),
+      makeAnalysis({
+        discipline: "electrical",
+        textSnippets: ["Kitchen electrical schedule."],
+        tradeFindings: [
+          {
+            trade: "electrical",
+            category: "device_count",
+            label: "Kitchen electrical device count",
+            quantity: 10,
+            unit: "devices",
+            notes: ["Kitchen electrical count."],
+            confidence: 88,
+            evidence: [],
+          },
+        ],
+      }),
+      makeAnalysis({
+        discipline: "finish",
+        textSnippets: ["Paint touch-up around vanity and kitchen walls."],
+      }),
+    ],
+  })
+
+  const plumbing = buildLiveTradePricingInfluence({
+    trade: "plumbing",
+    scopeText: "Plumbing fixture trim-out.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("plumbing"),
+    complexityProfile: defaultComplexity,
+  })
+  const electrical = buildLiveTradePricingInfluence({
+    trade: "electrical",
+    scopeText: "Electrical device trim-out.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("electrical"),
+    complexityProfile: defaultComplexity,
+  })
+  const painting = buildLiveTradePricingInfluence({
+    trade: "painting",
+    scopeText: "Paint touch-up around bathroom and kitchen work.",
+    measurements: null,
+    paintScope: "walls",
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("painting"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(plumbing)
+  assert.equal(plumbing.engineInputs?.plumbing?.supportedFixtureCount, 4)
+  assert.ok(electrical)
+  assert.equal(electrical.engineInputs?.electrical?.supportedDeviceCount, 10)
+  assert.ok(painting)
+  assert.equal(painting.canAffectNumericPricing, false)
 })

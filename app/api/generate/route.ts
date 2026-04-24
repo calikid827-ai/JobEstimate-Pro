@@ -6470,7 +6470,7 @@ function toDeterministicCandidate(args: {
 function mergeInfluencedDeterministicBasis(args: {
   basis: EstimateBasis | null | undefined
   influence: ReturnType<typeof buildLiveTradePricingInfluence>
-  trade: "painting" | "drywall" | "wallcovering"
+  trade: "painting" | "drywall" | "wallcovering" | "flooring" | "electrical" | "plumbing"
 }) {
   if (!args.basis) return null
 
@@ -6527,7 +6527,7 @@ function computeMultiTradeDeterministic(args: {
         ? null
         : pieceMeasurements
     const splitLiveTradePricingInfluence =
-      trade === "painting" || trade === "drywall" || trade === "wallcovering"
+      trade === "painting" || trade === "drywall" || trade === "wallcovering" || trade === "flooring"
         ? buildLiveTradePricingInfluence({
             trade,
             scopeText: scope,
@@ -6556,34 +6556,39 @@ function computeMultiTradeDeterministic(args: {
       const det = computeFlooringDeterministic({
         scopeText: scope,
         stateMultiplier: args.stateMultiplier,
-        measurements:
-          overallSqft && overallSqft > 0
+        measurements: splitTradeMeasurements ??
+          (overallSqft && overallSqft > 0
             ? { totalSqft: overallSqft }
-            : args.measurements ?? null,
+            : args.measurements ?? null),
+        planSectionInputs:
+          splitLiveTradePricingInfluence?.trade === "flooring" &&
+          splitLiveTradePricingInfluence.canAffectNumericPricing
+            ? splitLiveTradePricingInfluence.engineInputs?.flooring || null
+            : null,
       })
 
       if (det?.okForDeterministic && det.pricing) {
         const flooringPricing = clampPricing(coercePricing(det.pricing))
-        const flooringLaborRate = 85
-        const flooringLaborHours =
-          flooringLaborRate > 0 ? Number(flooringPricing.labor || 0) / flooringLaborRate : 0
-
-        let flooringCrewDays =
-          flooringLaborHours <= 8 ? 1 :
-          flooringLaborHours <= 16 ? 2 :
-          flooringLaborHours <= 24 ? 3 :
-          Math.ceil(flooringLaborHours / 8)
-
-        flooringCrewDays = Math.max(1, Math.round(flooringCrewDays * 2) / 2)
+        const flooringBasis = mergeInfluencedDeterministicBasis({
+          basis: det.estimateBasis,
+          influence: splitLiveTradePricingInfluence,
+          trade: "flooring",
+        })
 
         perTrade.push({
           trade,
           scope,
           pricing: flooringPricing,
-          laborRate: flooringLaborRate,
-          crewDays: flooringCrewDays,
+          laborRate: Number(det.estimateBasis?.laborRate || 85),
+          crewDays: Number(det.estimateBasis?.crewDays ?? 1),
           source: det.okForVerified ? "flooring_engine_v1_verified" : "flooring_engine_v1",
-          notes: det.notes || [],
+          estimateBasis: flooringBasis,
+          notes: [
+            ...(det.notes || []),
+            ...(splitLiveTradePricingInfluence?.trade === "flooring"
+              ? splitLiveTradePricingInfluence.basisAssumptions.slice(0, 2)
+              : []),
+          ],
         })
         pricedCount++
         continue
@@ -7309,6 +7314,21 @@ console.log("PG MULTI TRADE DET", {
   })) ?? [],
 })
 
+const liveTradePricingInfluence = buildLiveTradePricingInfluence({
+  trade,
+  scopeText: scopeChange,
+  measurements,
+  paintScope: paintScopeForJob,
+  planIntelligence,
+  tradeStack,
+  complexityProfile,
+})
+
+// Live uploaded-plan pricing starts here. The older prep/bridge/draft chain
+// feeds buildLiveTradePricingInfluence(), and from this point forward the route
+// sends only numeric-safe section inputs into the real trade engines.
+// Pricing owner selection and final protections still decide what survives.
+
 // -----------------------------
 // Flooring deterministic engine (PriceGuard™)
 // -----------------------------
@@ -7323,8 +7343,19 @@ const flooringDet =
         scopeText: scopeChange,
         stateMultiplier,
         measurements: flooringDetMeasurements,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "flooring" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.flooring || null
+            : null,
       })
     : null
+
+const flooringDetBasis = mergeInfluencedDeterministicBasis({
+  basis: flooringDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "flooring",
+})
 
 // ✅ apply deterministic pricing if possible (even if not verified)
 const flooringDetPricing: Pricing | null =
@@ -7338,8 +7369,19 @@ const electricalDet =
     ? computeElectricalDeterministic({
         scopeText: scopeChange,
         stateMultiplier,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "electrical" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.electrical || null
+            : null,
       })
     : null
+
+const electricalDetBasis = mergeInfluencedDeterministicBasis({
+  basis: electricalDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "electrical",
+})
 
     console.log("PG ELECTRICAL DET", electricalDet)
 
@@ -7353,8 +7395,19 @@ const plumbingDet =
     ? computePlumbingDeterministic({
         scopeText: scopeChange,
         stateMultiplier,
+        planSectionInputs:
+          liveTradePricingInfluence?.trade === "plumbing" &&
+          liveTradePricingInfluence.canAffectNumericPricing
+            ? liveTradePricingInfluence.engineInputs?.plumbing || null
+            : null,
       })
     : null
+
+const plumbingDetBasis = mergeInfluencedDeterministicBasis({
+  basis: plumbingDet?.estimateBasis,
+  influence: liveTradePricingInfluence,
+  trade: "plumbing",
+})
 
 const plumbingScopeConflict =
   trade === "plumbing" &&
@@ -7375,21 +7428,6 @@ console.log("PG PLUMBING CONFLICT", {
   jobType: plumbingDet?.jobType ?? null,
   okForDeterministic: plumbingDet?.okForDeterministic ?? null,
 })
-
-const liveTradePricingInfluence = buildLiveTradePricingInfluence({
-  trade,
-  scopeText: scopeChange,
-  measurements,
-  paintScope: paintScopeForJob,
-  planIntelligence,
-  tradeStack,
-  complexityProfile,
-})
-
-// Live uploaded-plan pricing starts here. The older prep/bridge/draft chain
-// feeds buildLiveTradePricingInfluence(), and from this point forward the route
-// sends only numeric-safe section inputs into the real trade engines.
-// Pricing owner selection and final protections still decide what survives.
 
     // Drywall deterministic engine (PriceGuard™)
 const drywallDetMeasurements =
@@ -7775,7 +7813,7 @@ const ctxPhotos: CtxPhoto[] | null =
     okForVerified: flooringDet?.okForVerified,
     verifiedSource: "flooring_engine_v1_verified",
     source: "flooring_engine_v1",
-    estimateBasis: null,
+    estimateBasis: flooringDetBasis,
   }),
 
   electricalDet: toDeterministicCandidate({
@@ -7783,7 +7821,7 @@ const ctxPhotos: CtxPhoto[] | null =
     okForVerified: electricalDet?.okForVerified,
     verifiedSource: "electrical_engine_v1_verified",
     source: "electrical_engine_v1",
-    estimateBasis: null,
+    estimateBasis: electricalDetBasis,
   }),
 
   plumbingDet: toDeterministicCandidate({
@@ -7791,7 +7829,7 @@ const ctxPhotos: CtxPhoto[] | null =
     okForVerified: plumbingDet?.okForVerified,
     verifiedSource: "plumbing_engine_v1_verified",
     source: "plumbing_engine_v1",
-    estimateBasis: null,
+    estimateBasis: plumbingDetBasis,
   }),
 
   drywallDet: toDeterministicCandidate({

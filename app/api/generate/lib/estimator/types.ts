@@ -70,6 +70,24 @@ export type WallcoveringExecutionSectionId =
   | "install"
   | "corridor_burden"
 
+export type FlooringExecutionSectionId =
+  | "flooring"
+  | "wall_tile"
+  | "shower_tile"
+  | "backsplash_tile"
+  | "removal_demo"
+  | "underlayment_prep"
+  | "base_trim"
+
+export type ElectricalExecutionSectionId =
+  | "devices_fixtures"
+  | "dedicated_circuits"
+  | "panel_service"
+
+export type PlumbingExecutionSectionId =
+  | "fixture_trim_out"
+  | "rough_in_relocation"
+
 export const PAINTING_EXECUTION_SECTION_LABELS: Record<PaintingExecutionSectionId, string> = {
   walls: "Walls",
   ceilings: "Ceilings",
@@ -94,6 +112,27 @@ export const WALLCOVERING_EXECUTION_SECTION_LABELS: Record<WallcoveringExecution
   removal_prep: "Removal / prep",
   install: "Install",
   corridor_burden: "Corridor burden",
+}
+
+export const FLOORING_EXECUTION_SECTION_LABELS: Record<FlooringExecutionSectionId, string> = {
+  flooring: "Flooring",
+  wall_tile: "Wall tile",
+  shower_tile: "Shower tile",
+  backsplash_tile: "Backsplash tile",
+  removal_demo: "Removal / demo",
+  underlayment_prep: "Underlayment / prep",
+  base_trim: "Base / trim",
+}
+
+export const ELECTRICAL_EXECUTION_SECTION_LABELS: Record<ElectricalExecutionSectionId, string> = {
+  devices_fixtures: "Devices / fixtures",
+  dedicated_circuits: "Dedicated circuits",
+  panel_service: "Panel / service",
+}
+
+export const PLUMBING_EXECUTION_SECTION_LABELS: Record<PlumbingExecutionSectionId, string> = {
+  fixture_trim_out: "Fixture trim-out",
+  rough_in_relocation: "Rough-in / relocation",
 }
 
 function normalizeExecutionSectionLabel(value: string): string {
@@ -127,7 +166,22 @@ export function formatTradeExecutionSectionLabel(
   reviewCandidate?: boolean
 ): string
 export function formatTradeExecutionSectionLabel(
-  trade: "painting" | "drywall" | "wallcovering",
+  trade: "flooring",
+  sectionId: FlooringExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "electrical",
+  sectionId: ElectricalExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "plumbing",
+  sectionId: PlumbingExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "painting" | "drywall" | "wallcovering" | "flooring" | "electrical" | "plumbing",
   sectionId: string,
   reviewCandidate = false
 ): string {
@@ -136,7 +190,13 @@ export function formatTradeExecutionSectionLabel(
       ? PAINTING_EXECUTION_SECTION_LABELS[sectionId as PaintingExecutionSectionId]
       : trade === "drywall"
         ? DRYWALL_EXECUTION_SECTION_LABELS[sectionId as DrywallExecutionSectionId]
-        : WALLCOVERING_EXECUTION_SECTION_LABELS[sectionId as WallcoveringExecutionSectionId]
+        : trade === "wallcovering"
+          ? WALLCOVERING_EXECUTION_SECTION_LABELS[sectionId as WallcoveringExecutionSectionId]
+          : trade === "flooring"
+            ? FLOORING_EXECUTION_SECTION_LABELS[sectionId as FlooringExecutionSectionId]
+            : trade === "electrical"
+              ? ELECTRICAL_EXECUTION_SECTION_LABELS[sectionId as ElectricalExecutionSectionId]
+              : PLUMBING_EXECUTION_SECTION_LABELS[sectionId as PlumbingExecutionSectionId]
 
   return reviewCandidate ? `Review candidate: ${label.toLowerCase()}` : label
 }
@@ -154,14 +214,32 @@ export function getTradeExecutionSectionId(
   value: string
 ): WallcoveringExecutionSectionId | null
 export function getTradeExecutionSectionId(
-  trade: "painting" | "drywall" | "wallcovering",
+  trade: "flooring",
+  value: string
+): FlooringExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "electrical",
+  value: string
+): ElectricalExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "plumbing",
+  value: string
+): PlumbingExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "painting" | "drywall" | "wallcovering" | "flooring" | "electrical" | "plumbing",
   value: string
 ): string | null {
   return trade === "painting"
     ? findExecutionSectionId(PAINTING_EXECUTION_SECTION_LABELS, value)
     : trade === "drywall"
       ? findExecutionSectionId(DRYWALL_EXECUTION_SECTION_LABELS, value)
-      : findExecutionSectionId(WALLCOVERING_EXECUTION_SECTION_LABELS, value)
+      : trade === "wallcovering"
+        ? findExecutionSectionId(WALLCOVERING_EXECUTION_SECTION_LABELS, value)
+        : trade === "flooring"
+          ? findExecutionSectionId(FLOORING_EXECUTION_SECTION_LABELS, value)
+          : trade === "electrical"
+            ? findExecutionSectionId(ELECTRICAL_EXECUTION_SECTION_LABELS, value)
+            : findExecutionSectionId(PLUMBING_EXECUTION_SECTION_LABELS, value)
 }
 
 export function getTradeExecutionSectionIds(
@@ -177,7 +255,19 @@ export function getTradeExecutionSectionIds(
   values: string[]
 ): WallcoveringExecutionSectionId[]
 export function getTradeExecutionSectionIds(
-  trade: "painting" | "drywall" | "wallcovering",
+  trade: "flooring",
+  values: string[]
+): FlooringExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "electrical",
+  values: string[]
+): ElectricalExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "plumbing",
+  values: string[]
+): PlumbingExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "painting" | "drywall" | "wallcovering" | "flooring" | "electrical" | "plumbing",
   values: string[]
 ): string[] {
   const resolved: Array<string | null> = values

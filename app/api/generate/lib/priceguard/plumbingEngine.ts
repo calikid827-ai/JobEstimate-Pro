@@ -1,3 +1,5 @@
+import type { EstimateBasis, EstimateSectionProvenance } from "../estimator/types"
+
 type Pricing = {
   labor: number
   materials: number
@@ -243,13 +245,26 @@ function priceBathRoughIn(args: {
 export function computePlumbingDeterministic(args: {
   scopeText: string
   stateMultiplier: number
+  planSectionInputs?: {
+    supportedFixtureCount: number | null
+    supportedToiletCount: number | null
+    supportedFaucetCount: number | null
+    countSource: "trade_finding" | "schedule" | "takeoff" | null
+    hasFixtureSection: boolean
+    roughInCue: boolean
+    trimOutCue: boolean
+    wetAreaContext: boolean
+    supportedCountSupport: "measured" | null
+    blocker?: string | null
+  } | null
 }): {
   okForDeterministic: boolean
   okForVerified: boolean
   jobType: "fixture_swaps" | "bath_plumbing_rough_in" | "unknown"
-  signals: any
+  signals: unknown
   notes: string[]
   pricing: Pricing | null
+  estimateBasis?: EstimateBasis | null
 } {
   const t = (args.scopeText || "").toLowerCase()
 
@@ -267,6 +282,7 @@ export function computePlumbingDeterministic(args: {
       signals: { bathRemodelPackageSignals: true },
       notes: ["Skipped: scope appears to be a full bathroom remodel package; plumbing-only deterministic pricing disabled."],
       pricing: null,
+      estimateBasis: null,
     }
   }
 
@@ -281,6 +297,7 @@ export function computePlumbingDeterministic(args: {
       signals: r.signals,
       notes: r.notes,
       pricing: r.pricing,
+      estimateBasis: null,
     }
   }
 
@@ -304,10 +321,22 @@ export function computePlumbingDeterministic(args: {
         "Skipped: scope looks like heavy/high-variance plumbing or remodel work.",
       ],
       pricing: null,
+      estimateBasis: null,
     }
   }
 
-  const breakdown = parsePlumbingFixtureBreakdown(args.scopeText)
+  const breakdown =
+    args.planSectionInputs?.hasFixtureSection &&
+    Number(args.planSectionInputs.supportedFixtureCount || 0) > 0
+      ? {
+          toilets: Math.round(Number(args.planSectionInputs.supportedToiletCount || 0)),
+          faucets: Math.round(Number(args.planSectionInputs.supportedFaucetCount || 0)),
+          sinks: 0,
+          vanities: 0,
+          showerValves: 0,
+          total: Math.round(Number(args.planSectionInputs.supportedFixtureCount || 0)),
+        }
+      : parsePlumbingFixtureBreakdown(args.scopeText)
   if (!breakdown) {
     return {
       okForDeterministic: false,
@@ -316,6 +345,7 @@ export function computePlumbingDeterministic(args: {
       signals: { breakdown: null },
       notes: ["Skipped: no explicit fixture counts found for deterministic pricing."],
       pricing: null,
+      estimateBasis: null,
     }
   }
 
@@ -381,6 +411,13 @@ export function computePlumbingDeterministic(args: {
   if (troubleshootHrs > 0)
     notes.push("Troubleshooting/leak/diagnosis allowance included.")
 
+  const estimateBasis = buildPlumbingEstimateBasis({
+    pricing,
+    breakdown,
+    notes,
+    planSectionInputs: args.planSectionInputs || null,
+  })
+
   return {
     okForDeterministic: true,
     okForVerified,
@@ -388,5 +425,62 @@ export function computePlumbingDeterministic(args: {
     signals: { breakdown, treatAsAdd, troubleshootHrs },
     notes,
     pricing,
+    estimateBasis,
+  }
+}
+
+function buildPlumbingEstimateBasis(args: {
+  pricing: Pricing
+  breakdown: { toilets: number; faucets: number; sinks: number; vanities: number; showerValves: number; total: number }
+  notes: string[]
+  planSectionInputs: {
+    supportedFixtureCount: number | null
+    supportedToiletCount: number | null
+    supportedFaucetCount: number | null
+    countSource: "trade_finding" | "schedule" | "takeoff" | null
+    hasFixtureSection: boolean
+    roughInCue: boolean
+    trimOutCue: boolean
+    wetAreaContext: boolean
+    supportedCountSupport: "measured" | null
+    blocker?: string | null
+  } | null
+}): EstimateBasis {
+  const provenance: EstimateSectionProvenance = {
+    quantitySupport: "measured",
+    sourceBasis: args.planSectionInputs?.countSource ? [args.planSectionInputs.countSource] : [],
+    summary: "Plumbing direct section was backed by counted fixture or schedule support.",
+    supportCategory: "plumbing_fixture_count",
+    quantityDetail: `${args.breakdown.total} total fixture(s)`,
+    blockedReason: args.planSectionInputs?.blocker || undefined,
+    diagnosticDetails: [
+      args.breakdown.toilets > 0 ? `${args.breakdown.toilets} toilet fixture(s)` : null,
+      args.breakdown.faucets > 0 ? `${args.breakdown.faucets} faucet fixture(s)` : null,
+      args.breakdown.sinks > 0 ? `${args.breakdown.sinks} sink fixture(s)` : null,
+      args.breakdown.vanities > 0 ? `${args.breakdown.vanities} vanity fixture(s)` : null,
+      args.breakdown.showerValves > 0 ? `${args.breakdown.showerValves} shower valve(s)` : null,
+    ].filter(Boolean) as string[],
+  }
+
+  return {
+    units: ["fixtures"],
+    quantities: { fixtures: args.breakdown.total },
+    laborRate: 125,
+    mobilization: 0,
+    assumptions: args.notes.slice(0, 6),
+    sectionPricing: [
+      {
+        section: "Fixture trim-out",
+        labor: args.pricing.labor,
+        materials: args.pricing.materials,
+        subs: args.pricing.subs,
+        total: args.pricing.total,
+        pricingBasis: "direct",
+        unit: "fixtures",
+        quantity: args.breakdown.total,
+        notes: args.notes.slice(0, 4),
+        provenance,
+      },
+    ],
   }
 }

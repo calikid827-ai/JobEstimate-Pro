@@ -119,6 +119,41 @@ function parseCount(text: string, label: string): number | null {
   return null
 }
 
+function sumMatches(text: string, re: RegExp): number {
+  let total = 0
+  for (const match of text.matchAll(re)) {
+    const n = Number(match[1])
+    if (Number.isFinite(n) && n > 0) total += n
+  }
+  return total
+}
+
+function parseElectricalBreakdown(text: string) {
+  const lower = text.toLowerCase()
+  const outlets = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?(?:outlet|receptacle|plug)s?\b/g)
+  const switches = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?switch(?:es)?\b/g)
+  const fixtures = sumMatches(
+    lower,
+    /(\d{1,4})\s+(?:new\s+)?(?:light\s*fixture|fixture|sconce|ceiling\s*fan|fan)s?\b/g
+  )
+  const total = outlets + switches + fixtures
+  return total > 0 ? { outlets, switches, fixtures, total } : null
+}
+
+function parsePlumbingFixtureBreakdown(text: string) {
+  const lower = text.toLowerCase()
+  const toilets = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?(?:toilet|commode)s?\b/g)
+  const faucets = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?faucets?\b/g)
+  const sinks = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?sinks?\b/g)
+  const vanities = sumMatches(lower, /(\d{1,4})\s+(?:new\s+)?(?:vanity|vanities)\b/g)
+  const showerValves = sumMatches(
+    lower,
+    /(\d{1,4})\s+(?:new\s+)?(?:shower\s*valve|mixing\s*valve|diverter|trim\s*kit|cartridge)s?\b/g
+  )
+  const total = toilets + faucets + sinks + vanities + showerValves
+  return total > 0 ? { toilets, faucets, sinks, vanities, showerValves, total } : null
+}
+
 function inferFloorLabel(texts: SignalText[]): string | null {
   for (const signal of texts) {
     for (const floor of FLOOR_PATTERNS) {
@@ -246,8 +281,43 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
       })
     }
 
+    if (/\b(tile|flooring|lvp|vinyl plank|laminate|hardwood|carpet|backsplash|shower wall|wall tile|tub surround)\b/.test(lower)) {
+      tradeFindings.push({
+        trade: /\b(tile|backsplash|shower wall|wall tile|tub surround)\b/.test(lower)
+          ? "tile"
+          : "flooring",
+        label: /\bbacksplash\b/.test(lower)
+          ? "Backsplash tile referenced"
+          : /\bshower wall|tub surround\b/.test(lower)
+            ? "Shower / wet-area tile referenced"
+            : /\bwall tile\b/.test(lower)
+              ? "Wall tile referenced"
+              : "Flooring / tile referenced",
+        quantity: null,
+        unit: "unknown",
+        category:
+          /\bbacksplash\b/.test(lower)
+            ? "backsplash_area"
+            : /\bshower wall|tub surround|wet area\b/.test(lower)
+              ? "shower_tile_area"
+              : /\bwall tile\b/.test(lower)
+                ? "wall_tile_area"
+                : /\bfloor|flooring|lvp|vinyl plank|laminate|hardwood|carpet|tile floor\b/.test(lower)
+                  ? "floor_area"
+                  : undefined,
+        notes: [
+          /\bremove|removal|demo|tear out|pull up\b/.test(lower)
+            ? "Removal/demo wording is present but quantity is not yet extracted."
+            : "Flooring/tile sheet content detected.",
+        ],
+        confidence,
+        evidence: [buildEvidence(args, signal.text, confidence)],
+      })
+    }
+
     if (/\bfixture schedule\b|\bfixture plan\b/.test(lower)) {
       const qty = parseCount(signal.text, "fixtures?")
+      const plumbingBreakdown = parsePlumbingFixtureBreakdown(signal.text)
       scheduleItems.push({
         scheduleType: "fixture",
         label: "Fixture schedule",
@@ -258,34 +328,97 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
       })
       tradeFindings.push({
         trade: discipline === "plumbing" ? "plumbing" : "electrical",
-        label: "Fixtures referenced",
-        quantity: qty,
-        unit: qty ? "fixtures" : "unknown",
+        label: discipline === "plumbing" ? "Plumbing fixture schedule count" : "Electrical fixture schedule count",
+        quantity: qty ?? plumbingBreakdown?.total ?? null,
+        unit: qty || plumbingBreakdown?.total ? "fixtures" : "unknown",
+        category: discipline === "plumbing" ? "plumbing_fixture_count" : "electrical_fixture_count",
         notes: ["Fixture-related sheet content detected."],
         confidence,
         evidence: [buildEvidence(args, signal.text, confidence)],
       })
+      if (discipline === "plumbing" && plumbingBreakdown) {
+        const fixtureBreakdown = [
+          { label: "Toilet fixture count", quantity: plumbingBreakdown.toilets },
+          { label: "Faucet fixture count", quantity: plumbingBreakdown.faucets },
+          { label: "Sink fixture count", quantity: plumbingBreakdown.sinks },
+          { label: "Vanity fixture count", quantity: plumbingBreakdown.vanities },
+          { label: "Shower valve fixture count", quantity: plumbingBreakdown.showerValves },
+        ].filter((item) => item.quantity > 0)
+        for (const item of fixtureBreakdown) {
+          tradeFindings.push({
+            trade: "plumbing",
+            label: item.label,
+            quantity: item.quantity,
+            unit: "fixtures",
+            category: "plumbing_fixture_count",
+            notes: ["Fixture schedule breakdown detected from plan text."],
+            confidence,
+            evidence: [buildEvidence(args, signal.text, confidence)],
+          })
+        }
+      }
     }
 
     if (/\belectrical schedule\b|\bpower plan\b|\blighting plan\b/.test(lower)) {
       const devices = parseCount(signal.text, "devices?")
+      const electricalBreakdown = parseElectricalBreakdown(signal.text)
       scheduleItems.push({
         scheduleType: "electrical",
         label: "Electrical schedule",
-        quantity: devices,
-        notes: devices ? [] : ["Electrical references detected; device quantities not yet extracted."],
+        quantity: devices ?? electricalBreakdown?.total ?? null,
+        notes:
+          devices || electricalBreakdown?.total
+            ? []
+            : ["Electrical references detected; device quantities not yet extracted."],
         confidence,
         evidence: [buildEvidence(args, signal.text, confidence)],
       })
       tradeFindings.push({
         trade: "electrical",
-        label: "Electrical scope referenced",
-        quantity: devices,
-        unit: devices ? "devices" : "unknown",
+        label: "Electrical schedule device count",
+        quantity: devices ?? electricalBreakdown?.total ?? null,
+        unit: devices || electricalBreakdown?.total ? "devices" : "unknown",
+        category: "device_count",
         notes: ["Electrical sheet content detected."],
         confidence,
         evidence: [buildEvidence(args, signal.text, confidence)],
       })
+      if (electricalBreakdown?.outlets) {
+        tradeFindings.push({
+          trade: "electrical",
+          label: "Receptacle device count",
+          quantity: electricalBreakdown.outlets,
+          unit: "devices",
+          category: "receptacle_count",
+          notes: ["Electrical schedule/device count detected from plan text."],
+          confidence,
+          evidence: [buildEvidence(args, signal.text, confidence)],
+        })
+      }
+      if (electricalBreakdown?.switches) {
+        tradeFindings.push({
+          trade: "electrical",
+          label: "Switch device count",
+          quantity: electricalBreakdown.switches,
+          unit: "devices",
+          category: "switch_count",
+          notes: ["Electrical schedule/device count detected from plan text."],
+          confidence,
+          evidence: [buildEvidence(args, signal.text, confidence)],
+        })
+      }
+      if (electricalBreakdown?.fixtures) {
+        tradeFindings.push({
+          trade: "electrical",
+          label: "Electrical fixture count",
+          quantity: electricalBreakdown.fixtures,
+          unit: "fixtures",
+          category: "electrical_fixture_count",
+          notes: ["Lighting/fixture count detected from plan text."],
+          confidence,
+          evidence: [buildEvidence(args, signal.text, confidence)],
+        })
+      }
     }
 
     if (/\bcabinet schedule\b|\bcasework\b/.test(lower)) {

@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import { computeDrywallDeterministic } from "../priceguard/drywallEngine"
+import { computeElectricalDeterministic } from "../priceguard/electricalEngine"
+import { computeFlooringDeterministic } from "../priceguard/flooringEngine"
 import { computePaintingDeterministic } from "../priceguard/paintingEngine"
+import { computePlumbingDeterministic } from "../priceguard/plumbingEngine"
 import { computeWallcoveringDeterministic } from "../priceguard/wallcoveringEngine"
 import type { PlanIntelligence, PlanSheetAnalysis } from "../plans/types"
 import { buildLiveTradePricingInfluence, mergeLiveTradePricingInfluenceIntoBasis } from "./liveTradePricingInfluence"
@@ -1139,6 +1142,102 @@ test("wallcovering live seam changes real totals and carries estimateBasis throu
   assert.equal(sumSectionTotals(decision.estimateBasis), planAware.pricing?.total || 0)
 })
 
+test("flooring live seam carries measured floor vs shower tile provenance through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["flooring", "tile"],
+    tradePackageSignals: ["flooring", "tile"],
+    analyses: [
+      makeAnalysis({
+        textSnippets: ["Replace bathroom floor tile and shower wall tile."],
+        tradeFindings: [
+          {
+            trade: "flooring",
+            category: "floor_area",
+            label: "Measured bathroom floor tile area",
+            confidence: 91,
+            notes: ["Measured floor tile area only."],
+            quantity: 90,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "tile",
+            category: "shower_tile_area",
+            label: "Measured shower tile area",
+            confidence: 94,
+            notes: ["Measured shower wall elevations only."],
+            quantity: 220,
+            unit: "sqft",
+            evidence: [],
+          },
+          {
+            trade: "tile",
+            category: "underlayment_prep_area",
+            label: "Measured shower tile prep area",
+            confidence: 80,
+            notes: ["Prep only."],
+            quantity: 220,
+            unit: "sqft",
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "flooring",
+    scopeText: "Replace bathroom floor tile and shower wall tile.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("flooring"),
+    complexityProfile: defaultComplexity,
+  })
+
+  assert.ok(influence)
+  assert.equal(influence.trade, "flooring")
+  assert.equal(influence.canAffectNumericPricing, true)
+
+  const planAware = computeFlooringDeterministic({
+    scopeText: "Replace bathroom floor tile and shower wall tile.",
+    stateMultiplier: 1,
+    measurements: null,
+    planSectionInputs:
+      influence?.trade === "flooring" && influence.canAffectNumericPricing
+        ? influence.engineInputs?.flooring || null
+        : null,
+  })
+
+  assert.ok(planAware.okForDeterministic)
+  assert.ok(planAware.estimateBasis?.sectionPricing?.some((item) => item.section === "Flooring"))
+  assert.ok(planAware.estimateBasis?.sectionPricing?.some((item) => item.section === "Shower tile"))
+  assert.ok(
+    planAware.estimateBasis?.sectionPricing?.some(
+      (item) =>
+        item.section === "Underlayment / prep" &&
+        item.pricingBasis === "burden" &&
+        item.provenance?.quantitySupport === "support_only"
+    )
+  )
+
+  const owner = decidePricingOwner(
+    makeOwnerContext({
+      trade: "flooring",
+      flooringDet: {
+        okForVerified: planAware.okForVerified,
+        pricing: planAware.pricing,
+        verifiedSource: "flooring_engine",
+        source: "flooring_engine",
+        estimateBasis: planAware.estimateBasis ?? null,
+      },
+    })
+  )
+
+  assert.equal(owner.owner, "flooring_engine")
+  assert.ok(owner.estimateBasis?.sectionPricing?.some((item) => item.section === "Shower tile"))
+})
+
 test("wallcovering selected-elevation scope stays narrower than gross fallback through owner resolution", () => {
   const plan = makePlan({
     detectedTrades: ["wallcovering"],
@@ -1594,4 +1693,151 @@ test("multi-trade precedence remains authoritative over live per-trade determini
   assert.equal(decision.owner, "multi_trade_combiner")
   assert.ok(decision.estimateBasis?.assumptions.includes("Multi-trade estimate combined from split scope pricing."))
   assert.equal(sumSectionTotals(decision.estimateBasis), 8220)
+})
+
+test("electrical live seam carries counted device provenance through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["electrical"],
+    analyses: [
+      makeAnalysis({
+        discipline: "electrical",
+        schedules: [
+          {
+            scheduleType: "electrical",
+            label: "Electrical schedule: 10 receptacles, 6 switches, 2 fixtures",
+            quantity: 18,
+            notes: ["Device count extracted from plan."],
+            confidence: 90,
+            evidence: [],
+          },
+        ],
+        tradeFindings: [
+          {
+            trade: "electrical",
+            category: "device_count",
+            label: "Electrical schedule device count",
+            quantity: 18,
+            unit: "devices",
+            notes: ["Counted devices from plan schedule."],
+            confidence: 92,
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "electrical",
+    scopeText: "Electrical device trim-out.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("electrical"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computeElectricalDeterministic({
+    scopeText: "Electrical device trim-out.",
+    stateMultiplier: 1,
+    planSectionInputs:
+      influence?.trade === "electrical" && influence.canAffectNumericPricing
+        ? influence.engineInputs?.electrical || null
+        : null,
+  })
+
+  assert.equal(planAware.okForDeterministic, true)
+  assert.ok(planAware.estimateBasis?.sectionPricing?.some((item) => item.section === "Devices / fixtures"))
+  assert.equal(planAware.estimateBasis?.sectionPricing?.[0]?.provenance?.supportCategory, "device_count")
+
+  const owner = decidePricingOwner(
+    makeOwnerContext({
+      trade: "electrical",
+      electricalDet: {
+        okForVerified: planAware.okForVerified,
+        pricing: planAware.pricing,
+        verifiedSource: "electrical_engine",
+        source: "electrical_engine",
+        estimateBasis: planAware.estimateBasis ?? null,
+      },
+    })
+  )
+
+  assert.equal(owner.owner, "electrical_engine")
+  assert.ok(owner.estimateBasis?.sectionPricing?.some((item) => item.section === "Devices / fixtures"))
+})
+
+test("plumbing live seam carries counted fixture provenance through owner resolution", () => {
+  const plan = makePlan({
+    detectedTrades: ["plumbing"],
+    analyses: [
+      makeAnalysis({
+        discipline: "plumbing",
+        schedules: [
+          {
+            scheduleType: "fixture",
+            label: "Fixture schedule: 2 toilets, 3 faucets",
+            quantity: 5,
+            notes: ["Fixture count extracted from plan."],
+            confidence: 91,
+            evidence: [],
+          },
+        ],
+        tradeFindings: [
+          {
+            trade: "plumbing",
+            category: "plumbing_fixture_count",
+            label: "Plumbing fixture schedule count",
+            quantity: 5,
+            unit: "fixtures",
+            notes: ["Counted plumbing fixtures from plan schedule."],
+            confidence: 91,
+            evidence: [],
+          },
+        ],
+      }),
+    ],
+  })
+
+  const influence = buildLiveTradePricingInfluence({
+    trade: "plumbing",
+    scopeText: "Plumbing fixture trim-out.",
+    measurements: null,
+    paintScope: null,
+    planIntelligence: plan,
+    tradeStack: makeTradeStack("plumbing"),
+    complexityProfile: defaultComplexity,
+  })
+
+  const planAware = computePlumbingDeterministic({
+    scopeText: "Plumbing fixture trim-out.",
+    stateMultiplier: 1,
+    planSectionInputs:
+      influence?.trade === "plumbing" && influence.canAffectNumericPricing
+        ? influence.engineInputs?.plumbing || null
+        : null,
+  })
+
+  assert.equal(planAware.okForDeterministic, true)
+  assert.ok(planAware.estimateBasis?.sectionPricing?.some((item) => item.section === "Fixture trim-out"))
+  assert.equal(
+    planAware.estimateBasis?.sectionPricing?.[0]?.provenance?.supportCategory,
+    "plumbing_fixture_count"
+  )
+
+  const owner = decidePricingOwner(
+    makeOwnerContext({
+      trade: "plumbing",
+      plumbingDet: {
+        okForVerified: planAware.okForVerified,
+        pricing: planAware.pricing,
+        verifiedSource: "plumbing_engine",
+        source: "plumbing_engine",
+        estimateBasis: planAware.estimateBasis ?? null,
+      },
+    })
+  )
+
+  assert.equal(owner.owner, "plumbing_engine")
+  assert.ok(owner.estimateBasis?.sectionPricing?.some((item) => item.section === "Fixture trim-out"))
 })

@@ -67,8 +67,20 @@ function getTrade(args: {
   scopeText: string
   planIntelligence: PlanIntelligence | null
 }): TradePricingBasisBridgeTrade | null {
-  if (args.tradeQuantitySupport?.trade) return args.tradeQuantitySupport.trade
-  if (args.tradePackagePricingPrep?.trade) return args.tradePackagePricingPrep.trade
+  if (
+    args.tradeQuantitySupport?.trade === "painting" ||
+    args.tradeQuantitySupport?.trade === "drywall" ||
+    args.tradeQuantitySupport?.trade === "wallcovering"
+  ) {
+    return args.tradeQuantitySupport.trade
+  }
+  if (
+    args.tradePackagePricingPrep?.trade === "painting" ||
+    args.tradePackagePricingPrep?.trade === "drywall" ||
+    args.tradePackagePricingPrep?.trade === "wallcovering"
+  ) {
+    return args.tradePackagePricingPrep.trade
+  }
 
   const directTrade = String(args.trade || "").trim().toLowerCase()
   if (directTrade === "painting" || directTrade === "drywall") return directTrade

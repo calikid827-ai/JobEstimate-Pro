@@ -1,5 +1,7 @@
 // ./lib/priceguard/electricalEngine.ts
 
+import type { EstimateBasis, EstimateSectionProvenance } from "../estimator/types"
+
 type Pricing = {
   labor: number
   materials: number
@@ -34,6 +36,20 @@ export type ElectricalDeterministicResult = {
     evChargerCount?: number | null
   }
   notes: string[]
+  estimateBasis?: EstimateBasis | null
+}
+
+type ElectricalPlanSectionInputs = {
+  supportedDeviceCount: number | null
+  supportedReceptacleCount: number | null
+  supportedSwitchCount: number | null
+  supportedFixtureCount: number | null
+  countSource: "trade_finding" | "schedule" | "takeoff" | null
+  hasDevicesSection: boolean
+  roughInCue: boolean
+  trimOutCue: boolean
+  supportedCountSupport: "measured" | null
+  blocker?: string | null
 }
 
 function clampPricing(pricing: Pricing): Pricing {
@@ -183,6 +199,7 @@ function isSwapWork(scopeText: string): boolean {
 export function computeElectricalDeterministic(args: {
   scopeText: string
   stateMultiplier: number
+  planSectionInputs?: ElectricalPlanSectionInputs | null
 }): ElectricalDeterministicResult {
   const notes: string[] = []
   const scope = (args.scopeText || "").trim()
@@ -196,6 +213,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "unknown",
       signals: {},
       notes: ["Empty scopeText"],
+      estimateBasis: null,
     }
   }
 
@@ -203,7 +221,17 @@ export function computeElectricalDeterministic(args: {
   const troubleshooting = hasTroubleshooting(scope)
   const heavy = isHeavyElectrical(scope)
 
-  const devices = parseElectricalDeviceBreakdown(scope)
+  const devices =
+    args.planSectionInputs?.hasDevicesSection &&
+    Number(args.planSectionInputs.supportedDeviceCount || 0) > 0
+      ? {
+          outlets: Math.round(Number(args.planSectionInputs.supportedReceptacleCount || 0)),
+          switches: Math.round(Number(args.planSectionInputs.supportedSwitchCount || 0)),
+          recessed: 0,
+          fixtures: Math.round(Number(args.planSectionInputs.supportedFixtureCount || 0)),
+          total: Math.round(Number(args.planSectionInputs.supportedDeviceCount || 0)),
+        }
+      : parseElectricalDeviceBreakdown(scope)
   console.log("PG ELECTRICAL DEVICES PARSED", { scope, devices })
   const dedicatedCircuits = parseDedicatedCircuits(scope)
   const panelCount = parsePanelCount(scope)
@@ -224,6 +252,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "unknown",
       signals: { devices: null, dedicatedCircuits: null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes: ["Remodel/gut signals present without explicit electrical counts → avoid deterministic"],
+      estimateBasis: null,
     }
   }
 
@@ -250,6 +279,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "panel_replacement",
       signals: { devices: devices ?? null, dedicatedCircuits: dedicatedCircuits ?? null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes,
+      estimateBasis: null,
     }
   }
 
@@ -266,6 +296,7 @@ export function computeElectricalDeterministic(args: {
         jobType: "ev_charger",
         signals: { devices: devices ?? null, dedicatedCircuits: dedicatedCircuits ?? null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
         notes: [...notes, "Panel/service work mentioned but not clearly scoped → avoid deterministic"],
+        estimateBasis: null,
       }
     }
 
@@ -287,6 +318,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "ev_charger",
       signals: { devices: devices ?? null, dedicatedCircuits: dedicatedCircuits ?? null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes,
+      estimateBasis: null,
     }
   }
 
@@ -315,6 +347,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "dedicated_circuits",
       signals: { devices: devices ?? null, dedicatedCircuits, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes,
+      estimateBasis: null,
     }
   }
 
@@ -332,6 +365,12 @@ export function computeElectricalDeterministic(args: {
     })
 
     // Verified because device counts are explicit by definition
+    const estimateBasis = buildElectricalEstimateBasis({
+      pricing,
+      devices,
+      notes,
+      planSectionInputs: args.planSectionInputs || null,
+    })
     return {
       okForDeterministic: true,
       okForVerified: true,
@@ -339,6 +378,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "device_work",
       signals: { devices, dedicatedCircuits: null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes,
+      estimateBasis,
     }
   }
 
@@ -351,6 +391,7 @@ export function computeElectricalDeterministic(args: {
       jobType: "unknown",
       signals: { devices: null, dedicatedCircuits: null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
       notes: ["Heavy electrical signals but no countable units parsed → avoid deterministic"],
+      estimateBasis: null,
     }
   }
 
@@ -361,6 +402,50 @@ export function computeElectricalDeterministic(args: {
     jobType: "unknown",
     signals: { devices: null, dedicatedCircuits: null, hasTroubleshooting: troubleshooting, treatAsAdd, mentionsPanel, panelCount, evChargerCount },
     notes: ["No deterministic electrical pattern matched"],
+    estimateBasis: null,
+  }
+}
+
+function buildElectricalEstimateBasis(args: {
+  pricing: Pricing
+  devices: { outlets: number; switches: number; recessed: number; fixtures: number; total: number }
+  notes: string[]
+  planSectionInputs: ElectricalPlanSectionInputs | null
+}): EstimateBasis {
+  const provenance: EstimateSectionProvenance = {
+    quantitySupport: "measured",
+    sourceBasis: args.planSectionInputs?.countSource ? [args.planSectionInputs.countSource] : [],
+    summary: "Electrical direct section was backed by counted device or schedule support.",
+    supportCategory: "device_count",
+    quantityDetail: `${args.devices.total} total device(s)`,
+    blockedReason: args.planSectionInputs?.blocker || undefined,
+    diagnosticDetails: [
+      args.devices.outlets > 0 ? `${args.devices.outlets} receptacle(s)` : null,
+      args.devices.switches > 0 ? `${args.devices.switches} switch(es)` : null,
+      args.devices.fixtures > 0 ? `${args.devices.fixtures} fixture(s)` : null,
+    ].filter(Boolean) as string[],
+  }
+
+  return {
+    units: ["devices"],
+    quantities: { devices: args.devices.total },
+    laborRate: 115,
+    mobilization: 0,
+    assumptions: args.notes.slice(0, 6),
+    sectionPricing: [
+      {
+        section: "Devices / fixtures",
+        labor: args.pricing.labor,
+        materials: args.pricing.materials,
+        subs: args.pricing.subs,
+        total: args.pricing.total,
+        pricingBasis: "direct",
+        unit: "devices",
+        quantity: args.devices.total,
+        notes: args.notes.slice(0, 4),
+        provenance,
+      },
+    ],
   }
 }
 
