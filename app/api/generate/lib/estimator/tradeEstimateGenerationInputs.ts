@@ -9,6 +9,9 @@ export type TradeEstimateGenerationTrade =
 export type TradeEstimateGenerationInputs = {
   trade: TradeEstimateGenerationTrade
   supportLevel: "strong" | "moderate" | "weak"
+  tradeGenerationPrimaryCandidates: string[]
+  tradeGenerationSecondaryCandidates: string[]
+  tradeGenerationReviewCandidates: string[]
   tradeEstimateGenerationInputs: string[]
   tradeGenerationMeasurementBasis: string[]
   tradeGenerationLaborBasis: string[]
@@ -49,6 +52,18 @@ export function buildTradeEstimateGenerationInputs(args: {
   return {
     trade: assembled.trade,
     supportLevel: assembled.supportLevel,
+    tradeGenerationPrimaryCandidates: uniqStrings(
+      assembled.tradeAssembledPrimaryCandidates || [],
+      3
+    ),
+    tradeGenerationSecondaryCandidates: uniqStrings(
+      assembled.tradeAssembledSecondaryCandidates || [],
+      4
+    ),
+    tradeGenerationReviewCandidates: uniqStrings(
+      assembled.tradeAssembledReviewCandidates || [],
+      4
+    ),
     tradeEstimateGenerationInputs: normalizeReview(
       assembled.tradeAssembledPricingInputs,
       reviewOnly
@@ -89,6 +104,15 @@ export function buildTradeEstimateGenerationInputs(args: {
         reviewOnly
           ? "Weak support keeps estimate-generation inputs in review mode only."
           : "Estimate-generation inputs are assembly guidance only and do not execute final pricing.",
+        (assembled.tradeAssembledPrimaryCandidates || []).length > 0
+          ? `Primary generation candidate: ${assembled.tradeAssembledPrimaryCandidates.join(", ")}.`
+          : null,
+        (assembled.tradeAssembledSecondaryCandidates || []).length > 0
+          ? `Secondary generation candidates: ${assembled.tradeAssembledSecondaryCandidates.join(", ")}.`
+          : null,
+        (assembled.tradeAssembledReviewCandidates || []).length > 0
+          ? `Review-only generation candidates: ${assembled.tradeAssembledReviewCandidates.join(", ")}.`
+          : null,
         repeatedCue
           ? "Repeated-space guidance can shape estimate-generation order without implying automatic quantity scaling."
           : null,

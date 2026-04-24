@@ -446,6 +446,120 @@ export type EstimateStructureConsumption = {
       confidence: number
     }>
   }[]
+  structuredTradeInputAssemblies: {
+    trade:
+      | "painting"
+      | "drywall"
+      | "wallcovering"
+      | "flooring"
+      | "electrical"
+      | "plumbing"
+      | "tile"
+      | "general renovation"
+    primaryCandidate: {
+      sectionTitle: string
+      trade:
+        | "painting"
+        | "drywall"
+        | "wallcovering"
+        | "flooring"
+        | "electrical"
+        | "plumbing"
+        | "tile"
+        | "general renovation"
+      candidateRole: "primary" | "secondary" | "review_only"
+      quantityNormalization: "measured" | "scaled_prototype" | "review_only" | "support_only"
+      supportType:
+        | "quantity_backed"
+        | "schedule_backed"
+        | "elevation_only"
+        | "demo_only"
+        | "scaled_prototype"
+        | "support_only"
+      scopeBreadth: "broad" | "narrow"
+      quantityAnchor: string | null
+      candidateSummary: string
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    } | null
+    secondaryCandidates: Array<{
+      sectionTitle: string
+      trade:
+        | "painting"
+        | "drywall"
+        | "wallcovering"
+        | "flooring"
+        | "electrical"
+        | "plumbing"
+        | "tile"
+        | "general renovation"
+      candidateRole: "primary" | "secondary" | "review_only"
+      quantityNormalization: "measured" | "scaled_prototype" | "review_only" | "support_only"
+      supportType:
+        | "quantity_backed"
+        | "schedule_backed"
+        | "elevation_only"
+        | "demo_only"
+        | "scaled_prototype"
+        | "support_only"
+      scopeBreadth: "broad" | "narrow"
+      quantityAnchor: string | null
+      candidateSummary: string
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    reviewCandidates: Array<{
+      sectionTitle: string
+      trade:
+        | "painting"
+        | "drywall"
+        | "wallcovering"
+        | "flooring"
+        | "electrical"
+        | "plumbing"
+        | "tile"
+        | "general renovation"
+      candidateRole: "primary" | "secondary" | "review_only"
+      quantityNormalization: "measured" | "scaled_prototype" | "review_only" | "support_only"
+      supportType:
+        | "quantity_backed"
+        | "schedule_backed"
+        | "elevation_only"
+        | "demo_only"
+        | "scaled_prototype"
+        | "support_only"
+      scopeBreadth: "broad" | "narrow"
+      quantityAnchor: string | null
+      candidateSummary: string
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    assemblyNotes: string[]
+  }[]
   estimateGroupingSignals: string[]
   estimateReviewBuckets: string[]
   estimateStructureNotes: string[]

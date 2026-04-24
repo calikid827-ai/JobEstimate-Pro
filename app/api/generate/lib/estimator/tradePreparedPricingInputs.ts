@@ -14,6 +14,9 @@ export type TradePreparedPricingTrade =
 export type TradePreparedPricingInputs = {
   trade: TradePreparedPricingTrade
   supportLevel: "strong" | "moderate" | "weak"
+  tradePreparedPrimaryCandidates: string[]
+  tradePreparedSecondaryCandidates: string[]
+  tradePreparedReviewCandidates: string[]
   tradePreparedPricingSections: string[]
   tradePreparedMeasurementInputs: string[]
   tradePreparedLaborInputs: string[]
@@ -25,6 +28,48 @@ function uniqStrings(values: Array<string | null | undefined>, max = 10): string
   return Array.from(
     new Set(values.map((value) => String(value || "").trim()).filter(Boolean))
   ).slice(0, max)
+}
+
+function getTradeAssemblyHints(args: {
+  structure: EstimateStructureConsumption | null
+  trade: TradePreparedPricingTrade
+}): {
+  primary: string[]
+  secondary: string[]
+  review: string[]
+  notes: string[]
+} {
+  const matchesTrade = (trade: string) => {
+    if (args.trade === "painting") return trade === "painting"
+    if (args.trade === "drywall") return trade === "drywall"
+    return trade === "wallcovering"
+  }
+
+  const assemblies = (args.structure?.structuredTradeInputAssemblies || []).filter((assembly) =>
+    matchesTrade(assembly.trade)
+  )
+
+  return {
+    primary: uniqStrings(
+      assemblies
+        .map((assembly) => assembly.primaryCandidate?.sectionTitle || null)
+        .filter(Boolean),
+      3
+    ),
+    secondary: uniqStrings(
+      assemblies.flatMap((assembly) =>
+        assembly.secondaryCandidates.map((candidate) => candidate.sectionTitle)
+      ),
+      4
+    ),
+    review: uniqStrings(
+      assemblies.flatMap((assembly) =>
+        assembly.reviewCandidates.map((candidate) => candidate.sectionTitle)
+      ),
+      4
+    ),
+    notes: uniqStrings(assemblies.flatMap((assembly) => assembly.assemblyNotes || []), 6),
+  }
 }
 
 function getBucketHints(args: {
@@ -120,6 +165,10 @@ function buildPreparedPricing(args: {
     structure: args.estimateStructureConsumption,
     trade: args.trade,
   })
+  const assemblyHints = getTradeAssemblyHints({
+    structure: args.estimateStructureConsumption,
+    trade: args.trade,
+  })
   const repeatedCue = (args.planIntelligence?.repeatedSpaceSignals || []).length > 0
   const reviewOnly = supportLevel === "weak"
   const baseSections = reviewOnly
@@ -129,10 +178,14 @@ function buildPreparedPricing(args: {
   return {
     trade: args.trade,
     supportLevel,
+    tradePreparedPrimaryCandidates: assemblyHints.primary,
+    tradePreparedSecondaryCandidates: assemblyHints.secondary,
+    tradePreparedReviewCandidates: assemblyHints.review,
     tradePreparedPricingSections: baseSections,
     tradePreparedMeasurementInputs: uniqStrings(
       [
         ...draft.tradeMeasurementInputDraft,
+        ...assemblyHints.notes.slice(0, 2),
         reviewOnly
           ? "Prepared measurements stay review-only until stronger support is available."
           : null,
@@ -163,6 +216,15 @@ function buildPreparedPricing(args: {
         ...draft.tradePricingInputNotes,
         bucketHints.length > 0
           ? `Prepared pricing can stay aligned to ${bucketHints.join(", ")} without changing estimator math.`
+          : null,
+        assemblyHints.primary.length > 0
+          ? `Primary trade-ready candidate: ${assemblyHints.primary.join(", ")}.`
+          : null,
+        assemblyHints.secondary.length > 0
+          ? `Secondary trade candidates: ${assemblyHints.secondary.join(", ")}.`
+          : null,
+        assemblyHints.review.length > 0
+          ? `Review-only candidates: ${assemblyHints.review.join(", ")}.`
           : null,
         repeatedCue
           ? "Repeated-space support can guide preparation order, but not automatic quantity scaling."

@@ -31,9 +31,30 @@ export type StructuredEstimateSection = {
   evidence: EstimatorSectionSkeleton["evidence"]
 }
 
+export type StructuredTradeInputCandidate = {
+  sectionTitle: string
+  trade: StructuredEstimateSection["trade"]
+  candidateRole: "primary" | "secondary" | "review_only"
+  quantityNormalization: StructuredEstimateSection["quantityNormalization"]
+  supportType: StructuredEstimateSection["supportType"]
+  scopeBreadth: StructuredEstimateSection["scopeBreadth"]
+  quantityAnchor: string | null
+  candidateSummary: string
+  evidence: StructuredEstimateSection["evidence"]
+}
+
+export type StructuredTradeInputAssembly = {
+  trade: StructuredEstimateSection["trade"]
+  primaryCandidate: StructuredTradeInputCandidate | null
+  secondaryCandidates: StructuredTradeInputCandidate[]
+  reviewCandidates: StructuredTradeInputCandidate[]
+  assemblyNotes: string[]
+}
+
 export type EstimateStructureConsumption = {
   structuredEstimateBuckets: StructuredEstimateBucket[]
   structuredEstimateSections: StructuredEstimateSection[]
+  structuredTradeInputAssemblies: StructuredTradeInputAssembly[]
   estimateGroupingSignals: string[]
   estimateReviewBuckets: string[]
   estimateStructureNotes: string[]
@@ -66,6 +87,51 @@ function getQuantityNormalization(
   if (section.sectionReadiness === "section_anchor") return "measured"
   if (section.sectionReadiness === "scalable_hint") return "scaled_prototype"
   if (section.sectionReadiness === "support_only") return "support_only"
+  return "review_only"
+}
+
+function getCandidateScore(section: StructuredEstimateSection): number {
+  const normalizationScore =
+    section.quantityNormalization === "measured"
+      ? 400
+      : section.quantityNormalization === "scaled_prototype"
+        ? 280
+        : section.quantityNormalization === "review_only"
+          ? 140
+          : 100
+  const supportScore =
+    section.supportType === "quantity_backed"
+      ? 40
+      : section.supportType === "scaled_prototype"
+        ? 25
+        : section.supportType === "schedule_backed"
+          ? 10
+          : 0
+  const breadthPenalty = section.scopeBreadth === "narrow" ? 5 : 0
+  return normalizationScore + supportScore - breadthPenalty
+}
+
+function buildCandidateSummary(section: StructuredEstimateSection): string {
+  if (section.quantityNormalization === "measured" && section.quantityAnchor) {
+    return `${section.sectionTitle} is the strongest measured candidate, anchored by ${section.quantityAnchor}.`
+  }
+  if (section.quantityNormalization === "scaled_prototype") {
+    return `${section.sectionTitle} is a scale-oriented candidate and must stay prototype-based rather than measured.`
+  }
+  if (section.supportType === "demo_only") {
+    return `${section.sectionTitle} remains a removal-only candidate and should stay separate from install assemblies.`
+  }
+  return `${section.sectionTitle} remains review-oriented and should not create unsupported totals.`
+}
+
+function getCandidateRole(
+  section: StructuredEstimateSection,
+  isTopMeasured: boolean
+): StructuredTradeInputCandidate["candidateRole"] {
+  if (section.quantityNormalization === "measured" && isTopMeasured) return "primary"
+  if (section.quantityNormalization === "measured") return "secondary"
+  if (section.quantityNormalization === "scaled_prototype") return "secondary"
+  if (section.supportType === "demo_only" && isTopMeasured) return "primary"
   return "review_only"
 }
 
@@ -171,6 +237,68 @@ function buildEstimatorInputGuardrails(section: EstimatorSectionSkeleton): strin
   )
 }
 
+function buildStructuredTradeInputAssemblies(
+  sections: StructuredEstimateSection[]
+): StructuredTradeInputAssembly[] {
+  const grouped = new Map<StructuredEstimateSection["trade"], StructuredEstimateSection[]>()
+
+  for (const section of sections) {
+    const existing = grouped.get(section.trade) || []
+    existing.push(section)
+    grouped.set(section.trade, existing)
+  }
+
+  return Array.from(grouped.entries())
+    .map(([trade, tradeSections]) => {
+      const rankedSections = [...tradeSections].sort(
+        (a, b) => getCandidateScore(b) - getCandidateScore(a)
+      )
+      const firstMeasuredIndex = rankedSections.findIndex(
+        (section) =>
+          section.quantityNormalization === "measured" ||
+          section.supportType === "demo_only"
+      )
+
+      const candidates: StructuredTradeInputCandidate[] = rankedSections.map((section, index) => {
+        const role = getCandidateRole(section, index === firstMeasuredIndex)
+        return {
+          sectionTitle: section.sectionTitle,
+          trade: section.trade,
+          candidateRole: role,
+          quantityNormalization: section.quantityNormalization,
+          supportType: section.supportType,
+          scopeBreadth: section.scopeBreadth,
+          quantityAnchor: section.quantityAnchor,
+          candidateSummary: buildCandidateSummary(section),
+          evidence: section.evidence,
+        }
+      })
+
+      return {
+        trade,
+        primaryCandidate:
+          candidates.find((candidate) => candidate.candidateRole === "primary") || null,
+        secondaryCandidates: candidates
+          .filter((candidate) => candidate.candidateRole === "secondary")
+          .slice(0, 3),
+        reviewCandidates: candidates
+          .filter((candidate) => candidate.candidateRole === "review_only")
+          .slice(0, 4),
+        assemblyNotes: uniqStrings(
+          [
+            candidates.find((candidate) => candidate.candidateRole === "primary")?.candidateSummary,
+            ...candidates
+              .filter((candidate) => candidate.candidateRole === "secondary")
+              .map((candidate) => candidate.candidateSummary),
+            ...tradeSections.flatMap((section) => section.estimatorInputGuardrails || []).slice(0, 3),
+          ],
+          8
+        ),
+      }
+    })
+    .slice(0, 8)
+}
+
 export function buildEstimateStructureConsumption(
   handoff: EstimateSkeletonHandoff | null
 ): EstimateStructureConsumption | null {
@@ -216,6 +344,9 @@ export function buildEstimateStructureConsumption(
       evidence: (section.evidence || []).slice(0, 6),
     }))
     .slice(0, 12)
+  const structuredTradeInputAssemblies = buildStructuredTradeInputAssemblies(
+    structuredEstimateSections
+  )
 
   const estimateGroupingSignals = uniqStrings(
     [
@@ -231,6 +362,12 @@ export function buildEstimateStructureConsumption(
         ),
       ...structuredEstimateSections
         .flatMap((section) => section.normalizedEstimatorInputCandidates.slice(0, 1)),
+      ...structuredTradeInputAssemblies
+        .map((assembly) =>
+          assembly.primaryCandidate
+            ? `Primary ${assembly.trade} assembly candidate: ${assembly.primaryCandidate.sectionTitle}.`
+            : `No primary ${assembly.trade} assembly candidate yet; keep review-only support narrow.`
+        ),
       ...structuredEstimateBuckets
         .filter(
           (bucket) =>
@@ -271,6 +408,7 @@ export function buildEstimateStructureConsumption(
           ? `${section.sectionTitle} quantity anchor: ${section.quantityAnchor}.`
           : `${section.sectionTitle} is supported without a measured quantity anchor.`
       ),
+      ...structuredTradeInputAssemblies.flatMap((assembly) => assembly.assemblyNotes),
       ...structuredEstimateSections.flatMap((section) => section.cautionNotes),
       ...structuredEstimateSections.flatMap((section) => section.estimatorInputGuardrails),
       structuredEstimateBuckets.some((bucket) => bucket.safeForPrimaryStructure)
@@ -289,6 +427,7 @@ export function buildEstimateStructureConsumption(
   if (
     structuredEstimateBuckets.length === 0 &&
     structuredEstimateSections.length === 0 &&
+    structuredTradeInputAssemblies.length === 0 &&
     estimateGroupingSignals.length === 0 &&
     estimateReviewBuckets.length === 0 &&
     estimateStructureNotes.length === 0
@@ -299,6 +438,7 @@ export function buildEstimateStructureConsumption(
   return {
     structuredEstimateBuckets,
     structuredEstimateSections,
+    structuredTradeInputAssemblies,
     estimateGroupingSignals,
     estimateReviewBuckets,
     estimateStructureNotes,

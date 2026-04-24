@@ -351,12 +351,26 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
         inputCandidates: section.normalizedEstimatorInputCandidates,
         sourcePages: section.evidence.map((ref) => ref.sourcePageNumber),
       }))
+    const summarizeAssemblies = (result: NonNullable<typeof browserResult>) =>
+      (
+        buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(result))
+          ?.structuredTradeInputAssemblies || []
+      ).map((assembly) => ({
+        trade: assembly.trade,
+        primary: assembly.primaryCandidate?.sectionTitle || null,
+        secondary: assembly.secondaryCandidates.map((candidate) => candidate.sectionTitle),
+        review: assembly.reviewCandidates.map((candidate) => candidate.sectionTitle),
+        sourcePages:
+          assembly.primaryCandidate?.evidence.map((ref) => ref.sourcePageNumber) || [],
+      }))
 
     assert(browserResult && serverResult && fallbackResult)
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(serverResult))
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(fallbackResult))
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(serverResult))
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(fallbackResult))
+    assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(serverResult))
+    assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(fallbackResult))
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

@@ -8,6 +8,9 @@ import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
 import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
 import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
 import { buildTradeQuantitySupport } from "./tradeQuantitySupport"
+import { buildTradePreparedPricingInputs } from "./tradePreparedPricingInputs"
+import { buildTradeAssembledPricingInputs } from "./tradeAssembledPricingInputs"
+import { buildTradeEstimateGenerationInputs } from "./tradeEstimateGenerationInputs"
 import type { ComplexityProfile, TradeStack } from "./types"
 import type { PlanEstimatorPackage } from "../plans/types"
 
@@ -206,6 +209,26 @@ function runPlanAwarePipeline(args: {
     tradeStack,
     complexityProfile,
   })
+  const tradePreparedPricingInputs = buildTradePreparedPricingInputs({
+    tradePricingInputDraft,
+    tradePricingBasisBridge,
+    tradePackagePricingPrep,
+    estimateSkeletonHandoff,
+    estimateStructureConsumption,
+    planIntelligence: args.planIntelligence,
+    tradeStack,
+    complexityProfile,
+  })
+  const tradeAssembledPricingInputs = buildTradeAssembledPricingInputs({
+    tradePreparedPricingInputs,
+    tradeStack,
+    complexityProfile,
+  })
+  const tradeEstimateGenerationInputs = buildTradeEstimateGenerationInputs({
+    tradeAssembledPricingInputs,
+    tradeStack,
+    complexityProfile,
+  })
 
   return {
     estimateSkeletonHandoff,
@@ -214,6 +237,9 @@ function runPlanAwarePipeline(args: {
     tradeQuantitySupport,
     tradePricingBasisBridge,
     tradePricingInputDraft,
+    tradePreparedPricingInputs,
+    tradeAssembledPricingInputs,
+    tradeEstimateGenerationInputs,
   }
 }
 
@@ -632,6 +658,21 @@ test("quantity-backed guest room package becomes section-ready anchors", () => {
       /anchor painting section/i.test(item)
     )
   )
+  assert.ok(
+    result.tradePreparedPricingInputs?.tradePreparedPrimaryCandidates.includes(
+      "Painting: Guest room walls / ceilings"
+    )
+  )
+  assert.ok(
+    result.tradeAssembledPricingInputs?.tradeAssembledPrimaryCandidates.includes(
+      "Painting: Guest room walls / ceilings"
+    )
+  )
+  assert.ok(
+    result.tradeEstimateGenerationInputs?.tradeGenerationPrimaryCandidates.includes(
+      "Painting: Guest room walls / ceilings"
+    )
+  )
 })
 
 test("elevation-only wet-area package stays narrow in section generation", () => {
@@ -703,6 +744,15 @@ test("schedule-backed wet-area package reinforces the right section without manu
   assert.ok(
     plumbingSection?.normalizedEstimatorInputCandidates.some((item) =>
       /review-only candidate/i.test(item)
+    )
+  )
+  const plumbingAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "plumbing"
+  )
+  assert.equal(plumbingAssembly?.primaryCandidate, null)
+  assert.ok(
+    plumbingAssembly?.reviewCandidates.some((candidate) =>
+      /fixture trim-out/i.test(candidate.sectionTitle)
     )
   )
 })
@@ -782,6 +832,15 @@ test("scaled prototype guest room package becomes scalable section hints, not me
       /scalable prototype candidate/i.test(item)
     )
   )
+  const paintingAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "painting"
+  )
+  assert.equal(paintingAssembly?.primaryCandidate, null)
+  assert.ok(
+    paintingAssembly?.secondaryCandidates.some((candidate) =>
+      /Guest room walls \/ ceilings/i.test(candidate.sectionTitle)
+    )
+  )
 })
 
 test("section skeleton provenance remains intact through package handoff", () => {
@@ -843,6 +902,38 @@ test("wallcovering section skeletons produce distinct wallcovering estimator inp
       /measured candidate|review-only candidate/i.test(item)
     )
   )
+  const wallcoveringAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "wallcovering"
+  )
+  assert.ok(
+    wallcoveringAssembly?.primaryCandidate?.sectionTitle ===
+      "Wallcovering: Guest room feature / finish walls"
+  )
+  const result = runPlanAwarePipeline({
+    trade: "wallcovering",
+    scopeText: "Install guest room wallcovering at finish walls.",
+    planIntelligence: makePlan({
+      confidenceScore: 78,
+      detectedTrades: ["wallcovering"],
+      tradePackageSignals: ["wallcovering", "finish package"],
+      estimatorPackages: [
+        makeEstimatorPackage({
+          primaryTrade: "wallcovering",
+          scheduleSummary: "finish schedule: wallcovering type W-1",
+        }),
+      ],
+    }),
+  })
+  assert.ok(
+    result.tradePreparedPricingInputs?.tradePreparedPrimaryCandidates.includes(
+      "Wallcovering: Guest room feature / finish walls"
+    )
+  )
+  assert.ok(
+    result.tradeAssembledPricingInputs?.tradeAssembledPrimaryCandidates.includes(
+      "Wallcovering: Guest room feature / finish walls"
+    )
+  )
 })
 
 test("elevation-only wet-area sections stay narrow and review-oriented in estimator input generation", () => {
@@ -876,6 +967,166 @@ test("elevation-only wet-area sections stay narrow and review-oriented in estima
   assert.ok(
     tileSection?.estimatorInputGuardrails.some((item) =>
       /must stay non-binding|full-room/i.test(item)
+    )
+  )
+  const tileAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "tile"
+  )
+  assert.equal(tileAssembly?.primaryCandidate, null)
+  assert.ok(
+    tileAssembly?.reviewCandidates.some((candidate) =>
+      /Wet-area walls and shower surfaces/i.test(candidate.sectionTitle)
+    )
+  )
+})
+
+test("quantity-backed guest room finish inputs rank ahead of weaker review-only inputs", () => {
+  const structure = buildEstimateStructureConsumption(
+    buildEstimateSkeletonHandoff(
+      makePlan({
+        estimatorPackages: [
+          makeEstimatorPackage(),
+          makeEstimatorPackage({
+            key: "corridor-package",
+            title: "Corridor/common-area finish package",
+            primaryTrade: "painting",
+            roomGroup: "corridor",
+            supportType: "support_only",
+            scopeBreadth: "broad",
+            confidenceLabel: "limited",
+            quantitySummary: null,
+            scheduleSummary: null,
+            executionNotes: ["Corridor grouping signal only."],
+            cautionNotes: ["Corridor support is non-binding until direct quantities are stronger."],
+          }),
+        ],
+      })
+    )
+  )
+  const paintingAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "painting"
+  )
+
+  assert.equal(
+    paintingAssembly?.primaryCandidate?.sectionTitle,
+    "Painting: Guest room walls / ceilings"
+  )
+  assert.ok(
+    paintingAssembly?.reviewCandidates.some((candidate) =>
+      /Corridor \/ common-area repaint/i.test(candidate.sectionTitle)
+    )
+  )
+})
+
+test("demo/removal candidates stay separate from install assemblies", () => {
+  const structure = buildEstimateStructureConsumption(
+    buildEstimateSkeletonHandoff(
+      makePlan({
+        estimatorPackages: [
+          makeEstimatorPackage({
+            key: "demo-removal-package",
+            title: "Demo / removal package",
+            primaryTrade: "general renovation",
+            roomGroup: null,
+            supportType: "demo_only",
+            scopeBreadth: "narrow",
+            confidenceLabel: "moderate",
+            quantitySummary: "demolition_area: 420 sqft",
+            scheduleSummary: null,
+            executionNotes: ["Selective demolition stays separate from install packages."],
+            cautionNotes: ["Removal/demo support does not create install authority by itself."],
+          }),
+        ],
+      })
+    )
+  )
+  const demoAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "general renovation"
+  )
+
+  assert.equal(
+    demoAssembly?.primaryCandidate?.sectionTitle,
+    "Demo / removal: Selective demolition"
+  )
+  assert.ok(
+    demoAssembly?.assemblyNotes.some((item) =>
+      /remain separate from install/i.test(item)
+    )
+  )
+})
+
+test("page/source provenance remains intact through trade-level candidate assembly", () => {
+  const structure = buildEstimateStructureConsumption(
+    buildEstimateSkeletonHandoff(
+      makePlan({
+        estimatorPackages: [
+          makeEstimatorPackage({
+            evidence: [
+              {
+                uploadId: "upload-fallback",
+                uploadName: "plans.pdf",
+                sourcePageNumber: 9,
+                pageNumber: 3,
+                sheetNumber: "A8.2",
+                sheetTitle: "Finish Schedule",
+                excerpt: "Guest room finish schedule evidence",
+                confidence: 86,
+              },
+            ],
+          }),
+        ],
+      })
+    )
+  )
+  const paintingAssembly = structure?.structuredTradeInputAssemblies.find(
+    (assembly) => assembly.trade === "painting"
+  )
+
+  assert.equal(paintingAssembly?.primaryCandidate?.evidence[0]?.uploadId, "upload-fallback")
+  assert.equal(paintingAssembly?.primaryCandidate?.evidence[0]?.sourcePageNumber, 9)
+})
+
+test("trade assemblies keep review-only and prototype candidates non-binding downstream", () => {
+  const result = runPlanAwarePipeline({
+    trade: "painting",
+    scopeText: "Review repeated guest room repaint package.",
+    planIntelligence: makePlan({
+      confidenceScore: 72,
+      detectedTrades: ["painting"],
+      repeatedSpaceSignals: ["Guest room layout repeats by floor."],
+      estimatorPackages: [
+        makeEstimatorPackage({
+          supportType: "scaled_prototype",
+          quantitySummary: null,
+          scheduleSummary: null,
+          confidenceLabel: "moderate",
+        }),
+        makeEstimatorPackage({
+          key: "corridor-package",
+          title: "Corridor/common-area finish package",
+          primaryTrade: "painting",
+          roomGroup: "corridor",
+          supportType: "support_only",
+          scopeBreadth: "broad",
+          confidenceLabel: "limited",
+          quantitySummary: null,
+          scheduleSummary: null,
+          executionNotes: ["Corridor grouping signal only."],
+          cautionNotes: ["Corridor support is non-binding until direct quantities are stronger."],
+        }),
+      ],
+    }),
+  })
+
+  assert.equal(result.tradePreparedPricingInputs?.tradePreparedPrimaryCandidates.length, 0)
+  assert.ok(
+    result.tradePreparedPricingInputs?.tradePreparedSecondaryCandidates.includes(
+      "Painting: Guest room walls / ceilings"
+    )
+  )
+  assert.ok(
+    result.tradePreparedPricingInputs?.tradePreparedReviewCandidates.includes(
+      "Painting: Corridor / common-area repaint"
     )
   )
 })

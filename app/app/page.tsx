@@ -3669,6 +3669,122 @@ const normalizedEstimateStructureConsumption = data?.estimateStructureConsumptio
             }))
             .filter((section: { sectionTitle: string }) => section.sectionTitle)
         : [],
+      structuredTradeInputAssemblies: Array.isArray(
+        data.estimateStructureConsumption?.structuredTradeInputAssemblies
+      )
+        ? data.estimateStructureConsumption.structuredTradeInputAssemblies
+            .map((assembly: unknown) => {
+              const normalizeCandidate = (candidate: unknown) =>
+                candidate && typeof candidate === "object"
+                  ? {
+                      sectionTitle:
+                        "sectionTitle" in candidate ? String(candidate.sectionTitle ?? "").trim() : "",
+                      trade: "trade" in candidate ? String(candidate.trade ?? "").trim() : "general renovation",
+                      candidateRole:
+                        "candidateRole" in candidate
+                          ? String(candidate.candidateRole ?? "").trim()
+                          : "review_only",
+                      quantityNormalization:
+                        "quantityNormalization" in candidate
+                          ? String(candidate.quantityNormalization ?? "").trim()
+                          : "review_only",
+                      supportType:
+                        "supportType" in candidate
+                          ? String(candidate.supportType ?? "").trim()
+                          : "support_only",
+                      scopeBreadth:
+                        "scopeBreadth" in candidate
+                          ? String(candidate.scopeBreadth ?? "").trim()
+                          : "narrow",
+                      quantityAnchor:
+                        "quantityAnchor" in candidate
+                          ? candidate.quantityAnchor == null
+                            ? null
+                            : String(candidate.quantityAnchor).trim()
+                          : null,
+                      candidateSummary:
+                        "candidateSummary" in candidate
+                          ? String(candidate.candidateSummary ?? "").trim()
+                          : "",
+                      evidence:
+                        "evidence" in candidate && Array.isArray(candidate.evidence)
+                          ? candidate.evidence
+                              .map((ref: unknown) => ({
+                                uploadId:
+                                  ref && typeof ref === "object" && "uploadId" in ref
+                                    ? String(ref.uploadId ?? "").trim()
+                                    : "",
+                                uploadName:
+                                  ref && typeof ref === "object" && "uploadName" in ref
+                                    ? String(ref.uploadName ?? "").trim()
+                                    : "",
+                                sourcePageNumber:
+                                  ref && typeof ref === "object" && "sourcePageNumber" in ref
+                                    ? Number(ref.sourcePageNumber ?? 0) || 0
+                                    : 0,
+                                pageNumber:
+                                  ref && typeof ref === "object" && "pageNumber" in ref
+                                    ? Number(ref.pageNumber ?? 0) || 0
+                                    : 0,
+                                sheetNumber:
+                                  ref && typeof ref === "object" && "sheetNumber" in ref
+                                    ? ref.sheetNumber == null
+                                      ? null
+                                      : String(ref.sheetNumber).trim()
+                                    : null,
+                                sheetTitle:
+                                  ref && typeof ref === "object" && "sheetTitle" in ref
+                                    ? ref.sheetTitle == null
+                                      ? null
+                                      : String(ref.sheetTitle).trim()
+                                    : null,
+                                excerpt:
+                                  ref && typeof ref === "object" && "excerpt" in ref
+                                    ? String(ref.excerpt ?? "").trim()
+                                    : "",
+                                confidence:
+                                  ref && typeof ref === "object" && "confidence" in ref
+                                    ? Number(ref.confidence ?? 0) || 0
+                                    : 0,
+                              }))
+                              .filter((ref: { uploadId: string }) => ref.uploadId)
+                          : [],
+                    }
+                  : null
+              return {
+                trade:
+                  assembly && typeof assembly === "object" && "trade" in assembly
+                    ? String(assembly.trade ?? "").trim()
+                    : "general renovation",
+                primaryCandidate:
+                  assembly && typeof assembly === "object" && "primaryCandidate" in assembly
+                    ? normalizeCandidate(assembly.primaryCandidate)
+                    : null,
+                secondaryCandidates:
+                  assembly && typeof assembly === "object" && "secondaryCandidates" in assembly
+                    ? normalizeDefenseList(assembly.secondaryCandidates).length >= 0 &&
+                      Array.isArray(assembly.secondaryCandidates)
+                      ? assembly.secondaryCandidates
+                          .map((candidate: unknown) => normalizeCandidate(candidate))
+                          .filter(Boolean)
+                      : []
+                    : [],
+                reviewCandidates:
+                  assembly && typeof assembly === "object" && "reviewCandidates" in assembly
+                    ? Array.isArray(assembly.reviewCandidates)
+                      ? assembly.reviewCandidates
+                          .map((candidate: unknown) => normalizeCandidate(candidate))
+                          .filter(Boolean)
+                      : []
+                    : [],
+                assemblyNotes:
+                  assembly && typeof assembly === "object" && "assemblyNotes" in assembly
+                    ? normalizeDefenseList(assembly.assemblyNotes)
+                    : [],
+              }
+            })
+            .filter((assembly: { trade: string }) => assembly.trade)
+        : [],
       estimateGroupingSignals: normalizeDefenseList(
         data.estimateStructureConsumption?.estimateGroupingSignals
       ),
@@ -4523,6 +4639,128 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
                       : [],
                 }))
                 .filter((section: { sectionTitle: string }) => section.sectionTitle)
+            : [],
+          structuredTradeInputAssemblies: Array.isArray(
+            x.estimateStructureConsumption?.structuredTradeInputAssemblies
+          )
+            ? x.estimateStructureConsumption.structuredTradeInputAssemblies
+                .map((assembly: unknown) => {
+                  const normalizeCandidate = (candidate: unknown) =>
+                    candidate && typeof candidate === "object"
+                      ? {
+                          sectionTitle:
+                            "sectionTitle" in candidate
+                              ? String(candidate.sectionTitle ?? "").trim()
+                              : "",
+                          trade:
+                            "trade" in candidate
+                              ? String(candidate.trade ?? "").trim()
+                              : "general renovation",
+                          candidateRole:
+                            "candidateRole" in candidate
+                              ? String(candidate.candidateRole ?? "").trim()
+                              : "review_only",
+                          quantityNormalization:
+                            "quantityNormalization" in candidate
+                              ? String(candidate.quantityNormalization ?? "").trim()
+                              : "review_only",
+                          supportType:
+                            "supportType" in candidate
+                              ? String(candidate.supportType ?? "").trim()
+                              : "support_only",
+                          scopeBreadth:
+                            "scopeBreadth" in candidate
+                              ? String(candidate.scopeBreadth ?? "").trim()
+                              : "narrow",
+                          quantityAnchor:
+                            "quantityAnchor" in candidate
+                              ? candidate.quantityAnchor == null
+                                ? null
+                                : String(candidate.quantityAnchor).trim()
+                              : null,
+                          candidateSummary:
+                            "candidateSummary" in candidate
+                              ? String(candidate.candidateSummary ?? "").trim()
+                              : "",
+                          evidence:
+                            "evidence" in candidate && Array.isArray(candidate.evidence)
+                              ? candidate.evidence
+                                  .map((ref: unknown) => ({
+                                    uploadId:
+                                      ref && typeof ref === "object" && "uploadId" in ref
+                                        ? String(ref.uploadId ?? "").trim()
+                                        : "",
+                                    uploadName:
+                                      ref && typeof ref === "object" && "uploadName" in ref
+                                        ? String(ref.uploadName ?? "").trim()
+                                        : "",
+                                    sourcePageNumber:
+                                      ref && typeof ref === "object" && "sourcePageNumber" in ref
+                                        ? Number(ref.sourcePageNumber ?? 0) || 0
+                                        : 0,
+                                    pageNumber:
+                                      ref && typeof ref === "object" && "pageNumber" in ref
+                                        ? Number(ref.pageNumber ?? 0) || 0
+                                        : 0,
+                                    sheetNumber:
+                                      ref && typeof ref === "object" && "sheetNumber" in ref
+                                        ? ref.sheetNumber == null
+                                          ? null
+                                          : String(ref.sheetNumber).trim()
+                                        : null,
+                                    sheetTitle:
+                                      ref && typeof ref === "object" && "sheetTitle" in ref
+                                        ? ref.sheetTitle == null
+                                          ? null
+                                          : String(ref.sheetTitle).trim()
+                                        : null,
+                                    excerpt:
+                                      ref && typeof ref === "object" && "excerpt" in ref
+                                        ? String(ref.excerpt ?? "").trim()
+                                        : "",
+                                    confidence:
+                                      ref && typeof ref === "object" && "confidence" in ref
+                                        ? Number(ref.confidence ?? 0) || 0
+                                        : 0,
+                                  }))
+                                  .filter((ref: { uploadId: string }) => ref.uploadId)
+                              : [],
+                        }
+                      : null
+                  return {
+                    trade:
+                      assembly && typeof assembly === "object" && "trade" in assembly
+                        ? String(assembly.trade ?? "").trim()
+                        : "general renovation",
+                    primaryCandidate:
+                      assembly && typeof assembly === "object" && "primaryCandidate" in assembly
+                        ? normalizeCandidate(assembly.primaryCandidate)
+                        : null,
+                    secondaryCandidates:
+                      assembly &&
+                      typeof assembly === "object" &&
+                      "secondaryCandidates" in assembly &&
+                      Array.isArray(assembly.secondaryCandidates)
+                        ? assembly.secondaryCandidates
+                            .map((candidate: unknown) => normalizeCandidate(candidate))
+                            .filter(Boolean)
+                        : [],
+                    reviewCandidates:
+                      assembly &&
+                      typeof assembly === "object" &&
+                      "reviewCandidates" in assembly &&
+                      Array.isArray(assembly.reviewCandidates)
+                        ? assembly.reviewCandidates
+                            .map((candidate: unknown) => normalizeCandidate(candidate))
+                            .filter(Boolean)
+                        : [],
+                    assemblyNotes:
+                      assembly && typeof assembly === "object" && "assemblyNotes" in assembly
+                        ? normalizeDefenseLists(assembly.assemblyNotes)
+                        : [],
+                  }
+                })
+                .filter((assembly: { trade: string }) => assembly.trade)
             : [],
           estimateGroupingSignals: normalizeDefenseLists(
             x.estimateStructureConsumption?.estimateGroupingSignals
@@ -8754,6 +8992,7 @@ function EstimateStructureConsumptionCard({
   const {
     structuredEstimateBuckets,
     structuredEstimateSections,
+    structuredTradeInputAssemblies,
     estimateGroupingSignals,
     estimateReviewBuckets,
     estimateStructureNotes,
@@ -8762,6 +9001,7 @@ function EstimateStructureConsumptionCard({
   const hasAnything =
     structuredEstimateBuckets.length > 0 ||
     structuredEstimateSections.length > 0 ||
+    structuredTradeInputAssemblies.length > 0 ||
     estimateGroupingSignals.length > 0 ||
     estimateReviewBuckets.length > 0 ||
     estimateStructureNotes.length > 0
@@ -8883,6 +9123,52 @@ function EstimateStructureConsumptionCard({
                 <div style={{ fontSize: 12, marginTop: 8, color: "#7c2d12" }}>
                   <strong>Guardrails:</strong> {section.estimatorInputGuardrails.join(" ")}
                 </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {structuredTradeInputAssemblies.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Trade Assemblies
+          </div>
+          {structuredTradeInputAssemblies.map((assembly, index) => (
+            <div
+              key={`structured-trade-assembly-${index}`}
+              style={{
+                marginTop: index === 0 ? 0 : 10,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#fafafa",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>{assembly.trade}</div>
+              {assembly.primaryCandidate && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Primary:</strong> {assembly.primaryCandidate.sectionTitle}
+                </div>
+              )}
+              {assembly.secondaryCandidates.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Secondary:</strong>{" "}
+                  {assembly.secondaryCandidates.map((candidate) => candidate.sectionTitle).join(", ")}
+                </div>
+              )}
+              {assembly.reviewCandidates.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Review-only:</strong>{" "}
+                  {assembly.reviewCandidates.map((candidate) => candidate.sectionTitle).join(", ")}
+                </div>
+              )}
+              {assembly.assemblyNotes.length > 0 && (
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {assembly.assemblyNotes.map((item, noteIndex) => (
+                    <li key={`trade-assembly-note-${index}-${noteIndex}`}>{item}</li>
+                  ))}
+                </ul>
               )}
             </div>
           ))}

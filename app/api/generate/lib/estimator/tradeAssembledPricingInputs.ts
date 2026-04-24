@@ -9,6 +9,9 @@ export type TradeAssembledPricingTrade =
 export type TradeAssembledPricingInputs = {
   trade: TradeAssembledPricingTrade
   supportLevel: "strong" | "moderate" | "weak"
+  tradeAssembledPrimaryCandidates: string[]
+  tradeAssembledSecondaryCandidates: string[]
+  tradeAssembledReviewCandidates: string[]
   tradeAssembledPricingInputs: string[]
   tradeAssembledMeasurementBasis: string[]
   tradeAssembledLaborBasis: string[]
@@ -53,6 +56,18 @@ export function buildTradeAssembledPricingInputs(args: {
   return {
     trade: prepared.trade,
     supportLevel,
+    tradeAssembledPrimaryCandidates: uniqStrings(
+      prepared.tradePreparedPrimaryCandidates || [],
+      3
+    ),
+    tradeAssembledSecondaryCandidates: uniqStrings(
+      prepared.tradePreparedSecondaryCandidates || [],
+      4
+    ),
+    tradeAssembledReviewCandidates: uniqStrings(
+      prepared.tradePreparedReviewCandidates || [],
+      4
+    ),
     tradeAssembledPricingInputs: normalizeReviewState(
       prepared.tradePreparedPricingSections,
       supportLevel
@@ -93,6 +108,15 @@ export function buildTradeAssembledPricingInputs(args: {
         reviewOnly
           ? "Weak support keeps assembled pricing inputs in review mode only."
           : "Assembled pricing inputs are pricing-ready organization guidance only and do not execute pricing.",
+        (prepared.tradePreparedPrimaryCandidates || []).length > 0
+          ? `Primary assembled trade candidate: ${prepared.tradePreparedPrimaryCandidates.join(", ")}.`
+          : null,
+        (prepared.tradePreparedSecondaryCandidates || []).length > 0
+          ? `Secondary assembled candidates: ${prepared.tradePreparedSecondaryCandidates.join(", ")}.`
+          : null,
+        (prepared.tradePreparedReviewCandidates || []).length > 0
+          ? `Review-only assembled candidates: ${prepared.tradePreparedReviewCandidates.join(", ")}.`
+          : null,
         repeatedCue
           ? "Repeated-space organization can shape assembled inputs without implying automatic quantity scaling."
           : null,
