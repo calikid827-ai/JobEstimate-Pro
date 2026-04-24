@@ -74,7 +74,8 @@ const InlinePlanInputSchema = z.object({
 const MultipartPlanInputSchema = z.object({
   uploadId: z.string().trim().min(1).max(160),
   name: z.string().trim().min(1).max(160),
-  transport: z.enum(["multipart", "multipart-temp"]),
+  transport: z.enum(["multipart", "multipart-temp", "staged"]),
+  stagedUploadId: z.string().trim().min(1).max(200).optional(),
   mimeType: z
     .string()
     .trim()

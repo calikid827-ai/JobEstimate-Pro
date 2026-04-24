@@ -97,6 +97,8 @@ import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
 import {
   ALLOWED_PLAN_MIME_TYPES,
+  estimateSelectedPdfBytes,
+  getPlanUploadPreflightIssue,
   MAX_JOB_PLANS,
   MAX_PLAN_FILE_BYTES,
   MAX_PLAN_SOURCE_PAGES,
@@ -135,10 +137,13 @@ type JobPlan = {
   id: string
   name: string
   file: File
+  stagedUploadId: string
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
   bytes: number
+  originalBytes: number
+  sourcePageCount: number
   pages: Array<{
     sourcePageNumber: number
     label: string
@@ -242,6 +247,35 @@ function estimatePlanFileBytes(
   plans: { bytes: number }[]
 ): number {
   return plans.reduce((sum, p) => sum + (Number(p.bytes) || 0), 0)
+}
+
+function countSelectedPlanPages(plan: JobPlan): number {
+  return plan.pages.filter((page) => page.selected).length
+}
+
+function estimatePlanTransportBytes(plan: JobPlan): number {
+  if (plan.sourceKind !== "pdf") return plan.bytes
+
+  const selectedPages = countSelectedPlanPages(plan)
+  if (!selectedPages) return 0
+
+  if (selectedPages >= plan.sourcePageCount) return plan.bytes
+
+  return estimateSelectedPdfBytes({
+    originalBytes: plan.bytes,
+    selectedPages,
+    totalPages: plan.sourcePageCount,
+  })
+}
+
+function getPlanPreflightIssue(plan: JobPlan): string | null {
+  return getPlanUploadPreflightIssue({
+    name: plan.name,
+    sourceKind: plan.sourceKind,
+    originalBytes: plan.bytes,
+    totalPages: plan.sourcePageCount,
+    selectedPages: countSelectedPlanPages(plan),
+  })
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -449,27 +483,73 @@ async function handlePlanUpload(files: FileList | null) {
   }
 
   try {
-    const uploaded: JobPlan[] = await Promise.all(
+    const localPlans = await Promise.all(
       picked.map(async (file) => {
         const sourcePageCount = await getPlanSourcePageCount(file)
+        const sourceKind: "image" | "pdf" =
+          file.type === "application/pdf" ? "pdf" : "image"
 
         return {
-          id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+          localId: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
           name: file.name,
           file,
-          note: "",
           mimeType: file.type,
-          sourceKind: file.type === "application/pdf" ? "pdf" : "image",
+          sourceKind,
           bytes: file.size,
+          sourcePageCount,
+        }
+      })
+    )
+
+    const stageForm = new FormData()
+    for (const plan of localPlans) {
+      stageForm.append("planFiles", plan.file, plan.name)
+    }
+
+    setStatus(`Uploading ${localPlans.length} plan file${localPlans.length === 1 ? "" : "s"} for reliable staging...`)
+
+    const stageRes = await fetch("/api/plan-upload", {
+      method: "POST",
+      body: stageForm,
+    })
+
+    const stagePayload = await stageRes.json().catch(() => null)
+    if (!stageRes.ok || !stagePayload?.ok || !Array.isArray(stagePayload?.staged)) {
+      setStatus(
+        typeof stagePayload?.message === "string" && stagePayload.message.trim()
+          ? stagePayload.message.trim()
+          : "Could not stage selected plan file(s)."
+      )
+      return
+    }
+
+    const uploaded: JobPlan[] = localPlans
+      .map((localPlan, index) => {
+        const staged = stagePayload.staged[index]
+        if (!staged?.stagedUploadId) return null
+
+        return {
+          id: localPlan.localId,
+          name: localPlan.name,
+          file: localPlan.file,
+          stagedUploadId: staged.stagedUploadId,
+          note: "",
+          mimeType: localPlan.mimeType,
+          sourceKind: localPlan.sourceKind,
+          bytes: Number(staged.bytes || localPlan.bytes),
+          originalBytes: Number(staged.bytes || localPlan.bytes),
+          sourcePageCount:
+            Number(staged.sourcePageCount || localPlan.sourcePageCount) || localPlan.sourcePageCount,
           pages: buildJobPlanPages({
-            sourceKind: file.type === "application/pdf" ? "pdf" : "image",
-            totalPages: sourcePageCount,
-            name: file.name,
+            sourceKind: localPlan.sourceKind,
+            totalPages:
+              Number(staged.sourcePageCount || localPlan.sourcePageCount) || localPlan.sourcePageCount,
+            name: localPlan.name,
             note: "",
           }),
         }
       })
-    )
+      .filter((plan): plan is JobPlan => !!plan)
 
     const mergedBase: JobPlan[] = [...jobPlans]
     const merged: JobPlan[] = [...mergedBase]
@@ -478,16 +558,16 @@ async function handlePlanUpload(files: FileList | null) {
 
     for (const plan of uploaded) {
       const next = [...merged, plan]
-      const totalSize = estimatePlanFileBytes(next)
+      const totalSize = next.reduce((sum, item) => sum + estimatePlanTransportBytes(item), 0)
       const totalPages = next.reduce((sum, item) => sum + item.pages.length, 0)
 
       if (
-        plan.bytes <= MAX_PLAN_FILE_BYTES &&
+        !getPlanPreflightIssue(plan) &&
         totalSize <= MAX_TOTAL_PLAN_FILE_BYTES &&
         totalPages <= MAX_PLAN_SOURCE_PAGES
       ) {
         merged.push(plan)
-      } else if (plan.bytes > MAX_PLAN_FILE_BYTES || totalSize > MAX_TOTAL_PLAN_FILE_BYTES) {
+      } else if (getPlanPreflightIssue(plan) || totalSize > MAX_TOTAL_PLAN_FILE_BYTES) {
         skippedForSize += 1
       } else {
         skippedForPageCount += 1
@@ -509,7 +589,7 @@ async function handlePlanUpload(files: FileList | null) {
       notices.push(`${skippedForLimit} file${skippedForLimit === 1 ? "" : "s"} skipped because the ${MAX_JOB_PLANS}-plan limit was reached.`)
     }
     if (skippedForSize > 0) {
-      notices.push("Some plan files were skipped because the file size or total plan upload size is too large for reliable transport.")
+      notices.push("Some plan files were skipped because the selected upload size is still too large. Reduce selected pages further or split the PDF.")
     }
     if (skippedForPageCount > 0) {
       notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
@@ -2511,6 +2591,29 @@ if (jobPhotos.length > 0 && (!photosToSend || photosToSend.length < jobPhotos.le
   setStatus("Some photos were skipped automatically to keep upload size within limits.")
 }
 
+const planPreflightIssues = jobPlans
+  .map((plan) => getPlanPreflightIssue(plan))
+  .filter((issue): issue is string => !!issue)
+
+const estimatedSelectedPlanBytes = jobPlans.reduce(
+  (sum, plan) => sum + estimatePlanTransportBytes(plan),
+  0
+)
+
+if (planPreflightIssues.length > 0) {
+  setStatus(planPreflightIssues[0])
+  return
+}
+
+if (estimatedSelectedPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
+  setStatus(
+    `Selected plan transport is still above the ${Math.floor(
+      MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
+    )} MB limit. Reduce selected pages further or split the PDF into smaller packages.`
+  )
+  return
+}
+
 console.log("photo count:", jobPhotos.length)
 console.log(
   "selected photo count:",
@@ -2541,11 +2644,13 @@ const requestPayload = {
     jobPlans.length > 0
       ? jobPlans.map((plan) => ({
           uploadId: plan.id,
+          stagedUploadId: plan.stagedUploadId,
           name: plan.name,
           note: plan.note,
           mimeType: plan.mimeType,
-          bytes: plan.bytes,
-          transport: "multipart" as const,
+          bytes: estimatePlanTransportBytes(plan),
+          originalBytes: plan.originalBytes,
+          transport: "staged" as const,
           selectedSourcePages: plan.pages
             .filter((page) => page.selected)
             .map((page) => page.sourcePageNumber),
@@ -2556,21 +2661,15 @@ const requestPayload = {
 let res: Response
 
 if (jobPlans.length > 0) {
-  setStatus(`Uploading ${jobPlans.length} selected plan file${jobPlans.length === 1 ? "" : "s"} through reliable file transport...`)
-
-  const form = new FormData()
-  form.set("payload", JSON.stringify(requestPayload))
-
-  for (const plan of jobPlans) {
-    form.append(`planFile:${plan.id}`, plan.file, plan.name)
-  }
+  setStatus(`Preparing ${jobPlans.length} staged plan file${jobPlans.length === 1 ? "" : "s"} with selected-page transport...`)
 
   res = await fetch("/api/generate", {
     method: "POST",
     headers: {
+      "Content-Type": "application/json",
       "x-idempotency-key": requestId,
     },
-    body: form,
+    body: JSON.stringify(requestPayload),
   })
 } else {
   res = await fetch("/api/generate", {

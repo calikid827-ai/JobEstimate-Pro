@@ -243,6 +243,115 @@ test("multipart-temp pdf transport preserves selectedSourcePages and downstream 
   }
 })
 
+test("selected-page derived pdf preserves original source page numbering through split and index", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-transport-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "selected-pages.pdf")
+    await writeFile(
+      pdfPath,
+      await makeRenderedPdfBuffer([
+        "A8.2 Finish Schedule guest room finish matrix",
+        "P2.0 Fixture Schedule 4 toilets 4 lavatories",
+      ])
+    )
+
+    const uploads = sanitizePlanUploads([
+      {
+        uploadId: "derived_plan_1",
+        name: "selected-pages.pdf",
+        note: "Derived selected pages",
+        transport: "multipart-temp",
+        mimeType: "application/pdf",
+        tempFilePath: pdfPath,
+        bytes: 4_000_000,
+        originalBytes: 18_000_000,
+        sourcePageNumberMap: [2, 4],
+        selectedSourcePages: [2, 4],
+      },
+    ])
+
+    const pages = await splitPlanUploadsToPages(uploads)
+    assert.equal(pages.length, 2)
+    assert.deepEqual(
+      pages.map((page) => page.sourcePageNumber),
+      [2, 4]
+    )
+    assert(pages.every((page) => page.selectedForAnalysis))
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test("mixed derived-pdf and image uploads preserve source attribution and page ordering", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-mixed-plan-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "selected-pages.pdf")
+    await writeFile(
+      pdfPath,
+      await makeRenderedPdfBuffer([
+        "A8.1 Finish Plan guest room paint",
+        "A9.1 Interior Elevations bath tile vanity",
+      ])
+    )
+
+    const uploads = sanitizePlanUploads([
+      {
+        uploadId: "derived_pdf_upload",
+        name: "selected-pages.pdf",
+        note: "Derived pages",
+        transport: "multipart-temp",
+        mimeType: "application/pdf",
+        tempFilePath: pdfPath,
+        bytes: 3_000_000,
+        originalBytes: 16_000_000,
+        sourcePageNumberMap: [3, 7],
+        selectedSourcePages: [3, 7],
+      },
+      {
+        uploadId: "image_upload",
+        name: "fixture-plan.png",
+        dataUrl: makeImageDataUrl(),
+        note: "Fixture plan image",
+        selectedSourcePages: [1],
+      },
+    ])
+
+    const pages = await splitPlanUploadsToPages(uploads)
+    assert.deepEqual(
+      pages.map((page) => ({
+        uploadId: page.uploadId,
+        pageNumber: page.pageNumber,
+        sourcePageNumber: page.sourcePageNumber,
+        sourceKind: page.sourceKind,
+      })),
+      [
+        {
+          uploadId: "derived_pdf_upload",
+          pageNumber: 1,
+          sourcePageNumber: 3,
+          sourceKind: "pdf",
+        },
+        {
+          uploadId: "derived_pdf_upload",
+          pageNumber: 2,
+          sourcePageNumber: 7,
+          sourceKind: "pdf",
+        },
+        {
+          uploadId: "image_upload",
+          pageNumber: 3,
+          sourcePageNumber: 1,
+          sourceKind: "image",
+        },
+      ]
+    )
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
 test("incomplete multipart-temp upload stays safely invalid instead of entering plan analysis", () => {
   const uploads = sanitizePlanUploads([
     {

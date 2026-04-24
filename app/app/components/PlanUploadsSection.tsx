@@ -4,10 +4,13 @@ type JobPlan = {
   id: string
   name: string
   file: File
+  stagedUploadId: string
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
   bytes: number
+  originalBytes: number
+  sourcePageCount: number
   pages: Array<{
     sourcePageNumber: number
     label: string
@@ -115,6 +118,16 @@ export default function PlanUploadsSection({
                       ? `${plan.pages.filter((page) => page.selected).length} of ${plan.pages.length} indexed PDF page(s) selected for analysis.`
                       : "Single image plan selected for analysis."}
                   </div>
+                  {plan.sourceKind === "pdf" && (
+                    <>
+                      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                        Original PDF: {(plan.originalBytes / (1024 * 1024)).toFixed(1)} MB
+                      </div>
+                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                        Selected export basis: {plan.pages.filter((page) => page.selected).length} of {plan.sourcePageCount} source pages
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <button
@@ -219,7 +232,7 @@ export default function PlanUploadsSection({
                   </div>
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                    Analysis only uses the selected pages from this plan set. Selected PDF pages are rendered for deeper sheet reading before pricing.
+                    Analysis only uses the selected pages from this plan set. When possible, Generate now exports and sends only the selected PDF pages before deeper sheet reading and pricing.
                   </div>
 
                   <div

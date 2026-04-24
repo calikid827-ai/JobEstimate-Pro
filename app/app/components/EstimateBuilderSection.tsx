@@ -33,10 +33,13 @@ type JobPlan = {
   id: string
   name: string
   file: File
+  stagedUploadId: string
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
   bytes: number
+  originalBytes: number
+  sourcePageCount: number
   pages: Array<{
     sourcePageNumber: number
     label: string

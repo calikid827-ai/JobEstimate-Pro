@@ -20,6 +20,11 @@ export async function splitPlanUploadsToPages(
 
       for (const page of pdfPages) {
         if (indexedPages >= MAX_PLAN_SOURCE_PAGES) break
+        const mappedSourcePageNumber =
+          Array.isArray(upload.sourcePageNumberMap) &&
+          upload.sourcePageNumberMap[page.sourcePageNumber - 1]
+            ? upload.sourcePageNumberMap[page.sourcePageNumber - 1]
+            : page.sourcePageNumber
 
         pages.push({
           uploadId: upload.uploadId,
@@ -27,14 +32,14 @@ export async function splitPlanUploadsToPages(
           uploadNote: upload.note,
           sourceMimeType: upload.mimeType,
           sourceKind: "pdf",
-          sourcePageNumber: page.sourcePageNumber,
+          sourcePageNumber: mappedSourcePageNumber,
           pageNumber: nextPageNumber,
           imageDataUrl: page.imageDataUrl,
           width: page.width,
           height: page.height,
           selectedForAnalysis:
             selectedSourcePages === null ||
-            selectedSourcePages.has(page.sourcePageNumber),
+            selectedSourcePages.has(mappedSourcePageNumber),
           renderedFromPdf: page.renderedFromPdf,
           renderedImageAvailable: page.renderedImageAvailable,
           extractedText: page.extractedText,

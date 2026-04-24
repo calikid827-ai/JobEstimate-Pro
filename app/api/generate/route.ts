@@ -61,7 +61,12 @@ import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
 } from "./lib/estimator/orchestrator"
+import { deriveSelectedPdfUpload } from "./lib/plans/pdfSelect"
 import { runPlanIntelligence } from "./lib/plans/orchestrator"
+import {
+  cleanupStagedPlanUpload,
+  readStagedPlanUpload,
+} from "./lib/plans/staging"
 import type { PlanIntelligence } from "./lib/plans/types"
 
 export const dynamic = "force-dynamic"
@@ -116,6 +121,7 @@ const ENFORCE_PHOTO_ESTIMATE_DECISION = false
 type RequestBodyParseResult = {
   raw: any
   tempUploadRoots: string[]
+  stagedUploadIdsToCleanup: string[]
 }
 
 function sanitizeMultipartPlanFileName(name: string): string {
@@ -176,75 +182,291 @@ async function writeUploadedPlanFileToTemp(
 
 async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyParseResult> {
   const contentType = req.headers.get("content-type") || ""
+  let raw: any
 
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
-    const raw = await readJsonWithLimit<any>(req, 25_000_000)
-    return { raw, tempUploadRoots: [] }
-  }
+    raw = await readJsonWithLimit<any>(req, 25_000_000)
+  } else {
+    const form = await req.formData()
+    const payloadText = form.get("payload")
+    if (typeof payloadText !== "string" || !payloadText.trim()) {
+      throw Object.assign(new Error("BAD_MULTIPART_PAYLOAD"), {
+        status: 400,
+        code: "BAD_MULTIPART_PAYLOAD",
+        message: "Missing upload payload metadata.",
+      })
+    }
 
-  const form = await req.formData()
-  const payloadText = form.get("payload")
-  if (typeof payloadText !== "string" || !payloadText.trim()) {
-    throw Object.assign(new Error("BAD_MULTIPART_PAYLOAD"), {
-      status: 400,
-      code: "BAD_MULTIPART_PAYLOAD",
-      message: "Missing upload payload metadata.",
-    })
-  }
+    try {
+      raw = JSON.parse(payloadText)
+    } catch {
+      throw Object.assign(new Error("BAD_JSON"), {
+        status: 400,
+        code: "BAD_JSON",
+        message: "Invalid multipart payload JSON.",
+      })
+    }
 
-  let raw: any
-  try {
-    raw = JSON.parse(payloadText)
-  } catch {
-    throw Object.assign(new Error("BAD_JSON"), {
-      status: 400,
-      code: "BAD_JSON",
-      message: "Invalid multipart payload JSON.",
-    })
-  }
+    const tempUploadRoots: string[] = []
+    const stagedUploadIdsToCleanup: string[] = []
+    let totalPlanBytes = 0
+    const plans = Array.isArray(raw?.plans) ? raw.plans : []
 
+    raw.plans = await Promise.all(
+      plans.map(async (plan: any, index: number) => {
+        if (plan?.transport !== "multipart") return plan
+
+        const uploadId =
+          typeof plan?.uploadId === "string" && plan.uploadId.trim()
+            ? plan.uploadId.trim()
+            : `plan_upload_${index + 1}`
+        const fileEntry = form.get(`planFile:${uploadId}`)
+
+        if (!(fileEntry instanceof File)) {
+          throw Object.assign(new Error("INCOMPLETE_PLAN_UPLOAD"), {
+            status: 400,
+            code: "INCOMPLETE_PLAN_UPLOAD",
+            message: `Plan upload for "${plan?.name || "plan"}" is incomplete. Please retry the upload.`,
+          })
+        }
+
+        const mimeType = String(plan?.mimeType || fileEntry.type || "").trim().toLowerCase()
+        if (!ALLOWED_PLAN_MIME_TYPES.has(mimeType)) {
+          throw Object.assign(new Error("INVALID_PLAN_MIME"), {
+            status: 400,
+            code: "INVALID_PLAN_MIME",
+            message: `Unsupported plan file type for "${plan?.name || "plan"}".`,
+          })
+        }
+
+        const { tempRoot, tempFilePath, bytes } = await writeUploadedPlanFileToTemp(fileEntry)
+        tempUploadRoots.push(tempRoot)
+        totalPlanBytes += bytes
+
+        if (totalPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
+          throw Object.assign(new Error("PLAN_UPLOAD_TOO_LARGE"), {
+            status: 413,
+            code: "PLAN_UPLOAD_TOO_LARGE",
+            message: `Combined plan upload size exceeds ${Math.floor(
+              MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
+            )} MB.`,
+          })
+        }
+
+        return {
+          ...plan,
+          transport: "multipart-temp",
+          tempFilePath,
+          bytes,
+          mimeType,
+        }
+      })
+    )
+
+    const normalizedPlans = Array.isArray(raw?.plans) ? raw.plans : []
+    raw.plans = await Promise.all(
+      normalizedPlans.map(async (plan: any, index: number) => {
+        if (plan?.transport !== "staged") return plan
+
+        const stagedUploadId =
+          typeof plan?.stagedUploadId === "string" && plan.stagedUploadId.trim()
+            ? plan.stagedUploadId.trim()
+            : ""
+
+        if (!stagedUploadId) {
+          throw Object.assign(new Error("MISSING_STAGED_UPLOAD"), {
+            status: 400,
+            code: "MISSING_STAGED_UPLOAD",
+            message: `A selected plan upload is missing its staged file reference. Please re-upload the plan set.`,
+          })
+        }
+
+        const staged = await readStagedPlanUpload(stagedUploadId)
+        if (!staged) {
+          throw Object.assign(new Error("STALED_PLAN_UPLOAD"), {
+            status: 400,
+            code: "STALED_PLAN_UPLOAD",
+            message: `A staged plan upload is no longer available. Please re-upload the plan set and try again.`,
+          })
+        }
+
+        stagedUploadIdsToCleanup.push(stagedUploadId)
+
+        const selectedSourcePages: number[] = Array.isArray(plan?.selectedSourcePages)
+          ? Array.from(
+              new Set(
+                plan.selectedSourcePages
+                  .map((value: unknown) => Number(value))
+                  .filter((value: number): value is number => Number.isInteger(value) && value > 0)
+              )
+            )
+          : []
+
+        if (!selectedSourcePages.length) {
+          throw Object.assign(new Error("NO_SELECTED_PLAN_PAGES"), {
+            status: 400,
+            code: "NO_SELECTED_PLAN_PAGES",
+            message: `No pages are selected for "${plan?.name || staged.name}". Select at least one page or remove the plan.`,
+          })
+        }
+
+        let tempFilePath = staged.filePath
+        let bytes = staged.bytes
+        let sourcePageNumberMap: number[] | null = null
+
+        if (
+          staged.mimeType === "application/pdf" &&
+          typeof staged.sourcePageCount === "number" &&
+          selectedSourcePages.length < staged.sourcePageCount
+        ) {
+          const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
+          tempUploadRoots.push(derivedRoot)
+          const outputPdfPath = path.join(derivedRoot, "selected-pages.pdf")
+          const derived = await deriveSelectedPdfUpload({
+            upload: {
+              uploadId:
+                typeof plan?.uploadId === "string" && plan.uploadId.trim()
+                  ? plan.uploadId.trim()
+                  : `plan_upload_${index + 1}`,
+              name: typeof plan?.name === "string" ? plan.name : staged.name,
+              note: typeof plan?.note === "string" ? plan.note : "",
+              mimeType: staged.mimeType,
+              transport: "multipart-temp",
+              tempFilePath: staged.filePath,
+              bytes: staged.bytes,
+              selectedSourcePages,
+            },
+            outputPdfPath,
+          })
+
+          if (derived) {
+            tempFilePath = derived.outputPdfPath
+            bytes = derived.outputBytes
+            sourcePageNumberMap = derived.sourcePageNumberMap
+          }
+        }
+
+        totalPlanBytes += bytes
+        if (totalPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
+          throw Object.assign(new Error("PLAN_UPLOAD_TOO_LARGE"), {
+            status: 413,
+            code: "PLAN_UPLOAD_TOO_LARGE",
+            message: `Combined selected plan upload size exceeds ${Math.floor(
+              MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
+            )} MB. Reduce selected pages further or split the plan set into smaller packages.`,
+          })
+        }
+
+        return {
+          ...plan,
+          transport: "multipart-temp",
+          tempFilePath,
+          sourcePageNumberMap,
+          originalBytes: staged.bytes,
+          bytes,
+          mimeType: staged.mimeType,
+          name: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,
+        }
+      })
+    )
+
+    return { raw, tempUploadRoots, stagedUploadIdsToCleanup }
+  }
+  const normalizedPlans = Array.isArray(raw?.plans) ? raw.plans : []
   const tempUploadRoots: string[] = []
+  const stagedUploadIdsToCleanup: string[] = []
   let totalPlanBytes = 0
-  const plans = Array.isArray(raw?.plans) ? raw.plans : []
 
   raw.plans = await Promise.all(
-    plans.map(async (plan: any, index: number) => {
-      if (plan?.transport !== "multipart") return plan
+    normalizedPlans.map(async (plan: any, index: number) => {
+      if (plan?.transport !== "staged") return plan
 
-      const uploadId =
-        typeof plan?.uploadId === "string" && plan.uploadId.trim()
-          ? plan.uploadId.trim()
-          : `plan_upload_${index + 1}`
-      const fileEntry = form.get(`planFile:${uploadId}`)
+      const stagedUploadId =
+        typeof plan?.stagedUploadId === "string" && plan.stagedUploadId.trim()
+          ? plan.stagedUploadId.trim()
+          : ""
 
-      if (!(fileEntry instanceof File)) {
-        throw Object.assign(new Error("INCOMPLETE_PLAN_UPLOAD"), {
+      if (!stagedUploadId) {
+        throw Object.assign(new Error("MISSING_STAGED_UPLOAD"), {
           status: 400,
-          code: "INCOMPLETE_PLAN_UPLOAD",
-          message: `Plan upload for "${plan?.name || "plan"}" is incomplete. Please retry the upload.`,
+          code: "MISSING_STAGED_UPLOAD",
+          message: `A selected plan upload is missing its staged file reference. Please re-upload the plan set.`,
         })
       }
 
-      const mimeType = String(plan?.mimeType || fileEntry.type || "").trim().toLowerCase()
-      if (!ALLOWED_PLAN_MIME_TYPES.has(mimeType)) {
-        throw Object.assign(new Error("INVALID_PLAN_MIME"), {
+      const staged = await readStagedPlanUpload(stagedUploadId)
+      if (!staged) {
+        throw Object.assign(new Error("STALED_PLAN_UPLOAD"), {
           status: 400,
-          code: "INVALID_PLAN_MIME",
-          message: `Unsupported plan file type for "${plan?.name || "plan"}".`,
+          code: "STALED_PLAN_UPLOAD",
+          message: `A staged plan upload is no longer available. Please re-upload the plan set and try again.`,
         })
       }
 
-      const { tempRoot, tempFilePath, bytes } = await writeUploadedPlanFileToTemp(fileEntry)
-      tempUploadRoots.push(tempRoot)
+      stagedUploadIdsToCleanup.push(stagedUploadId)
+
+      const selectedSourcePages: number[] = Array.isArray(plan?.selectedSourcePages)
+        ? Array.from(
+            new Set(
+              plan.selectedSourcePages
+                .map((value: unknown) => Number(value))
+                .filter((value: number): value is number => Number.isInteger(value) && value > 0)
+            )
+          )
+        : []
+
+      if (!selectedSourcePages.length) {
+        throw Object.assign(new Error("NO_SELECTED_PLAN_PAGES"), {
+          status: 400,
+          code: "NO_SELECTED_PLAN_PAGES",
+          message: `No pages are selected for "${plan?.name || staged.name}". Select at least one page or remove the plan.`,
+        })
+      }
+
+      let tempFilePath = staged.filePath
+      let bytes = staged.bytes
+      let sourcePageNumberMap: number[] | null = null
+
+      if (
+        staged.mimeType === "application/pdf" &&
+        typeof staged.sourcePageCount === "number" &&
+        selectedSourcePages.length < staged.sourcePageCount
+      ) {
+        const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
+        tempUploadRoots.push(derivedRoot)
+        const outputPdfPath = path.join(derivedRoot, "selected-pages.pdf")
+        const derived = await deriveSelectedPdfUpload({
+          upload: {
+            uploadId:
+              typeof plan?.uploadId === "string" && plan.uploadId.trim()
+                ? plan.uploadId.trim()
+                : `plan_upload_${index + 1}`,
+            name: typeof plan?.name === "string" ? plan.name : staged.name,
+            note: typeof plan?.note === "string" ? plan.note : "",
+            mimeType: staged.mimeType,
+            transport: "multipart-temp",
+            tempFilePath: staged.filePath,
+            bytes: staged.bytes,
+            selectedSourcePages,
+          },
+          outputPdfPath,
+        })
+
+        if (derived) {
+          tempFilePath = derived.outputPdfPath
+          bytes = derived.outputBytes
+          sourcePageNumberMap = derived.sourcePageNumberMap
+        }
+      }
+
       totalPlanBytes += bytes
-
       if (totalPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
         throw Object.assign(new Error("PLAN_UPLOAD_TOO_LARGE"), {
           status: 413,
           code: "PLAN_UPLOAD_TOO_LARGE",
-          message: `Combined plan upload size exceeds ${Math.floor(
+          message: `Combined selected plan upload size exceeds ${Math.floor(
             MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
-          )} MB.`,
+          )} MB. Reduce selected pages further or split the plan set into smaller packages.`,
         })
       }
 
@@ -252,13 +474,16 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
         ...plan,
         transport: "multipart-temp",
         tempFilePath,
+        sourcePageNumberMap,
+        originalBytes: staged.bytes,
         bytes,
-        mimeType,
+        mimeType: staged.mimeType,
+        name: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,
       }
     })
   )
 
-  return { raw, tempUploadRoots }
+  return { raw, tempUploadRoots, stagedUploadIdsToCleanup }
 }
 
 // -----------------------------
@@ -7002,6 +7227,7 @@ return {
 // -----------------------------
 export async function POST(req: NextRequest) {
   const tempUploadRoots: string[] = []
+  const stagedUploadIdsToCleanup: string[] = []
 
   try {
     
@@ -7015,6 +7241,7 @@ try {
   const parsedBody = await readGenerateRequestBody(req)
   raw = parsedBody.raw
   tempUploadRoots.push(...parsedBody.tempUploadRoots)
+  stagedUploadIdsToCleanup.push(...parsedBody.stagedUploadIdsToCleanup)
 } catch (e: any) {
   if (e?.status === 413) {
     return jsonError(413, e?.code || "BODY_TOO_LARGE", e?.message || "Request too large.")
@@ -8587,6 +8814,11 @@ return await respondAndCache({
     await Promise.all(
       tempUploadRoots.map((root) =>
         rm(root, { recursive: true, force: true }).catch(() => {})
+      )
+    )
+    await Promise.all(
+      stagedUploadIdsToCleanup.map((stagedUploadId) =>
+        cleanupStagedPlanUpload(stagedUploadId).catch(() => {})
       )
     )
   }

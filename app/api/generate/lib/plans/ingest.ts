@@ -18,6 +18,15 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
         typeof record?.tempFilePath === "string" && record.tempFilePath.trim()
           ? record.tempFilePath.trim()
           : null
+      const stagedUploadId =
+        typeof record?.stagedUploadId === "string" && record.stagedUploadId.trim()
+          ? record.stagedUploadId.trim()
+          : null
+      const sourcePageNumberMap = Array.isArray(record?.sourcePageNumberMap)
+        ? record.sourcePageNumberMap
+            .map((value: unknown) => Number(value))
+            .filter((value: number) => Number.isInteger(value) && value > 0)
+        : null
       const mimeTypeRaw =
         typeof record?.mimeType === "string"
           ? record.mimeType.trim().toLowerCase()
@@ -42,9 +51,17 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
         name: typeof record?.name === "string" ? record.name.slice(0, 160) : "plan",
         note: typeof record?.note === "string" ? record.note.trim().slice(0, 240) : "",
         mimeType,
+        stagedUploadId,
         transport,
         dataUrl,
         tempFilePath,
+        sourcePageNumberMap,
+        originalBytes:
+          typeof record?.originalBytes === "number" &&
+          Number.isFinite(record.originalBytes) &&
+          record.originalBytes > 0
+            ? Math.floor(record.originalBytes)
+            : null,
         bytes:
           typeof record?.bytes === "number" && Number.isFinite(record.bytes) && record.bytes > 0
             ? Math.floor(record.bytes)
