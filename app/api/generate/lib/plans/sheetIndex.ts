@@ -25,6 +25,8 @@ export async function buildSheetIndex(
       confidence: inferred.confidence,
       revision: inferred.revision,
       selectedForAnalysis: page.selectedForAnalysis,
+      renderedFromPdf: page.renderedFromPdf,
+      renderedImageAvailable: page.renderedImageAvailable,
     }
   })
 }

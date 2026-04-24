@@ -17,6 +17,18 @@ function collapseText(value: string): string {
     .trim()
 }
 
+function summarizePageText(text: string | null | undefined): string {
+  if (!text) return ""
+
+  return collapseText(
+    text
+      .split("\n")
+      .slice(0, 8)
+      .join(" ")
+      .slice(0, 600)
+  )
+}
+
 function normalizeSheetNumber(raw: string): string {
   return raw
     .trim()
@@ -58,6 +70,22 @@ function inferDiscipline(args: {
   const prefix = args.sheetNumber?.match(/^[A-Z]+/)?.[0] ?? ""
   const text = `${args.title || ""} ${args.uploadName} ${args.uploadNote}`.toLowerCase()
 
+  if (/\bplumbing fixture schedule\b|\bplumbing fixtures?\b|\btoilet\b|\blav(?:atory)?\b|\bsanitary\b|\bdomestic water\b/.test(text)) {
+    return "plumbing"
+  }
+  if (/\belectrical fixture schedule\b|\bpower plan\b|\blighting plan\b|\bpanel\b|\bcircuit\b/.test(text)) {
+    return "electrical"
+  }
+  if (/\belectrical|power|lighting|panel|circuit\b/.test(text)) return "electrical"
+  if (/\bplumbing|sanitary|waste|water\b/.test(text)) return "plumbing"
+  if (/\bhvac|mechanical|duct|air handling\b/.test(text)) return "mechanical"
+  if (/\binterior elevations?\b|\bwall elevations?\b|\bmillwork\b|\bcasework\b|\bfinish schedule\b|\bfinish plan\b/.test(text)) {
+    return /\bfinish schedule\b|\bfinish plan\b|\breflected ceiling\b/.test(text)
+      ? "finish"
+      : "interior"
+  }
+  if (/\bstructural|framing|foundation|beam|column\b/.test(text)) return "structural"
+
   if (prefix.startsWith("A")) return "architectural"
   if (prefix.startsWith("E")) return "electrical"
   if (prefix.startsWith("P")) return "plumbing"
@@ -67,10 +95,6 @@ function inferDiscipline(args: {
   if (prefix.startsWith("F")) return "finish"
   if (prefix.startsWith("G")) return "general"
 
-  if (/\belectrical|power|lighting|panel|circuit\b/.test(text)) return "electrical"
-  if (/\bplumbing|sanitary|waste|water\b/.test(text)) return "plumbing"
-  if (/\bhvac|mechanical|duct|air handling\b/.test(text)) return "mechanical"
-  if (/\bstructural|framing|foundation|beam|column\b/.test(text)) return "structural"
   if (/\binterior|elevation|millwork|casework|finish plan\b/.test(text)) return "interior"
   if (/\bfinish|paint|floor finish|reflected ceiling\b/.test(text)) return "finish"
   if (/\barchitectural|floor plan|site plan|roof plan|demo plan\b/.test(text)) {
@@ -83,10 +107,11 @@ function inferDiscipline(args: {
 
 function inferSheetTitle(args: {
   baseName: string
+  pageText: string
   sheetNumber: string | null
   revision: string | null
 }): string | null {
-  let working = args.baseName
+  let working = args.pageText || args.baseName
 
   if (args.sheetNumber) {
     const compactSheetNumber = args.sheetNumber.replace(/-/g, "")
@@ -118,19 +143,21 @@ export function buildSheetIndexEntryFromPage(
   page: PlanPageImage
 ): SheetHeuristicResult {
   const baseName = collapseText(stripExtension(page.uploadName))
-  const parseText = collapseText(`${baseName} ${page.uploadNote || ""}`)
+  const pageText = summarizePageText(page.extractedText)
+  const parseText = collapseText(`${baseName} ${page.uploadNote || ""} ${pageText}`)
 
   const sheetNumber = extractSheetNumber(parseText)
   const revision = extractRevision(parseText)
   const sheetTitle = inferSheetTitle({
     baseName,
+    pageText,
     sheetNumber,
     revision,
   })
   const discipline = inferDiscipline({
     sheetNumber,
     title: sheetTitle,
-    uploadName: page.uploadName,
+    uploadName: `${page.uploadName} ${pageText}`,
     uploadNote: page.uploadNote,
   })
 

@@ -34,6 +34,9 @@ export async function splitPlanUploadsToPages(
           selectedForAnalysis:
             selectedSourcePages === null ||
             selectedSourcePages.has(page.sourcePageNumber),
+          renderedFromPdf: page.renderedFromPdf,
+          renderedImageAvailable: page.renderedImageAvailable,
+          extractedText: page.extractedText,
         })
         nextPageNumber += 1
         indexedPages += 1
@@ -60,6 +63,9 @@ export async function splitPlanUploadsToPages(
       height: null,
       selectedForAnalysis:
         selectedSourcePages === null || selectedSourcePages.has(1),
+      renderedFromPdf: false,
+      renderedImageAvailable: true,
+      extractedText: null,
     })
     nextPageNumber += 1
     indexedPages += 1

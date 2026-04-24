@@ -17,7 +17,7 @@ type AnalysisSeed = {
 
 type SignalText = {
   text: string
-  source: "title" | "note" | "name" | "scope"
+  source: "title" | "note" | "name" | "scope" | "page_text"
 }
 
 const ROOM_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
@@ -69,10 +69,18 @@ function buildSignalTexts(args: AnalysisSeed): SignalText[] {
   const note = collapseText(args.page.uploadNote ?? "")
   const name = collapseText(args.page.uploadName.replace(/\.[^.]+$/, ""))
   const scope = collapseText(args.scopeText)
+  const pageText = collapseText(
+    String(args.page.extractedText || "")
+      .split("\n")
+      .slice(0, 12)
+      .join(" ")
+      .slice(0, 1200)
+  )
 
   if (title) signals.push({ text: title, source: "title" })
   if (note) signals.push({ text: note, source: "note" })
   if (name) signals.push({ text: name, source: "name" })
+  if (pageText) signals.push({ text: pageText, source: "page_text" })
   if (scope) signals.push({ text: scope, source: "scope" })
 
   return signals
@@ -97,6 +105,7 @@ function buildEvidence(
 
 function confidenceFromSource(source: SignalText["source"], base = 40): number {
   if (source === "title") return Math.min(95, base + 30)
+  if (source === "page_text") return Math.min(95, base + 25)
   if (source === "note") return Math.min(95, base + 20)
   if (source === "name") return Math.min(95, base + 15)
   return Math.min(95, base)
@@ -189,7 +198,11 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
     notes.push(`Discipline inferred as ${discipline}.`)
   }
   if (args.page.sourceKind === "pdf") {
-    notes.push("Page was normalized from a PDF upload.")
+    notes.push(
+      args.page.renderedImageAvailable
+        ? "Page was rendered from a PDF upload for selected-page analysis."
+        : "Page was indexed from a PDF upload."
+    )
   }
 
   const roomFindings: PlanRoomFinding[] = []
@@ -318,6 +331,10 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
     if (/\bfixture schedule\b|\bfixture plan\b/.test(lower)) {
       const qty = parseCount(signal.text, "fixtures?")
       const plumbingBreakdown = parsePlumbingFixtureBreakdown(signal.text)
+      const isPlumbingFixtureSignal =
+        discipline === "plumbing" ||
+        /\bplumbing fixture\b|\btoilet\b|\blav(?:atory)?\b|\bsink\b|\bfaucet\b|\bshower valve\b/.test(lower)
+
       scheduleItems.push({
         scheduleType: "fixture",
         label: "Fixture schedule",
@@ -327,16 +344,16 @@ export function buildPlanSheetAnalysis(args: AnalysisSeed): Omit<
         evidence: [buildEvidence(args, signal.text, confidence)],
       })
       tradeFindings.push({
-        trade: discipline === "plumbing" ? "plumbing" : "electrical",
-        label: discipline === "plumbing" ? "Plumbing fixture schedule count" : "Electrical fixture schedule count",
+        trade: isPlumbingFixtureSignal ? "plumbing" : "electrical",
+        label: isPlumbingFixtureSignal ? "Plumbing fixture schedule count" : "Electrical fixture schedule count",
         quantity: qty ?? plumbingBreakdown?.total ?? null,
         unit: qty || plumbingBreakdown?.total ? "fixtures" : "unknown",
-        category: discipline === "plumbing" ? "plumbing_fixture_count" : "electrical_fixture_count",
+        category: isPlumbingFixtureSignal ? "plumbing_fixture_count" : "electrical_fixture_count",
         notes: ["Fixture-related sheet content detected."],
         confidence,
         evidence: [buildEvidence(args, signal.text, confidence)],
       })
-      if (discipline === "plumbing" && plumbingBreakdown) {
+      if (isPlumbingFixtureSignal && plumbingBreakdown) {
         const fixtureBreakdown = [
           { label: "Toilet fixture count", quantity: plumbingBreakdown.toilets },
           { label: "Faucet fixture count", quantity: plumbingBreakdown.faucets },

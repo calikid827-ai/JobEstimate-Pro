@@ -219,7 +219,7 @@ export default function PlanUploadsSection({
                   </div>
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                    Analysis only uses the selected pages from this plan set.
+                    Analysis only uses the selected pages from this plan set. Selected PDF pages are rendered for deeper sheet reading before pricing.
                   </div>
 
                   <div

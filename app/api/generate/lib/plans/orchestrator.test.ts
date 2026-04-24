@@ -1,20 +1,35 @@
 import assert from "node:assert/strict"
+import { createRequire } from "node:module"
 import test from "node:test"
 
 import { runPlanIntelligence } from "./orchestrator"
+
+const require = createRequire(import.meta.url)
+const PDFDocument = require("pdfkit")
 
 function makeImageDataUrl(label: string): string {
   return `data:image/png;base64,${Buffer.from(label, "utf8").toString("base64")}`
 }
 
-function makePdfDataUrl(pageCount: number): string {
-  const body = [
-    "%PDF-1.4",
-    ...Array.from({ length: pageCount }, (_, index) => `<< /Type /Page /PageNum ${index + 1} >>`),
-    "%%EOF",
-  ].join("\n")
+async function makePdfDataUrl(pages: string[]): Promise<string> {
+  const doc = new PDFDocument({ autoFirstPage: false, margin: 36 })
+  const chunks: Buffer[] = []
 
-  return `data:application/pdf;base64,${Buffer.from(body, "utf8").toString("base64")}`
+  doc.on("data", (chunk: Buffer) => chunks.push(chunk))
+
+  for (const text of pages) {
+    doc.addPage({ size: [612, 792], margin: 36 })
+    doc.fontSize(18).text(text, 48, 48, { width: 500 })
+  }
+
+  doc.end()
+
+  const buffer = await new Promise<Buffer>((resolve, reject) => {
+    doc.once("end", () => resolve(Buffer.concat(chunks)))
+    doc.once("error", reject)
+  })
+
+  return `data:application/pdf;base64,${buffer.toString("base64")}`
 }
 
 test("selected-sheet analysis only uses user-selected pages", async () => {
@@ -49,11 +64,19 @@ test("selected-sheet analysis only uses user-selected pages", async () => {
 })
 
 test("unselected pdf pages do not contribute plan findings", async () => {
+  const pdfDataUrl = await makePdfDataUrl([
+    "Cover Sheet General Notes Code Summary",
+    "A1.1 Finish Plan guest room repaint walls ceilings trim doors",
+    "E1.0 Electrical Schedule 12 outlets 6 switches 2 fixtures",
+    "A9.1 Interior Elevations guest bath vanity shower tile",
+    "P1.0 Plumbing Fixture Schedule 4 toilets 4 lavatories 2 shower valves",
+  ])
+
   const result = await runPlanIntelligence({
     rawPlans: [
       {
         name: "hotel-finish-set.pdf",
-        dataUrl: makePdfDataUrl(5),
+        dataUrl: pdfDataUrl,
         note: "Hotel finish set",
         selectedSourcePages: [2, 4],
       },
@@ -68,13 +91,23 @@ test("unselected pdf pages do not contribute plan findings", async () => {
   assert.equal(result.selectedPagesCount, 2)
   assert.equal(result.skippedPagesCount, 3)
   assert.equal(result.sheetIndex.length, 2)
+  assert(result.sheetIndex.every((sheet) => sheet.renderedFromPdf === true))
+  assert(result.sheetIndex.every((sheet) => sheet.renderedImageAvailable === true))
   assert.deepEqual(
     result.analyses.map((analysis) => analysis.sourcePageNumber),
     [2, 4]
   )
+  assert(result.detectedTrades.includes("painting"))
+  assert(!result.detectedTrades.includes("electrical"))
 })
 
 test("mixed upload selection preserves estimator compatibility with selected indexed pages only", async () => {
+  const pdfDataUrl = await makePdfDataUrl([
+    "P1.0 Plumbing Fixture Schedule 4 toilets 4 lavatories",
+    "A6.0 Reflected Ceiling Plan guest room light fixtures",
+    "A9.2 Interior Elevations vanity backsplash tile",
+  ])
+
   const result = await runPlanIntelligence({
     rawPlans: [
       {
@@ -91,7 +124,7 @@ test("mixed upload selection preserves estimator compatibility with selected ind
       },
       {
         name: "fixture-schedule.pdf",
-        dataUrl: makePdfDataUrl(3),
+        dataUrl: pdfDataUrl,
         note: "Plumbing fixture schedule and electrical fixture schedule.",
         selectedSourcePages: [1, 3],
       },
@@ -111,5 +144,54 @@ test("mixed upload selection preserves estimator compatibility with selected ind
     result.analyses.slice(1).map((analysis) => analysis.sourcePageNumber),
     [1, 3]
   )
+  assert(
+    result.analyses.some((analysis) =>
+      analysis.tradeFindings.some((finding) => finding.trade === "plumbing")
+    )
+  )
 })
 
+test("selected rendered pdf pages contribute real plan findings and smarter sheet classification", async () => {
+  const pdfDataUrl = await makePdfDataUrl([
+    "A6.1 Reflected Ceiling Plan ceiling cloud and light fixtures",
+    "A8.2 Finish Schedule paint wallcovering flooring",
+    "P2.0 Fixture Schedule 6 toilets 8 lavatories 4 shower valves",
+    "A9.1 Interior Elevations vanity backsplash tile accent wall",
+  ])
+
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        name: "interiors-plan-set.pdf",
+        dataUrl: pdfDataUrl,
+        note: "Interiors package",
+        selectedSourcePages: [1, 2, 3, 4],
+      },
+    ],
+    scopeText: "Refresh finishes, ceilings, and bath fixtures.",
+    trade: "general renovation",
+  })
+
+  assert(result)
+  assert.equal(result.pagesCount, 4)
+  assert(result.detectedTrades.includes("painting"))
+  assert(
+    result.sheetIndex.some(
+      (sheet) =>
+        sheet.sheetNumber === "A6-1" &&
+        sheet.renderedFromPdf === true &&
+        sheet.renderedImageAvailable === true &&
+        sheet.discipline !== "unknown"
+    )
+  )
+  assert(
+    result.analyses.some((analysis) =>
+      analysis.schedules.some((item) => item.scheduleType === "fixture")
+    )
+  )
+  assert(
+    result.analyses.some((analysis) =>
+      analysis.tradeFindings.some((finding) => finding.trade === "plumbing")
+    )
+  )
+})

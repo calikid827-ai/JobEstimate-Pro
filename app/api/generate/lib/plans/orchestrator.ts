@@ -48,7 +48,8 @@ export async function runPlanIntelligence(args: {
     }))
     .filter(
       (entry) =>
-        entry.page.sourceKind === "image" && shouldRunPlanVisionFallback(entry.analysis)
+        entry.page.imageDataUrl &&
+        shouldRunPlanVisionFallback(entry.analysis)
     )
     .slice(0, MAX_PLAN_VISION_PAGES)
 

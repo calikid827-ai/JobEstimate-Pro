@@ -20,6 +20,9 @@ export type PlanPageImage = {
   width: number | null
   height: number | null
   selectedForAnalysis: boolean
+  renderedFromPdf?: boolean
+  renderedImageAvailable?: boolean
+  extractedText?: string | null
 }
 
 export type PlanSheetDiscipline =
@@ -45,6 +48,8 @@ export type PlanSheetIndexEntry = {
   confidence: number
   revision: string | null
   selectedForAnalysis: boolean
+  renderedFromPdf?: boolean
+  renderedImageAvailable?: boolean
 }
 
 export type PlanEvidenceRef = {
