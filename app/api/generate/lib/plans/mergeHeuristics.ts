@@ -859,6 +859,183 @@ function extractRoleName(value: string): string {
   return String(value || "").replace(/\s*\(\d+\s+sheets?\)\s*$/i, "").trim()
 }
 
+function hasRole(sheetRoleSignals: string[], role: string): boolean {
+  return sheetRoleSignals.map(extractRoleName).includes(role)
+}
+
+function hasTradeFindingCategory(
+  analyses: PlanSheetAnalysis[],
+  category: NonNullable<PlanTradeFinding["category"]>
+): boolean {
+  return analyses.some((analysis) =>
+    (analysis.tradeFindings || []).some((finding) => finding.category === category)
+  )
+}
+
+function hasTradeFindingLabel(analyses: PlanSheetAnalysis[], pattern: RegExp): boolean {
+  return analyses.some((analysis) =>
+    (analysis.tradeFindings || []).some((finding) => pattern.test(finding.label))
+  )
+}
+
+function buildCrossSheetLinkSignals(args: {
+  analyses: PlanSheetAnalysis[]
+  sheetRoleSignals: string[]
+  detectedTrades: string[]
+  likelyRoomTypes: string[]
+  repeatedSpaceSignals: string[]
+}): string[] {
+  const signals: string[] = []
+  const roleNames = args.sheetRoleSignals.map(extractRoleName)
+  const trades = new Set(args.detectedTrades)
+  const hasFinishSchedule = roleNames.includes("finish schedule")
+  const hasFinishPlan = roleNames.includes("finish plan")
+  const hasFixtureSchedule = roleNames.includes("fixture schedule")
+  const hasDoorSchedule = roleNames.includes("door schedule")
+  const hasRcp = roleNames.includes("reflected ceiling plan")
+  const hasElevation = roleNames.includes("elevation/detail")
+  const hasDemo = roleNames.includes("demo plan")
+
+  if (hasFinishSchedule && (hasFinishPlan || hasElevation)) {
+    signals.push("Selected finish schedules and finish/elevation sheets reinforce finish scope across the plan set.")
+  }
+  if (hasFixtureSchedule && (hasElevation || args.likelyRoomTypes.includes("bathroom"))) {
+    signals.push("Selected fixture schedules and bathroom/elevation sheets reinforce wet-area fixture context conservatively.")
+  }
+  if (hasRcp && (hasRole(args.sheetRoleSignals, "electrical plan") || hasFixtureSchedule)) {
+    signals.push("Selected reflected ceiling plans and lighting/fixture sheets reinforce ceiling and fixture context without crossing trade authority.")
+  }
+  if (hasDoorSchedule && (hasFinishPlan || hasElevation)) {
+    signals.push("Selected door schedules and finish/elevation sheets reinforce opening-related finish context where direct support already exists.")
+  }
+  if (
+    hasDemo &&
+    (hasFinishPlan || hasElevation || hasTradeFindingCategory(args.analyses, "demolition_area"))
+  ) {
+    signals.push("Selected demolition sheets and finish/install sheets reinforce removal context, but do not create install authority by themselves.")
+  }
+  if (
+    args.repeatedSpaceSignals.length > 0 &&
+    (hasFinishPlan || hasElevation || hasRcp) &&
+    (args.likelyRoomTypes.includes("guest room") ||
+      args.likelyRoomTypes.includes("suite") ||
+      args.likelyRoomTypes.includes("unit"))
+  ) {
+    signals.push("Selected room, ceiling, and elevation sheets reinforce repeated room-type behavior across the plan set.")
+  }
+  if (
+    trades.has("tile") &&
+    hasFixtureSchedule &&
+    hasElevation &&
+    (args.likelyRoomTypes.includes("bathroom") || args.likelyRoomTypes.includes("guest bathroom"))
+  ) {
+    signals.push("Selected bath elevations and fixture schedules reinforce tile and wet-area context without inflating unrelated finishes.")
+  }
+
+  return uniqStrings(signals, 8)
+}
+
+function buildScheduleReconciliationSignals(args: {
+  analyses: PlanSheetAnalysis[]
+  sheetRoleSignals: string[]
+  detectedTrades: string[]
+}): string[] {
+  const signals: string[] = []
+  const roleNames = args.sheetRoleSignals.map(extractRoleName)
+  const hasFinishSchedule = roleNames.includes("finish schedule")
+  const hasFixtureSchedule = roleNames.includes("fixture schedule")
+  const hasDoorSchedule = roleNames.includes("door schedule")
+  const hasRcp = roleNames.includes("reflected ceiling plan")
+  const hasElevation = roleNames.includes("elevation/detail")
+
+  if (hasFinishSchedule && hasTradeFindingLabel(args.analyses, /\bfinish-related work referenced\b/i)) {
+    signals.push("Finish schedules now reconcile against finish-plan evidence instead of standing alone.")
+  }
+  if (
+    hasFixtureSchedule &&
+    args.analyses.some((analysis) =>
+      (analysis.tradeFindings || []).some((finding) => finding.trade === "plumbing" || finding.trade === "electrical")
+    )
+  ) {
+    signals.push("Fixture schedules now reconcile against related plumbing/electrical sheet context before strengthening trade certainty.")
+  }
+  if (hasDoorSchedule && hasTradeFindingCategory(args.analyses, "door_openings")) {
+    signals.push("Door schedule references now reconcile against opening-related sheet context before informing finish scope.")
+  }
+  if (hasRcp && hasFixtureSchedule) {
+    signals.push("Reflected ceiling plans now reconcile with selected fixture or lighting schedules to improve ceiling/lighting context conservatively.")
+  }
+  if (hasElevation && hasFinishSchedule) {
+    signals.push("Elevations now reconcile with finish schedules to narrow vertical finish context instead of broadening unrelated floor scope.")
+  }
+
+  return uniqStrings(signals, 8)
+}
+
+function buildCrossSheetConflictSignals(args: {
+  analyses: PlanSheetAnalysis[]
+  sheetRoleSignals: string[]
+}): string[] {
+  const signals: string[] = []
+  const roleNames = args.sheetRoleSignals.map(extractRoleName)
+  const hasDemo = roleNames.includes("demo plan")
+  const hasFinishSchedule = roleNames.includes("finish schedule")
+  const hasFinishPlan = roleNames.includes("finish plan")
+  const hasFixtureSchedule = roleNames.includes("fixture schedule")
+  const hasElevation = roleNames.includes("elevation/detail")
+
+  if (
+    hasDemo &&
+    (hasFinishSchedule || hasFinishPlan) &&
+    !hasTradeFindingCategory(args.analyses, "demolition_area")
+  ) {
+    signals.push("Demo sheets are selected alongside finish/install sheets, but removal remains non-binding where measured demo support is thin.")
+  }
+  if (
+    hasFixtureSchedule &&
+    hasElevation &&
+    !args.analyses.some((analysis) =>
+      (analysis.tradeFindings || []).some((finding) => finding.trade === "plumbing" || finding.trade === "tile")
+    )
+  ) {
+    signals.push("Fixture schedules and elevations are both selected, but cross-sheet wet-area linkage stays conservative where trade support remains indirect.")
+  }
+  if (
+    hasFinishSchedule &&
+    hasElevation &&
+    hasTradeFindingCategory(args.analyses, "selected_elevation_area") &&
+    !hasTradeFindingCategory(args.analyses, "wall_area")
+  ) {
+    signals.push("Elevation-supported finish scope remains narrower than full-wall authority even when finish schedules are selected.")
+  }
+
+  return uniqStrings(signals, 6)
+}
+
+function buildPlanSetSynthesisNotes(args: {
+  crossSheetLinkSignals: string[]
+  scheduleReconciliationSignals: string[]
+  crossSheetConflictSignals: string[]
+  pricingAnchorSignals: string[]
+}): string[] {
+  const notes: string[] = []
+
+  if (args.crossSheetLinkSignals.length > 0) {
+    notes.push(args.crossSheetLinkSignals[0])
+  }
+  if (args.scheduleReconciliationSignals.length > 0) {
+    notes.push(args.scheduleReconciliationSignals[0])
+  }
+  if (args.crossSheetConflictSignals.length > 0) {
+    notes.push(args.crossSheetConflictSignals[0])
+  }
+  if (args.pricingAnchorSignals.length > 0) {
+    notes.push(`Cross-sheet anchor note: ${args.pricingAnchorSignals[0]}`)
+  }
+
+  return uniqStrings(notes, 6)
+}
+
 function buildHighValueSheetSignals(args: {
   sheetRoleSignals: string[]
   prototypeSignals: string[]
@@ -1466,6 +1643,10 @@ function buildSummary(args: {
   packageAllowanceSignals: string[]
   estimateAssemblyGuidance: string[]
   estimateScaffoldNotes: string[]
+  crossSheetLinkSignals: string[]
+  scheduleReconciliationSignals: string[]
+  crossSheetConflictSignals: string[]
+  planSetSynthesisNotes: string[]
   repeatedSpaceSignals: string[]
   likelyRoomTypes: string[]
   scalableScopeSignals: string[]
@@ -1514,6 +1695,15 @@ function buildSummary(args: {
   }
   if (args.packageGroupingSignals.length > 0) {
     parts.push(args.packageGroupingSignals[0])
+  }
+  if (args.crossSheetLinkSignals.length > 0) {
+    parts.push(args.crossSheetLinkSignals[0])
+  }
+  if (args.scheduleReconciliationSignals.length > 0) {
+    parts.push(args.scheduleReconciliationSignals[0])
+  }
+  if (args.crossSheetConflictSignals.length > 0) {
+    parts.push(args.crossSheetConflictSignals[0])
   }
   if (args.pricingAnchorSignals.length > 0) {
     parts.push(args.pricingAnchorSignals[0])
@@ -1582,6 +1772,10 @@ function buildNotes(args: {
   packageAllowanceSignals: string[]
   estimateAssemblyGuidance: string[]
   estimateScaffoldNotes: string[]
+  crossSheetLinkSignals: string[]
+  scheduleReconciliationSignals: string[]
+  crossSheetConflictSignals: string[]
+  planSetSynthesisNotes: string[]
   repeatedSpaceSignals: string[]
   likelyRoomTypes: string[]
   scalableScopeSignals: string[]
@@ -1618,6 +1812,10 @@ function buildNotes(args: {
     ...args.packageAllowanceSignals,
     ...args.estimateAssemblyGuidance,
     ...args.estimateScaffoldNotes,
+    ...args.crossSheetLinkSignals,
+    ...args.scheduleReconciliationSignals,
+    ...args.crossSheetConflictSignals,
+    ...args.planSetSynthesisNotes,
     ...args.repeatedSpaceSignals,
     ...args.scalableScopeSignals,
     ...args.tradePackageSignals,
@@ -1780,6 +1978,22 @@ export function buildMergedPlanIntelligence(args: {
     tradePackageSignals,
     packageGroupingSignals,
   })
+  const crossSheetLinkSignals = buildCrossSheetLinkSignals({
+    analyses: normalizedAnalyses,
+    sheetRoleSignals,
+    detectedTrades,
+    likelyRoomTypes,
+    repeatedSpaceSignals,
+  })
+  const scheduleReconciliationSignals = buildScheduleReconciliationSignals({
+    analyses: normalizedAnalyses,
+    sheetRoleSignals,
+    detectedTrades,
+  })
+  const crossSheetConflictSignals = buildCrossSheetConflictSignals({
+    analyses: normalizedAnalyses,
+    sheetRoleSignals,
+  })
   const bidCoverageGaps = buildBidCoverageGaps({
     sheetRoleSignals,
     prototypeSignals,
@@ -1881,6 +2095,12 @@ export function buildMergedPlanIntelligence(args: {
     estimateAssemblyGuidance,
     estimatingFrameworkNotes,
   })
+  const planSetSynthesisNotes = buildPlanSetSynthesisNotes({
+    crossSheetLinkSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+    pricingAnchorSignals,
+  })
   const evidence = buildEvidenceBundle(normalizedAnalyses)
   const notes = buildNotes({
     sheetIndex: args.sheetIndex,
@@ -1908,6 +2128,10 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    crossSheetLinkSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+    planSetSynthesisNotes,
     repeatedSpaceSignals,
     likelyRoomTypes,
     scalableScopeSignals,
@@ -1944,6 +2168,10 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    crossSheetLinkSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+    planSetSynthesisNotes,
     repeatedSpaceSignals,
     likelyRoomTypes,
     scalableScopeSignals,
@@ -1990,6 +2218,10 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    crossSheetLinkSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+    planSetSynthesisNotes,
     repeatedSpaceSignals,
     likelyRoomTypes,
     scalableScopeSignals,

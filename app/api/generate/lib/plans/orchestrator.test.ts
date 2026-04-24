@@ -195,3 +195,34 @@ test("selected rendered pdf pages contribute real plan findings and smarter shee
     )
   )
 })
+
+test("selected pages synthesize cross-sheet schedule and plan context conservatively", async () => {
+  const pdfDataUrl = await makePdfDataUrl([
+    "A8.1 Finish Plan guest room wall finish paint wallcovering",
+    "A8.2 Finish Schedule guest room finish matrix paint wallcovering flooring",
+    "A9.1 Interior Elevations guest bathroom shower tile backsplash vanity wall",
+    "P2.0 Fixture Schedule 4 toilets 4 lavatories 2 shower valves",
+  ])
+
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        name: "hotel-interiors.pdf",
+        dataUrl: pdfDataUrl,
+        note: "Hotel interiors and schedules",
+        selectedSourcePages: [1, 2, 3, 4],
+      },
+    ],
+    scopeText: "Refresh guest room finishes and bathroom fixture areas.",
+    trade: "general renovation",
+  })
+
+  assert(result)
+  assert(result.crossSheetLinkSignals?.some((item) => /finish schedules and finish\/elevation sheets reinforce finish scope/i.test(item)))
+  assert(result.crossSheetLinkSignals?.some((item) => /fixture schedules and bathroom\/elevation sheets reinforce wet-area fixture context conservatively/i.test(item)))
+  assert(result.scheduleReconciliationSignals?.some((item) => /Finish schedules now reconcile against finish-plan evidence/i.test(item)))
+  assert(result.planSetSynthesisNotes?.length)
+  assert(result.detectedTrades.includes("painting"))
+  assert(result.detectedTrades.includes("plumbing"))
+  assert(result.sheetIndex.every((sheet) => sheet.selectedForAnalysis))
+})
