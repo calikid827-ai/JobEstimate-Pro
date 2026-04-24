@@ -604,6 +604,34 @@ test("quantity-backed guest room package becomes section-ready anchors", () => {
       item.includes("Painting: Guest room walls / ceilings")
     )
   )
+  const result = runPlanAwarePipeline({
+    trade: "painting",
+    scopeText: "Paint guest room walls and ceilings.",
+    planIntelligence: makePlan({
+      confidenceScore: 88,
+      detectedTrades: ["painting"],
+      tradePackageSignals: ["painting", "finish package"],
+      estimatePackageCandidates: ["Guest room package"],
+      takeoff: {
+        floorSqft: null,
+        wallSqft: 1800,
+        ceilingSqft: 900,
+        trimLf: null,
+        doorCount: null,
+        windowCount: null,
+        deviceCount: null,
+        fixtureCount: null,
+        roomCount: 18,
+        sourceNotes: ["Guest room finish takeoff."],
+      },
+      estimatorPackages: [makeEstimatorPackage()],
+    }),
+  })
+  assert.ok(
+    result.tradePricingInputDraft?.tradeMeasurementInputDraft.some((item) =>
+      /anchor painting section/i.test(item)
+    )
+  )
 })
 
 test("elevation-only wet-area package stays narrow in section generation", () => {
@@ -672,6 +700,11 @@ test("schedule-backed wet-area package reinforces the right section without manu
   assert.ok(
     plumbingSection?.scopeBullets.some((item) => /fixture schedule/i.test(item))
   )
+  assert.ok(
+    plumbingSection?.normalizedEstimatorInputCandidates.some((item) =>
+      /review-only candidate/i.test(item)
+    )
+  )
 })
 
 test("demo package remains separate from install section skeletons", () => {
@@ -708,6 +741,11 @@ test("demo package remains separate from install section skeletons", () => {
       (section) => !/install/i.test(section.sectionTitle) || section.trade !== "general renovation"
     )
   )
+  assert.ok(
+    structure?.structuredEstimateSections
+      .find((section) => section.trade === "general renovation")
+      ?.estimatorInputGuardrails.some((item) => /remain separate from install estimator inputs/i.test(item))
+  )
 })
 
 test("scaled prototype guest room package becomes scalable section hints, not measured quantities", () => {
@@ -736,6 +774,12 @@ test("scaled prototype guest room package becomes scalable section hints, not me
   assert.ok(
     structure?.estimateGroupingSignals.some((item) =>
       item.includes("scalable section hint")
+    )
+  )
+  assert.equal(scalableSection?.quantityNormalization, "scaled_prototype")
+  assert.ok(
+    scalableSection?.normalizedEstimatorInputCandidates.some((item) =>
+      /scalable prototype candidate/i.test(item)
     )
   )
 })
@@ -769,6 +813,71 @@ test("section skeleton provenance remains intact through package handoff", () =>
   assert.equal(section?.evidence[0]?.uploadId, "upload-browser")
   assert.equal(section?.evidence[0]?.sourcePageNumber, 7)
   assert.equal(section?.evidence[0]?.sheetNumber, "A9.1")
+})
+
+test("wallcovering section skeletons produce distinct wallcovering estimator input candidates", () => {
+  const structure = buildEstimateStructureConsumption(
+    buildEstimateSkeletonHandoff(
+      makePlan({
+        estimatorPackages: [
+          makeEstimatorPackage({
+            scheduleSummary: "finish schedule: wallcovering type W-1",
+          }),
+        ],
+      })
+    )
+  )
+
+  const wallcoveringSection = structure?.structuredEstimateSections.find((section) =>
+    /Wallcovering: Guest room feature \/ finish walls/i.test(section.sectionTitle)
+  )
+
+  assert.ok(wallcoveringSection)
+  assert.ok(
+    wallcoveringSection?.tradeMeasurementDrafts.some((item) =>
+      /wallcovering coverage/i.test(item)
+    )
+  )
+  assert.ok(
+    wallcoveringSection?.normalizedEstimatorInputCandidates.some((item) =>
+      /measured candidate|review-only candidate/i.test(item)
+    )
+  )
+})
+
+test("elevation-only wet-area sections stay narrow and review-oriented in estimator input generation", () => {
+  const structure = buildEstimateStructureConsumption(
+    buildEstimateSkeletonHandoff(
+      makePlan({
+        estimatorPackages: [
+          makeEstimatorPackage({
+            key: "wet-area-package",
+            title: "Wet-area fixture and finish package",
+            primaryTrade: "tile",
+            roomGroup: "bathroom",
+            supportType: "elevation_only",
+            scopeBreadth: "narrow",
+            confidenceLabel: "moderate",
+            quantitySummary: "selected_elevation_area: 240 sqft",
+            executionNotes: ["Bath elevations reinforce shower-wall scope."],
+            cautionNotes: ["Bath elevations stay narrower than full-room tile authority."],
+          }),
+        ],
+      })
+    )
+  )
+
+  const tileSection = structure?.structuredEstimateSections.find((section) =>
+    /Tile \/ finish: Wet-area walls and shower surfaces/i.test(section.sectionTitle)
+  )
+
+  assert.ok(tileSection)
+  assert.equal(tileSection?.quantityNormalization, "review_only")
+  assert.ok(
+    tileSection?.estimatorInputGuardrails.some((item) =>
+      /must stay non-binding|full-room/i.test(item)
+    )
+  )
 })
 
 test("null upstream support returns null safely across bridge layers", () => {

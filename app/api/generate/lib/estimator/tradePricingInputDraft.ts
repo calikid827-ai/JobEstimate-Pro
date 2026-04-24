@@ -86,6 +86,42 @@ function getBucketHints(args: {
   )
 }
 
+function getSectionInputHints(args: {
+  structure: EstimateStructureConsumption | null
+  trade: TradePricingInputDraftTrade
+}): {
+  anchors: string[]
+  measurementDrafts: string[]
+  candidates: string[]
+  guardrails: string[]
+} {
+  const matchesTrade = (trade: string) => {
+    if (args.trade === "painting") return trade === "painting"
+    if (args.trade === "drywall") return trade === "drywall"
+    return trade === "wallcovering"
+  }
+
+  const sections = (args.structure?.structuredEstimateSections || []).filter((section) =>
+    matchesTrade(section.trade)
+  )
+
+  return {
+    anchors: uniqStrings(sections.map((section) => section.sectionTitle), 4),
+    measurementDrafts: uniqStrings(
+      sections.flatMap((section) => section.tradeMeasurementDrafts || []),
+      6
+    ),
+    candidates: uniqStrings(
+      sections.flatMap((section) => section.normalizedEstimatorInputCandidates || []),
+      6
+    ),
+    guardrails: uniqStrings(
+      sections.flatMap((section) => section.estimatorInputGuardrails || []),
+      6
+    ),
+  }
+}
+
 function buildPaintingDraft(args: {
   supportLevel: "strong" | "moderate" | "weak"
   scopeText: string
@@ -93,6 +129,12 @@ function buildPaintingDraft(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: {
+    anchors: string[]
+    measurementDrafts: string[]
+    candidates: string[]
+    guardrails: string[]
+  }
   complexityProfile: ComplexityProfile | null
   planIntelligence: PlanIntelligence | null
 }): TradePricingInputDraft {
@@ -175,6 +217,9 @@ function buildPaintingDraft(args: {
         repeatCue
           ? "Repeated-room support can inform prototype-room painting inputs before any scaling review."
           : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section-derived painting inputs: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       6
     ),
@@ -193,6 +238,7 @@ function buildPaintingDraft(args: {
         trimSignal
           ? `Measurement input: use ${formatSignal(trimSignal)} only where trim/casing scope is explicit.`
           : null,
+        ...args.sectionHints.measurementDrafts.slice(0, 3),
         args.supportLevel === "weak"
           ? "Measurement input remains review-only; confirm wall, ceiling, opening, and trim support before estimator input drafting."
           : null,
@@ -228,6 +274,8 @@ function buildPaintingDraft(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.candidates.slice(0, 2),
+        ...args.sectionHints.guardrails.slice(0, 2),
         (args.planIntelligence?.repeatedSpaceSignals || []).length > 0
           ? "Repeated-space plan signals support prototype-room organization, not automatic pricing scale-up."
           : null,
@@ -246,6 +294,12 @@ function buildDrywallDraft(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: {
+    anchors: string[]
+    measurementDrafts: string[]
+    candidates: string[]
+    guardrails: string[]
+  }
   complexityProfile: ComplexityProfile | null
   planIntelligence: PlanIntelligence | null
 }): TradePricingInputDraft {
@@ -325,6 +379,9 @@ function buildDrywallDraft(args: {
         repeatCue
           ? "Repeated-room repair signals can help organize drywall draft inputs before any quantity scaling review."
           : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section-derived drywall inputs: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       6
     ),
@@ -340,6 +397,7 @@ function buildDrywallDraft(args: {
         partitionSignal
           ? `Measurement input: use ${formatSignal(partitionSignal)} for partition-related scope where LF support is already explicit.`
           : null,
+        ...args.sectionHints.measurementDrafts.slice(0, 3),
         args.supportLevel === "weak"
           ? "Measurement input remains review-only; do not convert repair cues into unsupported patch counts or install area."
           : null,
@@ -375,6 +433,8 @@ function buildDrywallDraft(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.candidates.slice(0, 2),
+        ...args.sectionHints.guardrails.slice(0, 2),
         (args.planIntelligence?.repeatedSpaceSignals || []).length > 0
           ? "Repeated-space signals support organization of similar repair rooms, not inferred patch size or count."
           : null,
@@ -393,6 +453,12 @@ function buildWallcoveringDraft(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: {
+    anchors: string[]
+    measurementDrafts: string[]
+    candidates: string[]
+    guardrails: string[]
+  }
   complexityProfile: ComplexityProfile | null
   planIntelligence: PlanIntelligence | null
 }): TradePricingInputDraft {
@@ -458,6 +524,9 @@ function buildWallcoveringDraft(args: {
         removalCue && installCue
           ? "Removal/prep and install can be drafted as separate sections where support exists."
           : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section-derived wallcovering inputs: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       6
     ),
@@ -467,6 +536,7 @@ function buildWallcoveringDraft(args: {
         wallSignal
           ? `Measurement input: use ${formatSignal(wallSignal)} only where wallcovering coverage is explicitly supported.`
           : null,
+        ...args.sectionHints.measurementDrafts.slice(0, 3),
         args.supportLevel === "weak"
           ? "Measurement input remains review-only; verify selected elevations before drafting measured wallcovering inputs."
           : null,
@@ -499,6 +569,8 @@ function buildWallcoveringDraft(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.candidates.slice(0, 2),
+        ...args.sectionHints.guardrails.slice(0, 2),
         (args.planIntelligence?.repeatedSpaceSignals || []).length > 0
           ? "Repeated-space signals can support organizing similar room packages, but not inferred wallcovering elevations."
           : null,
@@ -532,6 +604,10 @@ export function buildTradePricingInputDraft(args: {
     structure: args.estimateStructureConsumption,
     trade,
   })
+  const sectionHints = getSectionInputHints({
+    structure: args.estimateStructureConsumption,
+    trade,
+  })
 
   if (trade === "painting") {
     return buildPaintingDraft({
@@ -541,6 +617,7 @@ export function buildTradePricingInputDraft(args: {
       quantitySupport,
       tradePackagePricingPrep: args.tradePackagePricingPrep,
       bucketHints,
+      sectionHints,
       complexityProfile: args.complexityProfile,
       planIntelligence: args.planIntelligence,
     })
@@ -554,6 +631,7 @@ export function buildTradePricingInputDraft(args: {
       quantitySupport,
       tradePackagePricingPrep: args.tradePackagePricingPrep,
       bucketHints,
+      sectionHints,
       complexityProfile: args.complexityProfile,
       planIntelligence: args.planIntelligence,
     })
@@ -566,6 +644,7 @@ export function buildTradePricingInputDraft(args: {
     quantitySupport,
     tradePackagePricingPrep: args.tradePackagePricingPrep,
     bucketHints,
+    sectionHints,
     complexityProfile: args.complexityProfile,
     planIntelligence: args.planIntelligence,
   })

@@ -3588,6 +3588,10 @@ const normalizedEstimateStructureConsumption = data?.estimateStructureConsumptio
                     ? null
                     : String(section.quantityAnchor).trim()
                   : null,
+              quantityNormalization:
+                section && typeof section === "object" && "quantityNormalization" in section
+                  ? String(section.quantityNormalization ?? "").trim()
+                  : "review_only",
               scopeBullets:
                 section && typeof section === "object" && "scopeBullets" in section
                   ? normalizeDefenseList(section.scopeBullets)
@@ -3595,6 +3599,22 @@ const normalizedEstimateStructureConsumption = data?.estimateStructureConsumptio
               cautionNotes:
                 section && typeof section === "object" && "cautionNotes" in section
                   ? normalizeDefenseList(section.cautionNotes)
+                  : [],
+              tradeMeasurementDrafts:
+                section && typeof section === "object" && "tradeMeasurementDrafts" in section
+                  ? normalizeDefenseList(section.tradeMeasurementDrafts)
+                  : [],
+              normalizedEstimatorInputCandidates:
+                section &&
+                typeof section === "object" &&
+                "normalizedEstimatorInputCandidates" in section
+                  ? normalizeDefenseList(section.normalizedEstimatorInputCandidates)
+                  : [],
+              estimatorInputGuardrails:
+                section &&
+                typeof section === "object" &&
+                "estimatorInputGuardrails" in section
+                  ? normalizeDefenseList(section.estimatorInputGuardrails)
                   : [],
               safeForSectionBuild:
                 Boolean(
@@ -4420,6 +4440,10 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
                         ? null
                         : String(section.quantityAnchor).trim()
                       : null,
+                  quantityNormalization:
+                    section && typeof section === "object" && "quantityNormalization" in section
+                      ? String(section.quantityNormalization ?? "").trim()
+                      : "review_only",
                   scopeBullets:
                     section && typeof section === "object" && "scopeBullets" in section
                       ? normalizeDefenseLists(section.scopeBullets)
@@ -4427,6 +4451,22 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
                   cautionNotes:
                     section && typeof section === "object" && "cautionNotes" in section
                       ? normalizeDefenseLists(section.cautionNotes)
+                      : [],
+                  tradeMeasurementDrafts:
+                    section && typeof section === "object" && "tradeMeasurementDrafts" in section
+                      ? normalizeDefenseLists(section.tradeMeasurementDrafts)
+                      : [],
+                  normalizedEstimatorInputCandidates:
+                    section &&
+                    typeof section === "object" &&
+                    "normalizedEstimatorInputCandidates" in section
+                      ? normalizeDefenseLists(section.normalizedEstimatorInputCandidates)
+                      : [],
+                  estimatorInputGuardrails:
+                    section &&
+                    typeof section === "object" &&
+                    "estimatorInputGuardrails" in section
+                      ? normalizeDefenseLists(section.estimatorInputGuardrails)
                       : [],
                   safeForSectionBuild:
                     Boolean(
@@ -8808,11 +8848,23 @@ function EstimateStructureConsumptionCard({
               <div style={{ fontWeight: 800, fontSize: 13 }}>{section.sectionTitle}</div>
               <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
                 {section.trade} · {section.safeForSectionBuild ? "section-build safe" : "review oriented"} ·{" "}
-                {section.supportType.replaceAll("_", " ")}
+                {section.supportType.replaceAll("_", " ")} ·{" "}
+                {section.quantityNormalization.replaceAll("_", " ")}
               </div>
               {section.quantityAnchor && (
                 <div style={{ fontSize: 12, marginTop: 8 }}>
                   <strong>Quantity anchor:</strong> {section.quantityAnchor}
+                </div>
+              )}
+              {section.tradeMeasurementDrafts.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Measurement drafts:</strong> {section.tradeMeasurementDrafts.join(" ")}
+                </div>
+              )}
+              {section.normalizedEstimatorInputCandidates.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Estimator input candidates:</strong>{" "}
+                  {section.normalizedEstimatorInputCandidates.join(" ")}
                 </div>
               )}
               {section.scopeBullets.length > 0 && (
@@ -8825,6 +8877,11 @@ function EstimateStructureConsumptionCard({
               {section.cautionNotes.length > 0 && (
                 <div style={{ fontSize: 12, marginTop: 8, color: "#92400e" }}>
                   <strong>Cautions:</strong> {section.cautionNotes.join(" ")}
+                </div>
+              )}
+              {section.estimatorInputGuardrails.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8, color: "#7c2d12" }}>
+                  <strong>Guardrails:</strong> {section.estimatorInputGuardrails.join(" ")}
                 </div>
               )}
             </div>

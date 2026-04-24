@@ -345,7 +345,10 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       ).map((section) => ({
         title: section.sectionTitle,
         readiness: section.sectionReadiness,
+        quantityNormalization: section.quantityNormalization,
         safeForSectionBuild: section.safeForSectionBuild,
+        measurementDrafts: section.tradeMeasurementDrafts,
+        inputCandidates: section.normalizedEstimatorInputCandidates,
         sourcePages: section.evidence.map((ref) => ref.sourcePageNumber),
       }))
 

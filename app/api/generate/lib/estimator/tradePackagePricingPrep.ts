@@ -124,6 +124,37 @@ function getRelevantBuckets(args: {
   }
 }
 
+function getRelevantSectionInputs(args: {
+  trade: TradePackagePricingPrepTrade
+  structure: EstimateStructureConsumption | null
+}): {
+  anchors: string[]
+  drafts: string[]
+  guardrails: string[]
+} {
+  const matchesTrade = (trade: string) => {
+    if (args.trade === "painting") return trade === "painting"
+    if (args.trade === "drywall") return trade === "drywall"
+    return trade === "wallcovering"
+  }
+
+  const sections = (args.structure?.structuredEstimateSections || []).filter((section) =>
+    matchesTrade(section.trade)
+  )
+
+  return {
+    anchors: uniqStrings(sections.map((section) => section.sectionTitle), 4),
+    drafts: uniqStrings(
+      sections.flatMap((section) => section.tradeMeasurementDrafts || []),
+      6
+    ),
+    guardrails: uniqStrings(
+      sections.flatMap((section) => section.estimatorInputGuardrails || []),
+      6
+    ),
+  }
+}
+
 function getSupportLevel(args: {
   trade: TradePackagePricingPrepTrade
   planIntelligence: PlanIntelligence | null
@@ -175,6 +206,7 @@ function buildPaintingPrep(args: {
   scopeText: string
   complexityProfile: ComplexityProfile | null
   relevantBuckets: { primary: string[]; review: string[] }
+  relevantSections: { anchors: string[]; drafts: string[]; guardrails: string[] }
 }): TradePackagePricingPrep {
   const plan = args.planIntelligence
   const scopeText = args.scopeText.toLowerCase()
@@ -191,6 +223,9 @@ function buildPaintingPrep(args: {
           : null,
         (plan?.takeoff.roomCount || 0) > 0
           ? "Repeated room signals can support prototype-led painting packages, but only where plan repetition is explicit."
+          : null,
+        args.relevantSections.anchors.length > 0
+          ? `Relevant section anchors for painting input readiness: ${args.relevantSections.anchors.join(", ")}.`
           : null,
         hasAnyText(plan?.pricingPackageSignals, /\bcorridor package\b/i)
           ? "Carry corridor painting as its own package instead of blending it into room interiors."
@@ -216,6 +251,7 @@ function buildPaintingPrep(args: {
         args.relevantBuckets.primary.length > 0
           ? `Estimate structure handoff ties painting to ${args.relevantBuckets.primary.join(", ")}.`
           : null,
+        ...args.relevantSections.drafts.slice(0, 2),
         args.supportLevel === "weak"
           ? "Painting is supported mainly by scope text and trade-stack cues; plan package support is still thin."
           : null,
@@ -234,6 +270,7 @@ function buildPaintingPrep(args: {
         hasWallcoveringMix
           ? "Confirm whether wallcovering removal or substrate prep sits inside the painting package or stays separate."
           : null,
+        ...args.relevantSections.guardrails.slice(0, 1),
       ],
       6
     ),
@@ -288,6 +325,7 @@ function buildDrywallPrep(args: {
   scopeText: string
   complexityProfile: ComplexityProfile | null
   relevantBuckets: { primary: string[]; review: string[] }
+  relevantSections: { anchors: string[]; drafts: string[]; guardrails: string[] }
 }): TradePackagePricingPrep {
   const plan = args.planIntelligence
   const scopeText = args.scopeText.toLowerCase()
@@ -308,6 +346,9 @@ function buildDrywallPrep(args: {
         args.relevantBuckets.primary.length > 0
           ? `Relevant estimate buckets for drywall review: ${args.relevantBuckets.primary.join(", ")}.`
           : null,
+        args.relevantSections.anchors.length > 0
+          ? `Relevant drywall section anchors: ${args.relevantSections.anchors.join(", ")}.`
+          : null,
         "Drywall prep guidance can frame package structure without changing existing pricing owners or math.",
       ],
       6
@@ -325,6 +366,7 @@ function buildDrywallPrep(args: {
         args.relevantBuckets.primary.length > 0
           ? `Estimate structure handoff associates drywall review with ${args.relevantBuckets.primary.join(", ")}.`
           : null,
+        ...args.relevantSections.drafts.slice(0, 2),
         args.supportLevel === "weak"
           ? "Drywall package basis is currently coming more from scope wording than from strong plan-backed quantities."
           : null,
@@ -341,6 +383,7 @@ function buildDrywallPrep(args: {
         /\bceiling\b/.test(scopeText)
           ? "Ceiling drywall should be confirmed separately because access and production differ from walls."
           : null,
+        ...args.relevantSections.guardrails.slice(0, 1),
       ],
       6
     ),
@@ -395,6 +438,7 @@ function buildWallcoveringPrep(args: {
   scopeText: string
   complexityProfile: ComplexityProfile | null
   relevantBuckets: { primary: string[]; review: string[] }
+  relevantSections: { anchors: string[]; drafts: string[]; guardrails: string[] }
 }): TradePackagePricingPrep {
   const plan = args.planIntelligence
   const scopeText = args.scopeText.toLowerCase()
@@ -410,6 +454,9 @@ function buildWallcoveringPrep(args: {
           : null,
         hasAnyText(plan?.sheetRoleSignals, /\bfinish plan\b|\bfinish schedule\b/i)
           ? "Finish-plan and finish-schedule cues can support wallcovering package structure."
+          : null,
+        args.relevantSections.anchors.length > 0
+          ? `Relevant wallcovering section anchors: ${args.relevantSections.anchors.join(", ")}.`
           : null,
         "Separate wallcovering removal/substrate prep from new install whenever scope support is mixed.",
         "Only scale repeated wallcovering packages where repeated-space support is visible in the plan set.",
@@ -428,6 +475,7 @@ function buildWallcoveringPrep(args: {
         hasAnyText(plan?.pricingPackageSignals, /\bcorridor package\b|\bfinish package\b/i)
           ? "Repeated finish or corridor package signals may support wallcovering package review."
           : null,
+        ...args.relevantSections.drafts.slice(0, 2),
         args.supportLevel === "weak"
           ? "Wallcovering scope is currently inferred mostly from scope text and finish cues, not strong measured plan support."
           : null,
@@ -444,6 +492,7 @@ function buildWallcoveringPrep(args: {
         args.supportLevel === "weak"
           ? "When plan support is weak, verify measured wall area manually before treating repeats as scalable."
           : null,
+        ...args.relevantSections.guardrails.slice(0, 1),
       ],
       6
     ),
@@ -516,6 +565,10 @@ export function buildTradePackagePricingPrep(args: {
     handoff: args.estimateSkeletonHandoff,
     structure: args.estimateStructureConsumption,
   })
+  const relevantSections = getRelevantSectionInputs({
+    trade,
+    structure: args.estimateStructureConsumption,
+  })
 
   const supportLevel = getSupportLevel({
     trade,
@@ -531,6 +584,7 @@ export function buildTradePackagePricingPrep(args: {
       scopeText: args.scopeText,
       complexityProfile: args.complexityProfile,
       relevantBuckets,
+      relevantSections,
     })
   }
 
@@ -541,6 +595,7 @@ export function buildTradePackagePricingPrep(args: {
       scopeText: args.scopeText,
       complexityProfile: args.complexityProfile,
       relevantBuckets,
+      relevantSections,
     })
   }
 
@@ -550,5 +605,6 @@ export function buildTradePackagePricingPrep(args: {
     scopeText: args.scopeText,
     complexityProfile: args.complexityProfile,
     relevantBuckets,
+    relevantSections,
   })
 }

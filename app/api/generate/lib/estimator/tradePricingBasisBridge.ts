@@ -60,6 +60,37 @@ function getBucketHints(args: {
   )
 }
 
+function getSectionInputHints(args: {
+  structure: EstimateStructureConsumption | null
+  trade: TradePricingBasisBridgeTrade
+}): {
+  anchors: string[]
+  candidates: string[]
+  guardrails: string[]
+} {
+  const matchesTrade = (trade: string) => {
+    if (args.trade === "painting") return trade === "painting"
+    if (args.trade === "drywall") return trade === "drywall"
+    return trade === "wallcovering"
+  }
+
+  const sections = (args.structure?.structuredEstimateSections || []).filter((section) =>
+    matchesTrade(section.trade)
+  )
+
+  return {
+    anchors: uniqStrings(sections.map((section) => section.sectionTitle), 4),
+    candidates: uniqStrings(
+      sections.flatMap((section) => section.normalizedEstimatorInputCandidates || []),
+      6
+    ),
+    guardrails: uniqStrings(
+      sections.flatMap((section) => section.estimatorInputGuardrails || []),
+      6
+    ),
+  }
+}
+
 function getTrade(args: {
   trade: string
   tradeQuantitySupport: TradeQuantitySupport
@@ -106,6 +137,7 @@ function buildPaintingBridge(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: { anchors: string[]; candidates: string[]; guardrails: string[] }
   scopeText: string
   tradeStack: TradeStack | null
   complexityProfile: ComplexityProfile | null
@@ -144,6 +176,9 @@ function buildPaintingBridge(args: {
         repeatCue
           ? "Repeated room support can justify a prototype-room painting basis before scaling."
           : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section anchor guidance: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       5
     ),
@@ -159,6 +194,7 @@ function buildPaintingBridge(args: {
         hasDoors
           ? "Opening counts can support doors/frames as a separate basis if inclusion is explicit."
           : null,
+        ...args.sectionHints.candidates.slice(0, 2),
         args.supportLevel === "weak"
           ? "Measurement basis is still descriptive; verify wall, ceiling, and opening coverage manually."
           : null,
@@ -209,6 +245,7 @@ function buildPaintingBridge(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.guardrails.slice(0, 2),
         ...(args.tradePackagePricingPrep?.tradePackageReviewNotes || []).slice(0, 2),
         ...(args.quantitySupport.tradeQuantityReviewNotes || []).slice(0, 2),
       ],
@@ -222,6 +259,7 @@ function buildDrywallBridge(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: { anchors: string[]; candidates: string[]; guardrails: string[] }
   scopeText: string
   complexityProfile: ComplexityProfile | null
 }): TradePricingBasisBridge {
@@ -248,6 +286,9 @@ function buildDrywallBridge(args: {
           : "Basis draft: drywall scope is visible but package type still needs confirmation.",
         ceilingCue ? "Carry ceiling drywall as a separate basis when ceiling support is explicit." : null,
         repeatCue ? "Repeated room support can justify a repeated-room repair basis before scaling." : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section anchor guidance: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       5
     ),
@@ -260,6 +301,7 @@ function buildDrywallBridge(args: {
         partitionCue
           ? "Partition-related linear support can be carried separately from repair-area logic."
           : null,
+        ...args.sectionHints.candidates.slice(0, 2),
         args.supportLevel === "weak"
           ? "Measurement basis is still descriptive; do not convert cues into patch counts or unsupported install area."
           : null,
@@ -308,6 +350,7 @@ function buildDrywallBridge(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.guardrails.slice(0, 2),
         ...(args.tradePackagePricingPrep?.tradePackageReviewNotes || []).slice(0, 2),
         ...(args.quantitySupport.tradeQuantityReviewNotes || []).slice(0, 2),
       ],
@@ -321,6 +364,7 @@ function buildWallcoveringBridge(args: {
   quantitySupport: NonNullable<TradeQuantitySupport>
   tradePackagePricingPrep: TradePackagePricingPrep
   bucketHints: string[]
+  sectionHints: { anchors: string[]; candidates: string[]; guardrails: string[] }
   scopeText: string
   complexityProfile: ComplexityProfile | null
 }): TradePricingBasisBridge {
@@ -350,6 +394,9 @@ function buildWallcoveringBridge(args: {
         removalCue && installCue
           ? "Draft removal / prep / install as separate basis steps where support exists."
           : null,
+        args.sectionHints.anchors.length > 0
+          ? `Section anchor guidance: ${args.sectionHints.anchors.join(", ")}.`
+          : null,
       ],
       5
     ),
@@ -359,6 +406,7 @@ function buildWallcoveringBridge(args: {
           .filter((item) => item.exactQuantity)
           .slice(0, 3)
           .map((item) => `Measurement basis: ${item.label} (${item.quantity} ${item.unit}).`),
+        ...args.sectionHints.candidates.slice(0, 2),
         args.supportLevel === "weak"
           ? "Measurement basis is still descriptive; verify elevations before using it for pricing."
           : null,
@@ -409,6 +457,7 @@ function buildWallcoveringBridge(args: {
         args.bucketHints.length > 0
           ? `Relevant estimate buckets: ${args.bucketHints.join(", ")}.`
           : null,
+        ...args.sectionHints.guardrails.slice(0, 2),
         ...(args.tradePackagePricingPrep?.tradePackageReviewNotes || []).slice(0, 2),
         ...(args.quantitySupport.tradeQuantityReviewNotes || []).slice(0, 2),
       ],
@@ -446,6 +495,10 @@ export function buildTradePricingBasisBridge(args: {
     structure: args.estimateStructureConsumption,
     trade,
   })
+  const sectionHints = getSectionInputHints({
+    structure: args.estimateStructureConsumption,
+    trade,
+  })
 
   if (trade === "painting") {
     return buildPaintingBridge({
@@ -453,6 +506,7 @@ export function buildTradePricingBasisBridge(args: {
       quantitySupport: args.tradeQuantitySupport,
       tradePackagePricingPrep: args.tradePackagePricingPrep,
       bucketHints,
+      sectionHints,
       scopeText: args.scopeText,
       tradeStack: args.tradeStack,
       complexityProfile: args.complexityProfile,
@@ -465,6 +519,7 @@ export function buildTradePricingBasisBridge(args: {
       quantitySupport: args.tradeQuantitySupport,
       tradePackagePricingPrep: args.tradePackagePricingPrep,
       bucketHints,
+      sectionHints,
       scopeText: args.scopeText,
       complexityProfile: args.complexityProfile,
     })
@@ -475,6 +530,7 @@ export function buildTradePricingBasisBridge(args: {
     quantitySupport: args.tradeQuantitySupport,
     tradePackagePricingPrep: args.tradePackagePricingPrep,
     bucketHints,
+    sectionHints,
     scopeText: args.scopeText,
     complexityProfile: args.complexityProfile,
   })

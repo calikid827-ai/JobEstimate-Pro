@@ -428,8 +428,12 @@ export type EstimateStructureConsumption = {
     scopeBreadth: "broad" | "narrow"
     sectionReadiness: "section_anchor" | "scalable_hint" | "support_only" | "review_only"
     quantityAnchor: string | null
+    quantityNormalization: "measured" | "scaled_prototype" | "review_only" | "support_only"
     scopeBullets: string[]
     cautionNotes: string[]
+    tradeMeasurementDrafts: string[]
+    normalizedEstimatorInputCandidates: string[]
+    estimatorInputGuardrails: string[]
     safeForSectionBuild: boolean
     evidence: Array<{
       uploadId: string
