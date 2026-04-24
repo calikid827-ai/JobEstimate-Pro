@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { MAX_JOB_PLANS, MAX_PLAN_SOURCE_PAGES } from "../../../lib/plan-upload"
 
 const PhotoInputSchema = z.object({
   name: z.string().max(120),
@@ -49,6 +50,11 @@ const PlanInputSchema = z.object({
       "Invalid plan data URL"
     ),
   note: z.string().trim().max(240).optional().default(""),
+  selectedSourcePages: z
+    .array(z.number().int().min(1).max(MAX_PLAN_SOURCE_PAGES))
+    .max(MAX_PLAN_SOURCE_PAGES)
+    .optional()
+    .default([]),
 })
 
 const TradeSchema = z
@@ -126,7 +132,7 @@ export const GenerateSchema = z.object({
 
   plans: z
     .array(PlanInputSchema)
-    .max(20)
+    .max(MAX_JOB_PLANS)
     .nullable()
     .optional()
     .default(null),

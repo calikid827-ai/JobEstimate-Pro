@@ -5,6 +5,7 @@ export type PlanUpload = {
   mimeType: string
   dataUrl: string
   bytes: number | null
+  selectedSourcePages: number[] | null
 }
 
 export type PlanPageImage = {
@@ -18,6 +19,7 @@ export type PlanPageImage = {
   imageDataUrl: string
   width: number | null
   height: number | null
+  selectedForAnalysis: boolean
 }
 
 export type PlanSheetDiscipline =
@@ -36,11 +38,13 @@ export type PlanSheetIndexEntry = {
   uploadName: string
   sourcePageNumber: number
   pageNumber: number
+  pageLabel: string
   sheetNumber: string | null
   sheetTitle: string | null
   discipline: PlanSheetDiscipline
   confidence: number
   revision: string | null
+  selectedForAnalysis: boolean
 }
 
 export type PlanEvidenceRef = {
@@ -178,6 +182,9 @@ export type PlanIntelligence = {
   ok: boolean
   uploadsCount: number
   pagesCount: number
+  indexedPagesCount?: number
+  selectedPagesCount?: number
+  skippedPagesCount?: number
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

@@ -5,6 +5,14 @@ type JobPlan = {
   name: string
   dataUrl: string
   note: string
+  mimeType: string
+  sourceKind: "image" | "pdf"
+  bytes: number
+  pages: Array<{
+    sourcePageNumber: number
+    label: string
+    selected: boolean
+  }>
 }
 
 type Props = {
@@ -45,7 +53,7 @@ export default function PlanUploadsSection({
           lineHeight: 1.4,
         }}
       >
-        Upload up to {maxJobPlans} plan files. Accepted: PDF, PNG, JPG, JPEG, WEBP.
+        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to analyze before pricing. Accepted: PDF, PNG, JPG, JPEG, WEBP.
         {plansAtLimit ? " Remove a plan to add another file." : ""}
       </div>
 
@@ -103,7 +111,9 @@ export default function PlanUploadsSection({
                   </div>
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                    Optional note for this plan file.
+                    {plan.sourceKind === "pdf"
+                      ? `${plan.pages.filter((page) => page.selected).length} of ${plan.pages.length} indexed PDF page(s) selected for analysis.`
+                      : "Single image plan selected for analysis."}
                   </div>
                 </div>
 
@@ -138,6 +148,124 @@ export default function PlanUploadsSection({
                   resize: "vertical",
                 }}
               />
+
+              {plan.pages.length > 1 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>
+                      Indexed pages
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateJobPlan(plan.id, {
+                          pages: plan.pages.map((page) => ({
+                            ...page,
+                            selected: true,
+                          })),
+                        })
+                      }
+                      style={{
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        border: "1px solid #e5e7eb",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Select all
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateJobPlan(plan.id, {
+                          pages: plan.pages.map((page) => ({
+                            ...page,
+                            selected: false,
+                          })),
+                        })
+                      }
+                      style={{
+                        padding: "6px 8px",
+                        borderRadius: 8,
+                        border: "1px solid #e5e7eb",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+                    Analysis only uses the selected pages from this plan set.
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))",
+                      gap: 8,
+                      marginTop: 10,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {plan.pages.map((page) => (
+                      <label
+                        key={page.sourcePageNumber}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #e5e7eb",
+                          background: page.selected ? "#eff6ff" : "#f9fafb",
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={page.selected}
+                          onChange={(e) =>
+                            updateJobPlan(plan.id, {
+                              pages: plan.pages.map((candidate) =>
+                                candidate.sourcePageNumber === page.sourcePageNumber
+                                  ? { ...candidate, selected: e.target.checked }
+                                  : candidate
+                              ),
+                            })
+                          }
+                        />
+                        <span>{page.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

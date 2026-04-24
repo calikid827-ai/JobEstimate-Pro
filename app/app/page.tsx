@@ -95,6 +95,14 @@ import InvoicesSection from "./components/InvoicesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
+import {
+  ALLOWED_PLAN_MIME_TYPES,
+  MAX_JOB_PLANS,
+  MAX_PLAN_SOURCE_PAGES,
+  MAX_TOTAL_PLAN_PAYLOAD,
+  clampPlanSourcePageCount,
+  countPdfPagesFromBytes,
+} from "../lib/plan-upload"
 
 type ShotType =
   | "overview"
@@ -127,6 +135,14 @@ type JobPlan = {
   name: string
   dataUrl: string
   note: string
+  mimeType: string
+  sourceKind: "image" | "pdf"
+  bytes: number
+  pages: Array<{
+    sourcePageNumber: number
+    label: string
+    selected: boolean
+  }>
 }
 
 type PlanIntelligence = {
@@ -214,15 +230,6 @@ function scrollToInvoices() {
 const MAX_JOB_PHOTOS = 8
 const MAX_PHOTO_DATAURL_LENGTH = 450_000
 const MAX_TOTAL_PHOTO_PAYLOAD = 3_200_000
-const MAX_JOB_PLANS = 10
-const MAX_TOTAL_PLAN_PAYLOAD = 18_000_000
-const ALLOWED_PLAN_MIME_TYPES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-])
 
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
@@ -287,6 +294,53 @@ async function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error("Could not read file"))
     reader.readAsDataURL(file)
   })
+}
+
+function defaultSelectIndexedPlanPage(args: {
+  sourceKind: "image" | "pdf"
+  totalPages: number
+  name: string
+  note: string
+}): boolean {
+  if (args.sourceKind === "pdf" && args.totalPages > 1) return true
+
+  const blob = `${args.name} ${args.note}`.toLowerCase()
+  if (
+    /\bcover\b|\bindex\b|\bgeneral notes?\b|\bcode\b|\blife safety\b|\blegend\b|\bsymbols?\b|\babbreviations?\b/.test(
+      blob
+    )
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function buildJobPlanPages(args: {
+  sourceKind: "image" | "pdf"
+  totalPages: number
+  name: string
+  note: string
+}): JobPlan["pages"] {
+  const totalPages = Math.max(1, args.totalPages)
+  const defaultSelected = defaultSelectIndexedPlanPage(args)
+
+  return Array.from({ length: totalPages }, (_, index) => ({
+    sourcePageNumber: index + 1,
+    label:
+      args.sourceKind === "pdf"
+        ? `Page ${index + 1}`
+        : "Image 1",
+    selected: defaultSelected,
+  }))
+}
+
+async function getPlanSourcePageCount(file: File): Promise<number> {
+  if (file.type !== "application/pdf") return 1
+
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const countedPages = countPdfPagesFromBytes(bytes)
+  return clampPlanSourcePageCount(countedPages)
 }
 
 async function handlePhotoUpload(files: FileList | null) {
@@ -411,26 +465,44 @@ async function handlePlanUpload(files: FileList | null) {
 
   try {
     const uploaded: JobPlan[] = await Promise.all(
-      picked.map(async (file) => ({
-        id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
-        name: file.name,
-        dataUrl: await readFileAsDataUrl(file),
-        note: "",
-      }))
+      picked.map(async (file) => {
+        const sourcePageCount = await getPlanSourcePageCount(file)
+        const dataUrl = await readFileAsDataUrl(file)
+
+        return {
+          id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+          name: file.name,
+          dataUrl,
+          note: "",
+          mimeType: file.type,
+          sourceKind: file.type === "application/pdf" ? "pdf" : "image",
+          bytes: file.size,
+          pages: buildJobPlanPages({
+            sourceKind: file.type === "application/pdf" ? "pdf" : "image",
+            totalPages: sourcePageCount,
+            name: file.name,
+            note: "",
+          }),
+        }
+      })
     )
 
     const mergedBase: JobPlan[] = [...jobPlans]
     const merged: JobPlan[] = [...mergedBase]
     let skippedForSize = 0
+    let skippedForPageCount = 0
 
     for (const plan of uploaded) {
       const next = [...merged, plan]
       const totalSize = estimatePlanPayloadLength(next)
+      const totalPages = next.reduce((sum, item) => sum + item.pages.length, 0)
 
-      if (totalSize <= MAX_TOTAL_PLAN_PAYLOAD) {
+      if (totalSize <= MAX_TOTAL_PLAN_PAYLOAD && totalPages <= MAX_PLAN_SOURCE_PAGES) {
         merged.push(plan)
-      } else {
+      } else if (totalSize > MAX_TOTAL_PLAN_PAYLOAD) {
         skippedForSize += 1
+      } else {
+        skippedForPageCount += 1
       }
     }
 
@@ -450,6 +522,9 @@ async function handlePlanUpload(files: FileList | null) {
     }
     if (skippedForSize > 0) {
       notices.push("Some plan files were skipped because the total upload payload is too large.")
+    }
+    if (skippedForPageCount > 0) {
+      notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
     }
 
     setStatus(notices.join(" "))
@@ -2480,11 +2555,18 @@ const res = await fetch("/api/generate", {
       ? { rows: measureRows, totalSqft, units: "ft" }
       : null,
     photos: photosToSend,
-    plans: jobPlans.map((plan) => ({
-      name: plan.name,
-      dataUrl: plan.dataUrl,
-      note: plan.note,
-    })),
+    plans:
+      jobPlans.length > 0
+        ? jobPlans.map((plan) => ({
+            name: plan.name,
+            dataUrl: plan.dataUrl,
+            note: plan.note,
+            mimeType: plan.mimeType,
+            selectedSourcePages: plan.pages
+              .filter((page) => page.selected)
+              .map((page) => page.sourcePageNumber),
+          }))
+        : null,
   }),
 })
 

@@ -1,11 +1,12 @@
 import type { PlanUpload } from "./types"
 import { estimateBase64DecodedBytes, getDataUrlMime } from "./dataUrl"
+import { MAX_JOB_PLANS, MAX_PLAN_SOURCE_PAGES } from "../../../../lib/plan-upload"
 
 export function sanitizePlanUploads(input: unknown): PlanUpload[] {
   if (!Array.isArray(input)) return []
 
   return input
-    .slice(0, 10)
+    .slice(0, MAX_JOB_PLANS)
     .map((raw, index): PlanUpload => {
       const record = raw && typeof raw === "object" ? raw : null
       const dataUrl = typeof record?.dataUrl === "string" ? record.dataUrl.trim() : ""
@@ -14,6 +15,16 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
           ? record.mimeType.trim().toLowerCase()
           : ""
       const mimeType = mimeTypeRaw || getDataUrlMime(dataUrl) || ""
+      const selectedSourcePages: number[] | null = Array.isArray(record?.selectedSourcePages)
+        ? Array.from(
+            new Set(
+              record.selectedSourcePages
+                .map((value: unknown) => Number(value))
+                .filter((value: number) => Number.isInteger(value) && value > 0)
+                .slice(0, MAX_PLAN_SOURCE_PAGES)
+            )
+          )
+        : null
 
       return {
         uploadId: `plan_upload_${index + 1}`,
@@ -22,6 +33,7 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
         mimeType,
         dataUrl,
         bytes: estimateBase64DecodedBytes(dataUrl),
+        selectedSourcePages,
       }
     })
     .filter(

@@ -1,4 +1,6 @@
 import type { PlanPageImage, PlanUpload } from "./types"
+import { decodeDataUrlToBuffer } from "./dataUrl"
+import { clampPlanSourcePageCount, countPdfPagesFromBytes } from "../../../../lib/plan-upload"
 
 export type RasterizedPdfPage = Pick<
   PlanPageImage,
@@ -8,10 +10,19 @@ export type RasterizedPdfPage = Pick<
 export async function rasterizePdfToPages(
   upload: PlanUpload
 ): Promise<RasterizedPdfPage[]> {
-  void upload
+  const bytes = decodeDataUrlToBuffer(upload.dataUrl)
+  const countedPages = countPdfPagesFromBytes(bytes)
+  const totalPages = clampPlanSourcePageCount(countedPages)
+  const pages: RasterizedPdfPage[] = []
 
-  // Final-shape boundary for PDF-to-image conversion.
-  // A PDF rasterizer can be introduced here later without changing pdfSplit.ts
-  // or downstream consumers of PlanPageImage.
-  return []
+  for (let sourcePageNumber = 1; sourcePageNumber <= totalPages; sourcePageNumber += 1) {
+    pages.push({
+      sourcePageNumber,
+      imageDataUrl: "",
+      width: null,
+      height: null,
+    })
+  }
+
+  return pages
 }

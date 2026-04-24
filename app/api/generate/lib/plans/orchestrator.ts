@@ -20,27 +20,30 @@ export async function runPlanIntelligence(args: {
   const uploads = sanitizePlanUploads(args.rawPlans)
   if (!uploads.length) return null
 
-  const pages = await splitPlanUploadsToPages(uploads)
-  if (!pages.length) return null
+  const indexedPages = await splitPlanUploadsToPages(uploads)
+  if (!indexedPages.length) return null
 
-  const sheetIndex = await buildSheetIndex(pages)
+  const sheetIndex = await buildSheetIndex(indexedPages)
+  const selectedPages = indexedPages.filter((page) => page.selectedForAnalysis)
+  const selectedSheetIndex = sheetIndex.filter((sheet) => sheet.selectedForAnalysis)
+  if (!selectedPages.length) return null
 
   const heuristicAnalyses = await Promise.all(
-    pages.map((page) =>
+    selectedPages.map((page) =>
       analyzePlanSheet({
         page,
-        sheet: sheetIndex.find((x) => x.pageNumber === page.pageNumber) ?? null,
+        sheet: selectedSheetIndex.find((x) => x.pageNumber === page.pageNumber) ?? null,
         scopeText: args.scopeText,
         trade: args.trade,
       })
     )
   )
 
-  const weakImagePages = pages
+  const weakImagePages = selectedPages
     .map((page, index) => ({
       page,
       index,
-      sheet: sheetIndex.find((x) => x.pageNumber === page.pageNumber) ?? null,
+      sheet: selectedSheetIndex.find((x) => x.pageNumber === page.pageNumber) ?? null,
       analysis: heuristicAnalyses[index],
     }))
     .filter(
@@ -62,7 +65,7 @@ export async function runPlanIntelligence(args: {
   )
 
   const analyses = [...heuristicAnalyses]
-  const nextSheetIndex = [...sheetIndex]
+  const nextSheetIndex = [...selectedSheetIndex]
 
   for (const result of visionResults) {
     if (!result.enhancement) continue
@@ -101,7 +104,10 @@ export async function runPlanIntelligence(args: {
   return {
     ok: true,
     uploadsCount: uploads.length,
-    pagesCount: pages.length,
+    pagesCount: selectedPages.length,
+    indexedPagesCount: indexedPages.length,
+    selectedPagesCount: selectedPages.length,
+    skippedPagesCount: Math.max(0, indexedPages.length - selectedPages.length),
     ...merged,
   }
 }

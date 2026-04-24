@@ -34,6 +34,14 @@ type JobPlan = {
   name: string
   dataUrl: string
   note: string
+  mimeType: string
+  sourceKind: "image" | "pdf"
+  bytes: number
+  pages: Array<{
+    sourcePageNumber: number
+    label: string
+    selected: boolean
+  }>
 }
 
 type Props = {
