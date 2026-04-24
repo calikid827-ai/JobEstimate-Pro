@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises"
+
+import type { PlanUpload } from "./types"
+
 export type ParsedDataUrl = {
   mimeType: string | null
   payload: string
@@ -37,4 +41,27 @@ export function estimateBase64DecodedBytes(dataUrl: string): number {
 export function decodeDataUrlToBuffer(dataUrl: string): Buffer {
   const payload = getBase64Payload(dataUrl).replace(/\s/g, "")
   return Buffer.from(payload, "base64")
+}
+
+export async function readPlanUploadBuffer(upload: PlanUpload): Promise<Buffer> {
+  if (upload.tempFilePath) {
+    return await readFile(upload.tempFilePath)
+  }
+
+  if (upload.dataUrl) {
+    return decodeDataUrlToBuffer(upload.dataUrl)
+  }
+
+  return Buffer.alloc(0)
+}
+
+export async function readPlanUploadDataUrl(upload: PlanUpload): Promise<string> {
+  if (upload.dataUrl) {
+    return upload.dataUrl
+  }
+
+  const bytes = await readPlanUploadBuffer(upload)
+  if (!bytes.length || !upload.mimeType) return ""
+
+  return `data:${upload.mimeType};base64,${bytes.toString("base64")}`
 }

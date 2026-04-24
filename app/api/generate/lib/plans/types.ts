@@ -3,7 +3,9 @@ export type PlanUpload = {
   name: string
   note: string
   mimeType: string
-  dataUrl: string
+  transport?: "inline" | "multipart-temp"
+  dataUrl?: string | null
+  tempFilePath?: string | null
   bytes: number | null
   selectedSourcePages: number[] | null
 }

@@ -98,8 +98,9 @@ import { detectChangeOrder } from "./lib/change-order-detector"
 import {
   ALLOWED_PLAN_MIME_TYPES,
   MAX_JOB_PLANS,
+  MAX_PLAN_FILE_BYTES,
   MAX_PLAN_SOURCE_PAGES,
-  MAX_TOTAL_PLAN_PAYLOAD,
+  MAX_TOTAL_PLAN_FILE_BYTES,
   clampPlanSourcePageCount,
   countPdfPagesFromBytes,
 } from "../lib/plan-upload"
@@ -133,7 +134,7 @@ type JobPhoto = {
 type JobPlan = {
   id: string
   name: string
-  dataUrl: string
+  file: File
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
@@ -237,10 +238,10 @@ function estimatePhotoPayloadLength(
   return photos.reduce((sum, p) => sum + (p.dataUrl?.length || 0), 0)
 }
 
-function estimatePlanPayloadLength(
-  plans: { dataUrl: string }[]
+function estimatePlanFileBytes(
+  plans: { bytes: number }[]
 ): number {
-  return plans.reduce((sum, p) => sum + (p.dataUrl?.length || 0), 0)
+  return plans.reduce((sum, p) => sum + (Number(p.bytes) || 0), 0)
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -278,22 +279,6 @@ async function compressImageFile(file: File): Promise<string> {
   }
 
   return dataUrl
-}
-
-async function readFileAsDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result)
-        return
-      }
-
-      reject(new Error("Could not read file"))
-    }
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"))
-    reader.readAsDataURL(file)
-  })
 }
 
 function defaultSelectIndexedPlanPage(args: {
@@ -467,12 +452,11 @@ async function handlePlanUpload(files: FileList | null) {
     const uploaded: JobPlan[] = await Promise.all(
       picked.map(async (file) => {
         const sourcePageCount = await getPlanSourcePageCount(file)
-        const dataUrl = await readFileAsDataUrl(file)
 
         return {
           id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
           name: file.name,
-          dataUrl,
+          file,
           note: "",
           mimeType: file.type,
           sourceKind: file.type === "application/pdf" ? "pdf" : "image",
@@ -494,12 +478,16 @@ async function handlePlanUpload(files: FileList | null) {
 
     for (const plan of uploaded) {
       const next = [...merged, plan]
-      const totalSize = estimatePlanPayloadLength(next)
+      const totalSize = estimatePlanFileBytes(next)
       const totalPages = next.reduce((sum, item) => sum + item.pages.length, 0)
 
-      if (totalSize <= MAX_TOTAL_PLAN_PAYLOAD && totalPages <= MAX_PLAN_SOURCE_PAGES) {
+      if (
+        plan.bytes <= MAX_PLAN_FILE_BYTES &&
+        totalSize <= MAX_TOTAL_PLAN_FILE_BYTES &&
+        totalPages <= MAX_PLAN_SOURCE_PAGES
+      ) {
         merged.push(plan)
-      } else if (totalSize > MAX_TOTAL_PLAN_PAYLOAD) {
+      } else if (plan.bytes > MAX_PLAN_FILE_BYTES || totalSize > MAX_TOTAL_PLAN_FILE_BYTES) {
         skippedForSize += 1
       } else {
         skippedForPageCount += 1
@@ -521,7 +509,7 @@ async function handlePlanUpload(files: FileList | null) {
       notices.push(`${skippedForLimit} file${skippedForLimit === 1 ? "" : "s"} skipped because the ${MAX_JOB_PLANS}-plan limit was reached.`)
     }
     if (skippedForSize > 0) {
-      notices.push("Some plan files were skipped because the total upload payload is too large.")
+      notices.push("Some plan files were skipped because the file size or total plan upload size is too large for reliable transport.")
     }
     if (skippedForPageCount > 0) {
       notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
@@ -2537,38 +2525,63 @@ console.log(
   photosToSend?.reduce((sum, p) => sum + p.dataUrl.length, 0) ?? 0
 )
 
-const res = await fetch("/api/generate", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "x-idempotency-key": requestId,
-  },
-  body: JSON.stringify({
-    requestId,
-    email: e,
-    scopeChange: finalScopeChange,
-    trade: tradeToSend,
-    state,
-    paintScope: paintScopeToSend,
-    workDaysPerWeek: 5,
-    measurements: measureEnabled
-      ? { rows: measureRows, totalSqft, units: "ft" }
+const requestPayload = {
+  requestId,
+  email: e,
+  scopeChange: finalScopeChange,
+  trade: tradeToSend,
+  state,
+  paintScope: paintScopeToSend,
+  workDaysPerWeek: 5,
+  measurements: measureEnabled
+    ? { rows: measureRows, totalSqft, units: "ft" }
+    : null,
+  photos: photosToSend,
+  plans:
+    jobPlans.length > 0
+      ? jobPlans.map((plan) => ({
+          uploadId: plan.id,
+          name: plan.name,
+          note: plan.note,
+          mimeType: plan.mimeType,
+          bytes: plan.bytes,
+          transport: "multipart" as const,
+          selectedSourcePages: plan.pages
+            .filter((page) => page.selected)
+            .map((page) => page.sourcePageNumber),
+        }))
       : null,
-    photos: photosToSend,
-    plans:
-      jobPlans.length > 0
-        ? jobPlans.map((plan) => ({
-            name: plan.name,
-            dataUrl: plan.dataUrl,
-            note: plan.note,
-            mimeType: plan.mimeType,
-            selectedSourcePages: plan.pages
-              .filter((page) => page.selected)
-              .map((page) => page.sourcePageNumber),
-          }))
-        : null,
-  }),
-})
+}
+
+let res: Response
+
+if (jobPlans.length > 0) {
+  setStatus(`Uploading ${jobPlans.length} selected plan file${jobPlans.length === 1 ? "" : "s"} through reliable file transport...`)
+
+  const form = new FormData()
+  form.set("payload", JSON.stringify(requestPayload))
+
+  for (const plan of jobPlans) {
+    form.append(`planFile:${plan.id}`, plan.file, plan.name)
+  }
+
+  res = await fetch("/api/generate", {
+    method: "POST",
+    headers: {
+      "x-idempotency-key": requestId,
+    },
+    body: form,
+  })
+} else {
+  res = await fetch("/api/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-idempotency-key": requestId,
+    },
+    body: JSON.stringify(requestPayload),
+  })
+}
 
     if (res.status === 403) {
       setStatus("Free limit reached. Please upgrade.")
@@ -2589,7 +2602,13 @@ const res = await fetch("/api/generate", {
     }
 
     if (!res.ok) {
-      const msg = await res.text().catch(() => "")
+      const payload = await res.json().catch(() => null)
+      const msg =
+        typeof payload?.message === "string" && payload.message.trim()
+          ? payload.message.trim()
+          : typeof payload?.error === "string" && payload.error.trim()
+            ? payload.error.trim()
+            : await res.text().catch(() => "")
       setStatus(`Server error (${res.status}). ${msg}`)
       return
     }

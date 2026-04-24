@@ -3,7 +3,7 @@
 type JobPlan = {
   id: string
   name: string
-  dataUrl: string
+  file: File
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
@@ -53,7 +53,7 @@ export default function PlanUploadsSection({
           lineHeight: 1.4,
         }}
       >
-        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to analyze before pricing. Accepted: PDF, PNG, JPG, JPEG, WEBP.
+        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to analyze before pricing. Larger plan PDFs are sent through reliable file upload transport instead of one giant inline payload. Accepted: PDF, PNG, JPG, JPEG, WEBP.
         {plansAtLimit ? " Remove a plan to add another file." : ""}
       </div>
 

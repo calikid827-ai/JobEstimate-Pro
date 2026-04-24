@@ -1,4 +1,5 @@
 import type { PlanPageImage, PlanUpload } from "./types"
+import { readPlanUploadDataUrl } from "./dataUrl"
 import { rasterizePdfToPages } from "./pdfRasterize"
 import { MAX_PLAN_SOURCE_PAGES } from "../../../../lib/plan-upload"
 
@@ -50,6 +51,8 @@ export async function splitPlanUploadsToPages(
     const selectedSourcePages =
       upload.selectedSourcePages === null ? null : new Set(upload.selectedSourcePages)
 
+    const imageDataUrl = await readPlanUploadDataUrl(upload)
+
     pages.push({
       uploadId: upload.uploadId,
       uploadName: upload.name,
@@ -58,7 +61,7 @@ export async function splitPlanUploadsToPages(
       sourceKind: "image",
       sourcePageNumber: 1,
       pageNumber: nextPageNumber,
-      imageDataUrl: upload.dataUrl,
+      imageDataUrl,
       width: null,
       height: null,
       selectedForAnalysis:

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
 import { createRequire } from "node:module"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import test from "node:test"
 
 import { sanitizePlanUploads } from "./ingest"
@@ -28,6 +31,11 @@ async function makeRenderedPdfDataUrl(pages: string[]): Promise<string> {
   })
 
   return `data:application/pdf;base64,${buffer.toString("base64")}`
+}
+
+async function makeRenderedPdfBuffer(pages: string[]): Promise<Buffer> {
+  const dataUrl = await makeRenderedPdfDataUrl(pages)
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64")
 }
 
 function makeIndexedPdfDataUrl(pageCount: number): string {
@@ -183,4 +191,70 @@ test("indexed-only fallback still works when page rendering input is not a real 
   assert.equal(pages.length, 3)
   assert.equal(pages[0].renderedFromPdf, false)
   assert.equal(pages[0].renderedImageAvailable, false)
+})
+
+test("multipart-temp pdf transport preserves selectedSourcePages and downstream page provenance", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-transport-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "large-plan-set.pdf")
+    await writeFile(
+      pdfPath,
+      await makeRenderedPdfBuffer([
+        "A1.0 Floor Plan Guest Room",
+        "A8.2 Finish Schedule paint wallcovering flooring",
+        "P2.0 Fixture Schedule 4 toilets 4 lavatories",
+      ])
+    )
+
+    const uploads = sanitizePlanUploads([
+      {
+        uploadId: "multipart_plan_1",
+        name: "large-plan-set.pdf",
+        note: "Reliable multipart upload",
+        transport: "multipart-temp",
+        mimeType: "application/pdf",
+        tempFilePath: pdfPath,
+        bytes: 8_000_000,
+        selectedSourcePages: [2, 3],
+      },
+    ])
+
+    assert.equal(uploads.length, 1)
+    assert.equal(uploads[0].dataUrl, "")
+    assert.equal(uploads[0].tempFilePath, pdfPath)
+    assert.deepEqual(uploads[0].selectedSourcePages, [2, 3])
+
+    const pages = await splitPlanUploadsToPages(uploads)
+    assert.equal(pages.length, 3)
+    assert.deepEqual(
+      pages.map((page) => page.selectedForAnalysis),
+      [false, true, true]
+    )
+    assert.deepEqual(
+      pages.map((page) => page.uploadId),
+      ["multipart_plan_1", "multipart_plan_1", "multipart_plan_1"]
+    )
+    assert.equal(pages[1].sourcePageNumber, 2)
+    assert.equal(pages[2].sourcePageNumber, 3)
+    assert.equal(pages[1].renderedImageAvailable, true)
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test("incomplete multipart-temp upload stays safely invalid instead of entering plan analysis", () => {
+  const uploads = sanitizePlanUploads([
+    {
+      uploadId: "broken_upload",
+      name: "broken.pdf",
+      note: "Interrupted upload",
+      transport: "multipart-temp",
+      mimeType: "application/pdf",
+      bytes: 4_000_000,
+      selectedSourcePages: [1],
+    },
+  ])
+
+  assert.equal(uploads.length, 0)
 })

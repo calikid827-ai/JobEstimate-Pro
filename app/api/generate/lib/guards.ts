@@ -1,5 +1,11 @@
 import { z } from "zod"
-import { MAX_JOB_PLANS, MAX_PLAN_SOURCE_PAGES } from "../../../lib/plan-upload"
+import {
+  ALLOWED_PLAN_MIME_TYPES,
+  MAX_JOB_PLANS,
+  MAX_PLAN_FILE_BYTES,
+  MAX_PLAN_SOURCE_PAGES,
+  MAX_TOTAL_PLAN_FILE_BYTES,
+} from "../../../lib/plan-upload"
 
 const PhotoInputSchema = z.object({
   name: z.string().max(120),
@@ -41,7 +47,7 @@ const PhotoInputSchema = z.object({
     }),
 })
 
-const PlanInputSchema = z.object({
+const InlinePlanInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
   dataUrl: z
     .string()
@@ -49,6 +55,14 @@ const PlanInputSchema = z.object({
       /^data:(application\/pdf|image\/(png|jpeg|jpg|webp));base64,/,
       "Invalid plan data URL"
     ),
+  mimeType: z
+    .string()
+    .trim()
+    .optional()
+    .default(""),
+  transport: z.literal("inline").optional().default("inline"),
+  uploadId: z.string().trim().max(160).optional(),
+  bytes: z.number().int().min(0).max(MAX_PLAN_FILE_BYTES).optional(),
   note: z.string().trim().max(240).optional().default(""),
   selectedSourcePages: z
     .array(z.number().int().min(1).max(MAX_PLAN_SOURCE_PAGES))
@@ -56,6 +70,26 @@ const PlanInputSchema = z.object({
     .optional()
     .default([]),
 })
+
+const MultipartPlanInputSchema = z.object({
+  uploadId: z.string().trim().min(1).max(160),
+  name: z.string().trim().min(1).max(160),
+  transport: z.enum(["multipart", "multipart-temp"]),
+  mimeType: z
+    .string()
+    .trim()
+    .refine((value) => ALLOWED_PLAN_MIME_TYPES.has(value), "Invalid plan MIME type"),
+  bytes: z.number().int().min(0).max(MAX_PLAN_FILE_BYTES).optional().default(0),
+  tempFilePath: z.string().trim().min(1).max(1000).optional(),
+  note: z.string().trim().max(240).optional().default(""),
+  selectedSourcePages: z
+    .array(z.number().int().min(1).max(MAX_PLAN_SOURCE_PAGES))
+    .max(MAX_PLAN_SOURCE_PAGES)
+    .optional()
+    .default([]),
+})
+
+const PlanInputSchema = z.union([InlinePlanInputSchema, MultipartPlanInputSchema])
 
 const TradeSchema = z
   .string()
@@ -133,6 +167,21 @@ export const GenerateSchema = z.object({
   plans: z
     .array(PlanInputSchema)
     .max(MAX_JOB_PLANS)
+    .superRefine((plans, ctx) => {
+      const totalBytes = plans.reduce(
+        (sum, plan) => sum + (typeof plan.bytes === "number" ? plan.bytes : 0),
+        0
+      )
+
+      if (totalBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Combined plan upload size exceeds ${Math.floor(
+            MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
+          )} MB.`,
+        })
+      }
+    })
     .nullable()
     .optional()
     .default(null),

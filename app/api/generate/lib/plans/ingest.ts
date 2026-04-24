@@ -9,7 +9,15 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
     .slice(0, MAX_JOB_PLANS)
     .map((raw, index): PlanUpload => {
       const record = raw && typeof raw === "object" ? raw : null
+      const transport =
+        record?.transport === "multipart-temp" || record?.transport === "multipart"
+          ? "multipart-temp"
+          : "inline"
       const dataUrl = typeof record?.dataUrl === "string" ? record.dataUrl.trim() : ""
+      const tempFilePath =
+        typeof record?.tempFilePath === "string" && record.tempFilePath.trim()
+          ? record.tempFilePath.trim()
+          : null
       const mimeTypeRaw =
         typeof record?.mimeType === "string"
           ? record.mimeType.trim().toLowerCase()
@@ -27,18 +35,27 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
         : null
 
       return {
-        uploadId: `plan_upload_${index + 1}`,
+        uploadId:
+          typeof record?.uploadId === "string" && record.uploadId.trim()
+            ? record.uploadId.trim().slice(0, 160)
+            : `plan_upload_${index + 1}`,
         name: typeof record?.name === "string" ? record.name.slice(0, 160) : "plan",
         note: typeof record?.note === "string" ? record.note.trim().slice(0, 240) : "",
         mimeType,
+        transport,
         dataUrl,
-        bytes: estimateBase64DecodedBytes(dataUrl),
+        tempFilePath,
+        bytes:
+          typeof record?.bytes === "number" && Number.isFinite(record.bytes) && record.bytes > 0
+            ? Math.floor(record.bytes)
+            : estimateBase64DecodedBytes(dataUrl),
         selectedSourcePages,
       }
     })
     .filter(
       (x) =>
-        x.dataUrl.startsWith("data:") &&
+        ((x.transport === "multipart-temp" && !!x.tempFilePath) ||
+          (typeof x.dataUrl === "string" && x.dataUrl.startsWith("data:"))) &&
         (x.mimeType === "application/pdf" || x.mimeType.startsWith("image/"))
     )
 }

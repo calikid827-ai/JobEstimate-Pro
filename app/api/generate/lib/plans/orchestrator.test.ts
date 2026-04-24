@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
 import { createRequire } from "node:module"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 import test from "node:test"
 
 import { runPlanIntelligence } from "./orchestrator"
@@ -30,6 +33,11 @@ async function makePdfDataUrl(pages: string[]): Promise<string> {
   })
 
   return `data:application/pdf;base64,${buffer.toString("base64")}`
+}
+
+async function makePdfBuffer(pages: string[]): Promise<Buffer> {
+  const dataUrl = await makePdfDataUrl(pages)
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64")
 }
 
 test("selected-sheet analysis only uses user-selected pages", async () => {
@@ -225,4 +233,53 @@ test("selected pages synthesize cross-sheet schedule and plan context conservati
   assert(result.detectedTrades.includes("painting"))
   assert(result.detectedTrades.includes("plumbing"))
   assert(result.sheetIndex.every((sheet) => sheet.selectedForAnalysis))
+})
+
+test("temp-file-backed large pdf transport feeds the same split/render/analyze seam", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-orchestrator-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "large-hotel-set.pdf")
+    await writeFile(
+      pdfPath,
+      await makePdfBuffer([
+        "Cover Sheet General Notes Code Summary",
+        "A8.1 Finish Plan guest room paint walls ceilings",
+        "A8.2 Finish Schedule guest room finish matrix paint wallcovering flooring",
+        "P2.0 Fixture Schedule 4 toilets 4 lavatories 2 shower valves",
+      ])
+    )
+
+    const result = await runPlanIntelligence({
+      rawPlans: [
+        {
+          uploadId: "multipart_plan_upload",
+          name: "large-hotel-set.pdf",
+          note: "Reliable transport upload",
+          transport: "multipart-temp",
+          mimeType: "application/pdf",
+          tempFilePath: pdfPath,
+          bytes: 12_000_000,
+          selectedSourcePages: [2, 3, 4],
+        },
+      ],
+      scopeText: "Refresh guest room finishes and bath fixture areas.",
+      trade: "general renovation",
+    })
+
+    assert(result)
+    assert.equal(result.indexedPagesCount, 4)
+    assert.equal(result.selectedPagesCount, 3)
+    assert.equal(result.pagesCount, 3)
+    assert.equal(result.skippedPagesCount, 1)
+    assert(result.detectedTrades.includes("painting"))
+    assert(result.detectedTrades.includes("plumbing"))
+    assert.deepEqual(
+      result.analyses.map((analysis) => analysis.sourcePageNumber),
+      [2, 3, 4]
+    )
+    assert(result.sheetIndex.every((sheet) => sheet.uploadId === "multipart_plan_upload"))
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
 })

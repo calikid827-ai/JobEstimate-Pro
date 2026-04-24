@@ -32,7 +32,7 @@ type JobPhoto = {
 type JobPlan = {
   id: string
   name: string
-  dataUrl: string
+  file: File
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"

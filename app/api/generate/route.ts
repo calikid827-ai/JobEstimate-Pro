@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
 import { createClient } from "@supabase/supabase-js"
 import crypto from "crypto"
+import { createWriteStream } from "node:fs"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
+
+import {
+  ALLOWED_PLAN_MIME_TYPES,
+  MAX_PLAN_FILE_BYTES,
+  MAX_TOTAL_PLAN_FILE_BYTES,
+  PLAN_UPLOAD_STREAM_CHUNK_BYTES,
+} from "../../lib/plan-upload"
 
 import {
   GenerateSchema,
@@ -101,6 +112,154 @@ const ALLOWED_PHOTO_MIME = new Set([
 ])
 
 const ENFORCE_PHOTO_ESTIMATE_DECISION = false
+
+type RequestBodyParseResult = {
+  raw: any
+  tempUploadRoots: string[]
+}
+
+function sanitizeMultipartPlanFileName(name: string): string {
+  const trimmed = String(name || "plan").trim() || "plan"
+  return trimmed.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 160)
+}
+
+async function writeUploadedPlanFileToTemp(
+  file: File
+): Promise<{ tempRoot: string; tempFilePath: string; bytes: number }> {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-upload-"))
+  const tempFilePath = path.join(tempRoot, sanitizeMultipartPlanFileName(file.name))
+  const writer = createWriteStream(tempFilePath, { flags: "w" })
+  const reader = file.stream().getReader()
+  let bytes = 0
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      if (!value) continue
+
+      const chunk = Buffer.from(value)
+      bytes += chunk.byteLength
+
+      if (bytes > MAX_PLAN_FILE_BYTES) {
+        throw Object.assign(new Error("PLAN_FILE_TOO_LARGE"), {
+          status: 413,
+          code: "PLAN_FILE_TOO_LARGE",
+          message: `Plan file exceeds ${Math.floor(MAX_PLAN_FILE_BYTES / (1024 * 1024))} MB.`,
+        })
+      }
+
+      for (let offset = 0; offset < chunk.byteLength; offset += PLAN_UPLOAD_STREAM_CHUNK_BYTES) {
+        const slice = chunk.subarray(offset, offset + PLAN_UPLOAD_STREAM_CHUNK_BYTES)
+        await new Promise<void>((resolve, reject) => {
+          writer.write(slice, (error) => {
+            if (error) reject(error)
+            else resolve()
+          })
+        })
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      writer.end((error?: Error | null) => {
+        if (error) reject(error)
+        else resolve()
+      })
+    })
+
+    return { tempRoot, tempFilePath, bytes }
+  } catch (error) {
+    writer.destroy()
+    throw error
+  }
+}
+
+async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyParseResult> {
+  const contentType = req.headers.get("content-type") || ""
+
+  if (!contentType.toLowerCase().includes("multipart/form-data")) {
+    const raw = await readJsonWithLimit<any>(req, 25_000_000)
+    return { raw, tempUploadRoots: [] }
+  }
+
+  const form = await req.formData()
+  const payloadText = form.get("payload")
+  if (typeof payloadText !== "string" || !payloadText.trim()) {
+    throw Object.assign(new Error("BAD_MULTIPART_PAYLOAD"), {
+      status: 400,
+      code: "BAD_MULTIPART_PAYLOAD",
+      message: "Missing upload payload metadata.",
+    })
+  }
+
+  let raw: any
+  try {
+    raw = JSON.parse(payloadText)
+  } catch {
+    throw Object.assign(new Error("BAD_JSON"), {
+      status: 400,
+      code: "BAD_JSON",
+      message: "Invalid multipart payload JSON.",
+    })
+  }
+
+  const tempUploadRoots: string[] = []
+  let totalPlanBytes = 0
+  const plans = Array.isArray(raw?.plans) ? raw.plans : []
+
+  raw.plans = await Promise.all(
+    plans.map(async (plan: any, index: number) => {
+      if (plan?.transport !== "multipart") return plan
+
+      const uploadId =
+        typeof plan?.uploadId === "string" && plan.uploadId.trim()
+          ? plan.uploadId.trim()
+          : `plan_upload_${index + 1}`
+      const fileEntry = form.get(`planFile:${uploadId}`)
+
+      if (!(fileEntry instanceof File)) {
+        throw Object.assign(new Error("INCOMPLETE_PLAN_UPLOAD"), {
+          status: 400,
+          code: "INCOMPLETE_PLAN_UPLOAD",
+          message: `Plan upload for "${plan?.name || "plan"}" is incomplete. Please retry the upload.`,
+        })
+      }
+
+      const mimeType = String(plan?.mimeType || fileEntry.type || "").trim().toLowerCase()
+      if (!ALLOWED_PLAN_MIME_TYPES.has(mimeType)) {
+        throw Object.assign(new Error("INVALID_PLAN_MIME"), {
+          status: 400,
+          code: "INVALID_PLAN_MIME",
+          message: `Unsupported plan file type for "${plan?.name || "plan"}".`,
+        })
+      }
+
+      const { tempRoot, tempFilePath, bytes } = await writeUploadedPlanFileToTemp(fileEntry)
+      tempUploadRoots.push(tempRoot)
+      totalPlanBytes += bytes
+
+      if (totalPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
+        throw Object.assign(new Error("PLAN_UPLOAD_TOO_LARGE"), {
+          status: 413,
+          code: "PLAN_UPLOAD_TOO_LARGE",
+          message: `Combined plan upload size exceeds ${Math.floor(
+            MAX_TOTAL_PLAN_FILE_BYTES / (1024 * 1024)
+          )} MB.`,
+        })
+      }
+
+      return {
+        ...plan,
+        transport: "multipart-temp",
+        tempFilePath,
+        bytes,
+        mimeType,
+      }
+    })
+  )
+
+  return { raw, tempUploadRoots }
+}
 
 // -----------------------------
 // TYPES
@@ -6842,19 +7001,26 @@ return {
 // API HANDLER
 // -----------------------------
 export async function POST(req: NextRequest) {
+  const tempUploadRoots: string[] = []
+
   try {
     
   if (!assertSameOrigin(req)) {
     return jsonError(403, "BAD_ORIGIN", "Invalid request origin.")
   }
 
-  // Parse JSON with an actual byte limit (stream-safe)
+// Parse JSON with an actual byte limit (stream-safe)
 let raw: any
 try {
-  raw = await readJsonWithLimit<any>(req, 25_000_000)
+  const parsedBody = await readGenerateRequestBody(req)
+  raw = parsedBody.raw
+  tempUploadRoots.push(...parsedBody.tempUploadRoots)
 } catch (e: any) {
   if (e?.status === 413) {
-    return jsonError(413, "BODY_TOO_LARGE", "Request too large.")
+    return jsonError(413, e?.code || "BODY_TOO_LARGE", e?.message || "Request too large.")
+  }
+  if (e?.status === 400) {
+    return jsonError(400, e?.code || "BAD_JSON", e?.message || "Invalid request body.")
   }
   return jsonError(400, "BAD_JSON", "Invalid JSON body.")
 }
@@ -8416,6 +8582,12 @@ return await respondAndCache({
     return NextResponse.json(
       { error: "Generation failed" },
       { status: 500 }
+    )
+  } finally {
+    await Promise.all(
+      tempUploadRoots.map((root) =>
+        rm(root, { recursive: true, force: true }).catch(() => {})
+      )
     )
   }
 }

@@ -1,5 +1,5 @@
 import type { PlanPageImage, PlanUpload } from "./types"
-import { decodeDataUrlToBuffer } from "./dataUrl"
+import { readPlanUploadBuffer } from "./dataUrl"
 import { clampPlanSourcePageCount, countPdfPagesFromBytes } from "../../../../lib/plan-upload"
 import { execFile } from "node:child_process"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
@@ -35,7 +35,7 @@ function toDataUrlFromPng(buffer: Buffer): string {
 export async function rasterizePdfToPages(
   upload: PlanUpload
 ): Promise<RasterizedPdfPage[]> {
-  const bytes = decodeDataUrlToBuffer(upload.dataUrl)
+  const bytes = await readPlanUploadBuffer(upload)
   const countedPages = countPdfPagesFromBytes(bytes)
   const totalPages = clampPlanSourcePageCount(countedPages)
   const pages: RasterizedPdfPage[] = []
