@@ -595,3 +595,328 @@ test("page and source provenance remains intact after cross-sheet synthesis", ()
   assert(result.evidence.summaryRefs.some((ref) => ref.uploadId === "upload-a" && ref.sourcePageNumber === 8 && ref.pageNumber === 5))
   assert(result.crossSheetLinkSignals?.some((item) => /Selected finish schedules and finish\/elevation sheets reinforce finish scope/i.test(item)))
 })
+
+test("finish plan, finish schedule, and elevations synthesize into a quantity-backed finish package without inflating unrelated trades", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", discipline: "finish" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", discipline: "finish" }),
+    makeSheet({ pageNumber: 3, sheetNumber: "A9.1", sheetTitle: "Interior Elevations", discipline: "interior" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A8.1",
+      sheetTitle: "Finish Plan",
+      discipline: "finish",
+      rooms: [{ roomName: "Guest Room", confidence: 80, evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Guest room finish plan" })] }],
+      tradeFindings: [
+        {
+          trade: "painting",
+          label: "Guest room wall finish takeoff",
+          quantity: 1400,
+          unit: "sqft",
+          category: "wall_area",
+          notes: ["Measured guest room wall area."],
+          confidence: 88,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Measured guest room wall finish area" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A8.2",
+      sheetTitle: "Finish Schedule",
+      discipline: "finish",
+      schedules: [
+        {
+          scheduleType: "finish",
+          label: "Finish schedule",
+          quantity: null,
+          notes: ["Guest room finish matrix."],
+          confidence: 82,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", excerpt: "Guest room finish matrix" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 3,
+      sheetNumber: "A9.1",
+      sheetTitle: "Interior Elevations",
+      discipline: "interior",
+      tradeFindings: [
+        {
+          trade: "wallcovering",
+          label: "Accent wall elevation area",
+          quantity: 120,
+          unit: "sqft",
+          category: "selected_elevation_area",
+          notes: ["Selected elevation only."],
+          confidence: 76,
+          evidence: [makeEvidence({ sourcePageNumber: 3, pageNumber: 3, sheetNumber: "A9.1", sheetTitle: "Interior Elevations", excerpt: "Accent wall elevation" })],
+        },
+      ],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  const pkg = result.estimatorPackages?.find((item) => item.key === "guest-room-finish-package")
+  assert(pkg)
+  assert.equal(pkg?.supportType, "quantity_backed")
+  assert.equal(pkg?.scopeBreadth, "broad")
+  assert.match(String(pkg?.quantitySummary || ""), /wall area/i)
+  assert(pkg?.evidence.some((ref) => ref.sourcePageNumber === 1))
+  assert(!result.detectedTrades.includes("electrical"))
+})
+
+test("repeated room support produces a prototype-backed guest room package when direct quantities are not yet measured", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A5.1", sheetTitle: "Typical Guest Room Plan", discipline: "architectural" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", discipline: "finish" }),
+    makeSheet({ pageNumber: 3, sheetNumber: "A6.1", sheetTitle: "Reflected Ceiling Plan", discipline: "finish" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A5.1",
+      sheetTitle: "Typical Guest Room Plan",
+      discipline: "architectural",
+      textSnippets: ["Typical guest room plan"],
+      rooms: [{ roomName: "Guest Room", confidence: 84, evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A5.1", sheetTitle: "Typical Guest Room Plan", excerpt: "Typical guest room plan" })] }],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A8.2",
+      sheetTitle: "Finish Schedule",
+      discipline: "finish",
+      schedules: [
+        {
+          scheduleType: "finish",
+          label: "Finish schedule",
+          quantity: null,
+          notes: ["Guest room repaint matrix."],
+          confidence: 80,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", excerpt: "Guest room repaint matrix" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 3,
+      sheetNumber: "A6.1",
+      sheetTitle: "Reflected Ceiling Plan",
+      discipline: "finish",
+      textSnippets: ["Typical guest room reflected ceiling plan"],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Repaint typical guest rooms.",
+    trade: "painting",
+  })
+
+  const pkg = result.estimatorPackages?.find((item) => item.key === "guest-room-finish-package")
+  assert(pkg)
+  assert.equal(pkg?.supportType, "scaled_prototype")
+  assert.equal(pkg?.roomGroup, "guest room")
+  assert(pkg?.executionNotes.some((item) => /prototype\/repeated-room support/i.test(item)))
+})
+
+test("wet-area package stays narrow when elevations and bath schedules support only vertical or bath-specific scope", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "P2.0", sheetTitle: "Fixture Schedule", discipline: "plumbing" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A9.1", sheetTitle: "Bath Elevations", discipline: "interior" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "P2.0",
+      sheetTitle: "Fixture Schedule",
+      discipline: "plumbing",
+      schedules: [
+        {
+          scheduleType: "fixture",
+          label: "Fixture schedule",
+          quantity: null,
+          notes: ["Bath fixture schedule."],
+          confidence: 78,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "P2.0", sheetTitle: "Fixture Schedule", excerpt: "Bath fixture schedule" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A9.1",
+      sheetTitle: "Bath Elevations",
+      discipline: "interior",
+      rooms: [{ roomName: "Bathroom", confidence: 81, evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A9.1", sheetTitle: "Bath Elevations", excerpt: "Bath elevation" })] }],
+      tradeFindings: [
+        {
+          trade: "tile",
+          label: "Shower tile elevation",
+          quantity: 96,
+          unit: "sqft",
+          category: "selected_elevation_area",
+          notes: ["Vertical tile from bath elevation only."],
+          confidence: 84,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A9.1", sheetTitle: "Bath Elevations", excerpt: "Shower tile elevation only" })],
+        },
+      ],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Guest bath tile refresh.",
+    trade: "tile",
+  })
+
+  const pkg = result.estimatorPackages?.find((item) => item.key === "wet-area-package")
+  assert(pkg)
+  assert.equal(pkg?.supportType, "elevation_only")
+  assert.equal(pkg?.scopeBreadth, "narrow")
+  assert(pkg?.cautionNotes.some((item) => /stay narrower than full-room/i.test(item)))
+})
+
+test("demo package stays separate from install-oriented finish packages", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A1.1", sheetTitle: "Demo Plan", discipline: "architectural" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A8.1", sheetTitle: "Finish Plan", discipline: "finish" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A1.1",
+      sheetTitle: "Demo Plan",
+      discipline: "architectural",
+      tradeFindings: [
+        {
+          trade: "flooring",
+          label: "Selective floor demolition area",
+          quantity: 640,
+          unit: "sqft",
+          category: "demolition_area",
+          notes: ["Removal only."],
+          confidence: 82,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A1.1", sheetTitle: "Demo Plan", excerpt: "Selective floor demolition area" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A8.1",
+      sheetTitle: "Finish Plan",
+      discipline: "finish",
+      tradeFindings: [
+        {
+          trade: "flooring",
+          label: "Guest room flooring area",
+          quantity: 1200,
+          unit: "sqft",
+          category: "floor_area",
+          notes: ["Install-side floor area."],
+          confidence: 85,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Guest room floor finish area" })],
+        },
+      ],
+      rooms: [{ roomName: "Guest Room", confidence: 80, evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Guest room finish area" })] }],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Remove and replace guest room flooring.",
+    trade: "flooring",
+  })
+
+  const demoPkg = result.estimatorPackages?.find((item) => item.key === "demo-removal-package")
+  const finishPkg = result.estimatorPackages?.find((item) => item.key === "guest-room-finish-package")
+  assert(demoPkg)
+  assert.equal(demoPkg?.supportType, "demo_only")
+  assert(demoPkg?.cautionNotes.some((item) => /does not create install authority/i.test(item)))
+  assert(finishPkg)
+  assert.equal(finishPkg?.supportType, "quantity_backed")
+})
+
+test("electrical reflected ceiling and schedule support synthesize into a ceiling-light-fixture package without crossing trades", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A6.1", sheetTitle: "Reflected Ceiling Plan", discipline: "finish" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "E1.0", sheetTitle: "Electrical Schedule", discipline: "electrical" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A6.1",
+      sheetTitle: "Reflected Ceiling Plan",
+      discipline: "finish",
+      textSnippets: ["Reflected ceiling plan guest room lights"],
+      tradeFindings: [
+        {
+          trade: "painting",
+          label: "Ceiling area noted",
+          quantity: 500,
+          unit: "sqft",
+          category: "ceiling_area",
+          notes: ["Ceiling repaint scope."],
+          confidence: 70,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A6.1", sheetTitle: "Reflected Ceiling Plan", excerpt: "Ceiling area noted" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "E1.0",
+      sheetTitle: "Electrical Schedule",
+      discipline: "electrical",
+      schedules: [
+        {
+          scheduleType: "electrical",
+          label: "Electrical schedule",
+          quantity: 18,
+          notes: ["Lighting devices and fixtures."],
+          confidence: 84,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "E1.0", sheetTitle: "Electrical Schedule", excerpt: "18 light fixtures and devices" })],
+        },
+      ],
+      tradeFindings: [
+        {
+          trade: "electrical",
+          label: "Lighting fixture count",
+          quantity: 18,
+          unit: "devices",
+          category: "electrical_fixture_count",
+          notes: ["Schedule-backed fixture count."],
+          confidence: 86,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "E1.0", sheetTitle: "Electrical Schedule", excerpt: "18 light fixtures" })],
+        },
+      ],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Update ceiling lights.",
+    trade: "electrical",
+  })
+
+  const pkg = result.estimatorPackages?.find((item) => item.key === "ceiling-light-fixture-package")
+  assert(pkg)
+  assert.equal(pkg?.primaryTrade, "electrical")
+  assert.equal(pkg?.scopeBreadth, "narrow")
+  assert(pkg?.cautionNotes.some((item) => /not inflate unrelated finish or drywall authority/i.test(item)))
+  assert(!result.detectedTrades.includes("plumbing"))
+})

@@ -312,11 +312,14 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
 
         let tempFilePath = staged.filePath
         let bytes = staged.bytes
-        let sourcePageNumberMap: number[] | null = null
+        let sourcePageNumberMap: number[] | null = Array.isArray(staged.sourcePageNumberMap)
+          ? staged.sourcePageNumberMap
+          : null
 
         if (
           staged.mimeType === "application/pdf" &&
           typeof staged.sourcePageCount === "number" &&
+          !sourcePageNumberMap &&
           selectedSourcePages.length < staged.sourcePageCount
         ) {
           const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
@@ -362,7 +365,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
           transport: "multipart-temp",
           tempFilePath,
           sourcePageNumberMap,
-          originalBytes: staged.bytes,
+          originalBytes: staged.originalBytes ?? staged.bytes,
           bytes,
           mimeType: staged.mimeType,
           name: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,
@@ -425,11 +428,14 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
 
       let tempFilePath = staged.filePath
       let bytes = staged.bytes
-      let sourcePageNumberMap: number[] | null = null
+      let sourcePageNumberMap: number[] | null = Array.isArray(staged.sourcePageNumberMap)
+        ? staged.sourcePageNumberMap
+        : null
 
       if (
         staged.mimeType === "application/pdf" &&
         typeof staged.sourcePageCount === "number" &&
+        !sourcePageNumberMap &&
         selectedSourcePages.length < staged.sourcePageCount
       ) {
         const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
@@ -475,7 +481,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
         transport: "multipart-temp",
         tempFilePath,
         sourcePageNumberMap,
-        originalBytes: staged.bytes,
+        originalBytes: staged.originalBytes ?? staged.bytes,
         bytes,
         mimeType: staged.mimeType,
         name: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,

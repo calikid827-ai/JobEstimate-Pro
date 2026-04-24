@@ -27,6 +27,22 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
             .map((value: unknown) => Number(value))
             .filter((value: number) => Number.isInteger(value) && value > 0)
         : null
+      const originalSourcePageCount =
+        typeof record?.originalSourcePageCount === "number" &&
+        Number.isFinite(record.originalSourcePageCount) &&
+        record.originalSourcePageCount > 0
+          ? Math.floor(record.originalSourcePageCount)
+          : null
+      const selectedPageUploadMode =
+        record?.selectedPageUploadMode === "browser-derived-selected-pages" ||
+        record?.selectedPageUploadMode === "server-derived-selected-pages" ||
+        record?.selectedPageUploadMode === "original-fallback"
+          ? record.selectedPageUploadMode
+          : "original"
+      const selectedPageUploadNote =
+        typeof record?.selectedPageUploadNote === "string" && record.selectedPageUploadNote.trim()
+          ? record.selectedPageUploadNote.trim()
+          : null
       const mimeTypeRaw =
         typeof record?.mimeType === "string"
           ? record.mimeType.trim().toLowerCase()
@@ -56,6 +72,9 @@ export function sanitizePlanUploads(input: unknown): PlanUpload[] {
         dataUrl,
         tempFilePath,
         sourcePageNumberMap,
+        originalSourcePageCount,
+        selectedPageUploadMode,
+        selectedPageUploadNote,
         originalBytes:
           typeof record?.originalBytes === "number" &&
           Number.isFinite(record.originalBytes) &&

@@ -4,7 +4,7 @@ import { promisify } from "node:util"
 import path from "node:path"
 
 import type { PlanUpload } from "./types"
-import { validateDerivedPlanBytes, validateSelectedPageExtractionCount } from "./staging"
+import { validateDerivedPlanBytes, validateSelectedPageExtractionCount } from "../../../../lib/plan-upload"
 
 const execFileAsync = promisify(execFile)
 const SWIFT_EXPORT_SCRIPT = path.resolve(process.cwd(), "scripts/export_pdf_pages.swift")

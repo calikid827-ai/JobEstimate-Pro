@@ -267,6 +267,35 @@ export type PhotoScopeAssist = {
 
 export type PlanIntelligenceSummary = {
   summary?: string | null
+  estimatorPackages?: Array<{
+    key: string
+    title: string
+    primaryTrade: string
+    roomGroup: string | null
+    supportType:
+      | "quantity_backed"
+      | "schedule_backed"
+      | "elevation_only"
+      | "demo_only"
+      | "scaled_prototype"
+      | "support_only"
+    scopeBreadth: "broad" | "narrow"
+    confidenceLabel: "strong" | "moderate" | "limited"
+    quantitySummary: string | null
+    scheduleSummary: string | null
+    executionNotes: string[]
+    cautionNotes: string[]
+    evidence: Array<{
+      uploadId: string
+      uploadName: string
+      sourcePageNumber: number
+      pageNumber: number
+      sheetNumber: string | null
+      sheetTitle: string | null
+      excerpt: string
+      confidence: number
+    }>
+  }>
   detectedRooms: string[]
   detectedTrades: string[]
   sheetRoleSignals?: string[]
@@ -319,6 +348,42 @@ export type EstimateSkeletonHandoff = {
       | "support_only"
       | "allowance_review"
   }[]
+  estimatorSectionSkeletons: {
+    packageKey: string
+    bucketName: string
+    sectionTitle: string
+    trade:
+      | "painting"
+      | "drywall"
+      | "wallcovering"
+      | "flooring"
+      | "electrical"
+      | "plumbing"
+      | "tile"
+      | "general renovation"
+    supportType:
+      | "quantity_backed"
+      | "schedule_backed"
+      | "elevation_only"
+      | "demo_only"
+      | "scaled_prototype"
+      | "support_only"
+    scopeBreadth: "broad" | "narrow"
+    sectionReadiness: "section_anchor" | "scalable_hint" | "support_only" | "review_only"
+    quantityAnchor: string | null
+    scopeBullets: string[]
+    cautionNotes: string[]
+    evidence: Array<{
+      uploadId: string
+      uploadName: string
+      sourcePageNumber: number
+      pageNumber: number
+      sheetNumber: string | null
+      sheetTitle: string | null
+      excerpt: string
+      confidence: number
+    }>
+  }[]
   bucketScopeDrafts: string[]
   bucketAllowanceFlags: string[]
   bucketHandoffNotes: string[]
@@ -340,6 +405,42 @@ export type EstimateStructureConsumption = {
       | "support_only"
       | "allowance_review"
     safeForPrimaryStructure: boolean
+  }[]
+  structuredEstimateSections: {
+    sectionTitle: string
+    trade:
+      | "painting"
+      | "drywall"
+      | "wallcovering"
+      | "flooring"
+      | "electrical"
+      | "plumbing"
+      | "tile"
+      | "general renovation"
+    bucketName: string
+    supportType:
+      | "quantity_backed"
+      | "schedule_backed"
+      | "elevation_only"
+      | "demo_only"
+      | "scaled_prototype"
+      | "support_only"
+    scopeBreadth: "broad" | "narrow"
+    sectionReadiness: "section_anchor" | "scalable_hint" | "support_only" | "review_only"
+    quantityAnchor: string | null
+    scopeBullets: string[]
+    cautionNotes: string[]
+    safeForSectionBuild: boolean
+    evidence: Array<{
+      uploadId: string
+      uploadName: string
+      sourcePageNumber: number
+      pageNumber: number
+      sheetNumber: string | null
+      sheetTitle: string | null
+      excerpt: string
+      confidence: number
+    }>
   }[]
   estimateGroupingSignals: string[]
   estimateReviewBuckets: string[]

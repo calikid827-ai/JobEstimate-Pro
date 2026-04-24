@@ -1,16 +1,29 @@
 "use client"
 
+import {
+  buildSelectedPageUploadDebugSummary,
+  formatPlanUploadBytes,
+  getSelectedPageUploadModeSummary,
+} from "../../lib/plan-upload"
+
 type JobPlan = {
   id: string
   name: string
   file: File
-  stagedUploadId: string
+  stagedUploadId?: string | null
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
   bytes: number
   originalBytes: number
   sourcePageCount: number
+  stagedSourcePageCount?: number | null
+  selectedPageUploadMode?:
+    | "original"
+    | "browser-derived-selected-pages"
+    | "server-derived-selected-pages"
+    | "original-fallback"
+  selectedPageUploadNote?: string | null
   pages: Array<{
     sourcePageNumber: number
     label: string
@@ -57,6 +70,7 @@ export default function PlanUploadsSection({
         }}
       >
         Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to analyze before pricing. Larger plan PDFs are sent through reliable file upload transport instead of one giant inline payload. Accepted: PDF, PNG, JPG, JPEG, WEBP.
+        {" "}Generate uploads plan files only after you finish page selection, and large PDFs fall back to reliable chunked staging when browser-side selected-page export is unavailable.
         {plansAtLimit ? " Remove a plan to add another file." : ""}
       </div>
 
@@ -121,11 +135,43 @@ export default function PlanUploadsSection({
                   {plan.sourceKind === "pdf" && (
                     <>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                        Original PDF: {(plan.originalBytes / (1024 * 1024)).toFixed(1)} MB
+                        Original PDF: {formatPlanUploadBytes(plan.originalBytes)}
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
                         Selected export basis: {plan.pages.filter((page) => page.selected).length} of {plan.sourcePageCount} source pages
                       </div>
+                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                        {plan.stagedUploadId ? "Last staged upload path" : "Planned upload path"}:{" "}
+                        {getSelectedPageUploadModeSummary(plan.selectedPageUploadMode).label}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color:
+                            plan.selectedPageUploadMode === "browser-derived-selected-pages"
+                              ? "#0f766e"
+                              : plan.selectedPageUploadMode === "original-fallback"
+                                ? "#92400e"
+                                : "#666",
+                          marginTop: 2,
+                        }}
+                      >
+                        {buildSelectedPageUploadDebugSummary({
+                          mode: plan.selectedPageUploadMode,
+                          originalBytes: plan.originalBytes,
+                          stagedBytes: plan.bytes,
+                          analyzedPages:
+                            typeof plan.stagedSourcePageCount === "number"
+                              ? plan.stagedSourcePageCount
+                              : plan.pages.filter((page) => page.selected).length,
+                          originalSourcePageCount: plan.sourcePageCount,
+                        })}
+                      </div>
+                      {plan.selectedPageUploadNote && (
+                        <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                          {plan.selectedPageUploadNote}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -232,7 +278,7 @@ export default function PlanUploadsSection({
                   </div>
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                    Analysis only uses the selected pages from this plan set. When possible, Generate now exports and sends only the selected PDF pages before deeper sheet reading and pricing.
+                    Analysis only uses the selected pages from this plan set. Generate stages the selected plan set after page selection, and when possible the staged artifact is reduced to selected PDF pages before deeper sheet reading and pricing.
                   </div>
 
                   <div

@@ -5,10 +5,17 @@ export type PlanUpload = {
   mimeType: string
   stagedUploadId?: string | null
   originalBytes?: number | null
+  originalSourcePageCount?: number | null
   transport?: "inline" | "multipart-temp"
   dataUrl?: string | null
   tempFilePath?: string | null
   sourcePageNumberMap?: number[] | null
+  selectedPageUploadMode?:
+    | "original"
+    | "browser-derived-selected-pages"
+    | "server-derived-selected-pages"
+    | "original-fallback"
+  selectedPageUploadNote?: string | null
   bytes: number | null
   selectedSourcePages: number[] | null
 }
@@ -188,6 +195,40 @@ export type PlanEvidenceBundle = {
   riskRefs: PlanEvidenceRef[]
 }
 
+export type PlanEstimatorPackageSupportType =
+  | "quantity_backed"
+  | "schedule_backed"
+  | "elevation_only"
+  | "demo_only"
+  | "scaled_prototype"
+  | "support_only"
+
+export type PlanEstimatorPackageScopeBreadth = "broad" | "narrow"
+
+export type PlanEstimatorPackage = {
+  key: string
+  title: string
+  primaryTrade:
+    | "painting"
+    | "drywall"
+    | "wallcovering"
+    | "flooring"
+    | "electrical"
+    | "plumbing"
+    | "carpentry"
+    | "tile"
+    | "general renovation"
+  roomGroup: string | null
+  supportType: PlanEstimatorPackageSupportType
+  scopeBreadth: PlanEstimatorPackageScopeBreadth
+  confidenceLabel: "strong" | "moderate" | "limited"
+  quantitySummary: string | null
+  scheduleSummary: string | null
+  executionNotes: string[]
+  cautionNotes: string[]
+  evidence: PlanEvidenceRef[]
+}
+
 export type PlanIntelligence = {
   ok: boolean
   uploadsCount: number
@@ -225,6 +266,7 @@ export type PlanIntelligence = {
   packageAllowanceSignals?: string[]
   estimateAssemblyGuidance?: string[]
   estimateScaffoldNotes?: string[]
+  estimatorPackages?: PlanEstimatorPackage[]
   crossSheetLinkSignals?: string[]
   scheduleReconciliationSignals?: string[]
   crossSheetConflictSignals?: string[]

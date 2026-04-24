@@ -97,12 +97,17 @@ import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
 import {
   ALLOWED_PLAN_MIME_TYPES,
+  buildSelectedPageUploadDebugSummary,
+  buildSelectedPageUploadFallbackMessage,
+  exportSelectedPdfInBrowser,
   estimateSelectedPdfBytes,
   getPlanUploadPreflightIssue,
   MAX_JOB_PLANS,
-  MAX_PLAN_FILE_BYTES,
   MAX_PLAN_SOURCE_PAGES,
   MAX_TOTAL_PLAN_FILE_BYTES,
+  PLAN_UPLOAD_CHUNK_BYTES,
+  PlanSelectedPageUploadMode,
+  readPlanUploadStageErrorMessage,
   clampPlanSourcePageCount,
   countPdfPagesFromBytes,
 } from "../lib/plan-upload"
@@ -137,13 +142,16 @@ type JobPlan = {
   id: string
   name: string
   file: File
-  stagedUploadId: string
+  stagedUploadId?: string | null
   note: string
   mimeType: string
   sourceKind: "image" | "pdf"
   bytes: number
   originalBytes: number
   sourcePageCount: number
+  stagedSourcePageCount?: number | null
+  selectedPageUploadMode?: PlanSelectedPageUploadMode
+  selectedPageUploadNote?: string | null
   pages: Array<{
     sourcePageNumber: number
     label: string
@@ -153,6 +161,35 @@ type JobPlan = {
 
 type PlanIntelligence = {
   summary?: string | null
+  estimatorPackages?: Array<{
+    key: string
+    title: string
+    primaryTrade: string
+    roomGroup: string | null
+    supportType:
+      | "quantity_backed"
+      | "schedule_backed"
+      | "elevation_only"
+      | "demo_only"
+      | "scaled_prototype"
+      | "support_only"
+    scopeBreadth: "broad" | "narrow"
+    confidenceLabel: "strong" | "moderate" | "limited"
+    quantitySummary: string | null
+    scheduleSummary: string | null
+    executionNotes: string[]
+    cautionNotes: string[]
+    evidence: Array<{
+      uploadId: string
+      uploadName: string
+      sourcePageNumber: number
+      pageNumber: number
+      sheetNumber: string | null
+      sheetTitle: string | null
+      excerpt: string
+      confidence: number
+    }>
+  }>
   detectedRooms: string[]
   detectedTrades: string[]
   sheetRoleSignals?: string[]
@@ -188,6 +225,86 @@ type PlanIntelligence = {
     suggestedAdditions: string[]
   }
 } | null
+
+type PlanEstimatorPackageView = NonNullable<PlanIntelligence> extends infer T
+  ? T extends { estimatorPackages?: Array<infer P> }
+    ? P
+    : never
+  : never
+
+const normalizePlanStrings = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
+    : []
+
+const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
+  Array.isArray(value)
+    ? value
+        .map((item: unknown): PlanEstimatorPackageView | null => {
+          const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+          if (!record || typeof record.key !== "string" || typeof record.title !== "string") {
+            return null
+          }
+
+          return {
+            key: record.key.trim(),
+            title: record.title.trim(),
+            primaryTrade:
+              typeof record.primaryTrade === "string" && record.primaryTrade.trim()
+                ? record.primaryTrade.trim()
+                : "general renovation",
+            roomGroup:
+              typeof record.roomGroup === "string" && record.roomGroup.trim()
+                ? record.roomGroup.trim()
+                : null,
+            supportType:
+              record.supportType === "quantity_backed" ||
+              record.supportType === "schedule_backed" ||
+              record.supportType === "elevation_only" ||
+              record.supportType === "demo_only" ||
+              record.supportType === "scaled_prototype" ||
+              record.supportType === "support_only"
+                ? record.supportType
+                : "support_only",
+            scopeBreadth: record.scopeBreadth === "narrow" ? "narrow" : "broad",
+            confidenceLabel:
+              record.confidenceLabel === "strong" ||
+              record.confidenceLabel === "moderate" ||
+              record.confidenceLabel === "limited"
+                ? record.confidenceLabel
+                : "limited",
+            quantitySummary:
+              typeof record.quantitySummary === "string" && record.quantitySummary.trim()
+                ? record.quantitySummary.trim()
+                : null,
+            scheduleSummary:
+              typeof record.scheduleSummary === "string" && record.scheduleSummary.trim()
+                ? record.scheduleSummary.trim()
+                : null,
+            executionNotes: normalizePlanStrings(record.executionNotes),
+            cautionNotes: normalizePlanStrings(record.cautionNotes),
+            evidence: Array.isArray(record.evidence)
+              ? record.evidence
+                  .map((ref: unknown) => {
+                    const evidence = ref && typeof ref === "object" ? (ref as Record<string, unknown>) : null
+                    if (!evidence || typeof evidence.uploadId !== "string") return null
+                    return {
+                      uploadId: evidence.uploadId,
+                      uploadName: typeof evidence.uploadName === "string" ? evidence.uploadName : "",
+                      sourcePageNumber: Number(evidence.sourcePageNumber || 0),
+                      pageNumber: Number(evidence.pageNumber || 0),
+                      sheetNumber: typeof evidence.sheetNumber === "string" ? evidence.sheetNumber : null,
+                      sheetTitle: typeof evidence.sheetTitle === "string" ? evidence.sheetTitle : null,
+                      excerpt: typeof evidence.excerpt === "string" ? evidence.excerpt : "",
+                      confidence: Number(evidence.confidence || 0),
+                    }
+                  })
+                  .filter((ref): ref is PlanEstimatorPackageView["evidence"][number] => ref !== null)
+              : [],
+          }
+        })
+        .filter((pkg): pkg is PlanEstimatorPackageView => pkg !== null)
+    : []
 
 type PlanEstimateSkeletonHandoff = EstimateSkeletonHandoff
 type PlanEstimateStructureConsumption = EstimateStructureConsumption
@@ -276,6 +393,174 @@ function getPlanPreflightIssue(plan: JobPlan): string | null {
     totalPages: plan.sourcePageCount,
     selectedPages: countSelectedPlanPages(plan),
   })
+}
+
+async function readStageResponseMessage(response: Response): Promise<string> {
+  return await readPlanUploadStageErrorMessage(response.clone())
+}
+
+async function stagePlanForGenerate(
+  plan: JobPlan,
+  onProgress: (message: string) => void
+): Promise<{
+  stagedUploadId: string
+  bytes: number
+  originalBytes: number
+  sourcePageCount: number | null
+  originalSourcePageCount: number | null
+  selectedPageUploadMode?: PlanSelectedPageUploadMode
+  selectedPageUploadNote?: string | null
+}> {
+  const selectedSourcePages = plan.pages
+    .filter((page) => page.selected)
+    .map((page) => page.sourcePageNumber)
+
+  let uploadFile = plan.file
+  let uploadBytes = plan.file.size
+  let uploadSourcePageCount = plan.sourcePageCount
+  let uploadSourcePageNumberMap: number[] | null = null
+  let uploadMode: PlanSelectedPageUploadMode = "original"
+  let uploadNote: string | null = null
+
+  if (
+    plan.sourceKind === "pdf" &&
+    selectedSourcePages.length > 0 &&
+    selectedSourcePages.length < plan.sourcePageCount
+  ) {
+    try {
+      const browserDerived = await exportSelectedPdfInBrowser({
+        file: plan.file,
+        selectedSourcePages,
+      })
+
+      if (browserDerived) {
+        uploadFile = browserDerived.file
+        uploadBytes = browserDerived.bytes
+        uploadSourcePageCount = browserDerived.sourcePageNumberMap.length
+        uploadSourcePageNumberMap = browserDerived.sourcePageNumberMap
+        uploadMode = "browser-derived-selected-pages"
+        uploadNote = `${plan.name}: selected-page PDF was reduced in the browser before upload.`
+      } else {
+        uploadMode = "original-fallback"
+        uploadNote = buildSelectedPageUploadFallbackMessage({
+          name: plan.name,
+          selectedPages: selectedSourcePages.length,
+          totalPages: plan.sourcePageCount,
+        })
+      }
+    } catch (error) {
+      console.error("Browser selected-page PDF export failed:", error)
+      uploadMode = "original-fallback"
+      uploadNote = `${plan.name}: browser-side selected-page PDF export failed, so the original PDF will upload through reliable chunked staging before selected-page extraction.`
+    }
+  }
+
+  const beginRes = await fetch("/api/plan-upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "begin",
+      uploadId: plan.id,
+      name: plan.name,
+      mimeType: plan.mimeType,
+      bytes: uploadBytes,
+      originalBytes: plan.file.size,
+      sourcePageCount: uploadSourcePageCount,
+      originalSourcePageCount: plan.sourcePageCount,
+      sourcePageNumberMap: uploadSourcePageNumberMap,
+      selectedPageUploadMode: uploadMode,
+      selectedSourcePages,
+    }),
+  })
+
+  const beginPayload = await beginRes.json().catch(() => null)
+  if (!beginRes.ok || beginPayload?.ok !== true || !beginPayload?.uploadSessionId) {
+    throw new Error(
+      typeof beginPayload?.message === "string" && beginPayload.message.trim()
+        ? beginPayload.message.trim()
+        : await readStageResponseMessage(beginRes)
+    )
+  }
+
+  const uploadSessionId = String(beginPayload.uploadSessionId)
+  const chunkBytes =
+    Number(beginPayload.chunkBytes) > 0 ? Number(beginPayload.chunkBytes) : PLAN_UPLOAD_CHUNK_BYTES
+
+  if (uploadNote) {
+    onProgress(uploadNote)
+  }
+
+  let uploadedBytes = 0
+  for (let offset = 0; offset < uploadFile.size; offset += chunkBytes) {
+    const chunk = uploadFile.slice(offset, offset + chunkBytes)
+    const chunkRes = await fetch(
+      `/api/plan-upload?uploadSessionId=${encodeURIComponent(uploadSessionId)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+        body: chunk,
+      }
+    )
+
+    if (!chunkRes.ok) {
+      throw new Error(await readStageResponseMessage(chunkRes))
+    }
+
+    uploadedBytes += chunk.size
+    onProgress(
+      `Uploading ${plan.name} for staging... ${Math.min(
+        100,
+        Math.round((uploadedBytes / Math.max(uploadFile.size, 1)) * 100)
+      )}%`
+    )
+  }
+
+  const completeRes = await fetch("/api/plan-upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "complete",
+      uploadSessionId,
+    }),
+  })
+
+  const completePayload = await completeRes.json().catch(() => null)
+  const staged = Array.isArray(completePayload?.staged) ? completePayload.staged[0] : null
+  if (!completeRes.ok || completePayload?.ok !== true || !staged?.stagedUploadId) {
+    throw new Error(
+      typeof completePayload?.message === "string" && completePayload.message.trim()
+        ? completePayload.message.trim()
+        : await readStageResponseMessage(completeRes)
+    )
+  }
+
+  return {
+    stagedUploadId: String(staged.stagedUploadId),
+    bytes: Number(staged.bytes || plan.file.size),
+    originalBytes: Number(staged.originalBytes || plan.file.size),
+    sourcePageCount:
+      typeof staged.sourcePageCount === "number" ? staged.sourcePageCount : plan.sourcePageCount,
+    originalSourcePageCount:
+      typeof staged.originalSourcePageCount === "number"
+        ? staged.originalSourcePageCount
+        : plan.sourcePageCount,
+    selectedPageUploadMode:
+      staged.selectedPageUploadMode === "browser-derived-selected-pages" ||
+      staged.selectedPageUploadMode === "server-derived-selected-pages" ||
+      staged.selectedPageUploadMode === "original-fallback"
+        ? staged.selectedPageUploadMode
+        : uploadMode,
+    selectedPageUploadNote:
+      typeof staged.selectedPageUploadNote === "string"
+        ? staged.selectedPageUploadNote
+        : uploadNote,
+  }
 }
 
 async function compressImageFile(file: File): Promise<string> {
@@ -483,80 +768,42 @@ async function handlePlanUpload(files: FileList | null) {
   }
 
   try {
-    const localPlans = await Promise.all(
+    const localPlans: JobPlan[] = await Promise.all(
       picked.map(async (file) => {
         const sourcePageCount = await getPlanSourcePageCount(file)
         const sourceKind: "image" | "pdf" =
           file.type === "application/pdf" ? "pdf" : "image"
 
         return {
-          localId: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
+          id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
           name: file.name,
           file,
+          stagedUploadId: null,
           mimeType: file.type,
           sourceKind,
           bytes: file.size,
-          sourcePageCount,
-        }
-      })
-    )
-
-    const stageForm = new FormData()
-    for (const plan of localPlans) {
-      stageForm.append("planFiles", plan.file, plan.name)
-    }
-
-    setStatus(`Uploading ${localPlans.length} plan file${localPlans.length === 1 ? "" : "s"} for reliable staging...`)
-
-    const stageRes = await fetch("/api/plan-upload", {
-      method: "POST",
-      body: stageForm,
-    })
-
-    const stagePayload = await stageRes.json().catch(() => null)
-    if (!stageRes.ok || !stagePayload?.ok || !Array.isArray(stagePayload?.staged)) {
-      setStatus(
-        typeof stagePayload?.message === "string" && stagePayload.message.trim()
-          ? stagePayload.message.trim()
-          : "Could not stage selected plan file(s)."
-      )
-      return
-    }
-
-    const uploaded: JobPlan[] = localPlans
-      .map((localPlan, index) => {
-        const staged = stagePayload.staged[index]
-        if (!staged?.stagedUploadId) return null
-
-        return {
-          id: localPlan.localId,
-          name: localPlan.name,
-          file: localPlan.file,
-          stagedUploadId: staged.stagedUploadId,
+          originalBytes: file.size,
           note: "",
-          mimeType: localPlan.mimeType,
-          sourceKind: localPlan.sourceKind,
-          bytes: Number(staged.bytes || localPlan.bytes),
-          originalBytes: Number(staged.bytes || localPlan.bytes),
-          sourcePageCount:
-            Number(staged.sourcePageCount || localPlan.sourcePageCount) || localPlan.sourcePageCount,
+          sourcePageCount,
+          stagedSourcePageCount: null,
+          selectedPageUploadMode: undefined,
+          selectedPageUploadNote: null,
           pages: buildJobPlanPages({
-            sourceKind: localPlan.sourceKind,
-            totalPages:
-              Number(staged.sourcePageCount || localPlan.sourcePageCount) || localPlan.sourcePageCount,
-            name: localPlan.name,
+            sourceKind,
+            totalPages: sourcePageCount,
+            name: file.name,
             note: "",
           }),
         }
       })
-      .filter((plan): plan is JobPlan => !!plan)
+    )
 
     const mergedBase: JobPlan[] = [...jobPlans]
     const merged: JobPlan[] = [...mergedBase]
     let skippedForSize = 0
     let skippedForPageCount = 0
 
-    for (const plan of uploaded) {
+    for (const plan of localPlans) {
       const next = [...merged, plan]
       const totalSize = next.reduce((sum, item) => sum + estimatePlanTransportBytes(item), 0)
       const totalPages = next.reduce((sum, item) => sum + item.pages.length, 0)
@@ -594,11 +841,18 @@ async function handlePlanUpload(files: FileList | null) {
     if (skippedForPageCount > 0) {
       notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
     }
+    if (addedCount > 0) {
+      notices.push("Plan files stay local until Generate, when the selected pages upload through reliable staging.")
+    }
 
     setStatus(notices.join(" "))
   } catch (err) {
     console.error(err)
-    setStatus("Could not read selected plan file(s).")
+    const message =
+      err instanceof Error && err.message.trim()
+        ? err.message.trim()
+        : "Could not prepare selected plan file(s). Check the PDF and retry."
+    setStatus(message)
   }
 }
 
@@ -2640,27 +2894,78 @@ const requestPayload = {
     ? { rows: measureRows, totalSqft, units: "ft" }
     : null,
   photos: photosToSend,
-  plans:
-    jobPlans.length > 0
-      ? jobPlans.map((plan) => ({
-          uploadId: plan.id,
-          stagedUploadId: plan.stagedUploadId,
-          name: plan.name,
-          note: plan.note,
-          mimeType: plan.mimeType,
-          bytes: estimatePlanTransportBytes(plan),
-          originalBytes: plan.originalBytes,
-          transport: "staged" as const,
-          selectedSourcePages: plan.pages
-            .filter((page) => page.selected)
-            .map((page) => page.sourcePageNumber),
-        }))
-      : null,
+  plans: null as null | Array<{
+    uploadId: string
+    stagedUploadId: string
+    name: string
+    note: string
+    mimeType: string
+    bytes: number
+    originalBytes: number
+    transport: "staged"
+    selectedSourcePages: number[]
+  }>,
 }
 
 let res: Response
 
 if (jobPlans.length > 0) {
+  setStatus(`Preparing ${jobPlans.length} selected plan file${jobPlans.length === 1 ? "" : "s"} for reliable upload...`)
+
+  const stagedPlans = []
+  const stageNotices: string[] = []
+  for (const plan of jobPlans) {
+    const staged = await stagePlanForGenerate(plan, (message) => setStatus(message))
+    setJobPlans((prev) =>
+      prev.map((existing) =>
+        existing.id === plan.id
+          ? {
+              ...existing,
+              stagedUploadId: staged.stagedUploadId,
+              bytes: staged.bytes,
+              originalBytes: staged.originalBytes,
+              stagedSourcePageCount:
+                typeof staged.sourcePageCount === "number" ? staged.sourcePageCount : null,
+              selectedPageUploadMode: staged.selectedPageUploadMode,
+              selectedPageUploadNote: staged.selectedPageUploadNote ?? null,
+            }
+          : existing
+      )
+    )
+    if (staged.selectedPageUploadNote) {
+      stageNotices.push(staged.selectedPageUploadNote)
+    }
+
+    stageNotices.push(
+      buildSelectedPageUploadDebugSummary({
+        mode: staged.selectedPageUploadMode,
+        originalBytes: staged.originalBytes,
+        stagedBytes: staged.bytes,
+        analyzedPages: plan.pages.filter((page) => page.selected).length,
+        originalSourcePageCount: staged.originalSourcePageCount ?? plan.sourcePageCount,
+      })
+    )
+
+    stagedPlans.push({
+      uploadId: plan.id,
+      stagedUploadId: staged.stagedUploadId,
+      name: plan.name,
+      note: plan.note,
+      mimeType: plan.mimeType,
+      bytes: staged.bytes,
+      originalBytes: staged.originalBytes,
+      transport: "staged" as const,
+      selectedSourcePages: plan.pages
+        .filter((page) => page.selected)
+        .map((page) => page.sourcePageNumber),
+    })
+  }
+
+  if (stageNotices.length > 0) {
+    setStatus(stageNotices[stageNotices.length - 1])
+  }
+
+  requestPayload.plans = stagedPlans
   setStatus(`Preparing ${jobPlans.length} staged plan file${jobPlans.length === 1 ? "" : "s"} with selected-page transport...`)
 
   res = await fetch("/api/generate", {
@@ -2761,11 +3066,6 @@ setSchedule(normalizedSchedule)
 setScopeSignals(data?.scopeSignals ?? null)
 setPhotoAnalysis(data?.photoAnalysis ?? null)
 setPhotoScopeAssist(data?.photoScopeAssist ?? null)
-const normalizePlanStrings = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
-    : []
-
 setPlanIntelligence(
   data?.planIntelligence
     ? {
@@ -2773,6 +3073,7 @@ setPlanIntelligence(
           typeof data.planIntelligence?.summary === "string"
             ? data.planIntelligence.summary.trim()
             : null,
+        estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
         detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
         sheetRoleSignals: normalizePlanStrings(data.planIntelligence?.sheetRoleSignals),
@@ -3102,6 +3403,99 @@ const normalizedEstimateSkeletonHandoff = data?.estimateSkeletonHandoff
             }))
             .filter((bucket: { bucketName: string }) => bucket.bucketName)
         : [],
+      estimatorSectionSkeletons: Array.isArray(
+        data.estimateSkeletonHandoff?.estimatorSectionSkeletons
+      )
+        ? data.estimateSkeletonHandoff.estimatorSectionSkeletons
+            .map((section: unknown) => ({
+              packageKey:
+                section && typeof section === "object" && "packageKey" in section
+                  ? String(section.packageKey ?? "").trim()
+                  : "",
+              bucketName:
+                section && typeof section === "object" && "bucketName" in section
+                  ? String(section.bucketName ?? "").trim()
+                  : "",
+              sectionTitle:
+                section && typeof section === "object" && "sectionTitle" in section
+                  ? String(section.sectionTitle ?? "").trim()
+                  : "",
+              trade:
+                section && typeof section === "object" && "trade" in section
+                  ? String(section.trade ?? "").trim()
+                  : "general renovation",
+              supportType:
+                section && typeof section === "object" && "supportType" in section
+                  ? String(section.supportType ?? "").trim()
+                  : "support_only",
+              scopeBreadth:
+                section && typeof section === "object" && "scopeBreadth" in section
+                  ? String(section.scopeBreadth ?? "").trim()
+                  : "narrow",
+              sectionReadiness:
+                section && typeof section === "object" && "sectionReadiness" in section
+                  ? String(section.sectionReadiness ?? "").trim()
+                  : "review_only",
+              quantityAnchor:
+                section && typeof section === "object" && "quantityAnchor" in section
+                  ? section.quantityAnchor == null
+                    ? null
+                    : String(section.quantityAnchor).trim()
+                  : null,
+              scopeBullets:
+                section && typeof section === "object" && "scopeBullets" in section
+                  ? normalizeDefenseList(section.scopeBullets)
+                  : [],
+              cautionNotes:
+                section && typeof section === "object" && "cautionNotes" in section
+                  ? normalizeDefenseList(section.cautionNotes)
+                  : [],
+              evidence:
+                section && typeof section === "object" && "evidence" in section && Array.isArray(section.evidence)
+                  ? section.evidence
+                      .map((ref: unknown) => ({
+                        uploadId:
+                          ref && typeof ref === "object" && "uploadId" in ref
+                            ? String(ref.uploadId ?? "").trim()
+                            : "",
+                        uploadName:
+                          ref && typeof ref === "object" && "uploadName" in ref
+                            ? String(ref.uploadName ?? "").trim()
+                            : "",
+                        sourcePageNumber:
+                          ref && typeof ref === "object" && "sourcePageNumber" in ref
+                            ? Number(ref.sourcePageNumber ?? 0) || 0
+                            : 0,
+                        pageNumber:
+                          ref && typeof ref === "object" && "pageNumber" in ref
+                            ? Number(ref.pageNumber ?? 0) || 0
+                            : 0,
+                        sheetNumber:
+                          ref && typeof ref === "object" && "sheetNumber" in ref
+                            ? ref.sheetNumber == null
+                              ? null
+                              : String(ref.sheetNumber).trim()
+                            : null,
+                        sheetTitle:
+                          ref && typeof ref === "object" && "sheetTitle" in ref
+                            ? ref.sheetTitle == null
+                              ? null
+                              : String(ref.sheetTitle).trim()
+                            : null,
+                        excerpt:
+                          ref && typeof ref === "object" && "excerpt" in ref
+                            ? String(ref.excerpt ?? "").trim()
+                            : "",
+                        confidence:
+                          ref && typeof ref === "object" && "confidence" in ref
+                            ? Number(ref.confidence ?? 0) || 0
+                            : 0,
+                      }))
+                      .filter((ref: { uploadId: string }) => ref.uploadId)
+                  : [],
+            }))
+            .filter((section: { sectionTitle: string }) => section.sectionTitle)
+        : [],
       bucketScopeDrafts: normalizeDefenseList(
         data.estimateSkeletonHandoff?.bucketScopeDrafts
       ),
@@ -3158,6 +3552,102 @@ const normalizedEstimateStructureConsumption = data?.estimateStructureConsumptio
                   : false,
             }))
             .filter((bucket: { bucketName: string }) => bucket.bucketName)
+        : [],
+      structuredEstimateSections: Array.isArray(
+        data.estimateStructureConsumption?.structuredEstimateSections
+      )
+        ? data.estimateStructureConsumption.structuredEstimateSections
+            .map((section: unknown) => ({
+              sectionTitle:
+                section && typeof section === "object" && "sectionTitle" in section
+                  ? String(section.sectionTitle ?? "").trim()
+                  : "",
+              trade:
+                section && typeof section === "object" && "trade" in section
+                  ? String(section.trade ?? "").trim()
+                  : "general renovation",
+              bucketName:
+                section && typeof section === "object" && "bucketName" in section
+                  ? String(section.bucketName ?? "").trim()
+                  : "",
+              supportType:
+                section && typeof section === "object" && "supportType" in section
+                  ? String(section.supportType ?? "").trim()
+                  : "support_only",
+              scopeBreadth:
+                section && typeof section === "object" && "scopeBreadth" in section
+                  ? String(section.scopeBreadth ?? "").trim()
+                  : "narrow",
+              sectionReadiness:
+                section && typeof section === "object" && "sectionReadiness" in section
+                  ? String(section.sectionReadiness ?? "").trim()
+                  : "review_only",
+              quantityAnchor:
+                section && typeof section === "object" && "quantityAnchor" in section
+                  ? section.quantityAnchor == null
+                    ? null
+                    : String(section.quantityAnchor).trim()
+                  : null,
+              scopeBullets:
+                section && typeof section === "object" && "scopeBullets" in section
+                  ? normalizeDefenseList(section.scopeBullets)
+                  : [],
+              cautionNotes:
+                section && typeof section === "object" && "cautionNotes" in section
+                  ? normalizeDefenseList(section.cautionNotes)
+                  : [],
+              safeForSectionBuild:
+                Boolean(
+                  section &&
+                    typeof section === "object" &&
+                    "safeForSectionBuild" in section &&
+                    section.safeForSectionBuild
+                ),
+              evidence:
+                section && typeof section === "object" && "evidence" in section && Array.isArray(section.evidence)
+                  ? section.evidence
+                      .map((ref: unknown) => ({
+                        uploadId:
+                          ref && typeof ref === "object" && "uploadId" in ref
+                            ? String(ref.uploadId ?? "").trim()
+                            : "",
+                        uploadName:
+                          ref && typeof ref === "object" && "uploadName" in ref
+                            ? String(ref.uploadName ?? "").trim()
+                            : "",
+                        sourcePageNumber:
+                          ref && typeof ref === "object" && "sourcePageNumber" in ref
+                            ? Number(ref.sourcePageNumber ?? 0) || 0
+                            : 0,
+                        pageNumber:
+                          ref && typeof ref === "object" && "pageNumber" in ref
+                            ? Number(ref.pageNumber ?? 0) || 0
+                            : 0,
+                        sheetNumber:
+                          ref && typeof ref === "object" && "sheetNumber" in ref
+                            ? ref.sheetNumber == null
+                              ? null
+                              : String(ref.sheetNumber).trim()
+                            : null,
+                        sheetTitle:
+                          ref && typeof ref === "object" && "sheetTitle" in ref
+                            ? ref.sheetTitle == null
+                              ? null
+                              : String(ref.sheetTitle).trim()
+                            : null,
+                        excerpt:
+                          ref && typeof ref === "object" && "excerpt" in ref
+                            ? String(ref.excerpt ?? "").trim()
+                            : "",
+                        confidence:
+                          ref && typeof ref === "object" && "confidence" in ref
+                            ? Number(ref.confidence ?? 0) || 0
+                            : 0,
+                      }))
+                      .filter((ref: { uploadId: string }) => ref.uploadId)
+                  : [],
+            }))
+            .filter((section: { sectionTitle: string }) => section.sectionTitle)
         : [],
       estimateGroupingSignals: normalizeDefenseList(
         data.estimateStructureConsumption?.estimateGroupingSignals
@@ -3337,6 +3827,7 @@ const estItem: EstimateHistoryItem = {
             typeof data.planIntelligence?.summary === "string"
               ? data.planIntelligence.summary.trim()
               : null,
+          estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
           detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
           detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
           sheetRoleSignals: normalizePlanStrings(data.planIntelligence?.sheetRoleSignals),
@@ -3623,6 +4114,7 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
             typeof x.planIntelligence?.summary === "string"
               ? x.planIntelligence.summary.trim()
               : null,
+          estimatorPackages: normalizePlanPackages(x.planIntelligence?.estimatorPackages),
           detectedRooms: normalizeDefenseLists(x.planIntelligence?.detectedRooms),
           detectedTrades: normalizeDefenseLists(x.planIntelligence?.detectedTrades),
           sheetRoleSignals: normalizeDefenseLists(x.planIntelligence?.sheetRoleSignals),
@@ -3741,6 +4233,102 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
                 }))
                 .filter((bucket: { bucketName: string }) => bucket.bucketName)
             : [],
+          estimatorSectionSkeletons: Array.isArray(
+            x.estimateSkeletonHandoff?.estimatorSectionSkeletons
+          )
+            ? x.estimateSkeletonHandoff.estimatorSectionSkeletons
+                .map((section: unknown) => ({
+                  packageKey:
+                    section && typeof section === "object" && "packageKey" in section
+                      ? String(section.packageKey ?? "").trim()
+                      : "",
+                  bucketName:
+                    section && typeof section === "object" && "bucketName" in section
+                      ? String(section.bucketName ?? "").trim()
+                      : "",
+                  sectionTitle:
+                    section && typeof section === "object" && "sectionTitle" in section
+                      ? String(section.sectionTitle ?? "").trim()
+                      : "",
+                  trade:
+                    section && typeof section === "object" && "trade" in section
+                      ? String(section.trade ?? "").trim()
+                      : "general renovation",
+                  supportType:
+                    section && typeof section === "object" && "supportType" in section
+                      ? String(section.supportType ?? "").trim()
+                      : "support_only",
+                  scopeBreadth:
+                    section && typeof section === "object" && "scopeBreadth" in section
+                      ? String(section.scopeBreadth ?? "").trim()
+                      : "narrow",
+                  sectionReadiness:
+                    section && typeof section === "object" && "sectionReadiness" in section
+                      ? String(section.sectionReadiness ?? "").trim()
+                      : "review_only",
+                  quantityAnchor:
+                    section && typeof section === "object" && "quantityAnchor" in section
+                      ? section.quantityAnchor == null
+                        ? null
+                        : String(section.quantityAnchor).trim()
+                      : null,
+                  scopeBullets:
+                    section && typeof section === "object" && "scopeBullets" in section
+                      ? normalizeDefenseLists(section.scopeBullets)
+                      : [],
+                  cautionNotes:
+                    section && typeof section === "object" && "cautionNotes" in section
+                      ? normalizeDefenseLists(section.cautionNotes)
+                      : [],
+                  evidence:
+                    section &&
+                    typeof section === "object" &&
+                    "evidence" in section &&
+                    Array.isArray(section.evidence)
+                      ? section.evidence
+                          .map((ref: unknown) => ({
+                            uploadId:
+                              ref && typeof ref === "object" && "uploadId" in ref
+                                ? String(ref.uploadId ?? "").trim()
+                                : "",
+                            uploadName:
+                              ref && typeof ref === "object" && "uploadName" in ref
+                                ? String(ref.uploadName ?? "").trim()
+                                : "",
+                            sourcePageNumber:
+                              ref && typeof ref === "object" && "sourcePageNumber" in ref
+                                ? Number(ref.sourcePageNumber ?? 0) || 0
+                                : 0,
+                            pageNumber:
+                              ref && typeof ref === "object" && "pageNumber" in ref
+                                ? Number(ref.pageNumber ?? 0) || 0
+                                : 0,
+                            sheetNumber:
+                              ref && typeof ref === "object" && "sheetNumber" in ref
+                                ? ref.sheetNumber == null
+                                  ? null
+                                  : String(ref.sheetNumber).trim()
+                                : null,
+                            sheetTitle:
+                              ref && typeof ref === "object" && "sheetTitle" in ref
+                                ? ref.sheetTitle == null
+                                  ? null
+                                  : String(ref.sheetTitle).trim()
+                                : null,
+                            excerpt:
+                              ref && typeof ref === "object" && "excerpt" in ref
+                                ? String(ref.excerpt ?? "").trim()
+                                : "",
+                            confidence:
+                              ref && typeof ref === "object" && "confidence" in ref
+                                ? Number(ref.confidence ?? 0) || 0
+                                : 0,
+                          }))
+                          .filter((ref: { uploadId: string }) => ref.uploadId)
+                      : [],
+                }))
+                .filter((section: { sectionTitle: string }) => section.sectionTitle)
+            : [],
           bucketScopeDrafts: normalizeDefenseLists(
             x.estimateSkeletonHandoff?.bucketScopeDrafts
           ),
@@ -3796,6 +4384,105 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
                       : false,
                 }))
                 .filter((bucket: { bucketName: string }) => bucket.bucketName)
+            : [],
+          structuredEstimateSections: Array.isArray(
+            x.estimateStructureConsumption?.structuredEstimateSections
+          )
+            ? x.estimateStructureConsumption.structuredEstimateSections
+                .map((section: unknown) => ({
+                  sectionTitle:
+                    section && typeof section === "object" && "sectionTitle" in section
+                      ? String(section.sectionTitle ?? "").trim()
+                      : "",
+                  trade:
+                    section && typeof section === "object" && "trade" in section
+                      ? String(section.trade ?? "").trim()
+                      : "general renovation",
+                  bucketName:
+                    section && typeof section === "object" && "bucketName" in section
+                      ? String(section.bucketName ?? "").trim()
+                      : "",
+                  supportType:
+                    section && typeof section === "object" && "supportType" in section
+                      ? String(section.supportType ?? "").trim()
+                      : "support_only",
+                  scopeBreadth:
+                    section && typeof section === "object" && "scopeBreadth" in section
+                      ? String(section.scopeBreadth ?? "").trim()
+                      : "narrow",
+                  sectionReadiness:
+                    section && typeof section === "object" && "sectionReadiness" in section
+                      ? String(section.sectionReadiness ?? "").trim()
+                      : "review_only",
+                  quantityAnchor:
+                    section && typeof section === "object" && "quantityAnchor" in section
+                      ? section.quantityAnchor == null
+                        ? null
+                        : String(section.quantityAnchor).trim()
+                      : null,
+                  scopeBullets:
+                    section && typeof section === "object" && "scopeBullets" in section
+                      ? normalizeDefenseLists(section.scopeBullets)
+                      : [],
+                  cautionNotes:
+                    section && typeof section === "object" && "cautionNotes" in section
+                      ? normalizeDefenseLists(section.cautionNotes)
+                      : [],
+                  safeForSectionBuild:
+                    Boolean(
+                      section &&
+                        typeof section === "object" &&
+                        "safeForSectionBuild" in section &&
+                        section.safeForSectionBuild
+                    ),
+                  evidence:
+                    section &&
+                    typeof section === "object" &&
+                    "evidence" in section &&
+                    Array.isArray(section.evidence)
+                      ? section.evidence
+                          .map((ref: unknown) => ({
+                            uploadId:
+                              ref && typeof ref === "object" && "uploadId" in ref
+                                ? String(ref.uploadId ?? "").trim()
+                                : "",
+                            uploadName:
+                              ref && typeof ref === "object" && "uploadName" in ref
+                                ? String(ref.uploadName ?? "").trim()
+                                : "",
+                            sourcePageNumber:
+                              ref && typeof ref === "object" && "sourcePageNumber" in ref
+                                ? Number(ref.sourcePageNumber ?? 0) || 0
+                                : 0,
+                            pageNumber:
+                              ref && typeof ref === "object" && "pageNumber" in ref
+                                ? Number(ref.pageNumber ?? 0) || 0
+                                : 0,
+                            sheetNumber:
+                              ref && typeof ref === "object" && "sheetNumber" in ref
+                                ? ref.sheetNumber == null
+                                  ? null
+                                  : String(ref.sheetNumber).trim()
+                                : null,
+                            sheetTitle:
+                              ref && typeof ref === "object" && "sheetTitle" in ref
+                                ? ref.sheetTitle == null
+                                  ? null
+                                  : String(ref.sheetTitle).trim()
+                                : null,
+                            excerpt:
+                              ref && typeof ref === "object" && "excerpt" in ref
+                                ? String(ref.excerpt ?? "").trim()
+                                : "",
+                            confidence:
+                              ref && typeof ref === "object" && "confidence" in ref
+                                ? Number(ref.confidence ?? 0) || 0
+                                : 0,
+                          }))
+                          .filter((ref: { uploadId: string }) => ref.uploadId)
+                      : [],
+                }))
+                .filter((section: { sectionTitle: string }) => section.sectionTitle)
             : [],
           estimateGroupingSignals: normalizeDefenseLists(
             x.estimateStructureConsumption?.estimateGroupingSignals
@@ -7836,6 +8523,7 @@ function EstimateSkeletonHandoffCard({
   const {
     estimatorBucketGuidance,
     estimatorBucketDrafts,
+    estimatorSectionSkeletons,
     bucketScopeDrafts,
     bucketAllowanceFlags,
     bucketHandoffNotes,
@@ -7845,6 +8533,7 @@ function EstimateSkeletonHandoffCard({
   const hasAnything =
     estimatorBucketGuidance.length > 0 ||
     estimatorBucketDrafts.length > 0 ||
+    estimatorSectionSkeletons.length > 0 ||
     bucketScopeDrafts.length > 0 ||
     bucketAllowanceFlags.length > 0 ||
     bucketHandoffNotes.length > 0 ||
@@ -7929,6 +8618,50 @@ function EstimateSkeletonHandoffCard({
         </div>
       )}
 
+      {estimatorSectionSkeletons.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Section Skeletons
+          </div>
+          {estimatorSectionSkeletons.map((section, index) => (
+            <div
+              key={`estimator-section-skeleton-${index}`}
+              style={{
+                marginTop: index === 0 ? 0 : 10,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background:
+                  section.sectionReadiness === "section_anchor" ? "#f8fbff" : "#fafafa",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>{section.sectionTitle}</div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {section.trade} · {section.sectionReadiness.replaceAll("_", " ")} ·{" "}
+                {section.supportType.replaceAll("_", " ")}
+              </div>
+              {section.quantityAnchor && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Quantity anchor:</strong> {section.quantityAnchor}
+                </div>
+              )}
+              {section.scopeBullets.length > 0 && (
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {section.scopeBullets.map((item, basisIndex) => (
+                    <li key={`section-skeleton-bullet-${index}-${basisIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {section.cautionNotes.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8, color: "#92400e" }}>
+                  <strong>Cautions:</strong> {section.cautionNotes.join(" ")}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {bucketScopeDrafts.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
@@ -7980,6 +8713,7 @@ function EstimateStructureConsumptionCard({
 
   const {
     structuredEstimateBuckets,
+    structuredEstimateSections,
     estimateGroupingSignals,
     estimateReviewBuckets,
     estimateStructureNotes,
@@ -7987,6 +8721,7 @@ function EstimateStructureConsumptionCard({
 
   const hasAnything =
     structuredEstimateBuckets.length > 0 ||
+    structuredEstimateSections.length > 0 ||
     estimateGroupingSignals.length > 0 ||
     estimateReviewBuckets.length > 0 ||
     estimateStructureNotes.length > 0
@@ -8048,6 +8783,49 @@ function EstimateStructureConsumptionCard({
                     <li key={`structure-basis-${index}-${basisIndex}`}>{item}</li>
                   ))}
                 </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {structuredEstimateSections.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+            Structured Estimate Sections
+          </div>
+          {structuredEstimateSections.map((section, index) => (
+            <div
+              key={`structured-estimate-section-${index}`}
+              style={{
+                marginTop: index === 0 ? 0 : 10,
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: section.safeForSectionBuild ? "#f8fbff" : "#fafafa",
+              }}
+            >
+              <div style={{ fontWeight: 800, fontSize: 13 }}>{section.sectionTitle}</div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                {section.trade} · {section.safeForSectionBuild ? "section-build safe" : "review oriented"} ·{" "}
+                {section.supportType.replaceAll("_", " ")}
+              </div>
+              {section.quantityAnchor && (
+                <div style={{ fontSize: 12, marginTop: 8 }}>
+                  <strong>Quantity anchor:</strong> {section.quantityAnchor}
+                </div>
+              )}
+              {section.scopeBullets.length > 0 && (
+                <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
+                  {section.scopeBullets.map((item, basisIndex) => (
+                    <li key={`structured-section-bullet-${index}-${basisIndex}`}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {section.cautionNotes.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 8, color: "#92400e" }}>
+                  <strong>Cautions:</strong> {section.cautionNotes.join(" ")}
+                </div>
               )}
             </div>
           ))}
@@ -8190,6 +8968,9 @@ function PlanIntelligenceCard({
         new Set(planIntelligence.scopeAssist.suggestedAdditions.map((x) => String(x).trim()).filter(Boolean))
       ).slice(0, 8)
     : []
+  const estimatorPackages = Array.isArray(planIntelligence.estimatorPackages)
+    ? planIntelligence.estimatorPackages.slice(0, 6)
+    : []
 
   const hasAnything =
     !!planIntelligence.summary ||
@@ -8223,6 +9004,7 @@ function PlanIntelligenceCard({
     scalableScopeSignals.length > 0 ||
     tradePackageSignals.length > 0 ||
     bidAssistNotes.length > 0 ||
+    estimatorPackages.length > 0 ||
     missingScopeFlags.length > 0 ||
     suggestedAdditions.length > 0
 
@@ -8279,6 +9061,76 @@ function PlanIntelligenceCard({
     )
   }
 
+  const PackageCards = ({
+    packages,
+  }: {
+    packages: NonNullable<PlanIntelligence>["estimatorPackages"]
+  }) => {
+    if (!packages || packages.length === 0) return null
+
+    return (
+      <div style={{ marginTop: 14 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#374151",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Estimator-Ready Packages
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {packages.map((pkg) => (
+            <div
+              key={pkg.key}
+              style={{
+                padding: 12,
+                border: "1px solid #dbeafe",
+                borderRadius: 12,
+                background: "#f8fbff",
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>{pkg.title}</div>
+              <div style={{ fontSize: 12, color: "#4b5563", marginTop: 4 }}>
+                {pkg.supportType.replace(/_/g, " ")} • {pkg.scopeBreadth} scope • {pkg.confidenceLabel} confidence
+                {pkg.roomGroup ? ` • ${pkg.roomGroup}` : ""}
+              </div>
+              {pkg.quantitySummary && (
+                <div style={{ fontSize: 12, color: "#1f2937", marginTop: 6 }}>
+                  Quantity basis: {pkg.quantitySummary}
+                </div>
+              )}
+              {pkg.scheduleSummary && (
+                <div style={{ fontSize: 12, color: "#1f2937", marginTop: 4 }}>
+                  Schedule support: {pkg.scheduleSummary}
+                </div>
+              )}
+              {pkg.executionNotes.length > 0 && (
+                <div style={{ fontSize: 12, color: "#1f2937", marginTop: 6 }}>
+                  Execution: {pkg.executionNotes[0]}
+                </div>
+              )}
+              {pkg.cautionNotes.length > 0 && (
+                <div style={{ fontSize: 12, color: "#92400e", marginTop: 4 }}>
+                  Caution: {pkg.cautionNotes[0]}
+                </div>
+              )}
+              {pkg.evidence.length > 0 && (
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                  Sources: {Array.from(new Set(pkg.evidence.map((ref) => `${ref.sheetNumber || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`))).slice(0, 3).join("; ")}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       style={{
@@ -8325,6 +9177,7 @@ function PlanIntelligenceCard({
         </div>
       )}
 
+      <PackageCards packages={estimatorPackages} />
       <SectionList title="Sheet Role Signals" items={sheetRoleSignals} tone="neutral" />
       <SectionList title="Prototype Signals" items={prototypeSignals} tone="info" />
       <SectionList title="Repeat Scaling Signals" items={repeatScalingSignals} tone="info" />

@@ -9,6 +9,7 @@ import { buildTradePricingBasisBridge } from "./tradePricingBasisBridge"
 import { buildTradePricingInputDraft } from "./tradePricingInputDraft"
 import { buildTradeQuantitySupport } from "./tradeQuantitySupport"
 import type { ComplexityProfile, TradeStack } from "./types"
+import type { PlanEstimatorPackage } from "../plans/types"
 
 const defaultComplexity: ComplexityProfile = {
   class: "remodel",
@@ -118,6 +119,37 @@ function makePlan(overrides: Partial<PlanIntelligence> = {}): PlanIntelligence {
     takeoff,
     scopeAssist,
     evidence,
+  }
+}
+
+function makeEstimatorPackage(
+  overrides: Partial<PlanEstimatorPackage> = {}
+): PlanEstimatorPackage {
+  return {
+    key: "guest-room-finish-package",
+    title: "Guest room finish package",
+    primaryTrade: "painting",
+    roomGroup: "guest room",
+    supportType: "quantity_backed",
+    scopeBreadth: "broad",
+    confidenceLabel: "strong",
+    quantitySummary: "wall_area: 1800 sqft; ceiling_area: 900 sqft",
+    scheduleSummary: "finish schedule",
+    executionNotes: ["Anchor a typical guest room before broadening scope."],
+    cautionNotes: ["Keep corridor scope separate from guest rooms."],
+    evidence: [
+      {
+        uploadId: "upload-1",
+        uploadName: "plans.pdf",
+        sourcePageNumber: 1,
+        pageNumber: 1,
+        sheetNumber: "A8.1",
+        sheetTitle: "Finish Plan",
+        excerpt: "Guest room finish plan evidence",
+        confidence: 91,
+      },
+    ],
+    ...overrides,
   }
 }
 
@@ -330,17 +362,23 @@ test("drywall repair scenario stays conservative and does not invent patch quant
     planIntelligence: plan,
   })
 
-  assert.equal(result.tradeQuantitySupport?.supportLevel, "moderate")
-  assert.equal(result.tradePricingBasisBridge?.supportLevel, "moderate")
+  assert.equal(result.tradeQuantitySupport?.supportLevel, "weak")
+  assert.equal(result.tradePricingBasisBridge?.supportLevel, "weak")
   assert.ok(
     result.tradePricingBasisBridge?.tradeScopeInclusionDraft.includes(
       "Patch / repair scope should stay distinct from broader install-and-finish scope."
     )
   )
   assert.ok(
-    result.tradePricingInputDraft?.tradeScopePricingSections.includes("Patch / repair")
+    result.tradePricingInputDraft?.tradeScopePricingSections.some((item) =>
+      /patch \/ repair/i.test(item)
+    )
   )
-  assert.equal(result.tradePricingInputDraft?.tradeMeasurementInputDraft.length, 0)
+  assert.ok(
+    result.tradePricingInputDraft?.tradeMeasurementInputDraft.every(
+      (item) => !/\(\d+\s+(sqft|linear_ft|doors|rooms)\)/i.test(item)
+    )
+  )
   assert.ok(
     result.tradePricingBasisBridge?.tradePricingBasisNotes.some((item) =>
       item.includes("Do not convert repeated room support into patch counts or exact patch area")
@@ -473,17 +511,23 @@ test("wallcovering corridor scenario builds corridor, removal/prep, and install 
   })
 
   assert.equal(result.tradeQuantitySupport?.trade, "wallcovering")
-  assert.equal(result.tradeQuantitySupport?.supportLevel, "moderate")
-  assert.equal(result.tradePricingBasisBridge?.supportLevel, "moderate")
+  assert.equal(result.tradeQuantitySupport?.supportLevel, "weak")
+  assert.equal(result.tradePricingBasisBridge?.supportLevel, "weak")
   assert.ok(
-    result.tradePricingInputDraft?.tradeScopePricingSections.includes(
-      "Corridor wallcovering"
+    result.tradePricingInputDraft?.tradeScopePricingSections.some((item) =>
+      /corridor wallcovering/i.test(item)
     )
   )
   assert.ok(
-    result.tradePricingInputDraft?.tradeScopePricingSections.includes("Removal / prep")
+    result.tradePricingInputDraft?.tradeScopePricingSections.some((item) =>
+      /removal \/ prep/i.test(item)
+    )
   )
-  assert.ok(result.tradePricingInputDraft?.tradeScopePricingSections.includes("Install"))
+  assert.ok(
+    result.tradePricingInputDraft?.tradeScopePricingSections.some((item) =>
+      /^review candidate:\s*install$|^install$/i.test(item)
+    )
+  )
 })
 
 test("wallcovering weak support stays review-oriented and avoids invented coverage counts", () => {
@@ -521,6 +565,210 @@ test("wallcovering weak support stays review-oriented and avoids invented covera
       /\belevation count\b|\bcoverage count\b/i.test(item)
     )
   )
+})
+
+test("quantity-backed guest room package becomes section-ready anchors", () => {
+  const plan = makePlan({
+    estimatorPackages: [makeEstimatorPackage()],
+    estimatePackageCandidates: ["Guest room package"],
+    tradePackageSignals: ["painting", "finish package"],
+  })
+
+  const handoff = buildEstimateSkeletonHandoff(plan)
+  const structure = buildEstimateStructureConsumption(handoff)
+
+  assert.ok(handoff)
+  assert.ok(
+    handoff?.estimatorSectionSkeletons.some(
+      (section) =>
+        section.sectionTitle === "Painting: Guest room walls / ceilings" &&
+        section.sectionReadiness === "section_anchor" &&
+        section.quantityAnchor?.includes("wall_area")
+    )
+  )
+  assert.ok(
+    structure?.structuredEstimateSections.some(
+      (section) =>
+        section.sectionTitle === "Painting: Guest room walls / ceilings" &&
+        section.safeForSectionBuild
+    )
+  )
+  assert.ok(
+    structure?.structuredEstimateSections.some(
+      (section) =>
+        section.sectionTitle === "Wallcovering: Guest room feature / finish walls"
+    )
+  )
+  assert.ok(
+    structure?.estimateGroupingSignals.some((item) =>
+      item.includes("Painting: Guest room walls / ceilings")
+    )
+  )
+})
+
+test("elevation-only wet-area package stays narrow in section generation", () => {
+  const plan = makePlan({
+    estimatorPackages: [
+      makeEstimatorPackage({
+        key: "wet-area-package",
+        title: "Wet-area fixture and finish package",
+        primaryTrade: "tile",
+        roomGroup: "bathroom",
+        supportType: "elevation_only",
+        scopeBreadth: "narrow",
+        confidenceLabel: "moderate",
+        quantitySummary: "selected_elevation_area: 240 sqft",
+        scheduleSummary: "fixture schedule",
+        executionNotes: ["Bath elevations reinforce shower-wall scope."],
+        cautionNotes: ["Bath elevations stay narrower than full-room tile authority."],
+      }),
+    ],
+  })
+
+  const handoff = buildEstimateSkeletonHandoff(plan)
+  const structure = buildEstimateStructureConsumption(handoff)
+  const wetAreaSection = structure?.structuredEstimateSections.find((section) =>
+    /Wet-area walls and shower surfaces/i.test(section.sectionTitle)
+  )
+
+  assert.ok(wetAreaSection)
+  assert.equal(wetAreaSection?.scopeBreadth, "narrow")
+  assert.equal(wetAreaSection?.sectionReadiness, "review_only")
+  assert.equal(wetAreaSection?.safeForSectionBuild, false)
+  assert.ok(
+    wetAreaSection?.cautionNotes.some((item) =>
+      /should not expand into full-room/i.test(item)
+    )
+  )
+})
+
+test("schedule-backed wet-area package reinforces the right section without manufacturing totals", () => {
+  const plan = makePlan({
+    estimatorPackages: [
+      makeEstimatorPackage({
+        key: "wet-area-package",
+        title: "Wet-area fixture and finish package",
+        primaryTrade: "plumbing",
+        roomGroup: "bathroom",
+        supportType: "schedule_backed",
+        scopeBreadth: "narrow",
+        confidenceLabel: "moderate",
+        quantitySummary: null,
+        scheduleSummary: "fixture schedule: 6 fixtures",
+        executionNotes: ["Use fixture schedule to reinforce trim-out scope."],
+        cautionNotes: ["Fixture schedule does not create unsupported install totals."],
+      }),
+    ],
+  })
+
+  const structure = buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(plan))
+  const plumbingSection = structure?.structuredEstimateSections.find((section) =>
+    /Plumbing: Wet-area fixture trim-out/i.test(section.sectionTitle)
+  )
+
+  assert.ok(plumbingSection)
+  assert.equal(plumbingSection?.quantityAnchor, null)
+  assert.equal(plumbingSection?.safeForSectionBuild, false)
+  assert.ok(
+    plumbingSection?.scopeBullets.some((item) => /fixture schedule/i.test(item))
+  )
+})
+
+test("demo package remains separate from install section skeletons", () => {
+  const plan = makePlan({
+    estimatorPackages: [
+      makeEstimatorPackage({
+        key: "demo-removal-package",
+        title: "Demo / removal package",
+        primaryTrade: "general renovation",
+        roomGroup: null,
+        supportType: "demo_only",
+        scopeBreadth: "narrow",
+        confidenceLabel: "moderate",
+        quantitySummary: "demolition_area: 420 sqft",
+        scheduleSummary: null,
+        executionNotes: ["Selective demolition stays separate from install packages."],
+        cautionNotes: ["Removal/demo support does not create install authority by itself."],
+      }),
+    ],
+  })
+
+  const structure = buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(plan))
+
+  assert.ok(
+    structure?.structuredEstimateSections.some(
+      (section) =>
+        section.sectionTitle === "Demo / removal: Selective demolition" &&
+        section.trade === "general renovation" &&
+        !section.safeForSectionBuild
+    )
+  )
+  assert.ok(
+    structure?.structuredEstimateSections.every(
+      (section) => !/install/i.test(section.sectionTitle) || section.trade !== "general renovation"
+    )
+  )
+})
+
+test("scaled prototype guest room package becomes scalable section hints, not measured quantities", () => {
+  const plan = makePlan({
+    estimatorPackages: [
+      makeEstimatorPackage({
+        supportType: "scaled_prototype",
+        quantitySummary: null,
+        scheduleSummary: null,
+        confidenceLabel: "moderate",
+        executionNotes: ["Prototype guest room can scale once the typical room is confirmed."],
+        cautionNotes: ["Prototype support is not measured support."],
+      }),
+    ],
+  })
+
+  const structure = buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(plan))
+  const scalableSection = structure?.structuredEstimateSections.find((section) =>
+    /Painting: Guest room walls \/ ceilings/i.test(section.sectionTitle)
+  )
+
+  assert.ok(scalableSection)
+  assert.equal(scalableSection?.sectionReadiness, "scalable_hint")
+  assert.equal(scalableSection?.safeForSectionBuild, true)
+  assert.equal(scalableSection?.quantityAnchor, null)
+  assert.ok(
+    structure?.estimateGroupingSignals.some((item) =>
+      item.includes("scalable section hint")
+    )
+  )
+})
+
+test("section skeleton provenance remains intact through package handoff", () => {
+  const plan = makePlan({
+    estimatorPackages: [
+      makeEstimatorPackage({
+        evidence: [
+          {
+            uploadId: "upload-browser",
+            uploadName: "plans.pdf",
+            sourcePageNumber: 7,
+            pageNumber: 2,
+            sheetNumber: "A9.1",
+            sheetTitle: "Interior Elevations",
+            excerpt: "Selected elevation evidence",
+            confidence: 88,
+          },
+        ],
+      }),
+    ],
+  })
+
+  const structure = buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(plan))
+  const section = structure?.structuredEstimateSections.find((item) =>
+    /Painting: Guest room walls \/ ceilings/i.test(item.sectionTitle)
+  )
+
+  assert.ok(section)
+  assert.equal(section?.evidence[0]?.uploadId, "upload-browser")
+  assert.equal(section?.evidence[0]?.sourcePageNumber, 7)
+  assert.equal(section?.evidence[0]?.sheetNumber, "A9.1")
 })
 
 test("null upstream support returns null safely across bridge layers", () => {

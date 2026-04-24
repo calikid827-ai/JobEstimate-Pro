@@ -1,6 +1,7 @@
 import type {
   PlanEvidenceBundle,
   PlanEvidenceRef,
+  PlanEstimatorPackage,
   PlanIntelligence,
   PlanRoomFinding,
   PlanScheduleItem,
@@ -1036,6 +1037,376 @@ function buildPlanSetSynthesisNotes(args: {
   return uniqStrings(notes, 6)
 }
 
+function summarizeQuantities(findings: PlanTradeFinding[]): string | null {
+  const quantified = findings.filter(
+    (finding) => Number.isFinite(Number(finding.quantity)) && Number(finding.quantity) > 0
+  )
+  if (!quantified.length) return null
+
+  const parts = quantified.slice(0, 3).map((finding) => {
+    const quantity = Number(finding.quantity)
+    const rounded = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(1)
+    const unitLabel =
+      finding.unit === "sqft"
+        ? "sqft"
+        : finding.unit === "linear_ft"
+          ? "LF"
+          : finding.unit === "fixtures"
+            ? "fixtures"
+            : finding.unit === "devices"
+              ? "devices"
+              : finding.unit === "doors"
+                ? "doors"
+                : finding.unit === "rooms"
+                  ? "rooms"
+                  : "units"
+    const category = finding.category ? finding.category.replace(/_/g, " ") : finding.label
+    return `${rounded} ${unitLabel} from ${category}`
+  })
+
+  return parts.join("; ")
+}
+
+function summarizeSchedules(items: PlanScheduleItem[]): string | null {
+  if (!items.length) return null
+
+  const parts = items.slice(0, 3).map((item) => {
+    if (Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0) {
+      return `${item.label}${item.quantity ? ` (${item.quantity})` : ""}`
+    }
+    return item.label
+  })
+
+  return parts.join("; ")
+}
+
+function buildPackageEvidence(args: {
+  findings?: PlanTradeFinding[]
+  schedules?: PlanScheduleItem[]
+  rooms?: PlanRoomFinding[]
+}): PlanEvidenceRef[] {
+  return uniqEvidence(
+    [
+      ...collectTradeEvidence(args.findings || []),
+      ...collectScheduleEvidence(args.schedules || []),
+      ...collectRoomEvidence(args.rooms || []),
+    ],
+    10
+  )
+}
+
+function buildEstimatorPackages(args: {
+  analyses: PlanSheetAnalysis[]
+  likelyRoomTypes: string[]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+  packageGroupingSignals: string[]
+  tradePackageSignals: string[]
+  scheduleReconciliationSignals: string[]
+  crossSheetConflictSignals: string[]
+}): PlanEstimatorPackage[] {
+  const findings = args.analyses.flatMap((analysis) => analysis.tradeFindings || [])
+  const schedules = args.analyses.flatMap((analysis) => analysis.schedules || [])
+  const rooms = args.analyses.flatMap((analysis) => analysis.rooms || [])
+  const roleText = collectPlanTextCorpus({ sheetIndex: [], analyses: args.analyses }).join(" ")
+  const packages: PlanEstimatorPackage[] = []
+
+  const addPackage = (pkg: PlanEstimatorPackage | null) => {
+    if (!pkg) return
+    if (packages.some((item) => item.key === pkg.key)) return
+    packages.push(pkg)
+  }
+
+  const finishFindings = findings.filter(
+    (finding) =>
+      ["painting", "wallcovering", "flooring"].includes(finding.trade) &&
+      [
+        "wall_area",
+        "ceiling_area",
+        "trim_lf",
+        "door_openings",
+        "floor_area",
+        "base_lf",
+      ].includes(String(finding.category || ""))
+  )
+  const finishSchedules = schedules.filter((item) => item.scheduleType === "finish")
+  const guestRoomRooms = rooms.filter((room) => /\bguest room\b|\bbed(room)?\b|\bsuite\b|\bunit\b/i.test(room.roomName))
+  const hasRepeatedRoomSupport =
+    args.repeatedSpaceSignals.length > 0 &&
+    (args.likelyRoomTypes.includes("guest room") ||
+      args.likelyRoomTypes.includes("suite") ||
+      args.likelyRoomTypes.includes("unit"))
+
+  addPackage(
+    finishFindings.length > 0 || finishSchedules.length > 0 || hasRepeatedRoomSupport
+      ? {
+          key: "guest-room-finish-package",
+          title: "Guest room finish package",
+          primaryTrade:
+            finishFindings.find((finding) => finding.trade === "painting")?.trade ||
+            finishFindings[0]?.trade ||
+            "painting",
+          roomGroup:
+            args.likelyRoomTypes.find((item) => ["guest room", "suite", "unit"].includes(item)) ||
+            "guest room",
+          supportType:
+            finishFindings.length > 0
+              ? "quantity_backed"
+              : hasRepeatedRoomSupport
+                ? "scaled_prototype"
+                : finishSchedules.length > 0
+                  ? "schedule_backed"
+                  : "support_only",
+          scopeBreadth: "broad",
+          confidenceLabel:
+            finishFindings.length > 0
+              ? "strong"
+              : hasRepeatedRoomSupport
+                ? "moderate"
+                : finishSchedules.length > 0
+                  ? "moderate"
+                  : "limited",
+          quantitySummary: summarizeQuantities(finishFindings),
+          scheduleSummary: summarizeSchedules(finishSchedules),
+          executionNotes: uniqStrings(
+            [
+              hasRepeatedRoomSupport
+                ? "Prototype/repeated-room support can organize the package around a typical guest room before scaling."
+                : "",
+              args.packageGroupingSignals.find((item) => /\broom-package grouping/i.test(item)) || "",
+              args.scheduleReconciliationSignals.find((item) => /\bfinish schedules now reconcile/i.test(item)) || "",
+            ].filter(Boolean),
+            4
+          ),
+          cautionNotes: uniqStrings(
+            [
+              finishFindings.length === 0 && finishSchedules.length > 0
+                ? "Schedule support reinforces room finish scope, but should not manufacture unsupported full-room totals by itself."
+                : "",
+            ].filter(Boolean),
+            3
+          ),
+          evidence: buildPackageEvidence({
+            findings: finishFindings,
+            schedules: finishSchedules,
+            rooms: guestRoomRooms,
+          }),
+        }
+      : null
+  )
+
+  const wetAreaFindings = findings.filter(
+    (finding) =>
+      ["plumbing", "tile", "flooring"].includes(finding.trade) &&
+      [
+        "plumbing_fixture_count",
+        "shower_tile_area",
+        "wall_tile_area",
+        "backsplash_area",
+        "selected_elevation_area",
+      ].includes(String(finding.category || ""))
+  )
+  const wetAreaSchedules = schedules.filter((item) => item.scheduleType === "fixture")
+  const wetAreaRooms = rooms.filter((room) => /\bbath(room)?\b|\bguest bathroom\b|\brestroom\b/i.test(room.roomName))
+  const hasWetAreaQuantity = wetAreaFindings.some(
+    (finding) =>
+      finding.category === "plumbing_fixture_count" ||
+      finding.category === "shower_tile_area" ||
+      finding.category === "wall_tile_area" ||
+      finding.category === "backsplash_area"
+  )
+  const hasWetAreaElevationOnly = wetAreaFindings.some(
+    (finding) => finding.category === "selected_elevation_area"
+  )
+  const wetAreaNarrowOnly =
+    wetAreaFindings.length > 0 &&
+    wetAreaFindings.every((finding) =>
+      ["selected_elevation_area", "shower_tile_area", "wall_tile_area", "backsplash_area"].includes(
+        String(finding.category || "")
+      )
+    )
+
+  addPackage(
+    wetAreaFindings.length > 0 || wetAreaSchedules.length > 0
+      ? {
+          key: "wet-area-package",
+          title: "Wet-area fixture and finish package",
+          primaryTrade:
+            wetAreaFindings.find((finding) => finding.trade === "plumbing")?.trade ||
+            wetAreaFindings[0]?.trade ||
+            "plumbing",
+          roomGroup:
+            args.likelyRoomTypes.find((item) => ["guest bathroom", "bathroom"].includes(item)) ||
+            "bathroom",
+          supportType:
+            wetAreaNarrowOnly && hasWetAreaElevationOnly
+              ? "elevation_only"
+              : hasWetAreaQuantity
+                ? "quantity_backed"
+                : wetAreaSchedules.length > 0
+                  ? "schedule_backed"
+                  : "support_only",
+          scopeBreadth: wetAreaNarrowOnly ? "narrow" : "broad",
+          confidenceLabel:
+            wetAreaNarrowOnly && hasWetAreaElevationOnly
+              ? "moderate"
+              : hasWetAreaQuantity
+                ? "strong"
+                : wetAreaSchedules.length > 0
+                  ? "moderate"
+                  : "limited",
+          quantitySummary: summarizeQuantities(wetAreaFindings),
+          scheduleSummary: summarizeSchedules(wetAreaSchedules),
+          executionNotes: uniqStrings(
+            [
+              args.scheduleReconciliationSignals.find((item) => /\bfixture schedules now reconcile/i.test(item)) || "",
+              args.tradePackageSignals.find((item) => /\bwet-area remodel package signals\b/i.test(item)) || "",
+            ].filter(Boolean),
+            4
+          ),
+          cautionNotes: uniqStrings(
+            [
+              wetAreaNarrowOnly
+                ? "Bath elevations and vertical tile cues stay narrower than full-room or full-floor authority."
+                : "",
+              wetAreaSchedules.length > 0 && !hasWetAreaQuantity
+                ? "Fixture schedules reinforce the wet-area package, but they do not create unsupported installation totals by themselves."
+                : "",
+            ].filter(Boolean),
+            4
+          ),
+          evidence: buildPackageEvidence({
+            findings: wetAreaFindings,
+            schedules: wetAreaSchedules,
+            rooms: wetAreaRooms,
+          }),
+        }
+      : null
+  )
+
+  const corridorFindings = findings.filter(
+    (finding) =>
+      ["painting", "wallcovering", "flooring"].includes(finding.trade) &&
+      ["corridor_area", "floor_area", "wall_area"].includes(String(finding.category || "")) &&
+      /\bcorridor\b|\bhall/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const corridorHasSignal =
+    args.likelyRoomTypes.includes("corridor") ||
+    args.tradePackageSignals.some((item) => /\bcorridor\b/i.test(item))
+
+  addPackage(
+    corridorFindings.length > 0 || corridorHasSignal
+      ? {
+          key: "corridor-package",
+          title: "Corridor/common-area finish package",
+          primaryTrade: corridorFindings[0]?.trade || "painting",
+          roomGroup: args.likelyRoomTypes.includes("corridor") ? "corridor" : "common area",
+          supportType: corridorFindings.length > 0 ? "quantity_backed" : "support_only",
+          scopeBreadth: "broad",
+          confidenceLabel: corridorFindings.length > 0 ? "strong" : "limited",
+          quantitySummary: summarizeQuantities(corridorFindings),
+          scheduleSummary: null,
+          executionNotes: uniqStrings(
+            [
+              "Corridor/common-area work should remain separate from repeated guest-room interiors.",
+              args.packageGroupingSignals.find((item) => /\bcorridor\/common-area grouping/i.test(item)) || "",
+            ].filter(Boolean),
+            3
+          ),
+          cautionNotes: uniqStrings(
+            [
+              corridorFindings.length === 0
+                ? "Corridor package is supported by grouping signals only and should stay non-binding until direct corridor quantities are stronger."
+                : "",
+            ].filter(Boolean),
+            3
+          ),
+          evidence: buildPackageEvidence({ findings: corridorFindings }),
+        }
+      : null
+  )
+
+  const ceilingElectricalFindings = findings.filter(
+    (finding) =>
+      ["electrical", "painting"].includes(finding.trade) &&
+      ["electrical_fixture_count", "device_count", "ceiling_area"].includes(String(finding.category || ""))
+  )
+  const electricalSchedules = schedules.filter((item) => item.scheduleType === "electrical" || item.scheduleType === "fixture")
+  const hasCeilingContext = /\breflected ceiling plan\b|\brcp\b/i.test(roleText)
+
+  addPackage(
+    (ceilingElectricalFindings.length > 0 || electricalSchedules.length > 0) && hasCeilingContext
+      ? {
+          key: "ceiling-light-fixture-package",
+          title: "Ceiling / light / fixture package",
+          primaryTrade:
+            ceilingElectricalFindings.find((finding) => finding.trade === "electrical")?.trade ||
+            "electrical",
+          roomGroup: args.likelyRoomTypes.find((item) => ["guest room", "corridor"].includes(item)) || null,
+          supportType:
+            ceilingElectricalFindings.some((finding) =>
+              ["electrical_fixture_count", "device_count", "ceiling_area"].includes(String(finding.category || ""))
+            )
+              ? "quantity_backed"
+              : "schedule_backed",
+          scopeBreadth: "narrow",
+          confidenceLabel:
+            ceilingElectricalFindings.length > 0 && electricalSchedules.length > 0
+              ? "strong"
+              : "moderate",
+          quantitySummary: summarizeQuantities(ceilingElectricalFindings),
+          scheduleSummary: summarizeSchedules(electricalSchedules),
+          executionNotes: uniqStrings(
+            [
+              "RCP and fixture/light schedule support can organize ceiling-adjacent work without crossing into unrelated wall or floor packages.",
+              args.scheduleReconciliationSignals.find((item) => /\breflected ceiling plans now reconcile/i.test(item)) || "",
+            ].filter(Boolean),
+            4
+          ),
+          cautionNotes: ["Ceiling-light-fixture context should remain trade-specific and not inflate unrelated finish or drywall authority."],
+          evidence: buildPackageEvidence({
+            findings: ceilingElectricalFindings,
+            schedules: electricalSchedules,
+          }),
+        }
+      : null
+  )
+
+  const demoFindings = findings.filter(
+    (finding) =>
+      finding.category === "demolition_area" ||
+      /\bdemo(?:lition)?\b|\bremoval\b/i.test([finding.label, ...(finding.notes || [])].join(" "))
+  )
+  const hasDemoRole = /\bdemo(?: plan)?\b/i.test(roleText)
+
+  addPackage(
+    demoFindings.length > 0 || hasDemoRole
+      ? {
+          key: "demo-removal-package",
+          title: "Demo / removal package",
+          primaryTrade: demoFindings[0]?.trade || "general renovation",
+          roomGroup: null,
+          supportType: demoFindings.length > 0 ? "demo_only" : "support_only",
+          scopeBreadth: "narrow",
+          confidenceLabel: demoFindings.length > 0 ? "moderate" : "limited",
+          quantitySummary: summarizeQuantities(demoFindings),
+          scheduleSummary: null,
+          executionNotes: ["Demo/removal scope can be packaged separately from install work when demolition sheets are selected."],
+          cautionNotes: uniqStrings(
+            [
+              "Removal/demo support does not create install authority by itself.",
+              args.crossSheetConflictSignals.find((item) => /\bremoval remains non-binding\b/i.test(item)) || "",
+            ].filter(Boolean),
+            4
+          ),
+          evidence: buildPackageEvidence({ findings: demoFindings }),
+        }
+      : null
+  )
+
+  return packages.slice(0, 8)
+}
+
 function buildHighValueSheetSignals(args: {
   sheetRoleSignals: string[]
   prototypeSignals: string[]
@@ -1643,6 +2014,7 @@ function buildSummary(args: {
   packageAllowanceSignals: string[]
   estimateAssemblyGuidance: string[]
   estimateScaffoldNotes: string[]
+  estimatorPackages: PlanEstimatorPackage[]
   crossSheetLinkSignals: string[]
   scheduleReconciliationSignals: string[]
   crossSheetConflictSignals: string[]
@@ -1686,6 +2058,12 @@ function buildSummary(args: {
   }
   if (args.tradePackageSignals.length > 0) {
     parts.push(args.tradePackageSignals[0])
+  }
+  if (args.estimatorPackages.length > 0) {
+    const topPackage = args.estimatorPackages[0]
+    parts.push(
+      `Estimator-ready package: ${topPackage.title} (${topPackage.supportType.replace(/_/g, " ")}, ${topPackage.scopeBreadth} scope).`
+    )
   }
   if (args.scalableScopeSignals.length > 0) {
     parts.push(args.scalableScopeSignals[0])
@@ -1772,6 +2150,7 @@ function buildNotes(args: {
   packageAllowanceSignals: string[]
   estimateAssemblyGuidance: string[]
   estimateScaffoldNotes: string[]
+  estimatorPackages: PlanEstimatorPackage[]
   crossSheetLinkSignals: string[]
   scheduleReconciliationSignals: string[]
   crossSheetConflictSignals: string[]
@@ -1812,6 +2191,12 @@ function buildNotes(args: {
     ...args.packageAllowanceSignals,
     ...args.estimateAssemblyGuidance,
     ...args.estimateScaffoldNotes,
+    ...args.estimatorPackages.map(
+      (pkg) =>
+        `${pkg.title}: ${pkg.supportType.replace(/_/g, " ")} ${pkg.scopeBreadth} package${pkg.quantitySummary ? ` backed by ${pkg.quantitySummary}` : ""}.`
+    ),
+    ...args.estimatorPackages.flatMap((pkg) => pkg.executionNotes || []),
+    ...args.estimatorPackages.flatMap((pkg) => pkg.cautionNotes || []),
     ...args.crossSheetLinkSignals,
     ...args.scheduleReconciliationSignals,
     ...args.crossSheetConflictSignals,
@@ -2095,6 +2480,16 @@ export function buildMergedPlanIntelligence(args: {
     estimateAssemblyGuidance,
     estimatingFrameworkNotes,
   })
+  const estimatorPackages = buildEstimatorPackages({
+    analyses: normalizedAnalyses,
+    likelyRoomTypes,
+    repeatedSpaceSignals,
+    prototypeSignals,
+    packageGroupingSignals,
+    tradePackageSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+  })
   const planSetSynthesisNotes = buildPlanSetSynthesisNotes({
     crossSheetLinkSignals,
     scheduleReconciliationSignals,
@@ -2128,6 +2523,7 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    estimatorPackages,
     crossSheetLinkSignals,
     scheduleReconciliationSignals,
     crossSheetConflictSignals,
@@ -2168,6 +2564,7 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    estimatorPackages,
     crossSheetLinkSignals,
     scheduleReconciliationSignals,
     crossSheetConflictSignals,
@@ -2218,6 +2615,7 @@ export function buildMergedPlanIntelligence(args: {
     packageAllowanceSignals,
     estimateAssemblyGuidance,
     estimateScaffoldNotes,
+    estimatorPackages,
     crossSheetLinkSignals,
     scheduleReconciliationSignals,
     crossSheetConflictSignals,

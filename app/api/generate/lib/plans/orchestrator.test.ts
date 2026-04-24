@@ -6,6 +6,8 @@ import path from "node:path"
 import test from "node:test"
 
 import { runPlanIntelligence } from "./orchestrator"
+import { buildEstimateSkeletonHandoff } from "../estimator/estimateSkeletonHandoff"
+import { buildEstimateStructureConsumption } from "../estimator/estimateStructureConsumption"
 
 const require = createRequire(import.meta.url)
 const PDFDocument = require("pdfkit")
@@ -279,6 +281,79 @@ test("temp-file-backed large pdf transport feeds the same split/render/analyze s
       [2, 3, 4]
     )
     assert(result.sheetIndex.every((sheet) => sheet.uploadId === "multipart_plan_upload"))
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test("browser-derived, server-derived, and fallback upload modes preserve identical estimator-ready package behavior downstream", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-upload-mode-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "selected-pages.pdf")
+    await writeFile(
+      pdfPath,
+      await makePdfBuffer([
+        "A8.1 Finish Plan guest room repaint wall finish",
+        "A8.2 Finish Schedule guest room paint wallcovering flooring",
+      ])
+    )
+
+    const makeRawPlan = (mode: "browser-derived-selected-pages" | "server-derived-selected-pages" | "original-fallback") => ({
+      uploadId: `upload-${mode}`,
+      name: `selected-pages-${mode}.pdf`,
+      note: `Mode ${mode}`,
+      transport: "multipart-temp",
+      mimeType: "application/pdf",
+      tempFilePath: pdfPath,
+      bytes: 4_000_000,
+      originalBytes: 18_000_000,
+      sourcePageNumberMap: [3, 7],
+      selectedSourcePages: [3, 7],
+      selectedPageUploadMode: mode,
+      selectedPageUploadNote: `${mode} note`,
+    })
+
+    const browserResult = await runPlanIntelligence({
+      rawPlans: [makeRawPlan("browser-derived-selected-pages")],
+      scopeText: "Refresh guest room finishes.",
+      trade: "painting",
+    })
+    const serverResult = await runPlanIntelligence({
+      rawPlans: [makeRawPlan("server-derived-selected-pages")],
+      scopeText: "Refresh guest room finishes.",
+      trade: "painting",
+    })
+    const fallbackResult = await runPlanIntelligence({
+      rawPlans: [makeRawPlan("original-fallback")],
+      scopeText: "Refresh guest room finishes.",
+      trade: "painting",
+    })
+
+    const summarizePackages = (result: NonNullable<typeof browserResult>) =>
+      (result.estimatorPackages || []).map((pkg) => ({
+        key: pkg.key,
+        supportType: pkg.supportType,
+        scopeBreadth: pkg.scopeBreadth,
+        sourcePages: pkg.evidence.map((ref) => ref.sourcePageNumber),
+      }))
+
+    const summarizeSections = (result: NonNullable<typeof browserResult>) =>
+      (
+        buildEstimateStructureConsumption(buildEstimateSkeletonHandoff(result))
+          ?.structuredEstimateSections || []
+      ).map((section) => ({
+        title: section.sectionTitle,
+        readiness: section.sectionReadiness,
+        safeForSectionBuild: section.safeForSectionBuild,
+        sourcePages: section.evidence.map((ref) => ref.sourcePageNumber),
+      }))
+
+    assert(browserResult && serverResult && fallbackResult)
+    assert.deepEqual(summarizePackages(browserResult), summarizePackages(serverResult))
+    assert.deepEqual(summarizePackages(browserResult), summarizePackages(fallbackResult))
+    assert.deepEqual(summarizeSections(browserResult), summarizeSections(serverResult))
+    assert.deepEqual(summarizeSections(browserResult), summarizeSections(fallbackResult))
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }
