@@ -1,6 +1,9 @@
 // ./lib/priceguard/drywallEngine.ts
 
-import type { EstimateSectionProvenance } from "../estimator/types"
+import {
+  getTradeExecutionSectionId,
+  type EstimateSectionProvenance,
+} from "../estimator/types"
 
 type Pricing = {
   labor: number
@@ -220,7 +223,9 @@ function buildDrywallSectionPricing(args: {
   ceilingSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
-    if (bucket.section === "Partition-related scope") {
+    const sectionId = getTradeExecutionSectionId("drywall", bucket.section)
+
+    if (sectionId === "partition_related_scope") {
       return {
         ...bucket,
         pricingBasis: "burden",
@@ -258,32 +263,32 @@ function buildDrywallSectionPricing(args: {
           ? {
               quantitySupport: "measured",
               sourceBasis: [
-                bucket.section === "Patch / repair"
+                sectionId === "patch_repair"
                   ? args.repairSource || "trade_finding"
-                  : bucket.section === "Finish / texture"
+                  : sectionId === "finish_texture"
                     ? args.finishTextureSource || args.assemblySource || "takeoff"
-                    : bucket.section === "Ceiling drywall"
+                    : sectionId === "ceiling_drywall"
                       ? args.ceilingSource || args.assemblySource || "takeoff"
                       : args.assemblySource || "takeoff",
               ],
               summary:
-                bucket.section === "Patch / repair"
+                sectionId === "patch_repair"
                   ? "Direct patch/repair row is backed by measured repair area."
-                  : bucket.section === "Finish / texture"
+                  : sectionId === "finish_texture"
                     ? "Direct finish/texture row is backed by measured finish/texture or assembly area."
-                    : bucket.section === "Ceiling drywall"
+                    : sectionId === "ceiling_drywall"
                       ? "Direct ceiling drywall row is backed by measured ceiling drywall area."
                       : "Direct drywall row is backed by measured assembly area.",
               supportCategory:
-                bucket.section === "Patch / repair"
+                sectionId === "patch_repair"
                   ? "repair_area"
-                  : bucket.section === "Finish / texture"
+                  : sectionId === "finish_texture"
                     ? "finish_texture_area"
-                    : bucket.section === "Ceiling drywall"
+                    : sectionId === "ceiling_drywall"
                       ? "ceiling_area"
                       : "assembly_area",
               quantityDetail:
-                bucket.section === "Finish / texture"
+                sectionId === "finish_texture"
                   ? args.supportedFinishTextureSqft && args.supportedFinishTextureSqft > 0
                     ? `${args.supportedFinishTextureSqft} sqft of measured finish/texture support was used for this row.`
                     : args.supportedSqft && args.supportedSqft > 0
@@ -293,18 +298,18 @@ function buildDrywallSectionPricing(args: {
                     ? `${args.supportedSqft} sqft of measured drywall support was used for this row.`
                     : undefined,
               diagnosticDetails: [
-                bucket.section === "Patch / repair"
+                sectionId === "patch_repair"
                   ? "direct_row_allowed: measured repair area is present."
-                  : bucket.section === "Finish / texture"
+                  : sectionId === "finish_texture"
                     ? "direct_row_allowed: measured finish/texture or assembly support is present."
-                    : bucket.section === "Ceiling drywall"
+                    : sectionId === "ceiling_drywall"
                       ? "direct_row_allowed: measured ceiling drywall support is present."
                       : "direct_row_allowed: measured assembly support is present.",
-                bucket.section === "Patch / repair"
+                sectionId === "patch_repair"
                   ? `source_basis: ${args.repairSource || "trade_finding"}`
-                  : bucket.section === "Finish / texture"
+                  : sectionId === "finish_texture"
                     ? `source_basis: ${args.finishTextureSource || args.assemblySource || "takeoff"}`
-                    : bucket.section === "Ceiling drywall"
+                    : sectionId === "ceiling_drywall"
                       ? `source_basis: ${args.ceilingSource || args.assemblySource || "takeoff"}`
                       : `source_basis: ${args.assemblySource || "takeoff"}`,
               ],

@@ -6,7 +6,14 @@ import {
   buildLiveTradePricingInfluence,
   selectTradeScopedSplitMeasurements,
 } from "./liveTradePricingInfluence"
-import type { ComplexityProfile, MeasurementInput, TradeStack } from "./types"
+import {
+  formatTradeExecutionSectionLabel,
+  getTradeExecutionSectionId,
+  getTradeExecutionSectionIds,
+  type ComplexityProfile,
+  type MeasurementInput,
+  type TradeStack,
+} from "./types"
 
 const defaultComplexity: ComplexityProfile = {
   class: "remodel",
@@ -252,6 +259,18 @@ test("painting influence stays non-binding when only descriptive finish cues exi
   assert.ok(influence)
   assert.equal(influence.canAffectNumericPricing, false)
   assert.equal(influence.engineInputs, undefined)
+})
+
+test("typed execution section helpers preserve current output labels", () => {
+  assert.equal(formatTradeExecutionSectionLabel("painting", "doors_frames"), "Doors / frames")
+  assert.equal(formatTradeExecutionSectionLabel("drywall", "finish_texture"), "Finish / texture")
+  assert.equal(formatTradeExecutionSectionLabel("wallcovering", "removal_prep"), "Removal / prep")
+  assert.equal(getTradeExecutionSectionId("painting", "Review candidate: doors / frames"), "doors_frames")
+  assert.equal(getTradeExecutionSectionId("drywall", "Patch / repair"), "patch_repair")
+  assert.deepEqual(
+    getTradeExecutionSectionIds("wallcovering", ["Review candidate: feature wall", "Install"]),
+    ["feature_wall", "install"]
+  )
 })
 
 test("painting influence can scale from strong repeated-room support without pretending that support is measured", () => {
@@ -524,7 +543,11 @@ test("shared-plan repeated guest-room painting support does not leak into drywal
   assert.equal(drywallInfluence.engineInputs, undefined)
   assert.ok(wallcoveringInfluence)
   assert.equal(wallcoveringInfluence.canAffectNumericPricing, false)
-  assert.equal(wallcoveringInfluence.engineInputs, undefined)
+  assert.equal(wallcoveringInfluence.engineInputs?.wallcovering?.supportedSqft, null)
+  assert.match(
+    wallcoveringInfluence.engineInputs?.wallcovering?.blocker || "",
+    /no exact supported wall area/i
+  )
 })
 
 test("multi-trade split allocation keeps measured painting support isolated from drywall install quantities", () => {

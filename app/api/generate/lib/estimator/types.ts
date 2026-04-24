@@ -47,6 +47,146 @@ export type PricingUnit =
   | "days"
   | "lump_sum"
 
+export type PaintingExecutionSectionId =
+  | "walls"
+  | "ceilings"
+  | "doors_frames"
+  | "trim_casing"
+  | "corridor_repaint"
+  | "prep_protection"
+
+export type DrywallExecutionSectionId =
+  | "patch_repair"
+  | "install_hang"
+  | "finish_texture"
+  | "ceiling_drywall"
+  | "partition_related_scope"
+
+export type WallcoveringExecutionSectionId =
+  | "room_wallcovering"
+  | "corridor_wallcovering"
+  | "feature_wall"
+  | "removal_prep"
+  | "install"
+  | "corridor_burden"
+
+export const PAINTING_EXECUTION_SECTION_LABELS: Record<PaintingExecutionSectionId, string> = {
+  walls: "Walls",
+  ceilings: "Ceilings",
+  doors_frames: "Doors / frames",
+  trim_casing: "Trim / casing",
+  corridor_repaint: "Corridor repaint",
+  prep_protection: "Prep / protection",
+}
+
+export const DRYWALL_EXECUTION_SECTION_LABELS: Record<DrywallExecutionSectionId, string> = {
+  patch_repair: "Patch / repair",
+  install_hang: "Install / hang",
+  finish_texture: "Finish / texture",
+  ceiling_drywall: "Ceiling drywall",
+  partition_related_scope: "Partition-related scope",
+}
+
+export const WALLCOVERING_EXECUTION_SECTION_LABELS: Record<WallcoveringExecutionSectionId, string> = {
+  room_wallcovering: "Room wallcovering",
+  corridor_wallcovering: "Corridor wallcovering",
+  feature_wall: "Feature wall",
+  removal_prep: "Removal / prep",
+  install: "Install",
+  corridor_burden: "Corridor burden",
+}
+
+function normalizeExecutionSectionLabel(value: string): string {
+  return String(value || "").replace(/^Review candidate:\s*/i, "").trim()
+}
+
+function findExecutionSectionId<TSectionId extends string>(
+  labels: Record<TSectionId, string>,
+  value: string
+): TSectionId | null {
+  const normalized = normalizeExecutionSectionLabel(value).toLowerCase()
+  const match = (Object.entries(labels) as Array<[TSectionId, string]>).find(
+    ([, label]) => label.toLowerCase() === normalized
+  )
+  return match?.[0] || null
+}
+
+export function formatTradeExecutionSectionLabel(
+  trade: "painting",
+  sectionId: PaintingExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "drywall",
+  sectionId: DrywallExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "wallcovering",
+  sectionId: WallcoveringExecutionSectionId,
+  reviewCandidate?: boolean
+): string
+export function formatTradeExecutionSectionLabel(
+  trade: "painting" | "drywall" | "wallcovering",
+  sectionId: string,
+  reviewCandidate = false
+): string {
+  const label =
+    trade === "painting"
+      ? PAINTING_EXECUTION_SECTION_LABELS[sectionId as PaintingExecutionSectionId]
+      : trade === "drywall"
+        ? DRYWALL_EXECUTION_SECTION_LABELS[sectionId as DrywallExecutionSectionId]
+        : WALLCOVERING_EXECUTION_SECTION_LABELS[sectionId as WallcoveringExecutionSectionId]
+
+  return reviewCandidate ? `Review candidate: ${label.toLowerCase()}` : label
+}
+
+export function getTradeExecutionSectionId(
+  trade: "painting",
+  value: string
+): PaintingExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "drywall",
+  value: string
+): DrywallExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "wallcovering",
+  value: string
+): WallcoveringExecutionSectionId | null
+export function getTradeExecutionSectionId(
+  trade: "painting" | "drywall" | "wallcovering",
+  value: string
+): string | null {
+  return trade === "painting"
+    ? findExecutionSectionId(PAINTING_EXECUTION_SECTION_LABELS, value)
+    : trade === "drywall"
+      ? findExecutionSectionId(DRYWALL_EXECUTION_SECTION_LABELS, value)
+      : findExecutionSectionId(WALLCOVERING_EXECUTION_SECTION_LABELS, value)
+}
+
+export function getTradeExecutionSectionIds(
+  trade: "painting",
+  values: string[]
+): PaintingExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "drywall",
+  values: string[]
+): DrywallExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "wallcovering",
+  values: string[]
+): WallcoveringExecutionSectionId[]
+export function getTradeExecutionSectionIds(
+  trade: "painting" | "drywall" | "wallcovering",
+  values: string[]
+): string[] {
+  const resolved: Array<string | null> = values
+    .map((value) => getTradeExecutionSectionId(trade as never, value) as string | null)
+  const ids = resolved
+    .filter((value): value is string => value != null)
+  return Array.from(new Set(ids))
+}
+
 export type EstimateBasisSection = {
   section: string
   labor: number

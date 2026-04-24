@@ -1,4 +1,7 @@
-import type { EstimateSectionProvenance } from "../estimator/types"
+import {
+  getTradeExecutionSectionId,
+  type EstimateSectionProvenance,
+} from "../estimator/types"
 
 type Pricing = {
   labor: number
@@ -496,7 +499,9 @@ function buildPaintingSectionPricing(args: {
   trimSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
-    if (bucket.section === "Doors / frames") {
+    const sectionId = getTradeExecutionSectionId("painting", bucket.section)
+
+    if (sectionId === "doors_frames") {
       return {
         ...bucket,
         pricingBasis: "direct",
@@ -526,7 +531,7 @@ function buildPaintingSectionPricing(args: {
       }
     }
 
-    if (bucket.section === "Trim / casing") {
+    if (sectionId === "trim_casing") {
       return {
         ...bucket,
         pricingBasis: "direct",
@@ -556,7 +561,7 @@ function buildPaintingSectionPricing(args: {
       }
     }
 
-    if (bucket.section === "Corridor repaint" || bucket.section === "Prep / protection") {
+    if (sectionId === "corridor_repaint" || sectionId === "prep_protection") {
       return {
         ...bucket,
         pricingBasis: "burden",
@@ -566,14 +571,14 @@ function buildPaintingSectionPricing(args: {
           sourceBasis: ["repeated_space_rollup"],
           summary: "Embedded burden remains non-standalone and non-authoritative.",
           supportCategory:
-            bucket.section === "Corridor repaint" ? "corridor_scope" : "prep_protection",
+            sectionId === "corridor_repaint" ? "corridor_scope" : "prep_protection",
           blockedReason:
-            bucket.section === "Corridor repaint"
+            sectionId === "corridor_repaint"
               ? "Corridor/common-area scope stays embedded and cannot become a standalone direct row in this pass."
               : "Prep/protection remains embedded and cannot become a standalone direct row in this pass.",
           diagnosticDetails: [
             "embedded_burden_only: section remains reference-only.",
-            bucket.section === "Corridor repaint"
+            sectionId === "corridor_repaint"
               ? "reason: corridor/common-area scope is kept separate from direct room rows."
               : "reason: prep/protection is surfaced for explanation but not promoted to billable direct scope.",
           ],
@@ -585,7 +590,7 @@ function buildPaintingSectionPricing(args: {
       ...bucket,
       pricingBasis: "direct",
       notes:
-        bucket.section === "Walls" || bucket.section === "Ceilings"
+        sectionId === "walls" || sectionId === "ceilings"
           ? args.interiorBaseSupport === "measured"
             ? ["Measured wall/ceiling support backs this direct row."]
             : args.interiorBaseSupport === "scaled"
@@ -593,23 +598,23 @@ function buildPaintingSectionPricing(args: {
             : undefined
           : undefined,
       provenance:
-        bucket.section === "Walls" || bucket.section === "Ceilings"
+        sectionId === "walls" || sectionId === "ceilings"
           ? args.interiorBaseSupport === "measured"
             ? {
                 quantitySupport: "measured",
                 sourceBasis: [
-                  bucket.section === "Ceilings"
+                  sectionId === "ceilings"
                     ? args.ceilingSupportSource || "takeoff"
                     : args.wallSupportSource || "takeoff",
                 ],
                 summary:
-                  bucket.section === "Ceilings"
+                  sectionId === "ceilings"
                     ? "Direct ceiling row is backed by measured ceiling area."
                     : "Direct wall row is backed by measured wall area.",
                 supportCategory:
-                  bucket.section === "Ceilings" ? "ceiling_area" : "wall_area",
+                  sectionId === "ceilings" ? "ceiling_area" : "wall_area",
                 quantityDetail:
-                  bucket.section === "Ceilings"
+                  sectionId === "ceilings"
                     ? args.supportedCeilingSqft && args.supportedCeilingSqft > 0
                       ? `${args.supportedCeilingSqft} sqft of measured ceiling area was used for this row.`
                       : undefined
@@ -618,7 +623,7 @@ function buildPaintingSectionPricing(args: {
                       : undefined,
                 diagnosticDetails: [
                   "direct_row_allowed: measured paintable area is present.",
-                  bucket.section === "Ceilings"
+                  sectionId === "ceilings"
                     ? `source_basis: ${args.ceilingSupportSource || "takeoff"}`
                     : `source_basis: ${args.wallSupportSource || "takeoff"}`,
                 ],

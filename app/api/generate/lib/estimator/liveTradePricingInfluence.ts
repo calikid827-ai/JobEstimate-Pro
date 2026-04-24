@@ -1,5 +1,12 @@
 import type { PlanIntelligence } from "../plans/types"
-import type { PaintScope, EstimateBasis, MeasurementInput, TradeStack, ComplexityProfile } from "./types"
+import {
+  getTradeExecutionSectionIds,
+  type PaintScope,
+  type EstimateBasis,
+  type MeasurementInput,
+  type TradeStack,
+  type ComplexityProfile,
+} from "./types"
 import { buildEstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import { buildEstimateStructureConsumption } from "./estimateStructureConsumption"
 import { buildTradePackagePricingPrep } from "./tradePackagePricingPrep"
@@ -283,6 +290,7 @@ function buildPaintingInfluence(args: {
   executionSections: string[]
   executionNotes: string[]
 }): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("painting", args.executionSections)
   const roomSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["repeated_unit_count"],
@@ -325,7 +333,7 @@ function buildPaintingInfluence(args: {
     Number(doorSignal?.quantity || 0) > 0
 
   const paintScopeOverride =
-    args.executionSections.includes("Ceilings") && ceilingSignal ? "walls_ceilings" : null
+    executionSectionIds.includes("ceilings") && ceilingSignal ? "walls_ceilings" : null
 
   const canAffectNumericPricing = args.supportLevel !== "weak" && hasBaseQuantity
   const supportedWallSqft =
@@ -333,7 +341,7 @@ function buildPaintingInfluence(args: {
       ? Math.round(Number(wallSignal.quantity || 0))
       : null
   const supportedCeilingSqft =
-    args.executionSections.includes("Ceilings") &&
+    executionSectionIds.includes("ceilings") &&
     ceilingSignal &&
     Number(ceilingSignal.quantity || 0) > 0
       ? Math.round(Number(ceilingSignal.quantity || 0))
@@ -374,7 +382,7 @@ function buildPaintingInfluence(args: {
                     : null,
               supportedDoorCount:
                 doorSignal &&
-                args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
+                executionSectionIds.includes("doors_frames")
                   ? Math.round(Number(doorSignal.quantity || 0))
                   : null,
               doorCountSource:
@@ -386,7 +394,7 @@ function buildPaintingInfluence(args: {
                       ? "takeoff"
                       : null,
               supportedTrimLf:
-                trimSignal && args.executionSections.includes("Trim / casing")
+                trimSignal && executionSectionIds.includes("trim_casing")
                   ? Math.round(Number(trimSignal.quantity || 0))
                   : null,
               trimSource:
@@ -396,8 +404,8 @@ function buildPaintingInfluence(args: {
                     ? "takeoff"
                     : null,
               includeCeilings: paintScopeOverride === "walls_ceilings",
-              hasCorridorSection: args.executionSections.includes("Corridor repaint"),
-              hasPrepProtectionSection: args.executionSections.includes("Prep / protection"),
+              hasCorridorSection: executionSectionIds.includes("corridor_repaint"),
+              hasPrepProtectionSection: executionSectionIds.includes("prep_protection"),
               interiorBaseSupport: measuredInteriorBase
                 ? "measured"
                 : scaledInteriorBase
@@ -405,11 +413,11 @@ function buildPaintingInfluence(args: {
                 : null,
               doorCountSupport:
                 doorSignal &&
-                args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
+                executionSectionIds.includes("doors_frames")
                   ? "measured"
                   : null,
               trimSupport:
-                trimSignal && args.executionSections.includes("Trim / casing")
+                trimSignal && executionSectionIds.includes("trim_casing")
                   ? "measured"
                   : null,
               prototypeRoomGroupLabel: extractPrototypeRoomGroupLabel(roomSignal),
@@ -418,7 +426,7 @@ function buildPaintingInfluence(args: {
         : undefined,
     basisAssumptions: uniqStrings(
       [
-        args.executionSections.includes("Ceilings") && ceilingSignal
+        executionSectionIds.includes("ceilings") && ceilingSignal
           ? "Plan-aware pricing used ceiling support to route painting as walls plus ceilings."
           : null,
         roomSignal
@@ -432,16 +440,16 @@ function buildPaintingInfluence(args: {
             : `Plan-aware pricing used ${Math.round(Number(wallSignal.quantity || 0))} measured wall-area sqft for painting execution input assembly.`
           : null,
         doorSignal &&
-        args.executionSections.some((section) => /doors?\s*\/\s*frames/i.test(section))
+        executionSectionIds.includes("doors_frames")
           ? `Plan-aware pricing used ${Math.round(doorSignal.quantity || 0)} supported door opening(s) for separate door/frame routing.`
           : null,
-        args.executionSections.includes("Corridor repaint")
+        executionSectionIds.includes("corridor_repaint")
           ? "Corridor repaint remains separately routed in plan-aware painting interpretation, even when current math still prices it inside the main paint run."
           : null,
-        roomSignal && args.executionSections.includes("Corridor repaint")
+        roomSignal && executionSectionIds.includes("corridor_repaint")
           ? "Repeated-unit prototype support stayed separate from corridor/common-area burden routing."
           : null,
-        trimSignal && args.executionSections.includes("Trim / casing")
+        trimSignal && executionSectionIds.includes("trim_casing")
           ? `Plan-aware pricing used ${Math.round(Number(trimSignal.quantity || 0))} measured trim LF for live trim/casing numeric carry.`
           : null,
         !canAffectNumericPricing
@@ -460,6 +468,7 @@ function buildDrywallInfluence(args: {
   executionSections: string[]
   executionNotes: string[]
 }): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("drywall", args.executionSections)
   const wallSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["assembly_area"],
@@ -515,9 +524,9 @@ function buildDrywallInfluence(args: {
     unit: "linear_ft",
   })
 
-  const isPatchRepair = args.executionSections.includes("Patch / repair")
-  const isInstall = args.executionSections.includes("Install / hang")
-  const includeCeilings = args.executionSections.includes("Ceiling drywall") && ceilingSignal
+  const isPatchRepair = executionSectionIds.includes("patch_repair")
+  const isInstall = executionSectionIds.includes("install_hang")
+  const includeCeilings = executionSectionIds.includes("ceiling_drywall") && ceilingSignal
   const patchSqft =
     isPatchRepair
       ? Math.round(Number(measuredPatchSignal?.quantity || 0))
@@ -591,7 +600,7 @@ function buildDrywallInfluence(args: {
                   ? patchSqft
                   : null,
               supportedFinishTextureSqft:
-                args.executionSections.includes("Finish / texture") &&
+                executionSectionIds.includes("finish_texture") &&
                 measuredFinishSignal &&
                 Number(measuredFinishSignal.quantity || 0) > 0
                   ? Math.round(Number(measuredFinishSignal.quantity || 0))
@@ -620,7 +629,7 @@ function buildDrywallInfluence(args: {
               includeCeilings: !!includeCeilings,
               forcePatchRepair,
               forceInstallFinish,
-              hasFinishTextureSection: args.executionSections.includes("Finish / texture"),
+              hasFinishTextureSection: executionSectionIds.includes("finish_texture"),
               supportedSqftSupport:
                 (isInstall && installSqft > 0) || (isPatchRepair && patchSqft > 0)
                   ? "measured"
@@ -644,7 +653,7 @@ function buildDrywallInfluence(args: {
         measuredCeilingSignal && includeCeilings
           ? `Plan-aware drywall pricing used ${Math.round(Number(measuredCeilingSignal.quantity || 0))} measured ceiling drywall sqft for ceiling inclusion.`
           : null,
-        measuredFinishSignal && args.executionSections.includes("Finish / texture")
+        measuredFinishSignal && executionSectionIds.includes("finish_texture")
           ? `Plan-aware drywall pricing used ${Math.round(Number(measuredFinishSignal.quantity || 0))} measured finish/texture sqft for finish routing.`
           : null,
         isPatchRepair && patchSqft > 0
@@ -656,7 +665,7 @@ function buildDrywallInfluence(args: {
         isInstall
           ? "Plan-aware drywall pricing preserved install/hang routing before final pricing protections."
           : null,
-        args.executionSections.includes("Finish / texture")
+        executionSectionIds.includes("finish_texture")
           ? "Finish / texture remained explicitly routed in drywall execution input assembly."
           : null,
         partitionSignal && isInstall
@@ -689,6 +698,7 @@ function buildWallcoveringInfluence(args: {
   executionNotes: string[]
   planIntelligence: PlanIntelligence | null
 }): LiveTradePricingInfluence {
+  const executionSectionIds = getTradeExecutionSectionIds("wallcovering", args.executionSections)
   const wallAreaSignal = findExactSignal({
     signals: args.support.tradeAreaSignals,
     categories: ["wall_area"],
@@ -709,10 +719,10 @@ function buildWallcoveringInfluence(args: {
   })
   const planText = buildPlanText(args.planIntelligence)
   const materialType = detectWallcoveringMaterialType(args.scopeText, planText)
-  const hasRemovalPrepSection = args.executionSections.includes("Removal / prep")
-  const hasInstallSection = args.executionSections.includes("Install")
-  const hasCorridorSection = args.executionSections.includes("Corridor wallcovering")
-  const hasFeatureSection = args.executionSections.includes("Feature wall")
+  const hasRemovalPrepSection = executionSectionIds.includes("removal_prep")
+  const hasInstallSection = executionSectionIds.includes("install")
+  const hasCorridorSection = executionSectionIds.includes("corridor_wallcovering")
+  const hasFeatureSection = executionSectionIds.includes("feature_wall")
   const coverageKind =
     selectedElevationSignal && Number(selectedElevationSignal.quantity || 0) > 0
       ? "selected_elevation"

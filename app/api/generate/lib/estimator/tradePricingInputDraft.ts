@@ -1,5 +1,9 @@
 import type { PlanIntelligence } from "../plans/types"
-import type { ComplexityProfile, TradeStack } from "./types"
+import {
+  formatTradeExecutionSectionLabel,
+  type ComplexityProfile,
+  type TradeStack,
+} from "./types"
 import type { EstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import type { EstimateStructureConsumption } from "./estimateStructureConsumption"
 import type { TradePackagePricingPrep } from "./tradePackagePricingPrep"
@@ -116,30 +120,38 @@ function buildPaintingDraft(args: {
       ? uniqStrings(
           [
             wallSignal || /walls?-only|wall/i.test(bridgeBlob)
-              ? "Review candidate: walls"
+              ? formatTradeExecutionSectionLabel("painting", "walls", true)
               : null,
             ceilingSignal || /ceilings?/i.test(bridgeBlob)
-              ? "Review candidate: ceilings"
+              ? formatTradeExecutionSectionLabel("painting", "ceilings", true)
               : null,
             doorSignal || /doors?|frames?/i.test(bridgeBlob)
-              ? "Review candidate: doors / frames"
+              ? formatTradeExecutionSectionLabel("painting", "doors_frames", true)
               : null,
             trimSignal || /trim|casing/i.test(bridgeBlob)
-              ? "Review candidate: trim / casing"
+              ? formatTradeExecutionSectionLabel("painting", "trim_casing", true)
               : null,
-            corridorCue ? "Review candidate: corridor repaint" : null,
-            "Review candidate: prep / protection",
+            corridorCue ? formatTradeExecutionSectionLabel("painting", "corridor_repaint", true) : null,
+            formatTradeExecutionSectionLabel("painting", "prep_protection", true),
           ],
           6
         )
       : uniqStrings(
           [
-            wallSignal || /walls?-only|wall/i.test(bridgeBlob) ? "Walls" : null,
-            ceilingSignal || /ceilings?/i.test(bridgeBlob) ? "Ceilings" : null,
-            doorSignal || /doors?|frames?/i.test(bridgeBlob) ? "Doors / frames" : null,
-            trimSignal || /trim|casing/i.test(bridgeBlob) ? "Trim / casing" : null,
-            corridorCue ? "Corridor repaint" : null,
-            "Prep / protection",
+            wallSignal || /walls?-only|wall/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("painting", "walls")
+              : null,
+            ceilingSignal || /ceilings?/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("painting", "ceilings")
+              : null,
+            doorSignal || /doors?|frames?/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("painting", "doors_frames")
+              : null,
+            trimSignal || /trim|casing/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("painting", "trim_casing")
+              : null,
+            corridorCue ? formatTradeExecutionSectionLabel("painting", "corridor_repaint") : null,
+            formatTradeExecutionSectionLabel("painting", "prep_protection"),
           ],
           6
         )
@@ -265,23 +277,33 @@ function buildDrywallDraft(args: {
     args.supportLevel === "weak"
       ? uniqStrings(
           [
-            patchCue ? "Review candidate: patch / repair" : null,
-            installCue ? "Review candidate: install / hang" : null,
-            textureCue || installCue ? "Review candidate: finish / texture" : null,
-            ceilingSignal || /ceiling/i.test(bridgeBlob)
-              ? "Review candidate: ceiling drywall"
+            patchCue ? formatTradeExecutionSectionLabel("drywall", "patch_repair", true) : null,
+            installCue ? formatTradeExecutionSectionLabel("drywall", "install_hang", true) : null,
+            textureCue || installCue
+              ? formatTradeExecutionSectionLabel("drywall", "finish_texture", true)
               : null,
-            partitionSignal ? "Review candidate: partition-related scope" : null,
+            ceilingSignal || /ceiling/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("drywall", "ceiling_drywall", true)
+              : null,
+            partitionSignal
+              ? formatTradeExecutionSectionLabel("drywall", "partition_related_scope", true)
+              : null,
           ],
           6
         )
       : uniqStrings(
           [
-            patchCue ? "Patch / repair" : null,
-            installCue ? "Install / hang" : null,
-            textureCue || installCue ? "Finish / texture" : null,
-            ceilingSignal || /ceiling/i.test(bridgeBlob) ? "Ceiling drywall" : null,
-            partitionSignal ? "Partition-related scope" : null,
+            patchCue ? formatTradeExecutionSectionLabel("drywall", "patch_repair") : null,
+            installCue ? formatTradeExecutionSectionLabel("drywall", "install_hang") : null,
+            textureCue || installCue
+              ? formatTradeExecutionSectionLabel("drywall", "finish_texture")
+              : null,
+            ceilingSignal || /ceiling/i.test(bridgeBlob)
+              ? formatTradeExecutionSectionLabel("drywall", "ceiling_drywall")
+              : null,
+            partitionSignal
+              ? formatTradeExecutionSectionLabel("drywall", "partition_related_scope")
+              : null,
           ],
           6
         )
@@ -396,21 +418,25 @@ function buildWallcoveringDraft(args: {
     args.supportLevel === "weak"
       ? uniqStrings(
           [
-            roomCue ? "Review candidate: room wallcovering" : null,
-            corridorCue ? "Review candidate: corridor wallcovering" : null,
-            featureCue ? "Review candidate: feature wall" : null,
-            removalCue ? "Review candidate: removal / prep" : null,
-            installCue ? "Review candidate: install" : null,
+            roomCue ? formatTradeExecutionSectionLabel("wallcovering", "room_wallcovering", true) : null,
+            corridorCue
+              ? formatTradeExecutionSectionLabel("wallcovering", "corridor_wallcovering", true)
+              : null,
+            featureCue ? formatTradeExecutionSectionLabel("wallcovering", "feature_wall", true) : null,
+            removalCue ? formatTradeExecutionSectionLabel("wallcovering", "removal_prep", true) : null,
+            installCue ? formatTradeExecutionSectionLabel("wallcovering", "install", true) : null,
           ],
           6
         )
       : uniqStrings(
           [
-            roomCue ? "Room wallcovering" : null,
-            corridorCue ? "Corridor wallcovering" : null,
-            featureCue ? "Feature wall" : null,
-            removalCue ? "Removal / prep" : null,
-            installCue || wallSignal ? "Install" : null,
+            roomCue ? formatTradeExecutionSectionLabel("wallcovering", "room_wallcovering") : null,
+            corridorCue
+              ? formatTradeExecutionSectionLabel("wallcovering", "corridor_wallcovering")
+              : null,
+            featureCue ? formatTradeExecutionSectionLabel("wallcovering", "feature_wall") : null,
+            removalCue ? formatTradeExecutionSectionLabel("wallcovering", "removal_prep") : null,
+            installCue || wallSignal ? formatTradeExecutionSectionLabel("wallcovering", "install") : null,
           ],
           6
         )

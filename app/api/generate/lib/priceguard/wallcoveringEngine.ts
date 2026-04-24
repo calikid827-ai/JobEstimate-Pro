@@ -1,4 +1,7 @@
-import type { EstimateSectionProvenance } from "../estimator/types"
+import {
+  getTradeExecutionSectionId,
+  type EstimateSectionProvenance,
+} from "../estimator/types"
 
 type Pricing = {
   labor: number
@@ -143,7 +146,9 @@ function buildWallcoveringSectionPricing(args: {
   areaSource?: "trade_finding" | "takeoff" | null
 }): SectionPricingDetail[] {
   return args.sectionBuckets.map((bucket) => {
-    if (bucket.section === "Corridor burden") {
+    const sectionId = getTradeExecutionSectionId("wallcovering", bucket.section)
+
+    if (sectionId === "corridor_burden") {
       return {
         ...bucket,
         pricingBasis: "burden",
