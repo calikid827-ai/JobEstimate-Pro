@@ -7,6 +7,8 @@ export const PLAN_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 export const PLAN_UPLOAD_CHUNK_BYTES = 5 * 1024 * 1024
 export const MAX_DERIVED_PLAN_FILE_BYTES = 28 * 1024 * 1024
 export const MAX_SELECTED_PAGE_EXPORT_COUNT = 80
+export const PLAN_SELECTION_INDEXING_STATUS =
+  "Indexing selected plan file(s) for page selection..."
 
 export const ALLOWED_PLAN_MIME_TYPES = new Set([
   "application/pdf",
@@ -17,6 +19,14 @@ export const ALLOWED_PLAN_MIME_TYPES = new Set([
 ])
 
 const PDF_PAGE_PATTERN = /\/Type\s*\/Page\b/g
+
+export type PlanSourceKind = "image" | "pdf"
+
+export type LocalPlanPageSelection = {
+  sourcePageNumber: number
+  label: string
+  selected: boolean
+}
 
 export type PlanSelectedPageUploadMode =
   | "original"
@@ -215,6 +225,98 @@ export function countPdfPagesFromBytes(bytes: Uint8Array): number {
 export function clampPlanSourcePageCount(count: number): number {
   if (!Number.isFinite(count) || count <= 0) return 1
   return Math.max(1, Math.min(MAX_PLAN_SOURCE_PAGES, Math.floor(count)))
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  return String(error || "Unknown PDF indexing error.").trim()
+}
+
+export function getPlanSourceKind(file: Pick<File, "type">): PlanSourceKind {
+  return file.type === "application/pdf" ? "pdf" : "image"
+}
+
+export async function getLocalPlanSourcePageCount(file: File): Promise<number> {
+  if (getPlanSourceKind(file) !== "pdf") return 1
+
+  let bytes: Uint8Array
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer())
+  } catch (error) {
+    throw new Error(`Could not read ${file.name} for local page indexing: ${getErrorMessage(error)}`)
+  }
+
+  try {
+    const { PDFDocument } = await import("pdf-lib")
+    const pdf = await PDFDocument.load(bytes)
+    const pageCount = pdf.getPageCount()
+    if (pageCount > 0) return clampPlanSourcePageCount(pageCount)
+  } catch (error) {
+    const countedPages = countPdfPagesFromBytes(bytes)
+    if (countedPages > 0) return clampPlanSourcePageCount(countedPages)
+
+    throw new Error(`Could not index pages in ${file.name}: ${getErrorMessage(error)}`)
+  }
+
+  const countedPages = countPdfPagesFromBytes(bytes)
+  if (countedPages > 0) return clampPlanSourcePageCount(countedPages)
+
+  throw new Error(`Could not index pages in ${file.name}: no PDF pages were detected.`)
+}
+
+export function defaultSelectLocalPlanPage(args: {
+  sourceKind: PlanSourceKind
+  totalPages: number
+  name: string
+  note: string
+}): boolean {
+  if (args.sourceKind === "pdf" && args.totalPages > 1) return true
+
+  const blob = `${args.name} ${args.note}`.toLowerCase()
+  if (
+    /\bcover\b|\bindex\b|\bgeneral notes?\b|\bcode\b|\blife safety\b|\blegend\b|\bsymbols?\b|\babbreviations?\b/.test(
+      blob
+    )
+  ) {
+    return false
+  }
+
+  return true
+}
+
+export function buildLocalPlanPageSelection(args: {
+  sourceKind: PlanSourceKind
+  totalPages: number
+  name: string
+  note: string
+}): LocalPlanPageSelection[] {
+  const totalPages = Math.max(1, Math.floor(Number(args.totalPages) || 0))
+  const defaultSelected = defaultSelectLocalPlanPage(args)
+
+  return Array.from({ length: totalPages }, (_, index) => ({
+    sourcePageNumber: index + 1,
+    label: args.sourceKind === "pdf" ? `Page ${index + 1}` : "Image 1",
+    selected: defaultSelected,
+  }))
+}
+
+export function getPlanSelectionIntakeIssue(args: {
+  currentIndexedPages: number
+  nextIndexedPages: number
+  maxIndexedPages?: number
+}): string | null {
+  const maxIndexedPages =
+    typeof args.maxIndexedPages === "number" && Number.isFinite(args.maxIndexedPages)
+      ? args.maxIndexedPages
+      : MAX_PLAN_SOURCE_PAGES
+  const currentIndexedPages = Math.max(0, Math.floor(Number(args.currentIndexedPages) || 0))
+  const nextIndexedPages = Math.max(0, Math.floor(Number(args.nextIndexedPages) || 0))
+
+  if (currentIndexedPages + nextIndexedPages > maxIndexedPages) {
+    return `Indexed plan pages exceeded the ${maxIndexedPages}-page limit.`
+  }
+
+  return null
 }
 
 export function validateDerivedPlanBytes(bytes: number) {

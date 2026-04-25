@@ -3,6 +3,7 @@ import { createRequire } from "node:module"
 import test from "node:test"
 
 import {
+  buildLocalPlanPageSelection,
   buildSelectedPageUploadModeNote,
   buildSelectedPageUploadDebugSummary,
   buildSelectedPageUploadFallbackMessage,
@@ -11,12 +12,16 @@ import {
   exportSelectedPdfInBrowser,
   formatPlanUploadBytes,
   estimateSelectedPdfBytes,
+  getLocalPlanSourcePageCount,
   getPlanUploadPreflightIssue,
+  getPlanSelectionIntakeIssue,
   getSelectedPageUploadModeSummary,
   MAX_DERIVED_PLAN_FILE_BYTES,
   MAX_PLAN_FILE_BYTES,
+  MAX_PLAN_SOURCE_PAGES,
   MAX_SELECTED_PAGE_EXPORT_COUNT,
   normalizePlanUploadStageError,
+  PLAN_SELECTION_INDEXING_STATUS,
   readPlanUploadStageErrorMessage,
 } from "./plan-upload"
 
@@ -42,6 +47,17 @@ async function makePdfFile(pages: string[]): Promise<File> {
   })
 
   return new File([new Uint8Array(bytes)], "hotel-set.pdf", { type: "application/pdf" })
+}
+
+async function makeOversizedPdfFile(pages: string[]): Promise<File> {
+  const source = await makePdfFile(pages)
+  const paddingBytes = Math.max(0, MAX_PLAN_FILE_BYTES + 1024 - source.size)
+
+  return new File(
+    [new Uint8Array(await source.arrayBuffer()), new Uint8Array(paddingBytes)],
+    "oversized-hotel-set.pdf",
+    { type: "application/pdf" }
+  )
 }
 
 test("selected-page export estimates smaller transport bytes than the original pdf", () => {
@@ -90,6 +106,97 @@ test("preflight allows larger original pdfs on the reliable chunked path when se
   })
 
   assert.equal(issue, null)
+})
+
+test("local file pick indexes pdf page count and builds the page-selection list", async () => {
+  const file = await makePdfFile([
+    "Cover sheet",
+    "A1.1 floor plan",
+    "A8.1 finish plan",
+  ])
+
+  const sourcePageCount = await getLocalPlanSourcePageCount(file)
+  const pages = buildLocalPlanPageSelection({
+    sourceKind: "pdf",
+    totalPages: sourcePageCount,
+    name: file.name,
+    note: "",
+  })
+
+  assert.equal(sourcePageCount, 3)
+  assert.deepEqual(
+    pages.map((page) => page.sourcePageNumber),
+    [1, 2, 3]
+  )
+  assert.equal(pages.every((page) => page.selected), true)
+})
+
+test("oversized but locally indexable pdf can still reach page-selection", async () => {
+  const file = await makeOversizedPdfFile([
+    "Cover sheet",
+    "A1.1 floor plan",
+    "A8.1 finish plan",
+    "A9.1 elevations",
+  ])
+
+  const sourcePageCount = await getLocalPlanSourcePageCount(file)
+  const pages = buildLocalPlanPageSelection({
+    sourceKind: "pdf",
+    totalPages: sourcePageCount,
+    name: file.name,
+    note: "",
+  })
+  const intakeIssue = getPlanSelectionIntakeIssue({
+    currentIndexedPages: 0,
+    nextIndexedPages: pages.length,
+  })
+
+  assert(file.size > MAX_PLAN_FILE_BYTES)
+  assert.equal(sourcePageCount, 4)
+  assert.equal(pages.length, 4)
+  assert.equal(intakeIssue, null)
+})
+
+test("local pdf indexing failure surfaces the exact preflight/indexing message", async () => {
+  const file = new File([new TextEncoder().encode("this is not a pdf")], "broken.pdf", {
+    type: "application/pdf",
+  })
+
+  await assert.rejects(
+    () => getLocalPlanSourcePageCount(file),
+    /Could not index pages in broken\.pdf:/
+  )
+})
+
+test("new plan selection starts with indexing status instead of stale upload-size status", () => {
+  assert.equal(PLAN_SELECTION_INDEXING_STATUS, "Indexing selected plan file(s) for page selection...")
+  assert.doesNotMatch(PLAN_SELECTION_INDEXING_STATUS, /upload size|too large|selected upload/i)
+})
+
+test("selected-upload-size checks do not block local page-selection intake", () => {
+  const preflightIssue = getPlanUploadPreflightIssue({
+    name: "large-hotel-set.pdf",
+    sourceKind: "pdf",
+    originalBytes: MAX_PLAN_FILE_BYTES + 5 * 1024 * 1024,
+    totalPages: 10,
+    selectedPages: 10,
+  })
+  const intakeIssue = getPlanSelectionIntakeIssue({
+    currentIndexedPages: 0,
+    nextIndexedPages: 10,
+  })
+
+  assert.match(String(preflightIssue || ""), /upload limit|too large/i)
+  assert.equal(intakeIssue, null)
+})
+
+test("local intake still guards only the indexed page-selection limit", () => {
+  const intakeIssue = getPlanSelectionIntakeIssue({
+    currentIndexedPages: MAX_PLAN_SOURCE_PAGES,
+    nextIndexedPages: 1,
+  })
+
+  assert.match(String(intakeIssue || ""), /indexed plan pages exceeded/i)
 })
 
 test("stage upload success response shape stays stable", () => {

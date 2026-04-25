@@ -99,17 +99,20 @@ import {
   ALLOWED_PLAN_MIME_TYPES,
   buildSelectedPageUploadDebugSummary,
   buildSelectedPageUploadFallbackMessage,
+  buildLocalPlanPageSelection,
   exportSelectedPdfInBrowser,
   estimateSelectedPdfBytes,
+  getLocalPlanSourcePageCount,
   getPlanUploadPreflightIssue,
+  getPlanSelectionIntakeIssue,
+  getPlanSourceKind,
   MAX_JOB_PLANS,
   MAX_PLAN_SOURCE_PAGES,
   MAX_TOTAL_PLAN_FILE_BYTES,
+  PLAN_SELECTION_INDEXING_STATUS,
   PLAN_UPLOAD_CHUNK_BYTES,
   PlanSelectedPageUploadMode,
   readPlanUploadStageErrorMessage,
-  clampPlanSourcePageCount,
-  countPdfPagesFromBytes,
 } from "../lib/plan-upload"
 
 type ShotType =
@@ -600,53 +603,6 @@ async function compressImageFile(file: File): Promise<string> {
   return dataUrl
 }
 
-function defaultSelectIndexedPlanPage(args: {
-  sourceKind: "image" | "pdf"
-  totalPages: number
-  name: string
-  note: string
-}): boolean {
-  if (args.sourceKind === "pdf" && args.totalPages > 1) return true
-
-  const blob = `${args.name} ${args.note}`.toLowerCase()
-  if (
-    /\bcover\b|\bindex\b|\bgeneral notes?\b|\bcode\b|\blife safety\b|\blegend\b|\bsymbols?\b|\babbreviations?\b/.test(
-      blob
-    )
-  ) {
-    return false
-  }
-
-  return true
-}
-
-function buildJobPlanPages(args: {
-  sourceKind: "image" | "pdf"
-  totalPages: number
-  name: string
-  note: string
-}): JobPlan["pages"] {
-  const totalPages = Math.max(1, args.totalPages)
-  const defaultSelected = defaultSelectIndexedPlanPage(args)
-
-  return Array.from({ length: totalPages }, (_, index) => ({
-    sourcePageNumber: index + 1,
-    label:
-      args.sourceKind === "pdf"
-        ? `Page ${index + 1}`
-        : "Image 1",
-    selected: defaultSelected,
-  }))
-}
-
-async function getPlanSourcePageCount(file: File): Promise<number> {
-  if (file.type !== "application/pdf") return 1
-
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  const countedPages = countPdfPagesFromBytes(bytes)
-  return clampPlanSourcePageCount(countedPages)
-}
-
 async function handlePhotoUpload(files: FileList | null) {
   if (!files || files.length === 0) return
 
@@ -746,6 +702,8 @@ function updateJobPhotoReference(
 async function handlePlanUpload(files: FileList | null) {
   if (!files || files.length === 0) return
 
+  setStatus(PLAN_SELECTION_INDEXING_STATUS)
+
   if (jobPlans.length >= MAX_JOB_PLANS) {
     setStatus(`Plan upload limit reached. Remove a plan before adding more than ${MAX_JOB_PLANS}.`)
     return
@@ -770,9 +728,8 @@ async function handlePlanUpload(files: FileList | null) {
   try {
     const localPlans: JobPlan[] = await Promise.all(
       picked.map(async (file) => {
-        const sourcePageCount = await getPlanSourcePageCount(file)
-        const sourceKind: "image" | "pdf" =
-          file.type === "application/pdf" ? "pdf" : "image"
+        const sourcePageCount = await getLocalPlanSourcePageCount(file)
+        const sourceKind = getPlanSourceKind(file)
 
         return {
           id: `${Date.now()}_${file.name}_${Math.random().toString(16).slice(2)}`,
@@ -788,7 +745,7 @@ async function handlePlanUpload(files: FileList | null) {
           stagedSourcePageCount: null,
           selectedPageUploadMode: undefined,
           selectedPageUploadNote: null,
-          pages: buildJobPlanPages({
+          pages: buildLocalPlanPageSelection({
             sourceKind,
             totalPages: sourcePageCount,
             name: file.name,
@@ -800,22 +757,17 @@ async function handlePlanUpload(files: FileList | null) {
 
     const mergedBase: JobPlan[] = [...jobPlans]
     const merged: JobPlan[] = [...mergedBase]
-    let skippedForSize = 0
     let skippedForPageCount = 0
 
     for (const plan of localPlans) {
-      const next = [...merged, plan]
-      const totalSize = next.reduce((sum, item) => sum + estimatePlanTransportBytes(item), 0)
-      const totalPages = next.reduce((sum, item) => sum + item.pages.length, 0)
+      const currentIndexedPages = merged.reduce((sum, item) => sum + item.pages.length, 0)
+      const intakeIssue = getPlanSelectionIntakeIssue({
+        currentIndexedPages,
+        nextIndexedPages: plan.pages.length,
+      })
 
-      if (
-        !getPlanPreflightIssue(plan) &&
-        totalSize <= MAX_TOTAL_PLAN_FILE_BYTES &&
-        totalPages <= MAX_PLAN_SOURCE_PAGES
-      ) {
+      if (!intakeIssue) {
         merged.push(plan)
-      } else if (getPlanPreflightIssue(plan) || totalSize > MAX_TOTAL_PLAN_FILE_BYTES) {
-        skippedForSize += 1
       } else {
         skippedForPageCount += 1
       }
@@ -834,9 +786,6 @@ async function handlePlanUpload(files: FileList | null) {
     }
     if (skippedForLimit > 0) {
       notices.push(`${skippedForLimit} file${skippedForLimit === 1 ? "" : "s"} skipped because the ${MAX_JOB_PLANS}-plan limit was reached.`)
-    }
-    if (skippedForSize > 0) {
-      notices.push("Some plan files were skipped because the selected upload size is still too large. Reduce selected pages further or split the PDF.")
     }
     if (skippedForPageCount > 0) {
       notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
