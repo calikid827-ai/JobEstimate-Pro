@@ -19,7 +19,9 @@ import {
   cleanScopeText,
   jsonError,
   assertSameOrigin,
+  normalizeGenerateServerError,
   readJsonWithLimit,
+  validateSelectedPlanStageMetadata,
 } from "./lib/guards"
 
 import { buildEstimatorContext } from "./lib/estimator/context"
@@ -316,6 +318,16 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
           ? staged.sourcePageNumberMap
           : null
 
+        validateSelectedPlanStageMetadata({
+          planName: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,
+          selectedSourcePages,
+          sourcePageCount:
+            typeof staged.originalSourcePageCount === "number"
+              ? staged.originalSourcePageCount
+              : staged.sourcePageCount,
+          sourcePageNumberMap,
+        })
+
         if (
           staged.mimeType === "application/pdf" &&
           typeof staged.sourcePageCount === "number" &&
@@ -431,6 +443,16 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
       let sourcePageNumberMap: number[] | null = Array.isArray(staged.sourcePageNumberMap)
         ? staged.sourcePageNumberMap
         : null
+
+      validateSelectedPlanStageMetadata({
+        planName: typeof plan?.name === "string" && plan.name.trim() ? plan.name : staged.name,
+        selectedSourcePages,
+        sourcePageCount:
+          typeof staged.originalSourcePageCount === "number"
+            ? staged.originalSourcePageCount
+            : staged.sourcePageCount,
+        sourcePageNumberMap,
+      })
 
       if (
         staged.mimeType === "application/pdf" &&
@@ -7249,11 +7271,9 @@ try {
   tempUploadRoots.push(...parsedBody.tempUploadRoots)
   stagedUploadIdsToCleanup.push(...parsedBody.stagedUploadIdsToCleanup)
 } catch (e: any) {
-  if (e?.status === 413) {
-    return jsonError(413, e?.code || "BODY_TOO_LARGE", e?.message || "Request too large.")
-  }
-  if (e?.status === 400) {
-    return jsonError(400, e?.code || "BAD_JSON", e?.message || "Invalid request body.")
+  if (e?.status) {
+    const normalized = normalizeGenerateServerError(e)
+    return jsonError(normalized.status, normalized.code, normalized.message)
   }
   return jsonError(400, "BAD_JSON", "Invalid JSON body.")
 }
@@ -8812,9 +8832,10 @@ return await respondAndCache({
 
   } catch (err) {
     console.error("Generate failed:", err)
+    const normalized = normalizeGenerateServerError(err)
     return NextResponse.json(
-      { error: "Generation failed" },
-      { status: 500 }
+      { ok: false, code: normalized.code, message: normalized.message },
+      { status: normalized.status }
     )
   } finally {
     await Promise.all(

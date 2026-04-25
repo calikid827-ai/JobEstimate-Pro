@@ -80,7 +80,7 @@ const MultipartPlanInputSchema = z.object({
     .string()
     .trim()
     .refine((value) => ALLOWED_PLAN_MIME_TYPES.has(value), "Invalid plan MIME type"),
-  bytes: z.number().int().min(0).max(MAX_PLAN_FILE_BYTES).optional().default(0),
+  bytes: z.number().int().min(0).max(MAX_TOTAL_PLAN_FILE_BYTES).optional().default(0),
   tempFilePath: z.string().trim().min(1).max(1000).optional(),
   note: z.string().trim().max(240).optional().default(""),
   selectedSourcePages: z
@@ -201,6 +201,73 @@ export function jsonError(status: number, code: string, message: string) {
     status,
     headers: { "Content-Type": "application/json" },
   })
+}
+
+export function normalizeGenerateServerError(error: unknown): {
+  status: number
+  code: string
+  message: string
+} {
+  const typedError = error as {
+    status?: number
+    code?: string
+    message?: string
+  }
+
+  const status =
+    typeof typedError?.status === "number" &&
+    Number.isInteger(typedError.status) &&
+    typedError.status >= 400 &&
+    typedError.status <= 599
+      ? typedError.status
+      : 500
+  const code =
+    typeof typedError?.code === "string" && typedError.code.trim()
+      ? typedError.code.trim()
+      : status >= 500
+        ? "GENERATE_FAILED"
+        : "BAD_GENERATE_REQUEST"
+  const message =
+    typeof typedError?.message === "string" && typedError.message.trim()
+      ? typedError.message.trim()
+      : status >= 500
+        ? "Error generating document."
+        : "Invalid generate request."
+
+  return { status, code, message }
+}
+
+export function validateSelectedPlanStageMetadata(args: {
+  planName: string
+  selectedSourcePages: number[]
+  sourcePageCount: number | null
+  sourcePageNumberMap: number[] | null
+}) {
+  if (!args.selectedSourcePages.length) return
+
+  if (args.sourcePageNumberMap) {
+    const stagedMap = args.sourcePageNumberMap.join(",")
+    const selectedMap = args.selectedSourcePages.join(",")
+    if (stagedMap !== selectedMap) {
+      throw Object.assign(new Error("PLAN_SELECTION_METADATA_MISMATCH"), {
+        status: 400,
+        code: "PLAN_SELECTION_METADATA_MISMATCH",
+        message: `Selected-page metadata mismatch for "${args.planName}". Re-upload the plan set and retry Generate.`,
+      })
+    }
+    return
+  }
+
+  if (
+    typeof args.sourcePageCount === "number" &&
+    args.selectedSourcePages.some((page) => page > args.sourcePageCount!)
+  ) {
+    throw Object.assign(new Error("PLAN_SELECTION_METADATA_MISMATCH"), {
+      status: 400,
+      code: "PLAN_SELECTION_METADATA_MISMATCH",
+      message: `Selected-page metadata mismatch for "${args.planName}". Re-upload the plan set and retry Generate.`,
+    })
+  }
 }
 
 // Host-based Origin allowlist

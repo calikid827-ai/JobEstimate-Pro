@@ -96,6 +96,10 @@ import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
 import {
+  getGenerateExceptionMessage,
+  readGenerateResponseErrorMessage,
+} from "../lib/generate-response"
+import {
   ALLOWED_PLAN_MIME_TYPES,
   buildSelectedPageUploadDebugSummary,
   buildSelectedPageUploadFallbackMessage,
@@ -2955,13 +2959,7 @@ if (jobPlans.length > 0) {
     }
 
     if (!res.ok) {
-      const payload = await res.json().catch(() => null)
-      const msg =
-        typeof payload?.message === "string" && payload.message.trim()
-          ? payload.message.trim()
-          : typeof payload?.error === "string" && payload.error.trim()
-            ? payload.error.trim()
-            : await res.text().catch(() => "")
+      const msg = await readGenerateResponseErrorMessage(res)
       setStatus(`Server error (${res.status}). ${msg}`)
       return
     }
@@ -4043,7 +4041,7 @@ await checkEntitlementNow()
 setStatus("")
   } catch (err) {
     console.error(err)
-    setStatus("Error generating document.")
+    setStatus(getGenerateExceptionMessage(err))
   } finally {
     setLoading(false)
     generatingRef.current = false
