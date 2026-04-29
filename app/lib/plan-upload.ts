@@ -4,7 +4,8 @@ export const MAX_PLAN_SOURCE_PAGES = 120
 export const MAX_PLAN_FILE_BYTES = 40 * 1024 * 1024
 export const MAX_TOTAL_PLAN_FILE_BYTES = 90 * 1024 * 1024
 export const PLAN_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
-export const PLAN_UPLOAD_CHUNK_BYTES = 5 * 1024 * 1024
+export const MAX_FUNCTION_REQUEST_PAYLOAD_BYTES = 4 * 1024 * 1024
+export const PLAN_UPLOAD_CHUNK_BYTES = 3 * 1024 * 1024
 export const MAX_DERIVED_PLAN_FILE_BYTES = 28 * 1024 * 1024
 export const MAX_SELECTED_PAGE_EXPORT_COUNT = 80
 export const PLAN_SELECTION_INDEXING_STATUS =
@@ -70,6 +71,44 @@ export type PlanUploadModeSummary = {
   detail: string
   usedFallback: boolean
   reducedBeforeUpload: boolean
+}
+
+export function isSelectedPageExportCapacityError(error: unknown): boolean {
+  const typedError = error as {
+    status?: number
+    code?: string
+    message?: string
+  }
+  const code = String(typedError?.code || typedError?.message || "").toUpperCase()
+  return (
+    typedError?.status === 413 ||
+    code.includes("DERIVED_PLAN_TOO_LARGE") ||
+    code.includes("TOO_MANY_SELECTED_PAGES")
+  )
+}
+
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  return String(error || "Unknown error.").trim()
+}
+
+export function resolvePlanUploadDisplayMode(args: {
+  mode: PlanSelectedPageUploadMode | null | undefined
+  sourceKind: PlanSourceKind
+  selectedPages: number
+  totalPages: number
+  stagedUploadId?: string | null
+}): PlanSelectedPageUploadMode {
+  if (args.mode) return args.mode
+  if (
+    !args.stagedUploadId &&
+    args.sourceKind === "pdf" &&
+    args.selectedPages > 0 &&
+    args.selectedPages < args.totalPages
+  ) {
+    return "browser-derived-selected-pages"
+  }
+  return "original"
 }
 
 export function buildPlanUploadStageSuccessResponse(
@@ -143,7 +182,8 @@ export function normalizePlanUploadStageError(error: unknown): {
   if (
     lowered.includes("body too large") ||
     lowered.includes("request entity too large") ||
-    lowered.includes("payload too large")
+    lowered.includes("payload too large") ||
+    lowered.includes("function_payload_too_large")
   ) {
     return {
       status: 413,
@@ -227,7 +267,7 @@ export function clampPlanSourcePageCount(count: number): number {
   return Math.max(1, Math.min(MAX_PLAN_SOURCE_PAGES, Math.floor(count)))
 }
 
-function getErrorMessage(error: unknown): string {
+function getLocalPlanIndexingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim()
   return String(error || "Unknown PDF indexing error.").trim()
 }
@@ -243,7 +283,7 @@ export async function getLocalPlanSourcePageCount(file: File): Promise<number> {
   try {
     bytes = new Uint8Array(await file.arrayBuffer())
   } catch (error) {
-    throw new Error(`Could not read ${file.name} for local page indexing: ${getErrorMessage(error)}`)
+    throw new Error(`Could not read ${file.name} for local page indexing: ${getLocalPlanIndexingErrorMessage(error)}`)
   }
 
   try {
@@ -255,7 +295,7 @@ export async function getLocalPlanSourcePageCount(file: File): Promise<number> {
     const countedPages = countPdfPagesFromBytes(bytes)
     if (countedPages > 0) return clampPlanSourcePageCount(countedPages)
 
-    throw new Error(`Could not index pages in ${file.name}: ${getErrorMessage(error)}`)
+    throw new Error(`Could not index pages in ${file.name}: ${getLocalPlanIndexingErrorMessage(error)}`)
   }
 
   const countedPages = countPdfPagesFromBytes(bytes)

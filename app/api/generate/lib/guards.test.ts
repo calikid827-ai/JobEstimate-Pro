@@ -24,7 +24,7 @@ const baseGeneratePayload = {
 }
 
 test("successful selected-page staged upload payload can continue into generate schema", () => {
-  const parsed = GenerateSchema.safeParse({
+  const payload = {
     ...baseGeneratePayload,
     plans: [
       {
@@ -38,9 +38,12 @@ test("successful selected-page staged upload payload can continue into generate 
         selectedSourcePages: [2, 4],
       },
     ],
-  })
+  }
+  const parsed = GenerateSchema.safeParse(payload)
 
   assert.equal(parsed.success, true)
+  assert.equal("dataUrl" in payload.plans[0], false)
+  assert(JSON.stringify(payload).length < 5_000)
 })
 
 test("selected-page staged upload still respects combined generate byte limit", () => {

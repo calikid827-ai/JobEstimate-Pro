@@ -106,10 +106,12 @@ import {
   buildLocalPlanPageSelection,
   exportSelectedPdfInBrowser,
   estimateSelectedPdfBytes,
+  getErrorMessage,
   getLocalPlanSourcePageCount,
   getPlanUploadPreflightIssue,
   getPlanSelectionIntakeIssue,
   getPlanSourceKind,
+  isSelectedPageExportCapacityError,
   MAX_JOB_PLANS,
   MAX_PLAN_SOURCE_PAGES,
   MAX_TOTAL_PLAN_FILE_BYTES,
@@ -434,6 +436,9 @@ async function stagePlanForGenerate(
     selectedSourcePages.length > 0 &&
     selectedSourcePages.length < plan.sourcePageCount
   ) {
+    onProgress(
+      `${plan.name}: preparing ${selectedSourcePages.length} selected PDF page(s) for browser-side reduction before upload...`
+    )
     try {
       const browserDerived = await exportSelectedPdfInBrowser({
         file: plan.file,
@@ -457,8 +462,11 @@ async function stagePlanForGenerate(
       }
     } catch (error) {
       console.error("Browser selected-page PDF export failed:", error)
+      if (isSelectedPageExportCapacityError(error)) {
+        throw new Error(getErrorMessage(error))
+      }
       uploadMode = "original-fallback"
-      uploadNote = `${plan.name}: browser-side selected-page PDF export failed, so the original PDF will upload through reliable chunked staging before selected-page extraction.`
+      uploadNote = `${plan.name}: browser-side selected-page PDF export failed (${getErrorMessage(error)}), so the original PDF will upload through reliable chunked staging before selected-page extraction.`
     }
   }
 

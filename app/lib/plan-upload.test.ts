@@ -12,17 +12,22 @@ import {
   exportSelectedPdfInBrowser,
   formatPlanUploadBytes,
   estimateSelectedPdfBytes,
+  isSelectedPageExportCapacityError,
   getLocalPlanSourcePageCount,
   getPlanUploadPreflightIssue,
   getPlanSelectionIntakeIssue,
   getSelectedPageUploadModeSummary,
   MAX_DERIVED_PLAN_FILE_BYTES,
+  MAX_FUNCTION_REQUEST_PAYLOAD_BYTES,
   MAX_PLAN_FILE_BYTES,
   MAX_PLAN_SOURCE_PAGES,
   MAX_SELECTED_PAGE_EXPORT_COUNT,
+  PLAN_UPLOAD_CHUNK_BYTES,
   normalizePlanUploadStageError,
   PLAN_SELECTION_INDEXING_STATUS,
   readPlanUploadStageErrorMessage,
+  resolvePlanUploadDisplayMode,
+  validateDerivedPlanBytes,
 } from "./plan-upload"
 
 const require = createRequire(import.meta.url)
@@ -271,6 +276,14 @@ test("stage upload error normalization converts oversize parser failures into st
   assert.match(normalized.body.message, /too large for staging/i)
 })
 
+test("stage upload error normalization converts function payload failures into structured 413s", () => {
+  const normalized = normalizePlanUploadStageError(new Error("FUNCTION_PAYLOAD_TOO_LARGE"))
+
+  assert.equal(normalized.status, 413)
+  assert.equal(normalized.body.code, "PLAN_UPLOAD_TOO_LARGE")
+  assert.match(normalized.body.message, /too large for staging/i)
+})
+
 test("client stage upload error parsing surfaces structured json messages", async () => {
   const response = new Response(
     JSON.stringify({
@@ -342,6 +355,35 @@ test("upload mode summary stays explicit for browser-derived, server-derived, fa
     usedFallback: false,
     reducedBeforeUpload: false,
   })
+})
+
+test("selected-page subset plans display a reduced upload path before staging", () => {
+  const mode = resolvePlanUploadDisplayMode({
+    mode: undefined,
+    sourceKind: "pdf",
+    selectedPages: 4,
+    totalPages: 20,
+    stagedUploadId: null,
+  })
+
+  assert.equal(mode, "browser-derived-selected-pages")
+})
+
+test("staged upload chunks stay below function payload limits", () => {
+  assert(PLAN_UPLOAD_CHUNK_BYTES < MAX_FUNCTION_REQUEST_PAYLOAD_BYTES)
+})
+
+test("selected subset still too large is treated as a pre-generate recovery error", () => {
+  assert.throws(
+    () => validateDerivedPlanBytes(MAX_DERIVED_PLAN_FILE_BYTES + 1),
+    /Selected-page PDF is still too large after extraction/i
+  )
+
+  try {
+    validateDerivedPlanBytes(MAX_DERIVED_PLAN_FILE_BYTES + 1)
+  } catch (error) {
+    assert.equal(isSelectedPageExportCapacityError(error), true)
+  }
 })
 
 test("upload debug summary distinguishes original and reduced staged bytes clearly", () => {

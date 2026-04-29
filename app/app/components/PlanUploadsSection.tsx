@@ -2,8 +2,10 @@
 
 import {
   buildSelectedPageUploadDebugSummary,
+  estimateSelectedPdfBytes,
   formatPlanUploadBytes,
   getSelectedPageUploadModeSummary,
+  resolvePlanUploadDisplayMode,
 } from "../../lib/plan-upload"
 
 type JobPlan = {
@@ -95,6 +97,28 @@ export default function PlanUploadsSection({
           }}
         >
           {jobPlans.map((plan, index) => (
+            (() => {
+              const selectedPages = plan.pages.filter((page) => page.selected).length
+              const displayMode = resolvePlanUploadDisplayMode({
+                mode: plan.selectedPageUploadMode,
+                sourceKind: plan.sourceKind,
+                selectedPages,
+                totalPages: plan.sourcePageCount,
+                stagedUploadId: plan.stagedUploadId,
+              })
+              const displayStagedBytes =
+                !plan.stagedUploadId &&
+                displayMode === "browser-derived-selected-pages" &&
+                selectedPages > 0 &&
+                selectedPages < plan.sourcePageCount
+                  ? estimateSelectedPdfBytes({
+                      originalBytes: plan.originalBytes,
+                      selectedPages,
+                      totalPages: plan.sourcePageCount,
+                    })
+                  : plan.bytes
+
+              return (
             <div
               key={plan.id}
               style={{
@@ -129,7 +153,7 @@ export default function PlanUploadsSection({
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
                     {plan.sourceKind === "pdf"
-                      ? `${plan.pages.filter((page) => page.selected).length} of ${plan.pages.length} indexed PDF page(s) selected for analysis.`
+                      ? `${selectedPages} of ${plan.pages.length} indexed PDF page(s) selected for analysis.`
                       : "Single image plan selected for analysis."}
                   </div>
                   {plan.sourceKind === "pdf" && (
@@ -138,11 +162,11 @@ export default function PlanUploadsSection({
                         Original PDF: {formatPlanUploadBytes(plan.originalBytes)}
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        Selected export basis: {plan.pages.filter((page) => page.selected).length} of {plan.sourcePageCount} source pages
+                        Selected export basis: {selectedPages} of {plan.sourcePageCount} source pages
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
                         {plan.stagedUploadId ? "Last staged upload path" : "Planned upload path"}:{" "}
-                        {getSelectedPageUploadModeSummary(plan.selectedPageUploadMode).label}
+                        {getSelectedPageUploadModeSummary(displayMode).label}
                       </div>
                       <div
                         style={{
@@ -157,13 +181,13 @@ export default function PlanUploadsSection({
                         }}
                       >
                         {buildSelectedPageUploadDebugSummary({
-                          mode: plan.selectedPageUploadMode,
+                          mode: displayMode,
                           originalBytes: plan.originalBytes,
-                          stagedBytes: plan.bytes,
+                          stagedBytes: displayStagedBytes,
                           analyzedPages:
                             typeof plan.stagedSourcePageCount === "number"
                               ? plan.stagedSourcePageCount
-                              : plan.pages.filter((page) => page.selected).length,
+                              : selectedPages,
                           originalSourcePageCount: plan.sourcePageCount,
                         })}
                       </div>
@@ -326,6 +350,8 @@ export default function PlanUploadsSection({
                 </div>
               )}
             </div>
+              )
+            })()
           ))}
         </div>
       )}
