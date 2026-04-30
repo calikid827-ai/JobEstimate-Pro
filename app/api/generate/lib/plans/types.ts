@@ -229,6 +229,94 @@ export type PlanEstimatorPackage = {
   evidence: PlanEvidenceRef[]
 }
 
+export type PlanReadbackSupportLevel = "direct" | "reinforced" | "review"
+
+export type PlanReadbackItem = {
+  text: string
+  supportLevel: PlanReadbackSupportLevel
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanSheetReadback = {
+  sheetNumber: string | null
+  sheetTitle: string | null
+  sourcePageNumber: number
+  pageNumber: number
+  discipline: PlanSheetDiscipline
+  narration: string
+  detectedTrades: string[]
+  detectedRooms: string[]
+  supportLevel: PlanReadbackSupportLevel
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanTradeReadback = {
+  trade: string
+  confidence: "likely primary" | "supporting" | "review only"
+  narration: string
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanTradeScopeReadback = {
+  trade: PlanTradeFinding["trade"]
+  role: "likely primary" | "supporting" | "review only"
+  supportLevel: PlanReadbackSupportLevel
+  phaseTypes: Array<
+    | "finish_refresh"
+    | "install"
+    | "demo_removal"
+    | "wet_area"
+    | "ceiling_fixture"
+    | "corridor_common"
+    | "guest_room"
+    | "mixed_review"
+  >
+  areaGroups: string[]
+  narration: string
+  quantityNarration: string[]
+  supportNarration: string[]
+  confirmationNotes: string[]
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanPackageReadback = {
+  key: string
+  title: string
+  narration: string
+  supportLevel: PlanReadbackSupportLevel
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanAreaQuantityReadback = {
+  areaGroup: string
+  areaType:
+    | "guest_room"
+    | "bathroom_wet_area"
+    | "corridor"
+    | "common_area"
+    | "ceiling_fixture_zone"
+    | "demo_removal_zone"
+    | "general_area"
+  supportLevel: PlanReadbackSupportLevel
+  narration: string
+  quantityNarration: string[]
+  scopeNotes: string[]
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanExplanationReadback = {
+  headline: string
+  sheetNarration: PlanSheetReadback[]
+  tradeNarration: PlanTradeReadback[]
+  tradeScopeReadback: PlanTradeScopeReadback[]
+  areaNarration: string[]
+  areaQuantityReadback: PlanAreaQuantityReadback[]
+  directlySupported: PlanReadbackItem[]
+  reinforcedByCrossSheet: PlanReadbackItem[]
+  needsConfirmation: PlanReadbackItem[]
+  packageReadback: PlanPackageReadback[]
+}
+
 export type PlanIntelligence = {
   ok: boolean
   uploadsCount: number
@@ -276,6 +364,7 @@ export type PlanIntelligence = {
   scalableScopeSignals?: string[]
   tradePackageSignals?: string[]
   bidAssistNotes?: string[]
+  planReadback?: PlanExplanationReadback
   detectedSheets?: string[]
   notes?: string[]
   summary: string

@@ -170,6 +170,150 @@ type JobPlan = {
 
 type PlanIntelligence = {
   summary?: string | null
+  planReadback?: {
+    headline: string
+    sheetNarration: Array<{
+      sheetNumber: string | null
+      sheetTitle: string | null
+      sourcePageNumber: number
+      pageNumber: number
+      discipline: string
+      narration: string
+      detectedTrades: string[]
+      detectedRooms: string[]
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    tradeNarration: Array<{
+      trade: string
+      confidence: "likely primary" | "supporting" | "review only"
+      narration: string
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    tradeScopeReadback: Array<{
+      trade: string
+      role: "likely primary" | "supporting" | "review only"
+      supportLevel: "direct" | "reinforced" | "review"
+      phaseTypes: string[]
+      areaGroups: string[]
+      narration: string
+      quantityNarration: string[]
+      supportNarration: string[]
+      confirmationNotes: string[]
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    areaNarration: string[]
+    areaQuantityReadback: Array<{
+      areaGroup: string
+      areaType:
+        | "guest_room"
+        | "bathroom_wet_area"
+        | "corridor"
+        | "common_area"
+        | "ceiling_fixture_zone"
+        | "demo_removal_zone"
+        | "general_area"
+      supportLevel: "direct" | "reinforced" | "review"
+      narration: string
+      quantityNarration: string[]
+      scopeNotes: string[]
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    directlySupported: Array<{
+      text: string
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    reinforcedByCrossSheet: Array<{
+      text: string
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    needsConfirmation: Array<{
+      text: string
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    packageReadback: Array<{
+      key: string
+      title: string
+      narration: string
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+  }
   estimatorPackages?: Array<{
     key: string
     title: string
@@ -241,10 +385,184 @@ type PlanEstimatorPackageView = NonNullable<PlanIntelligence> extends infer T
     : never
   : never
 
+type PlanReadbackView = NonNullable<PlanIntelligence> extends infer T
+  ? T extends { planReadback?: infer R }
+    ? NonNullable<R>
+    : never
+  : never
+
 const normalizePlanStrings = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
     : []
+
+const normalizePlanEvidence = (value: unknown) =>
+  Array.isArray(value)
+    ? value
+        .map((ref: unknown) => {
+          const evidence = ref && typeof ref === "object" ? (ref as Record<string, unknown>) : null
+          if (!evidence || typeof evidence.uploadId !== "string") return null
+          return {
+            uploadId: evidence.uploadId,
+            uploadName: typeof evidence.uploadName === "string" ? evidence.uploadName : "",
+            sourcePageNumber: Number(evidence.sourcePageNumber || 0),
+            pageNumber: Number(evidence.pageNumber || 0),
+            sheetNumber: typeof evidence.sheetNumber === "string" ? evidence.sheetNumber : null,
+            sheetTitle: typeof evidence.sheetTitle === "string" ? evidence.sheetTitle : null,
+            excerpt: typeof evidence.excerpt === "string" ? evidence.excerpt : "",
+            confidence: Number(evidence.confidence || 0),
+          }
+        })
+        .filter((ref): ref is PlanEstimatorPackageView["evidence"][number] => ref !== null)
+    : []
+
+const normalizePlanReadbackSupport = (value: unknown): "direct" | "reinforced" | "review" =>
+  value === "direct" || value === "reinforced" || value === "review" ? value : "review"
+
+const normalizePlanReadbackItems = (value: unknown): PlanReadbackView["directlySupported"] =>
+  Array.isArray(value)
+    ? value
+        .map((item: unknown) => {
+          const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+          const text = typeof record?.text === "string" ? record.text.trim() : ""
+          if (!text) return null
+          return {
+            text,
+            supportLevel: normalizePlanReadbackSupport(record?.supportLevel),
+            evidence: normalizePlanEvidence(record?.evidence),
+          }
+        })
+        .filter((item): item is PlanReadbackView["directlySupported"][number] => item !== null)
+    : []
+
+const normalizePlanReadback = (value: unknown): PlanReadbackView | undefined => {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null
+  if (!record) return undefined
+
+  return {
+    headline: typeof record.headline === "string" ? record.headline.trim() : "",
+    sheetNarration: Array.isArray(record.sheetNarration)
+      ? record.sheetNarration
+          .map((item: unknown) => {
+            const sheet = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const narration = typeof sheet?.narration === "string" ? sheet.narration.trim() : ""
+            if (!narration) return null
+            return {
+              sheetNumber: typeof sheet?.sheetNumber === "string" ? sheet.sheetNumber : null,
+              sheetTitle: typeof sheet?.sheetTitle === "string" ? sheet.sheetTitle : null,
+              sourcePageNumber: Number(sheet?.sourcePageNumber || 0),
+              pageNumber: Number(sheet?.pageNumber || 0),
+              discipline: typeof sheet?.discipline === "string" ? sheet.discipline : "unknown",
+              narration,
+              detectedTrades: normalizePlanStrings(sheet?.detectedTrades),
+              detectedRooms: normalizePlanStrings(sheet?.detectedRooms),
+              supportLevel: normalizePlanReadbackSupport(sheet?.supportLevel),
+              evidence: normalizePlanEvidence(sheet?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["sheetNarration"][number] => item !== null)
+      : [],
+    tradeNarration: Array.isArray(record.tradeNarration)
+      ? record.tradeNarration
+          .map((item: unknown) => {
+            const trade = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const narration = typeof trade?.narration === "string" ? trade.narration.trim() : ""
+            const tradeName = typeof trade?.trade === "string" ? trade.trade.trim() : ""
+            if (!narration || !tradeName) return null
+            return {
+              trade: tradeName,
+              confidence:
+                trade?.confidence === "likely primary" ||
+                trade?.confidence === "supporting" ||
+                trade?.confidence === "review only"
+                  ? trade.confidence
+                  : "review only",
+              narration,
+              evidence: normalizePlanEvidence(trade?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["tradeNarration"][number] => item !== null)
+      : [],
+    tradeScopeReadback: Array.isArray(record.tradeScopeReadback)
+      ? record.tradeScopeReadback
+          .map((item: unknown) => {
+            const trade = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const tradeName = typeof trade?.trade === "string" ? trade.trade.trim() : ""
+            const narration = typeof trade?.narration === "string" ? trade.narration.trim() : ""
+            if (!tradeName || !narration) return null
+            return {
+              trade: tradeName,
+              role:
+                trade?.role === "likely primary" ||
+                trade?.role === "supporting" ||
+                trade?.role === "review only"
+                  ? trade.role
+                  : "review only",
+              supportLevel: normalizePlanReadbackSupport(trade?.supportLevel),
+              phaseTypes: normalizePlanStrings(trade?.phaseTypes),
+              areaGroups: normalizePlanStrings(trade?.areaGroups),
+              narration,
+              quantityNarration: normalizePlanStrings(trade?.quantityNarration),
+              supportNarration: normalizePlanStrings(trade?.supportNarration),
+              confirmationNotes: normalizePlanStrings(trade?.confirmationNotes),
+              evidence: normalizePlanEvidence(trade?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["tradeScopeReadback"][number] => item !== null)
+      : [],
+    areaNarration: normalizePlanStrings(record.areaNarration),
+    areaQuantityReadback: Array.isArray(record.areaQuantityReadback)
+      ? record.areaQuantityReadback
+          .map((item: unknown) => {
+            const area = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const areaGroup = typeof area?.areaGroup === "string" ? area.areaGroup.trim() : ""
+            const narration = typeof area?.narration === "string" ? area.narration.trim() : ""
+            if (!areaGroup || !narration) return null
+            const areaType =
+              area?.areaType === "guest_room" ||
+              area?.areaType === "bathroom_wet_area" ||
+              area?.areaType === "corridor" ||
+              area?.areaType === "common_area" ||
+              area?.areaType === "ceiling_fixture_zone" ||
+              area?.areaType === "demo_removal_zone" ||
+              area?.areaType === "general_area"
+                ? area.areaType
+                : "general_area"
+            return {
+              areaGroup,
+              areaType,
+              supportLevel: normalizePlanReadbackSupport(area?.supportLevel),
+              narration,
+              quantityNarration: normalizePlanStrings(area?.quantityNarration),
+              scopeNotes: normalizePlanStrings(area?.scopeNotes),
+              evidence: normalizePlanEvidence(area?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["areaQuantityReadback"][number] => item !== null)
+      : [],
+    directlySupported: normalizePlanReadbackItems(record.directlySupported),
+    reinforcedByCrossSheet: normalizePlanReadbackItems(record.reinforcedByCrossSheet),
+    needsConfirmation: normalizePlanReadbackItems(record.needsConfirmation),
+    packageReadback: Array.isArray(record.packageReadback)
+      ? record.packageReadback
+          .map((item: unknown) => {
+            const pkg = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const narration = typeof pkg?.narration === "string" ? pkg.narration.trim() : ""
+            const key = typeof pkg?.key === "string" ? pkg.key.trim() : ""
+            const title = typeof pkg?.title === "string" ? pkg.title.trim() : ""
+            if (!narration || !key || !title) return null
+            return {
+              key,
+              title,
+              narration,
+              supportLevel: normalizePlanReadbackSupport(pkg?.supportLevel),
+              evidence: normalizePlanEvidence(pkg?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["packageReadback"][number] => item !== null)
+      : [],
+  }
+}
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
   Array.isArray(value)
@@ -3029,6 +3347,7 @@ setPlanIntelligence(
             ? data.planIntelligence.summary.trim()
             : null,
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
+        planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
         detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
         sheetRoleSignals: normalizePlanStrings(data.planIntelligence?.sheetRoleSignals),
@@ -9269,9 +9588,11 @@ function PlanIntelligenceCard({
   const estimatorPackages = Array.isArray(planIntelligence.estimatorPackages)
     ? planIntelligence.estimatorPackages.slice(0, 6)
     : []
+  const planReadback = planIntelligence.planReadback
 
   const hasAnything =
     !!planIntelligence.summary ||
+    !!planReadback?.headline ||
     detectedRooms.length > 0 ||
     detectedTrades.length > 0 ||
     sheetRoleSignals.length > 0 ||
@@ -9429,6 +9750,260 @@ function PlanIntelligenceCard({
     )
   }
 
+  const sourceText = (evidence: PlanEstimatorPackageView["evidence"]) =>
+    evidence.length > 0
+      ? Array.from(
+          new Set(
+            evidence.map((ref) =>
+              `${ref.sheetNumber || ref.sheetTitle || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`
+            )
+          )
+        )
+          .slice(0, 3)
+          .join("; ")
+      : ""
+
+  const ReadbackList = ({
+    title,
+    items,
+    tone = "neutral",
+  }: {
+    title: string
+    items: Array<{ text: string; evidence: PlanEstimatorPackageView["evidence"] }>
+    tone?: "neutral" | "warning" | "info"
+  }) => {
+    if (items.length === 0) return null
+    const styles =
+      tone === "warning"
+        ? { bg: "#fff7ed", border: "#fdba74" }
+        : tone === "info"
+        ? { bg: "#eff6ff", border: "#93c5fd" }
+        : { bg: "#fafafa", border: "#e5e7eb" }
+
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+          {title}
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {items.slice(0, 6).map((item, index) => (
+            <div
+              key={`${title}-${index}`}
+              style={{
+                padding: 10,
+                border: `1px solid ${styles.border}`,
+                borderRadius: 10,
+                background: styles.bg,
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "#1f2937",
+              }}
+            >
+              <div>{item.text}</div>
+              {sourceText(item.evidence) && (
+                <div style={{ marginTop: 4, color: "#6b7280" }}>
+                  Sources: {sourceText(item.evidence)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const PlanReadbackPanel = ({
+    readback,
+  }: {
+    readback: NonNullable<PlanIntelligence>["planReadback"]
+  }) => {
+    if (!readback) return null
+
+    return (
+      <div
+        style={{
+          marginTop: 14,
+          padding: 12,
+          border: "1px solid #bae6fd",
+          borderRadius: 12,
+          background: "#f0f9ff",
+        }}
+      >
+        <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a" }}>
+          Plan Readback
+        </div>
+        <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
+          {readback.headline}
+        </div>
+
+        {readback.sheetNarration.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Selected Sheet Narration
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.sheetNarration.slice(0, 6).map((sheet, index) => (
+                <div
+                  key={`sheet-readback-${index}`}
+                  style={{
+                    padding: 10,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    background: "#fff",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <div>{sheet.narration}</div>
+                  <div style={{ marginTop: 4, color: "#6b7280" }}>
+                    Source page {sheet.sourcePageNumber} • {sheet.supportLevel} support
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <ReadbackList
+          title="Directly Supported"
+          items={readback.directlySupported}
+          tone="info"
+        />
+        <ReadbackList
+          title="Reinforced By Cross-Sheet Support"
+          items={readback.reinforcedByCrossSheet}
+          tone="neutral"
+        />
+        <ReadbackList
+          title="Still Needs Confirmation"
+          items={readback.needsConfirmation}
+          tone="warning"
+        />
+
+        {readback.areaQuantityReadback.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Room / Area Quantity Readback
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.areaQuantityReadback.slice(0, 6).map((area) => (
+                <div
+                  key={`area-quantity-${area.areaType}-${area.areaGroup}`}
+                  style={{
+                    padding: 10,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    background: "#fff",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#1f2937",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#111827" }}>{area.areaGroup}</div>
+                  <div style={{ marginTop: 3 }}>{area.narration}</div>
+                  {area.quantityNarration.length > 0 && (
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {area.quantityNarration.slice(0, 4).map((item, index) => (
+                        <li key={`area-quantity-line-${area.areaGroup}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {area.scopeNotes.length > 0 && (
+                    <div style={{ marginTop: 6, color: "#92400e" }}>
+                      {area.scopeNotes.slice(0, 2).join(" ")}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 4, color: "#6b7280" }}>
+                    {area.supportLevel} support{sourceText(area.evidence) ? ` • Sources: ${sourceText(area.evidence)}` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {readback.tradeScopeReadback.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Trade-By-Trade Readback
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.tradeScopeReadback.slice(0, 8).map((trade) => (
+                <div
+                  key={`trade-scope-${trade.trade}`}
+                  style={{
+                    padding: 10,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    background: "#fff",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#1f2937",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    {trade.trade} • {trade.role} • {trade.supportLevel} support
+                  </div>
+                  <div style={{ marginTop: 3 }}>{trade.narration}</div>
+                  {trade.areaGroups.length > 0 && (
+                    <div style={{ marginTop: 4, color: "#4b5563" }}>
+                      Areas: {trade.areaGroups.slice(0, 4).join(", ")}
+                    </div>
+                  )}
+                  {trade.phaseTypes.length > 0 && (
+                    <div style={{ marginTop: 2, color: "#4b5563" }}>
+                      Scope type: {trade.phaseTypes.slice(0, 4).map((item) => item.replace(/_/g, " ")).join(", ")}
+                    </div>
+                  )}
+                  {[...trade.quantityNarration.slice(0, 3), ...trade.supportNarration.slice(0, 2)].length > 0 && (
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {[...trade.quantityNarration.slice(0, 3), ...trade.supportNarration.slice(0, 2)].map((item, index) => (
+                        <li key={`trade-scope-line-${trade.trade}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {trade.confirmationNotes.length > 0 && (
+                    <div style={{ marginTop: 6, color: "#92400e" }}>
+                      {trade.confirmationNotes.slice(0, 2).join(" ")}
+                    </div>
+                  )}
+                  {sourceText(trade.evidence) && (
+                    <div style={{ marginTop: 4, color: "#6b7280" }}>
+                      Sources: {sourceText(trade.evidence)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {readback.tradeNarration.length > 0 && (
+          <SectionList
+            title="Trade Readback"
+            items={readback.tradeNarration.map((item) => `${item.trade}: ${item.narration}`)}
+            tone="neutral"
+          />
+        )}
+
+        {readback.areaNarration.length > 0 && (
+          <SectionList title="Area Readback" items={readback.areaNarration} tone="info" />
+        )}
+
+        {readback.packageReadback.length > 0 && (
+          <ReadbackList
+            title="Package Readback"
+            items={readback.packageReadback.map((pkg) => ({
+              text: pkg.narration,
+              evidence: pkg.evidence,
+            }))}
+            tone="neutral"
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       style={{
@@ -9475,6 +10050,7 @@ function PlanIntelligenceCard({
         </div>
       )}
 
+      <PlanReadbackPanel readback={planReadback} />
       <PackageCards packages={estimatorPackages} />
       <SectionList title="Sheet Role Signals" items={sheetRoleSignals} tone="neutral" />
       <SectionList title="Prototype Signals" items={prototypeSignals} tone="info" />

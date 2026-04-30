@@ -2,7 +2,9 @@ import type {
   PlanEvidenceBundle,
   PlanEvidenceRef,
   PlanEstimatorPackage,
+  PlanExplanationReadback,
   PlanIntelligence,
+  PlanReadbackSupportLevel,
   PlanRoomFinding,
   PlanScheduleItem,
   PlanSheetAnalysis,
@@ -2263,6 +2265,840 @@ function buildConfidenceScore(args: {
   return Math.max(10, Math.min(95, score))
 }
 
+function formatFindingQuantity(finding: PlanTradeFinding): string | null {
+  if (typeof finding.quantity !== "number" || !Number.isFinite(finding.quantity) || finding.quantity <= 0) {
+    return null
+  }
+
+  const rounded = Number.isInteger(finding.quantity)
+    ? finding.quantity.toLocaleString()
+    : finding.quantity.toLocaleString(undefined, { maximumFractionDigits: 1 })
+  return `${rounded} ${finding.unit.replace(/_/g, " ")}`
+}
+
+function getPackageReadbackSupport(supportType: PlanEstimatorPackage["supportType"]): PlanReadbackSupportLevel {
+  if (supportType === "quantity_backed") return "direct"
+  if (supportType === "schedule_backed" || supportType === "scaled_prototype") return "reinforced"
+  return "review"
+}
+
+type AreaQuantityRollup = {
+  areaGroup: string
+  areaType: PlanExplanationReadback["areaQuantityReadback"][number]["areaType"]
+  directQuantities: string[]
+  reinforcedQuantities: string[]
+  reviewNotes: string[]
+  evidence: PlanEvidenceRef[]
+  supportLevel: PlanReadbackSupportLevel
+}
+
+function classifyAreaGroup(value: string): Pick<AreaQuantityRollup, "areaGroup" | "areaType"> {
+  if (/\bguest\s*(room|suite)|typical\s*(room|unit)\b/i.test(value)) {
+    return { areaGroup: "guest rooms", areaType: "guest_room" }
+  }
+  if (/\bbath|toilet|lavator|shower|wet[-\s]?area|fixture\b/i.test(value)) {
+    return { areaGroup: "bathrooms / wet areas", areaType: "bathroom_wet_area" }
+  }
+  if (/\bcorridor|hallway|public path|common path\b/i.test(value)) {
+    return { areaGroup: "corridors", areaType: "corridor" }
+  }
+  if (/\blobby|common|public|amenity|reception|club|leasing\b/i.test(value)) {
+    return { areaGroup: "common areas", areaType: "common_area" }
+  }
+  if (/\bceiling|rcp|light|fixture|device|receptacle|switch|electrical\b/i.test(value)) {
+    return { areaGroup: "ceiling / fixture zones", areaType: "ceiling_fixture_zone" }
+  }
+  if (/\bdemo(?:lition)?|removal|remove\b/i.test(value)) {
+    return { areaGroup: "demo / removal zones", areaType: "demo_removal_zone" }
+  }
+  return { areaGroup: "general affected areas", areaType: "general_area" }
+}
+
+function classifyFindingArea(finding: PlanTradeFinding): Pick<AreaQuantityRollup, "areaGroup" | "areaType"> {
+  const text = [
+    finding.label,
+    finding.category || "",
+    finding.trade,
+    ...finding.notes,
+    ...finding.evidence.map((ref) => `${ref.sheetNumber || ""} ${ref.sheetTitle || ""} ${ref.excerpt}`),
+  ].join(" ")
+  if (finding.category === "demolition_area") return { areaGroup: "demo / removal zones", areaType: "demo_removal_zone" }
+  if (finding.category === "corridor_area") return { areaGroup: "corridors", areaType: "corridor" }
+  if (
+    finding.category === "selected_elevation_area" ||
+    finding.category === "wall_tile_area" ||
+    finding.category === "shower_tile_area" ||
+    finding.category === "plumbing_fixture_count"
+  ) {
+    return { areaGroup: "bathrooms / wet areas", areaType: "bathroom_wet_area" }
+  }
+  if (
+    finding.category === "device_count" ||
+    finding.category === "switch_count" ||
+    finding.category === "receptacle_count" ||
+    finding.category === "electrical_fixture_count" ||
+    finding.category === "ceiling_area"
+  ) {
+    return { areaGroup: "ceiling / fixture zones", areaType: "ceiling_fixture_zone" }
+  }
+  return classifyAreaGroup(text)
+}
+
+function classifyScheduleArea(
+  schedule: PlanScheduleItem,
+  analysis: PlanSheetAnalysis
+): Pick<AreaQuantityRollup, "areaGroup" | "areaType"> {
+  if (schedule.scheduleType === "electrical") {
+    return { areaGroup: "ceiling / fixture zones", areaType: "ceiling_fixture_zone" }
+  }
+  if (schedule.scheduleType === "fixture") {
+    return { areaGroup: "bathrooms / wet areas", areaType: "bathroom_wet_area" }
+  }
+  return classifyAreaGroup(
+    [
+      schedule.scheduleType,
+      schedule.label,
+      ...schedule.notes,
+      ...(analysis.rooms || []).map((room) => room.roomName),
+      ...(analysis.tradeFindings || []).flatMap((finding) => [finding.label, ...finding.notes]),
+    ].join(" ")
+  )
+}
+
+function getOrCreateAreaRollup(
+  rollups: Map<string, AreaQuantityRollup>,
+  area: Pick<AreaQuantityRollup, "areaGroup" | "areaType">
+): AreaQuantityRollup {
+  const existing = rollups.get(area.areaGroup)
+  if (existing) return existing
+  const created: AreaQuantityRollup = {
+    areaGroup: area.areaGroup,
+    areaType: area.areaType,
+    directQuantities: [],
+    reinforcedQuantities: [],
+    reviewNotes: [],
+    evidence: [],
+    supportLevel: "review",
+  }
+  rollups.set(area.areaGroup, created)
+  return created
+}
+
+function buildAreaQuantityReadback(args: {
+  sheetIndex: PlanSheetIndexEntry[]
+  analyses: PlanSheetAnalysis[]
+  estimatorPackages: PlanEstimatorPackage[]
+  detectedRooms: string[]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+}): PlanExplanationReadback["areaQuantityReadback"] {
+  const rollups = new Map<string, AreaQuantityRollup>()
+
+  for (const room of args.detectedRooms) {
+    const rollup = getOrCreateAreaRollup(rollups, classifyAreaGroup(room))
+    rollup.reviewNotes.push(`${room} appears in selected sheet room detection.`)
+  }
+
+  for (const analysis of args.analyses) {
+    for (const room of analysis.rooms || []) {
+      const rollup = getOrCreateAreaRollup(rollups, classifyAreaGroup(room.roomName))
+      if (typeof room.areaSqft === "number" && room.areaSqft > 0) {
+        rollup.directQuantities.push(`${room.roomName}: ${room.areaSqft.toLocaleString()} sqft room area is directly shown.`)
+        rollup.supportLevel = "direct"
+      } else {
+        rollup.reviewNotes.push(`${room.roomName} is identified, but room area/count remains review-only.`)
+      }
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(room.evidence || [])], 6)
+    }
+
+    for (const finding of analysis.tradeFindings || []) {
+      const rollup = getOrCreateAreaRollup(rollups, classifyFindingArea(finding))
+      const quantity = formatFindingQuantity(finding)
+      if (quantity) {
+        rollup.directQuantities.push(`${finding.label}: ${quantity} directly supported for ${finding.trade}.`)
+        rollup.supportLevel = "direct"
+      } else {
+        rollup.reviewNotes.push(`${finding.label}: ${finding.trade} support is present, but no direct quantity is carried.`)
+      }
+      if (finding.category === "selected_elevation_area") {
+        rollup.reviewNotes.push("Elevation-only support stays limited to shown wall/wet-area surfaces, not full-room authority.")
+      }
+      if (finding.category === "demolition_area" || /\bdemo(?:lition)?|removal|remove\b/i.test([finding.label, ...finding.notes].join(" "))) {
+        rollup.reviewNotes.push("Demo/removal support stays removal-only and does not create install quantity authority.")
+      }
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(finding.evidence || [])], 6)
+    }
+
+    for (const schedule of analysis.schedules || []) {
+      const rollup = getOrCreateAreaRollup(
+        rollups,
+        classifyScheduleArea(schedule, analysis)
+      )
+      if (typeof schedule.quantity === "number" && schedule.quantity > 0) {
+        rollup.reinforcedQuantities.push(
+          `${schedule.label}: ${schedule.quantity.toLocaleString()} scheduled item(s) provide count context, not automatic full takeoff authority.`
+        )
+      } else {
+        rollup.reinforcedQuantities.push(`${schedule.label}: schedule support reinforces this area, but no count is explicit.`)
+      }
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(schedule.evidence || [])], 6)
+    }
+  }
+
+  if (
+    args.sheetIndex.some((sheet) =>
+      /\bdemo(?:lition)?\b|\bremoval\b/i.test(`${sheet.sheetNumber || ""} ${sheet.sheetTitle || ""} ${sheet.pageLabel || ""}`)
+    )
+  ) {
+    const rollup = getOrCreateAreaRollup(rollups, { areaGroup: "demo / removal zones", areaType: "demo_removal_zone" })
+    rollup.reviewNotes.push("Demo/removal sheet support stays removal-only and does not create install quantity authority.")
+  }
+
+  for (const pkg of args.estimatorPackages) {
+    const rollup = getOrCreateAreaRollup(
+      rollups,
+      classifyAreaGroup(`${pkg.roomGroup || ""} ${pkg.title} ${pkg.supportType} ${pkg.primaryTrade}`)
+    )
+    if (pkg.quantitySummary) {
+      if (pkg.supportType === "quantity_backed") {
+        rollup.directQuantities.push(`${pkg.title}: ${pkg.quantitySummary}.`)
+        rollup.supportLevel = "direct"
+      } else {
+        rollup.reinforcedQuantities.push(`${pkg.title}: ${pkg.quantitySummary} is ${pkg.supportType.replace(/_/g, " ")} context.`)
+        if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+      }
+    }
+    if (pkg.scheduleSummary) {
+      rollup.reinforcedQuantities.push(`${pkg.title}: ${pkg.scheduleSummary} reinforces the area package.`)
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+    }
+    if (pkg.supportType === "scaled_prototype") {
+      rollup.reinforcedQuantities.push(`${pkg.title}: typical/repeated room support appears scale-oriented, not a measured total.`)
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+    }
+    if (pkg.supportType === "elevation_only") {
+      rollup.reviewNotes.push(`${pkg.title}: elevation-only support stays narrow to shown vertical/wet-area surfaces.`)
+    }
+    if (pkg.supportType === "demo_only") {
+      rollup.reviewNotes.push(`${pkg.title}: removal-only support is separated from install-oriented scope.`)
+    }
+    rollup.evidence = uniqEvidence([...rollup.evidence, ...(pkg.evidence || [])], 6)
+  }
+
+  const prototypeText = uniqStrings([...args.repeatedSpaceSignals, ...args.prototypeSignals], 4).join(" ")
+  if (prototypeText) {
+    const rollup = getOrCreateAreaRollup(rollups, { areaGroup: "guest rooms", areaType: "guest_room" })
+    rollup.reinforcedQuantities.push("Typical guest room / repeated room support appears present as scale-oriented support, not measured totals.")
+    rollup.reviewNotes.push("Confirm actual repeat counts before treating prototype support as measured room quantity.")
+    if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+  }
+
+  return Array.from(rollups.values())
+    .map((rollup) => {
+      const quantityNarration = uniqStrings([...rollup.directQuantities, ...rollup.reinforcedQuantities], 8)
+      const scopeNotes = uniqStrings(rollup.reviewNotes, 8)
+      const supportText =
+        rollup.supportLevel === "direct"
+          ? "direct quantity support"
+          : rollup.supportLevel === "reinforced"
+            ? "reinforced support"
+            : "review-only support"
+      return {
+        areaGroup: rollup.areaGroup,
+        areaType: rollup.areaType,
+        supportLevel: rollup.supportLevel,
+        narration: `${rollup.areaGroup} read as ${supportText}${quantityNarration.length ? `: ${quantityNarration[0]}` : scopeNotes.length ? `: ${scopeNotes[0]}` : "."}`,
+        quantityNarration,
+        scopeNotes,
+        evidence: uniqEvidence(rollup.evidence, 6),
+      }
+    })
+    .filter((item) => item.quantityNarration.length > 0 || item.scopeNotes.length > 0)
+    .slice(0, 8)
+}
+
+function buildSheetReadback(args: {
+  sheet: PlanSheetIndexEntry
+  analysis: PlanSheetAnalysis | null
+}): PlanExplanationReadback["sheetNarration"][number] {
+  const analysis = args.analysis
+  const trades = uniqStrings((analysis?.tradeFindings || []).map((finding) => finding.trade), 6)
+  const rooms = uniqStrings((analysis?.rooms || []).map((room) => room.roomName), 6)
+  const schedules = uniqStrings((analysis?.schedules || []).map((item) => item.label || item.scheduleType), 4)
+  const evidence = uniqEvidence([
+    ...(analysis ? collectTradeEvidence(analysis.tradeFindings || []) : []),
+    ...(analysis ? collectScheduleEvidence(analysis.schedules || []) : []),
+    ...(analysis ? collectRoomEvidence(analysis.rooms || []) : []),
+  ], 4)
+  const hasQuantity = (analysis?.tradeFindings || []).some(
+    (finding) => typeof finding.quantity === "number" && finding.quantity > 0
+  )
+  const hasSchedule = (analysis?.schedules || []).length > 0
+  const supportLevel: PlanReadbackSupportLevel = hasQuantity ? "direct" : hasSchedule ? "reinforced" : "review"
+
+  const left = args.sheet.sheetNumber || `Page ${args.sheet.pageNumber}`
+  const title = args.sheet.sheetTitle || args.sheet.discipline
+  const parts = [
+    `${left} ${title}`.trim(),
+    trades.length ? `points to ${trades.join(", ")} scope` : "",
+    rooms.length ? `around ${rooms.join(", ")}` : "",
+    schedules.length ? `with ${schedules.join(", ")} schedule support` : "",
+  ].filter(Boolean)
+
+  return {
+    sheetNumber: args.sheet.sheetNumber,
+    sheetTitle: args.sheet.sheetTitle,
+    sourcePageNumber: args.sheet.sourcePageNumber,
+    pageNumber: args.sheet.pageNumber,
+    discipline: args.sheet.discipline,
+    narration: `${parts.join(" ")}.`,
+    detectedTrades: trades,
+    detectedRooms: rooms,
+    supportLevel,
+    evidence,
+  }
+}
+
+function buildTradeReadback(args: {
+  detectedTrades: string[]
+  estimatorPackages: PlanEstimatorPackage[]
+  analyses: PlanSheetAnalysis[]
+}): PlanExplanationReadback["tradeNarration"] {
+  return args.detectedTrades.map((trade) => {
+    const tradeFindings = args.analyses.flatMap((analysis) =>
+      (analysis.tradeFindings || []).filter((finding) => finding.trade === trade)
+    )
+    const packages = args.estimatorPackages.filter((pkg) => pkg.primaryTrade === trade)
+    const quantityFindings = tradeFindings.filter((finding) => typeof finding.quantity === "number" && finding.quantity > 0)
+    const confidence: PlanExplanationReadback["tradeNarration"][number]["confidence"] =
+      quantityFindings.length > 0 || packages.some((pkg) => pkg.confidenceLabel === "strong")
+        ? "likely primary"
+        : packages.length > 0 || tradeFindings.length > 0
+          ? "supporting"
+          : "review only"
+    const roomGroups = uniqStrings(packages.map((pkg) => pkg.roomGroup || "").filter(Boolean), 4)
+    const supportText =
+      quantityFindings.length > 0
+        ? `direct quantities such as ${quantityFindings.slice(0, 2).map((finding) => finding.label).join(", ")}`
+        : packages.length > 0
+          ? `${packages[0].supportType.replace(/_/g, " ")} package support`
+          : "limited plan references"
+
+    return {
+      trade,
+      confidence,
+      narration: `${trade} reads as ${confidence} from ${supportText}${roomGroups.length ? ` in ${roomGroups.join(", ")}` : ""}.`,
+      evidence: uniqEvidence([
+        ...collectTradeEvidence(tradeFindings),
+        ...packages.flatMap((pkg) => pkg.evidence || []),
+      ], 5),
+    }
+  })
+}
+
+type TradeScopeRollup = {
+  trade: PlanTradeFinding["trade"]
+  directQuantities: string[]
+  reinforcedSupport: string[]
+  confirmationNotes: string[]
+  areaGroups: string[]
+  phaseTypes: PlanExplanationReadback["tradeScopeReadback"][number]["phaseTypes"]
+  evidence: PlanEvidenceRef[]
+  supportLevel: PlanReadbackSupportLevel
+}
+
+function phaseTypesForFinding(finding: PlanTradeFinding): TradeScopeRollup["phaseTypes"] {
+  const text = [finding.label, finding.category || "", ...finding.notes].join(" ")
+  const phases: TradeScopeRollup["phaseTypes"] = []
+  if (finding.category === "demolition_area" || /\bdemo(?:lition)?|removal|remove\b/i.test(text)) {
+    phases.push("demo_removal")
+  }
+  if (
+    finding.category === "selected_elevation_area" ||
+    finding.category === "wall_tile_area" ||
+    finding.category === "shower_tile_area" ||
+    finding.category === "plumbing_fixture_count" ||
+    /\bwet[-\s]?area|bath|shower|tile|fixture\b/i.test(text)
+  ) {
+    phases.push("wet_area")
+  }
+  if (
+    finding.category === "device_count" ||
+    finding.category === "switch_count" ||
+    finding.category === "receptacle_count" ||
+    finding.category === "electrical_fixture_count" ||
+    finding.category === "ceiling_area" ||
+    /\bceiling|light|fixture|device|rcp\b/i.test(text)
+  ) {
+    phases.push("ceiling_fixture")
+  }
+  if (finding.category === "corridor_area" || /\bcorridor|common|public|lobby\b/i.test(text)) {
+    phases.push("corridor_common")
+  }
+  if (/\bguest\s*(room|suite)|typical room\b/i.test(text)) {
+    phases.push("guest_room")
+  }
+  if (
+    finding.trade === "painting" ||
+    finding.trade === "wallcovering" ||
+    /\bfinish|paint|wallcovering|repaint|refresh\b/i.test(text)
+  ) {
+    phases.push("finish_refresh")
+  }
+  if (phases.length === 0 && finding.quantity && finding.quantity > 0) phases.push("install")
+  if (phases.length === 0) phases.push("mixed_review")
+  return uniqStrings(phases, 6) as TradeScopeRollup["phaseTypes"]
+}
+
+function phaseTypesForPackage(pkg: PlanEstimatorPackage): TradeScopeRollup["phaseTypes"] {
+  const text = `${pkg.key} ${pkg.title} ${pkg.roomGroup || ""} ${pkg.supportType} ${pkg.primaryTrade}`
+  const phases: TradeScopeRollup["phaseTypes"] = []
+  if (pkg.supportType === "demo_only" || /\bdemo|removal\b/i.test(text)) phases.push("demo_removal")
+  if (pkg.supportType === "elevation_only" || /\bwet-area|bath|shower|tile|fixture\b/i.test(text)) phases.push("wet_area")
+  if (/\bceiling|light|fixture|electrical\b/i.test(text)) phases.push("ceiling_fixture")
+  if (/\bcorridor|common\b/i.test(text)) phases.push("corridor_common")
+  if (/\bguest room|typical\b/i.test(text)) phases.push("guest_room")
+  if (/\bfinish|paint|wallcovering|flooring\b/i.test(text)) phases.push("finish_refresh")
+  if (pkg.supportType === "quantity_backed" && phases.length === 0) phases.push("install")
+  if (phases.length === 0) phases.push("mixed_review")
+  return uniqStrings(phases, 6) as TradeScopeRollup["phaseTypes"]
+}
+
+function tradeForSchedule(schedule: PlanScheduleItem, detectedTrades: string[]): PlanTradeFinding["trade"] | null {
+  if (schedule.scheduleType === "electrical") return "electrical"
+  if (schedule.scheduleType === "fixture") return "plumbing"
+  if (schedule.scheduleType === "door") return "carpentry"
+  if (schedule.scheduleType === "finish") {
+    if (detectedTrades.includes("wallcovering")) return "wallcovering"
+    if (detectedTrades.includes("flooring")) return "flooring"
+    if (detectedTrades.includes("painting")) return "painting"
+    return "general renovation"
+  }
+  return null
+}
+
+function resolvePackageReadbackTrade(
+  pkg: PlanEstimatorPackage,
+  detectedTrades: string[]
+): PlanTradeFinding["trade"] {
+  if (detectedTrades.includes(pkg.primaryTrade)) return pkg.primaryTrade
+  const text = `${pkg.key} ${pkg.title} ${pkg.roomGroup || ""} ${pkg.quantitySummary || ""} ${pkg.scheduleSummary || ""}`
+  if (/\bwallcovering|wallcover|feature wall\b/i.test(text) && detectedTrades.includes("wallcovering")) {
+    return "wallcovering"
+  }
+  if (/\bfloor|flooring\b/i.test(text) && detectedTrades.includes("flooring")) {
+    return "flooring"
+  }
+  if (/\btile|shower|wet[-\s]?area\b/i.test(text) && detectedTrades.includes("tile")) {
+    return "tile"
+  }
+  if (pkg.primaryTrade === "painting" && !detectedTrades.includes("painting")) {
+    if (detectedTrades.includes("wallcovering")) return "wallcovering"
+    if (detectedTrades.includes("flooring")) return "flooring"
+    if (detectedTrades.includes("tile")) return "tile"
+  }
+  return pkg.primaryTrade
+}
+
+function getOrCreateTradeRollup(
+  rollups: Map<string, TradeScopeRollup>,
+  trade: PlanTradeFinding["trade"]
+): TradeScopeRollup {
+  const existing = rollups.get(trade)
+  if (existing) return existing
+  const created: TradeScopeRollup = {
+    trade,
+    directQuantities: [],
+    reinforcedSupport: [],
+    confirmationNotes: [],
+    areaGroups: [],
+    phaseTypes: [],
+    evidence: [],
+    supportLevel: "review",
+  }
+  rollups.set(trade, created)
+  return created
+}
+
+function describePhaseTypes(phases: TradeScopeRollup["phaseTypes"]): string {
+  const labels: Record<TradeScopeRollup["phaseTypes"][number], string> = {
+    finish_refresh: "finish refresh",
+    install: "install-oriented",
+    demo_removal: "demo/removal-only",
+    wet_area: "wet-area specialty",
+    ceiling_fixture: "ceiling/light/fixture coordination",
+    corridor_common: "corridor/common-area",
+    guest_room: "guest-room",
+    mixed_review: "mixed/review",
+  }
+  return phases.map((phase) => labels[phase]).join(", ")
+}
+
+function buildTradeScopeReadback(args: {
+  analyses: PlanSheetAnalysis[]
+  detectedTrades: string[]
+  estimatorPackages: PlanEstimatorPackage[]
+  areaQuantityReadback: PlanExplanationReadback["areaQuantityReadback"]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+  crossSheetConflictSignals: string[]
+}): PlanExplanationReadback["tradeScopeReadback"] {
+  const rollups = new Map<string, TradeScopeRollup>()
+
+  for (const trade of args.detectedTrades as PlanTradeFinding["trade"][]) {
+    getOrCreateTradeRollup(rollups, trade)
+  }
+
+  for (const analysis of args.analyses) {
+    for (const finding of analysis.tradeFindings || []) {
+      const rollup = getOrCreateTradeRollup(rollups, finding.trade)
+      const quantity = formatFindingQuantity(finding)
+      const area = classifyFindingArea(finding)
+      rollup.areaGroups.push(area.areaGroup)
+      rollup.phaseTypes.push(...phaseTypesForFinding(finding))
+      if (quantity) {
+        rollup.directQuantities.push(`${finding.label}: ${quantity} directly supported.`)
+        rollup.supportLevel = "direct"
+      } else {
+        rollup.confirmationNotes.push(`${finding.label}: no direct quantity is carried for this trade item.`)
+      }
+      if (finding.category === "selected_elevation_area") {
+        rollup.confirmationNotes.push("Elevation-only evidence stays narrow to shown wall/wet-area surfaces.")
+      }
+      if (finding.category === "demolition_area" || /\bdemo(?:lition)?|removal|remove\b/i.test([finding.label, ...finding.notes].join(" "))) {
+        rollup.confirmationNotes.push("Demo/removal support remains separate from install authority.")
+      }
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(finding.evidence || [])], 6)
+    }
+
+    for (const schedule of analysis.schedules || []) {
+      const trade = tradeForSchedule(schedule, args.detectedTrades)
+      if (!trade) continue
+      const rollup = getOrCreateTradeRollup(rollups, trade)
+      const area = classifyScheduleArea(schedule, analysis)
+      rollup.areaGroups.push(area.areaGroup)
+      rollup.phaseTypes.push(
+        schedule.scheduleType === "electrical"
+          ? "ceiling_fixture"
+          : schedule.scheduleType === "fixture"
+            ? "wet_area"
+            : "finish_refresh"
+      )
+      if (typeof schedule.quantity === "number" && schedule.quantity > 0) {
+        rollup.reinforcedSupport.push(
+          `${schedule.label}: ${schedule.quantity.toLocaleString()} scheduled item(s) reinforce ${trade}, but do not become full takeoff authority by themselves.`
+        )
+      } else {
+        rollup.reinforcedSupport.push(`${schedule.label}: schedule support reinforces ${trade}, but no count is explicit.`)
+      }
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(schedule.evidence || [])], 6)
+    }
+  }
+
+  for (const pkg of args.estimatorPackages) {
+    const readbackTrade = resolvePackageReadbackTrade(pkg, args.detectedTrades)
+    const rollup = getOrCreateTradeRollup(rollups, readbackTrade)
+    rollup.areaGroups.push(classifyAreaGroup(`${pkg.roomGroup || ""} ${pkg.title}`).areaGroup)
+    rollup.phaseTypes.push(...phaseTypesForPackage(pkg))
+    if (pkg.quantitySummary) {
+      const text = `${pkg.title}: ${pkg.quantitySummary}.`
+      if (pkg.supportType === "quantity_backed") {
+        rollup.directQuantities.push(text)
+        rollup.supportLevel = "direct"
+      } else {
+        rollup.reinforcedSupport.push(`${text} This is ${pkg.supportType.replace(/_/g, " ")} support.`)
+        if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+      }
+    }
+    if (pkg.scheduleSummary) {
+      rollup.reinforcedSupport.push(`${pkg.title}: ${pkg.scheduleSummary} reinforces this trade.`)
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+    }
+    if (pkg.supportType === "scaled_prototype") {
+      rollup.reinforcedSupport.push(`${pkg.title}: repeated/prototype support is scale-oriented, not a measured total.`)
+      if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+    }
+    if (pkg.supportType === "elevation_only") {
+      rollup.confirmationNotes.push(`${pkg.title}: narrow elevation-only scope; do not read as full-room authority.`)
+    }
+    if (pkg.supportType === "demo_only") {
+      rollup.confirmationNotes.push(`${pkg.title}: removal-only scope; keep separate from install trade scope.`)
+    }
+    rollup.confirmationNotes.push(...(pkg.cautionNotes || []))
+    rollup.evidence = uniqEvidence([...rollup.evidence, ...(pkg.evidence || [])], 6)
+  }
+
+  if (args.repeatedSpaceSignals.length > 0 || args.prototypeSignals.length > 0) {
+    for (const trade of ["painting", "flooring", "wallcovering"] as PlanTradeFinding["trade"][]) {
+      const rollup = rollups.get(trade)
+      if (!rollup) continue
+      if (rollup.areaGroups.some((area) => /\bguest rooms\b/i.test(area))) {
+        rollup.reinforcedSupport.push("Repeated guest room / prototype support is scale-oriented for this trade, not measured room totals.")
+        rollup.confirmationNotes.push("Confirm actual repeat counts before pricing this trade as measured room quantity.")
+        if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+      }
+    }
+  }
+
+  for (const area of args.areaQuantityReadback) {
+    for (const trade of Array.from(rollups.keys()) as PlanTradeFinding["trade"][]) {
+      const rollup = rollups.get(trade)
+      if (!rollup) continue
+      if (rollup.areaGroups.includes(area.areaGroup)) {
+        rollup.evidence = uniqEvidence([...rollup.evidence, ...(area.evidence || [])], 6)
+      }
+    }
+  }
+
+  return Array.from(rollups.values())
+    .map((rollup) => {
+      const quantityNarration = uniqStrings(rollup.directQuantities, 8)
+      const supportNarration = uniqStrings(rollup.reinforcedSupport, 8)
+      const confirmationNotes = uniqStrings([...rollup.confirmationNotes, ...args.crossSheetConflictSignals], 8)
+      const phaseTypes = uniqStrings(rollup.phaseTypes, 8) as TradeScopeRollup["phaseTypes"]
+      const areaGroups = uniqStrings(rollup.areaGroups, 8)
+      const role: PlanExplanationReadback["tradeScopeReadback"][number]["role"] =
+        rollup.supportLevel === "direct"
+          ? "likely primary"
+          : rollup.supportLevel === "reinforced"
+            ? "supporting"
+            : "review only"
+      const supportLabel =
+        rollup.supportLevel === "direct"
+          ? "direct quantity-backed"
+          : rollup.supportLevel === "reinforced"
+            ? "reinforced"
+            : "review-only"
+      return {
+        trade: rollup.trade,
+        role,
+        supportLevel: rollup.supportLevel,
+        phaseTypes,
+        areaGroups,
+        narration: `${rollup.trade} reads as ${role} ${supportLabel} support${areaGroups.length ? ` around ${areaGroups.join(", ")}` : ""}${phaseTypes.length ? ` with ${describePhaseTypes(phaseTypes)} scope character` : ""}.`,
+        quantityNarration,
+        supportNarration,
+        confirmationNotes,
+        evidence: uniqEvidence(rollup.evidence, 6),
+      }
+    })
+    .filter(
+      (item) =>
+        item.quantityNarration.length > 0 ||
+        item.supportNarration.length > 0 ||
+        item.confirmationNotes.length > 0 ||
+        item.evidence.length > 0
+    )
+    .slice(0, 10)
+}
+
+function buildPlanExplanationReadback(args: {
+  sheetIndex: PlanSheetIndexEntry[]
+  analyses: PlanSheetAnalysis[]
+  detectedTrades: string[]
+  detectedRooms: string[]
+  estimatorPackages: PlanEstimatorPackage[]
+  crossSheetLinkSignals: string[]
+  scheduleReconciliationSignals: string[]
+  crossSheetConflictSignals: string[]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+  scopeAssist: { missingScopeFlags: string[]; suggestedAdditions: string[]; conflicts: string[] }
+}): PlanExplanationReadback {
+  const sheetNarration = args.sheetIndex
+    .map((sheet) =>
+      buildSheetReadback({
+        sheet,
+        analysis:
+          args.analyses.find(
+            (analysis) =>
+              analysis.uploadId === sheet.uploadId &&
+              analysis.sourcePageNumber === sheet.sourcePageNumber &&
+              analysis.pageNumber === sheet.pageNumber
+          ) ?? null,
+      })
+    )
+    .slice(0, 10)
+
+  const tradeNarration = buildTradeReadback({
+    detectedTrades: args.detectedTrades,
+    estimatorPackages: args.estimatorPackages,
+    analyses: args.analyses,
+  }).slice(0, 8)
+
+  const directlySupported = args.analyses
+    .flatMap((analysis) => analysis.tradeFindings || [])
+    .filter((finding) => typeof finding.quantity === "number" && finding.quantity > 0)
+    .map((finding) => {
+      const quantity = formatFindingQuantity(finding)
+      return {
+        text: `${finding.trade}: ${finding.label}${quantity ? ` (${quantity})` : ""} is directly supported by selected sheet evidence.`,
+        supportLevel: "direct" as const,
+        evidence: uniqEvidence(finding.evidence || [], 4),
+      }
+    })
+    .slice(0, 8)
+
+  const scheduleBacked = args.analyses
+    .flatMap((analysis) => analysis.schedules || [])
+    .map((schedule) => ({
+      text:
+        typeof schedule.quantity === "number" && schedule.quantity > 0
+          ? `${schedule.label} is schedule-backed with ${schedule.quantity.toLocaleString()} item(s); confirm applicability before treating it as a full takeoff.`
+          : `${schedule.label} is schedule-backed support, not a counted total by itself.`,
+      supportLevel: "reinforced" as const,
+      evidence: uniqEvidence(schedule.evidence || [], 4),
+    }))
+
+  const reinforcedByCrossSheet = [
+    ...args.crossSheetLinkSignals,
+    ...args.scheduleReconciliationSignals,
+    ...args.repeatedSpaceSignals,
+    ...args.prototypeSignals,
+  ]
+    .map((text) => ({
+      text,
+      supportLevel: "reinforced" as const,
+      evidence: [] as PlanEvidenceRef[],
+    }))
+    .concat(scheduleBacked)
+    .slice(0, 10)
+
+  const packageReadback = args.estimatorPackages.slice(0, 8).map((pkg) => {
+    const supportLevel = getPackageReadbackSupport(pkg.supportType)
+    const scopeText =
+      pkg.supportType === "elevation_only"
+        ? "Elevation-only evidence is narrow and should stay limited to the shown wall/wet-area surfaces."
+        : pkg.supportType === "demo_only"
+          ? "Demo/removal support stays separate from install authority."
+          : pkg.supportType === "scaled_prototype"
+            ? "Prototype support can guide repeated-room scaling, not measured totals."
+            : pkg.supportType === "schedule_backed"
+              ? "Schedule support reinforces the package but should not be treated as a complete counted takeoff unless quantities are explicit."
+              : pkg.supportType === "quantity_backed"
+                ? "Selected sheets provide direct quantity support for this package."
+                : "This is support context that still needs estimator review."
+
+    return {
+      key: pkg.key,
+      title: pkg.title,
+      narration: `${pkg.title}: ${pkg.primaryTrade} ${pkg.supportType.replace(/_/g, " ")} ${pkg.scopeBreadth} package${pkg.roomGroup ? ` around ${pkg.roomGroup}` : ""}. ${scopeText}`,
+      supportLevel,
+      evidence: uniqEvidence(pkg.evidence || [], 5),
+    }
+  })
+
+  const elevationFindings = args.analyses.flatMap((analysis) =>
+    (analysis.tradeFindings || []).filter((finding) => finding.category === "selected_elevation_area")
+  )
+  if (
+    elevationFindings.length > 0 &&
+    !packageReadback.some((item) => /Elevation-only evidence is narrow/i.test(item.narration))
+  ) {
+    packageReadback.push({
+      key: "elevation-only-readback",
+      title: "Elevation-only scope readback",
+      narration: "Elevation-only evidence is narrow and should stay limited to the shown wall/wet-area surfaces.",
+      supportLevel: "review",
+      evidence: uniqEvidence(collectTradeEvidence(elevationFindings), 5),
+    })
+  }
+
+  const hasDemoSheet = args.sheetIndex.some((sheet) =>
+    /\bdemo(?:lition)?\b|\bremoval\b/i.test(`${sheet.sheetNumber || ""} ${sheet.sheetTitle || ""} ${sheet.pageLabel || ""}`)
+  )
+  const demoFindings = args.analyses.flatMap((analysis) =>
+    (analysis.tradeFindings || []).filter(
+      (finding) =>
+        finding.category === "demolition_area" ||
+        /\bdemo(?:lition)?\b|\bremoval\b/i.test([finding.label, ...(finding.notes || [])].join(" "))
+    )
+  )
+  if (
+    (hasDemoSheet || demoFindings.length > 0) &&
+    !packageReadback.some((item) => /Demo\/removal support stays separate from install authority/i.test(item.narration))
+  ) {
+    packageReadback.push({
+      key: "demo-removal-readback",
+      title: "Demo / removal readback",
+      narration: "Demo/removal support stays separate from install authority.",
+      supportLevel: "review",
+      evidence: uniqEvidence(collectTradeEvidence(demoFindings), 5),
+    })
+  }
+
+  const needsConfirmation = uniqStrings(
+    [
+      ...args.scopeAssist.missingScopeFlags,
+      ...args.scopeAssist.suggestedAdditions,
+      ...args.scopeAssist.conflicts,
+      ...args.crossSheetConflictSignals,
+      ...args.estimatorPackages.flatMap((pkg) => pkg.cautionNotes || []),
+      hasDemoSheet || demoFindings.length > 0
+        ? "Removal/demo support does not create install authority by itself."
+        : "",
+    ],
+    10
+  ).map((text) => ({
+    text,
+    supportLevel: "review" as const,
+    evidence: [] as PlanEvidenceRef[],
+  }))
+
+  const areaNarration = uniqStrings(
+    [
+      ...args.detectedRooms.map((room) => `${room} appears in the selected sheet set.`),
+      ...args.estimatorPackages
+        .map((pkg) =>
+          pkg.roomGroup
+            ? `${pkg.roomGroup} is carried as a ${pkg.supportType.replace(/_/g, " ")} ${pkg.scopeBreadth} area/package.`
+            : ""
+        )
+        .filter(Boolean),
+    ],
+    10
+  )
+  const areaQuantityReadback = buildAreaQuantityReadback({
+    sheetIndex: args.sheetIndex,
+    analyses: args.analyses,
+    estimatorPackages: args.estimatorPackages,
+    detectedRooms: args.detectedRooms,
+    repeatedSpaceSignals: args.repeatedSpaceSignals,
+    prototypeSignals: args.prototypeSignals,
+  })
+  const tradeScopeReadback = buildTradeScopeReadback({
+    analyses: args.analyses,
+    detectedTrades: args.detectedTrades,
+    estimatorPackages: args.estimatorPackages,
+    areaQuantityReadback,
+    repeatedSpaceSignals: args.repeatedSpaceSignals,
+    prototypeSignals: args.prototypeSignals,
+    crossSheetConflictSignals: args.crossSheetConflictSignals,
+  })
+
+  const sheetTypes = uniqStrings(
+    sheetNarration.map((sheet) => sheet.sheetTitle || sheet.discipline).filter(Boolean),
+    5
+  )
+  const trades = args.detectedTrades.length ? args.detectedTrades.join(", ") : "limited trade"
+  const headline = `Selected sheets appear to show ${sheetTypes.length ? sheetTypes.join(", ") : "plan"} support for ${trades} scope${args.detectedRooms.length ? ` around ${args.detectedRooms.slice(0, 3).join(", ")}` : ""}.`
+
+  return {
+    headline,
+    sheetNarration,
+    tradeNarration,
+    tradeScopeReadback,
+    areaNarration,
+    areaQuantityReadback,
+    directlySupported,
+    reinforcedByCrossSheet,
+    needsConfirmation,
+    packageReadback,
+  }
+}
+
 export function buildMergedPlanIntelligence(args: {
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
@@ -2583,6 +3419,19 @@ export function buildMergedPlanIntelligence(args: {
     detectedTrades,
     detectedRooms,
   })
+  const planReadback = buildPlanExplanationReadback({
+    sheetIndex: args.sheetIndex,
+    analyses: normalizedAnalyses,
+    detectedTrades,
+    detectedRooms,
+    estimatorPackages,
+    crossSheetLinkSignals,
+    scheduleReconciliationSignals,
+    crossSheetConflictSignals,
+    repeatedSpaceSignals,
+    prototypeSignals,
+    scopeAssist,
+  })
 
   return {
     sheetIndex: args.sheetIndex,
@@ -2625,6 +3474,7 @@ export function buildMergedPlanIntelligence(args: {
     scalableScopeSignals,
     tradePackageSignals,
     bidAssistNotes,
+    planReadback,
     detectedSheets,
     notes,
     summary,

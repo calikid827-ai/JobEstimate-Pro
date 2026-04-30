@@ -210,6 +210,15 @@ test("finish plan plus finish schedule reinforce finish scope without inflating 
   assert(result.detectedTrades.includes("painting"))
   assert(!result.detectedTrades.includes("electrical"))
   assert(!result.detectedTrades.includes("plumbing"))
+  assert.match(result.planReadback?.headline || "", /finish plan/i)
+  assert(result.planReadback?.sheetNarration.some((item) => /Finish Plan/i.test(item.narration)))
+  assert(result.planReadback?.directlySupported.some((item) => /painting: Guest room paint wall area/i.test(item.text)))
+  assert(result.planReadback?.reinforcedByCrossSheet.some((item) => /schedule-backed support/i.test(item.text)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /1,800 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /schedule support reinforces/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting" && item.role === "likely primary" && /guest rooms/i.test(item.areaGroups.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting" && /1,800 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(!result.planReadback?.tradeNarration.some((item) => item.trade === "electrical" || item.trade === "plumbing"))
 })
 
 test("fixture schedules plus bath elevations reinforce wet-area context conservatively", () => {
@@ -330,6 +339,12 @@ test("fixture schedules plus bath elevations reinforce wet-area context conserva
   assert(result.detectedTrades.includes("plumbing"))
   assert(result.detectedTrades.includes("tile"))
   assert(!result.detectedTrades.includes("painting"))
+  assert(result.planReadback?.packageReadback.some((item) => /Elevation-only evidence is narrow/i.test(item.narration)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "bathrooms / wet areas" && /6 fixtures/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "bathrooms / wet areas" && /Elevation-only support stays limited/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "plumbing" && /6 fixtures/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "tile" && /Elevation-only evidence stays narrow/i.test(item.confirmationNotes.join(" "))))
+  assert(!result.planReadback?.packageReadback.some((item) => /full-room authority/i.test(item.narration)))
 })
 
 test("demolition and finish sheets reinforce removal context without manufacturing install authority", () => {
@@ -394,6 +409,10 @@ test("demolition and finish sheets reinforce removal context without manufacturi
   assert(result.crossSheetLinkSignals?.some((item) => /demolition sheets and finish\/install sheets reinforce removal context/i.test(item)))
   assert(result.crossSheetConflictSignals?.some((item) => /removal remains non-binding where measured demo support is thin/i.test(item)))
   assert(!result.notes?.some((item) => /install authority/i.test(item)))
+  assert(result.planReadback?.packageReadback.some((item) => /Demo\/removal support stays separate from install authority/i.test(item.narration)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "demo / removal zones" && /removal-only/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "flooring" && /finish_refresh/i.test(item.phaseTypes.join(" "))))
+  assert(result.planReadback?.needsConfirmation.some((item) => /Removal\/demo support does not create install authority/i.test(item.text)))
 })
 
 test("repeated room support across multiple selected sheets strengthens prototype synthesis", () => {
@@ -498,6 +517,11 @@ test("repeated room support across multiple selected sheets strengthens prototyp
   assert(result.prototypeSignals?.some((item) => /Prototype or typical room behavior is likely present/i.test(item)))
   assert(result.repeatedSpaceSignals?.length)
   assert(result.likelyRoomTypes?.includes("guest room"))
+  assert(result.planReadback?.reinforcedByCrossSheet.some((item) => /Prototype or typical room behavior/i.test(item.text)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /scale-oriented support/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /Confirm actual repeat counts/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.every((item) => !/measured totals/i.test(item.supportNarration.join(" ")) || /not measured totals/i.test(item.supportNarration.join(" "))))
+  assert(result.planReadback?.packageReadback.every((item) => !/measured totals/i.test(item.narration) || /not measured totals/i.test(item.narration)))
 })
 
 test("page and source provenance remains intact after cross-sheet synthesis", () => {
@@ -594,6 +618,10 @@ test("page and source provenance remains intact after cross-sheet synthesis", ()
   assert(result.evidence.summaryRefs.some((ref) => ref.uploadId === "upload-a" && ref.sourcePageNumber === 7 && ref.pageNumber === 4))
   assert(result.evidence.summaryRefs.some((ref) => ref.uploadId === "upload-a" && ref.sourcePageNumber === 8 && ref.pageNumber === 5))
   assert(result.crossSheetLinkSignals?.some((item) => /Selected finish schedules and finish\/elevation sheets reinforce finish scope/i.test(item)))
+  assert(result.planReadback?.sheetNarration.some((item) => item.sourcePageNumber === 7 && item.pageNumber === 4))
+  assert(result.planReadback?.reinforcedByCrossSheet.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
 })
 
 test("finish plan, finish schedule, and elevations synthesize into a quantity-backed finish package without inflating unrelated trades", () => {
@@ -672,6 +700,10 @@ test("finish plan, finish schedule, and elevations synthesize into a quantity-ba
   assert.equal(pkg?.scopeBreadth, "broad")
   assert.match(String(pkg?.quantitySummary || ""), /wall area/i)
   assert(pkg?.evidence.some((ref) => ref.sourcePageNumber === 1))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /1,400 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "bathrooms / wet areas" && /Elevation-only support stays limited/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting" && /finish_refresh/i.test(item.phaseTypes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "wallcovering" && /Elevation-only evidence stays narrow|narrow elevation-only scope/i.test(item.confirmationNotes.join(" "))))
   assert(!result.detectedTrades.includes("electrical"))
 })
 
@@ -728,6 +760,77 @@ test("repeated room support produces a prototype-backed guest room package when 
   assert.equal(pkg?.supportType, "scaled_prototype")
   assert.equal(pkg?.roomGroup, "guest room")
   assert(pkg?.executionNotes.some((item) => /prototype\/repeated-room support/i.test(item)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /not measured totals/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting" && /scale-oriented/i.test(item.supportNarration.join(" "))))
+})
+
+test("wallcovering trade readback stays distinct from generic paint and finish narration", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", discipline: "finish" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A9.2", sheetTitle: "Feature Wall Elevations", discipline: "interior" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A8.2",
+      sheetTitle: "Finish Schedule",
+      discipline: "finish",
+      schedules: [
+        {
+          scheduleType: "finish",
+          label: "Finish schedule",
+          quantity: null,
+          notes: ["Wallcovering finish matrix."],
+          confidence: 80,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", excerpt: "Wallcovering finish schedule" })],
+        },
+      ],
+      tradeFindings: [
+        {
+          trade: "wallcovering",
+          label: "Wallcovering finish referenced",
+          quantity: null,
+          unit: "unknown",
+          notes: ["Wallcovering finish schedule reference."],
+          confidence: 76,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.2", sheetTitle: "Finish Schedule", excerpt: "WC-1 finish reference" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A9.2",
+      sheetTitle: "Feature Wall Elevations",
+      discipline: "interior",
+      tradeFindings: [
+        {
+          trade: "wallcovering",
+          label: "Feature wall wallcovering elevation",
+          quantity: 210,
+          unit: "sqft",
+          category: "selected_elevation_area",
+          notes: ["Feature wall elevation only."],
+          confidence: 82,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A9.2", sheetTitle: "Feature Wall Elevations", excerpt: "Feature wall WC-1 elevation area" })],
+        },
+      ],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Install feature wallcovering.",
+    trade: "wallcovering",
+  })
+
+  const wallcovering = result.planReadback?.tradeScopeReadback.find((item) => item.trade === "wallcovering")
+  assert(wallcovering)
+  assert.equal(wallcovering.role, "likely primary")
+  assert(/210 sqft/i.test(wallcovering.quantityNarration.join(" ")))
+  assert(/narrow|Elevation-only/i.test(wallcovering.confirmationNotes.join(" ")))
+  assert(!result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting"))
 })
 
 test("wet-area package stays narrow when elevations and bath schedules support only vertical or bath-specific scope", () => {
@@ -786,6 +889,10 @@ test("wet-area package stays narrow when elevations and bath schedules support o
   assert.equal(pkg?.supportType, "elevation_only")
   assert.equal(pkg?.scopeBreadth, "narrow")
   assert(pkg?.cautionNotes.some((item) => /stay narrower than full-room/i.test(item)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "bathrooms / wet areas" && /96 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "bathrooms / wet areas" && /shown wall\/wet-area surfaces/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "tile" && /wet_area/.test(item.phaseTypes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "tile" && /full-room authority/i.test(item.confirmationNotes.join(" "))))
 })
 
 test("demo package stays separate from install-oriented finish packages", () => {
@@ -848,6 +955,80 @@ test("demo package stays separate from install-oriented finish packages", () => 
   assert(demoPkg?.cautionNotes.some((item) => /does not create install authority/i.test(item)))
   assert(finishPkg)
   assert.equal(finishPkg?.supportType, "quantity_backed")
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "demo / removal zones" && /640 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "demo / removal zones" && /does not create install quantity authority/i.test(item.scopeNotes.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "guest rooms" && /1,200 sqft/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "flooring" && /demo_removal/.test(item.phaseTypes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "flooring" && /separate from install authority/i.test(item.confirmationNotes.join(" "))))
+})
+
+test("corridor and common-area support stays separate from guest room interior quantity readback", () => {
+  const sheetIndex = [
+    makeSheet({ pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", discipline: "finish" }),
+    makeSheet({ pageNumber: 2, sheetNumber: "A8.3", sheetTitle: "Corridor Finish Plan", discipline: "finish" }),
+  ]
+
+  const analyses = [
+    makeAnalysis({
+      pageNumber: 1,
+      sheetNumber: "A8.1",
+      sheetTitle: "Finish Plan",
+      discipline: "finish",
+      rooms: [{ roomName: "Guest Room", confidence: 82, evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Guest room finish plan" })] }],
+      tradeFindings: [
+        {
+          trade: "painting",
+          label: "Guest room wall finish takeoff",
+          quantity: 900,
+          unit: "sqft",
+          category: "wall_area",
+          notes: ["Guest room interior walls."],
+          confidence: 84,
+          evidence: [makeEvidence({ sourcePageNumber: 1, pageNumber: 1, sheetNumber: "A8.1", sheetTitle: "Finish Plan", excerpt: "Guest room wall finish area" })],
+        },
+      ],
+    }),
+    makeAnalysis({
+      pageNumber: 2,
+      sheetNumber: "A8.3",
+      sheetTitle: "Corridor Finish Plan",
+      discipline: "finish",
+      rooms: [{ roomName: "Corridor", confidence: 86, evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.3", sheetTitle: "Corridor Finish Plan", excerpt: "Corridor finish plan" })] }],
+      tradeFindings: [
+        {
+          trade: "painting",
+          label: "Corridor wall finish takeoff",
+          quantity: 700,
+          unit: "sqft",
+          category: "corridor_area",
+          notes: ["Corridor walls only."],
+          confidence: 84,
+          evidence: [makeEvidence({ sourcePageNumber: 2, pageNumber: 2, sheetNumber: "A8.3", sheetTitle: "Corridor Finish Plan", excerpt: "Corridor wall finish area" })],
+        },
+      ],
+    }),
+  ]
+
+  const result = buildMergedPlanIntelligence({
+    sheetIndex,
+    analyses,
+    scopeText: "Paint guest rooms and corridors.",
+    trade: "painting",
+  })
+
+  const guestRoom = result.planReadback?.areaQuantityReadback.find((item) => item.areaGroup === "guest rooms")
+  const corridor = result.planReadback?.areaQuantityReadback.find((item) => item.areaGroup === "corridors")
+  assert(guestRoom)
+  assert(corridor)
+  assert(/900 sqft/i.test(guestRoom.quantityNarration.join(" ")))
+  assert(!/700 sqft/i.test(guestRoom.quantityNarration.join(" ")))
+  assert(/700 sqft/i.test(corridor.quantityNarration.join(" ")))
+  const painting = result.planReadback?.tradeScopeReadback.find((item) => item.trade === "painting")
+  assert(painting)
+  assert(/guest rooms/i.test(painting.areaGroups.join(" ")))
+  assert(/corridors/i.test(painting.areaGroups.join(" ")))
+  assert(/900 sqft/i.test(painting.quantityNarration.join(" ")))
+  assert(/700 sqft/i.test(painting.quantityNarration.join(" ")))
 })
 
 test("electrical reflected ceiling and schedule support synthesize into a ceiling-light-fixture package without crossing trades", () => {
@@ -919,4 +1100,12 @@ test("electrical reflected ceiling and schedule support synthesize into a ceilin
   assert.equal(pkg?.scopeBreadth, "narrow")
   assert(pkg?.cautionNotes.some((item) => /not inflate unrelated finish or drywall authority/i.test(item)))
   assert(!result.detectedTrades.includes("plumbing"))
+  assert(result.planReadback?.tradeNarration.some((item) => item.trade === "electrical" && /likely primary/i.test(item.confidence)))
+  assert(result.planReadback?.packageReadback.some((item) => /Ceiling \/ light \/ fixture package/i.test(item.narration)))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "ceiling / fixture zones" && /18 devices/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "ceiling / fixture zones" && /18.*scheduled item/i.test(item.quantityNarration.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "electrical" && /ceiling_fixture/.test(item.phaseTypes.join(" "))))
+  assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "electrical" && /18 devices/i.test(item.quantityNarration.join(" "))))
+  assert(!result.planReadback?.tradeScopeReadback.some((item) => item.trade === "plumbing"))
+  assert(!result.planReadback?.tradeNarration.some((item) => item.trade === "plumbing"))
 })

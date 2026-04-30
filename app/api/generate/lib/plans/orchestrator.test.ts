@@ -367,6 +367,32 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
     assert(browserResult && serverResult && fallbackResult)
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(serverResult))
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(fallbackResult))
+    assert.deepEqual(browserResult.planReadback?.headline, serverResult.planReadback?.headline)
+    assert.deepEqual(browserResult.planReadback?.headline, fallbackResult.planReadback?.headline)
+    assert.deepEqual(
+      browserResult.planReadback?.packageReadback.map((item) => item.narration),
+      serverResult.planReadback?.packageReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.packageReadback.map((item) => item.narration),
+      fallbackResult.planReadback?.packageReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.areaQuantityReadback.map((item) => item.narration),
+      serverResult.planReadback?.areaQuantityReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.areaQuantityReadback.map((item) => item.narration),
+      fallbackResult.planReadback?.areaQuantityReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.tradeScopeReadback.map((item) => item.narration),
+      serverResult.planReadback?.tradeScopeReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.tradeScopeReadback.map((item) => item.narration),
+      fallbackResult.planReadback?.tradeScopeReadback.map((item) => item.narration)
+    )
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(serverResult))
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(fallbackResult))
     assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(serverResult))
