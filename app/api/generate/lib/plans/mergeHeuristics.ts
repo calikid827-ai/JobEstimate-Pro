@@ -2894,6 +2894,234 @@ function buildTradeScopeReadback(args: {
     .slice(0, 10)
 }
 
+type GroupedScopeRollup = {
+  groupKey: PlanExplanationReadback["groupedScopeReadback"][number]["groupKey"]
+  title: string
+  trades: PlanTradeFinding["trade"][]
+  areaGroups: string[]
+  scopeCharacter: PlanExplanationReadback["groupedScopeReadback"][number]["scopeCharacter"]
+  directSupport: string[]
+  reinforcedSupport: string[]
+  confirmationNotes: string[]
+  evidence: PlanEvidenceRef[]
+  supportLevel: PlanReadbackSupportLevel
+}
+
+function classifyGroupedScope(
+  trade: PlanExplanationReadback["tradeScopeReadback"][number]
+): Pick<GroupedScopeRollup, "groupKey" | "title"> {
+  const text = [
+    trade.trade,
+    ...trade.phaseTypes,
+    ...trade.areaGroups,
+    trade.narration,
+    ...trade.confirmationNotes,
+  ].join(" ")
+
+  if (/\bdemo_removal\b|\bdemo\b|\bremoval\b/i.test(text)) {
+    return { groupKey: "demo_removal", title: "Demo / Removal Scope" }
+  }
+  if (
+    /\b(painting|wallcovering|flooring)\b/i.test(text) &&
+    !/\bbathrooms? \/ wet areas\b|\bbath\b|\bshower\b|\bplumbing\b|\btile\b/i.test(text)
+  ) {
+    return { groupKey: "guest_room_finish", title: "Guest Room / Finish Refresh Scope" }
+  }
+  if (/\bceiling_fixture\b|\bceiling \/ fixture zones\b|\belectrical\b|\blight\b|\bdevice\b/i.test(text)) {
+    return { groupKey: "ceiling_fixture", title: "Ceiling / Light / Fixture Scope" }
+  }
+  if (/\bcorridor_common\b|\bcorridors?\b|\bcommon areas?\b/i.test(text)) {
+    return { groupKey: "corridor_common", title: "Corridor / Common-Area Scope" }
+  }
+  if (/\bwet_area\b|\bbathrooms? \/ wet areas\b|\bshower\b|\bplumbing\b|\btile\b/i.test(text)) {
+    return { groupKey: "wet_area", title: "Wet-Area / Bathroom Scope" }
+  }
+  if (/\bguest_room\b|\bguest rooms?\b|\bfinish_refresh\b|\bpainting\b|\bwallcovering\b|\bflooring\b/i.test(text)) {
+    return { groupKey: "guest_room_finish", title: "Guest Room / Finish Refresh Scope" }
+  }
+  return { groupKey: "general_scope", title: "General / Mixed Scope" }
+}
+
+function getOrCreateGroupedScope(
+  rollups: Map<string, GroupedScopeRollup>,
+  group: Pick<GroupedScopeRollup, "groupKey" | "title">
+): GroupedScopeRollup {
+  const existing = rollups.get(group.groupKey)
+  if (existing) return existing
+  const created: GroupedScopeRollup = {
+    groupKey: group.groupKey,
+    title: group.title,
+    trades: [],
+    areaGroups: [],
+    scopeCharacter: [],
+    directSupport: [],
+    reinforcedSupport: [],
+    confirmationNotes: [],
+    evidence: [],
+    supportLevel: "review",
+  }
+  rollups.set(group.groupKey, created)
+  return created
+}
+
+function groupedScopeForAreaGroup(areaGroup: string): Pick<GroupedScopeRollup, "groupKey" | "title"> {
+  if (/guest rooms?/i.test(areaGroup)) {
+    return { groupKey: "guest_room_finish", title: "Guest Room / Finish Refresh Scope" }
+  }
+  if (/bathrooms? \/ wet areas|wet areas?/i.test(areaGroup)) {
+    return { groupKey: "wet_area", title: "Wet-Area / Bathroom Scope" }
+  }
+  if (/corridors?|common areas?/i.test(areaGroup)) {
+    return { groupKey: "corridor_common", title: "Corridor / Common-Area Scope" }
+  }
+  if (/ceiling \/ fixture zones/i.test(areaGroup)) {
+    return { groupKey: "ceiling_fixture", title: "Ceiling / Light / Fixture Scope" }
+  }
+  if (/demo \/ removal zones/i.test(areaGroup)) {
+    return { groupKey: "demo_removal", title: "Demo / Removal Scope" }
+  }
+  return { groupKey: "general_scope", title: "General / Mixed Scope" }
+}
+
+function buildGroupedScopeReadback(args: {
+  tradeScopeReadback: PlanExplanationReadback["tradeScopeReadback"]
+  areaQuantityReadback: PlanExplanationReadback["areaQuantityReadback"]
+  crossSheetLinkSignals: string[]
+  scheduleReconciliationSignals: string[]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+  crossSheetConflictSignals: string[]
+}): PlanExplanationReadback["groupedScopeReadback"] {
+  const rollups = new Map<string, GroupedScopeRollup>()
+
+  for (const trade of args.tradeScopeReadback) {
+    const targetGroups = trade.areaGroups.length
+      ? trade.areaGroups.map(groupedScopeForAreaGroup)
+      : [classifyGroupedScope(trade)]
+    for (const group of targetGroups) {
+      const rollup = getOrCreateGroupedScope(rollups, group)
+      rollup.trades.push(trade.trade)
+      rollup.areaGroups.push(...trade.areaGroups.filter((area) => groupedScopeForAreaGroup(area).groupKey === group.groupKey))
+      rollup.scopeCharacter.push(...trade.phaseTypes)
+      rollup.reinforcedSupport.push(...trade.supportNarration)
+      rollup.confirmationNotes.push(...trade.confirmationNotes)
+      rollup.evidence = uniqEvidence([...rollup.evidence, ...(trade.evidence || [])], 8)
+      if (trade.supportLevel === "direct") {
+        rollup.supportLevel = "direct"
+      } else if (trade.supportLevel === "reinforced" && rollup.supportLevel !== "direct") {
+        rollup.supportLevel = "reinforced"
+      }
+    }
+  }
+
+  for (const area of args.areaQuantityReadback) {
+    const group =
+      area.areaType === "guest_room"
+        ? { groupKey: "guest_room_finish" as const, title: "Guest Room / Finish Refresh Scope" }
+        : area.areaType === "bathroom_wet_area"
+          ? { groupKey: "wet_area" as const, title: "Wet-Area / Bathroom Scope" }
+          : area.areaType === "corridor" || area.areaType === "common_area"
+            ? { groupKey: "corridor_common" as const, title: "Corridor / Common-Area Scope" }
+            : area.areaType === "ceiling_fixture_zone"
+              ? { groupKey: "ceiling_fixture" as const, title: "Ceiling / Light / Fixture Scope" }
+              : area.areaType === "demo_removal_zone"
+                ? { groupKey: "demo_removal" as const, title: "Demo / Removal Scope" }
+                : { groupKey: "general_scope" as const, title: "General / Mixed Scope" }
+    const rollup = getOrCreateGroupedScope(rollups, group)
+    rollup.areaGroups.push(area.areaGroup)
+    rollup.directSupport.push(...(area.supportLevel === "direct" ? area.quantityNarration : []))
+    rollup.reinforcedSupport.push(...(area.supportLevel !== "direct" ? area.quantityNarration : []))
+    rollup.confirmationNotes.push(...area.scopeNotes)
+    rollup.evidence = uniqEvidence([...rollup.evidence, ...(area.evidence || [])], 8)
+    if (area.supportLevel === "direct") {
+      rollup.supportLevel = "direct"
+    } else if (area.supportLevel === "reinforced" && rollup.supportLevel !== "direct") {
+      rollup.supportLevel = "reinforced"
+    }
+  }
+
+  const reinforceGroup = (pattern: RegExp, group: Pick<GroupedScopeRollup, "groupKey" | "title">, text: string) => {
+    if (!pattern.test(text)) return
+    const rollup = getOrCreateGroupedScope(rollups, group)
+    rollup.reinforcedSupport.push(text)
+    if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+  }
+
+  for (const signal of [...args.crossSheetLinkSignals, ...args.scheduleReconciliationSignals]) {
+    reinforceGroup(/finish|paint|wallcover|floor/i, { groupKey: "guest_room_finish", title: "Guest Room / Finish Refresh Scope" }, signal)
+    reinforceGroup(/wet[-\s]?area|bath|fixture|plumbing|tile/i, { groupKey: "wet_area", title: "Wet-Area / Bathroom Scope" }, signal)
+    reinforceGroup(/ceiling|electrical|light|fixture/i, { groupKey: "ceiling_fixture", title: "Ceiling / Light / Fixture Scope" }, signal)
+    reinforceGroup(/corridor|common/i, { groupKey: "corridor_common", title: "Corridor / Common-Area Scope" }, signal)
+    reinforceGroup(/demo|removal/i, { groupKey: "demo_removal", title: "Demo / Removal Scope" }, signal)
+  }
+
+  if (args.repeatedSpaceSignals.length > 0 || args.prototypeSignals.length > 0) {
+    const rollup = getOrCreateGroupedScope(rollups, {
+      groupKey: "guest_room_finish",
+      title: "Guest Room / Finish Refresh Scope",
+    })
+    rollup.reinforcedSupport.push("Repeated guest room / prototype behavior supports scale-oriented grouping, not measured totals.")
+    rollup.confirmationNotes.push("Confirm repeat counts before treating this grouped scope as measured room totals.")
+    if (rollup.supportLevel !== "direct") rollup.supportLevel = "reinforced"
+  }
+
+  for (const conflict of args.crossSheetConflictSignals) {
+    const group = /demo|removal/i.test(conflict)
+      ? { groupKey: "demo_removal" as const, title: "Demo / Removal Scope" }
+      : /wet|bath|fixture|tile/i.test(conflict)
+        ? { groupKey: "wet_area" as const, title: "Wet-Area / Bathroom Scope" }
+        : { groupKey: "general_scope" as const, title: "General / Mixed Scope" }
+    getOrCreateGroupedScope(rollups, group).confirmationNotes.push(conflict)
+  }
+
+  const order: PlanExplanationReadback["groupedScopeReadback"][number]["groupKey"][] = [
+    "guest_room_finish",
+    "wet_area",
+    "corridor_common",
+    "ceiling_fixture",
+    "demo_removal",
+    "general_scope",
+  ]
+
+  return Array.from(rollups.values())
+    .sort((a, b) => order.indexOf(a.groupKey) - order.indexOf(b.groupKey))
+    .map((rollup) => {
+      const trades = uniqStrings(rollup.trades, 8) as PlanTradeFinding["trade"][]
+      const areaGroups = uniqStrings(rollup.areaGroups, 8)
+      const scopeCharacter = uniqStrings(rollup.scopeCharacter, 8) as GroupedScopeRollup["scopeCharacter"]
+      const directSupport = uniqStrings(rollup.directSupport, 8)
+      const reinforcedSupport = uniqStrings(rollup.reinforcedSupport, 8)
+      const confirmationNotes = uniqStrings(rollup.confirmationNotes, 8)
+      const role: PlanExplanationReadback["groupedScopeReadback"][number]["role"] =
+        rollup.supportLevel === "direct"
+          ? "primary"
+          : rollup.supportLevel === "reinforced"
+            ? "supporting"
+            : "review only"
+      return {
+        groupKey: rollup.groupKey,
+        title: rollup.title,
+        role,
+        supportLevel: rollup.supportLevel,
+        scopeCharacter,
+        trades,
+        areaGroups,
+        narration: `${rollup.title} reads as ${role} ${rollup.supportLevel} support${trades.length ? ` with ${trades.join(", ")}` : ""}${areaGroups.length ? ` around ${areaGroups.join(", ")}` : ""}.`,
+        directSupport,
+        reinforcedSupport,
+        confirmationNotes,
+        evidence: uniqEvidence(rollup.evidence, 8),
+      }
+    })
+    .filter(
+      (item) =>
+        item.trades.length > 0 ||
+        item.directSupport.length > 0 ||
+        item.reinforcedSupport.length > 0 ||
+        item.confirmationNotes.length > 0
+    )
+}
+
 function buildPlanExplanationReadback(args: {
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
@@ -3077,6 +3305,15 @@ function buildPlanExplanationReadback(args: {
     prototypeSignals: args.prototypeSignals,
     crossSheetConflictSignals: args.crossSheetConflictSignals,
   })
+  const groupedScopeReadback = buildGroupedScopeReadback({
+    tradeScopeReadback,
+    areaQuantityReadback,
+    crossSheetLinkSignals: args.crossSheetLinkSignals,
+    scheduleReconciliationSignals: args.scheduleReconciliationSignals,
+    repeatedSpaceSignals: args.repeatedSpaceSignals,
+    prototypeSignals: args.prototypeSignals,
+    crossSheetConflictSignals: args.crossSheetConflictSignals,
+  })
 
   const sheetTypes = uniqStrings(
     sheetNarration.map((sheet) => sheet.sheetTitle || sheet.discipline).filter(Boolean),
@@ -3090,6 +3327,7 @@ function buildPlanExplanationReadback(args: {
     sheetNarration,
     tradeNarration,
     tradeScopeReadback,
+    groupedScopeReadback,
     areaNarration,
     areaQuantityReadback,
     directlySupported,

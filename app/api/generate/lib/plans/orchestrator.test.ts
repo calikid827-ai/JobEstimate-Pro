@@ -393,6 +393,14 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       browserResult.planReadback?.tradeScopeReadback.map((item) => item.narration),
       fallbackResult.planReadback?.tradeScopeReadback.map((item) => item.narration)
     )
+    assert.deepEqual(
+      browserResult.planReadback?.groupedScopeReadback.map((item) => item.narration),
+      serverResult.planReadback?.groupedScopeReadback.map((item) => item.narration)
+    )
+    assert.deepEqual(
+      browserResult.planReadback?.groupedScopeReadback.map((item) => item.narration),
+      fallbackResult.planReadback?.groupedScopeReadback.map((item) => item.narration)
+    )
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(serverResult))
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(fallbackResult))
     assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(serverResult))

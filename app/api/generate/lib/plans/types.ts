@@ -304,11 +304,42 @@ export type PlanAreaQuantityReadback = {
   evidence: PlanEvidenceRef[]
 }
 
+export type PlanGroupedScopeReadback = {
+  groupKey:
+    | "guest_room_finish"
+    | "wet_area"
+    | "corridor_common"
+    | "ceiling_fixture"
+    | "demo_removal"
+    | "general_scope"
+  title: string
+  role: "primary" | "supporting" | "review only"
+  supportLevel: PlanReadbackSupportLevel
+  scopeCharacter: Array<
+    | "finish_refresh"
+    | "install"
+    | "demo_removal"
+    | "wet_area"
+    | "ceiling_fixture"
+    | "corridor_common"
+    | "guest_room"
+    | "mixed_review"
+  >
+  trades: PlanTradeFinding["trade"][]
+  areaGroups: string[]
+  narration: string
+  directSupport: string[]
+  reinforcedSupport: string[]
+  confirmationNotes: string[]
+  evidence: PlanEvidenceRef[]
+}
+
 export type PlanExplanationReadback = {
   headline: string
   sheetNarration: PlanSheetReadback[]
   tradeNarration: PlanTradeReadback[]
   tradeScopeReadback: PlanTradeScopeReadback[]
+  groupedScopeReadback: PlanGroupedScopeReadback[]
   areaNarration: string[]
   areaQuantityReadback: PlanAreaQuantityReadback[]
   directlySupported: PlanReadbackItem[]

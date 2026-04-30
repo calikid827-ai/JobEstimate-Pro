@@ -229,6 +229,29 @@ type PlanIntelligence = {
         confidence: number
       }>
     }>
+    groupedScopeReadback: Array<{
+      groupKey: string
+      title: string
+      role: "primary" | "supporting" | "review only"
+      supportLevel: "direct" | "reinforced" | "review"
+      scopeCharacter: string[]
+      trades: string[]
+      areaGroups: string[]
+      narration: string
+      directSupport: string[]
+      reinforcedSupport: string[]
+      confirmationNotes: string[]
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
     areaNarration: string[]
     areaQuantityReadback: Array<{
       areaGroup: string
@@ -509,6 +532,36 @@ const normalizePlanReadback = (value: unknown): PlanReadbackView | undefined => 
             }
           })
           .filter((item): item is PlanReadbackView["tradeScopeReadback"][number] => item !== null)
+      : [],
+    groupedScopeReadback: Array.isArray(record.groupedScopeReadback)
+      ? record.groupedScopeReadback
+          .map((item: unknown) => {
+            const group = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const groupKey = typeof group?.groupKey === "string" ? group.groupKey.trim() : ""
+            const title = typeof group?.title === "string" ? group.title.trim() : ""
+            const narration = typeof group?.narration === "string" ? group.narration.trim() : ""
+            if (!groupKey || !title || !narration) return null
+            return {
+              groupKey,
+              title,
+              role:
+                group?.role === "primary" ||
+                group?.role === "supporting" ||
+                group?.role === "review only"
+                  ? group.role
+                  : "review only",
+              supportLevel: normalizePlanReadbackSupport(group?.supportLevel),
+              scopeCharacter: normalizePlanStrings(group?.scopeCharacter),
+              trades: normalizePlanStrings(group?.trades),
+              areaGroups: normalizePlanStrings(group?.areaGroups),
+              narration,
+              directSupport: normalizePlanStrings(group?.directSupport),
+              reinforcedSupport: normalizePlanStrings(group?.reinforcedSupport),
+              confirmationNotes: normalizePlanStrings(group?.confirmationNotes),
+              evidence: normalizePlanEvidence(group?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["groupedScopeReadback"][number] => item !== null)
       : [],
     areaNarration: normalizePlanStrings(record.areaNarration),
     areaQuantityReadback: Array.isArray(record.areaQuantityReadback)
@@ -9879,6 +9932,62 @@ function PlanIntelligenceCard({
           items={readback.needsConfirmation}
           tone="warning"
         />
+
+        {readback.groupedScopeReadback.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Cross-Trade Scope Groups
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.groupedScopeReadback.slice(0, 6).map((group) => (
+                <div
+                  key={`grouped-scope-${group.groupKey}`}
+                  style={{
+                    padding: 10,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    background: "#fff",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#1f2937",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    {group.title} • {group.role} • {group.supportLevel} support
+                  </div>
+                  <div style={{ marginTop: 3 }}>{group.narration}</div>
+                  {group.trades.length > 0 && (
+                    <div style={{ marginTop: 4, color: "#4b5563" }}>
+                      Trades: {group.trades.slice(0, 5).join(", ")}
+                    </div>
+                  )}
+                  {group.areaGroups.length > 0 && (
+                    <div style={{ marginTop: 2, color: "#4b5563" }}>
+                      Areas: {group.areaGroups.slice(0, 5).join(", ")}
+                    </div>
+                  )}
+                  {[...group.directSupport.slice(0, 3), ...group.reinforcedSupport.slice(0, 2)].length > 0 && (
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {[...group.directSupport.slice(0, 3), ...group.reinforcedSupport.slice(0, 2)].map((item, index) => (
+                        <li key={`grouped-scope-line-${group.groupKey}-${index}`}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {group.confirmationNotes.length > 0 && (
+                    <div style={{ marginTop: 6, color: "#92400e" }}>
+                      {group.confirmationNotes.slice(0, 2).join(" ")}
+                    </div>
+                  )}
+                  {sourceText(group.evidence) && (
+                    <div style={{ marginTop: 4, color: "#6b7280" }}>
+                      Sources: {sourceText(group.evidence)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {readback.areaQuantityReadback.length > 0 && (
           <div style={{ marginTop: 12 }}>
