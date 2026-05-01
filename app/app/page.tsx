@@ -84,6 +84,7 @@ import {
   getEstimateSectionTreatmentLabel,
   resolveCanonicalEstimateOutput,
 } from "./lib/estimate-sections"
+import { buildPlanPricingCarryReadback } from "./lib/plan-pricing-carry"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -10373,6 +10374,10 @@ function PlanAwareEstimatorReadbackCard({
   const readback = planIntelligence?.planReadback
   if (!readback) return null
 
+  const pricingCarryReadback = buildPlanPricingCarryReadback({
+    planReadback: readback,
+    estimateSections,
+  })
   const pricingSections = (estimateSections || [])
     .filter((section) => section.estimatorTreatment === "section_row")
     .slice(0, 6)
@@ -10380,23 +10385,41 @@ function PlanAwareEstimatorReadbackCard({
     .filter((section) => section.estimatorTreatment === "embedded_burden")
     .slice(0, 3)
   const keyFlow = readback.estimatorFlowReadback.slice(0, 7)
-  const directCount = readback.directlySupported.length
-  const reinforcedCount = readback.reinforcedByCrossSheet.length
-  const confirmationCount = readback.scopeGapReadback.filter(
-    (gap) => gap.status !== "likely_ready"
-  ).length
+  const directCarryCount = pricingCarryReadback.filter((item) => item.status === "directly_carried").length
+  const reinforcedCarryCount = pricingCarryReadback.filter((item) => item.status === "reinforced_or_embedded").length
+  const notCarriedCount = pricingCarryReadback.filter((item) => item.status === "not_carried_yet").length
+  const confirmationCount = pricingCarryReadback.filter((item) => item.status === "confirmation_needed").length
 
   if (
     keyFlow.length === 0 &&
     readback.areaQuantityReadback.length === 0 &&
     readback.tradeScopeReadback.length === 0 &&
-    pricingSections.length === 0
+    pricingCarryReadback.length === 0
   ) {
     return null
   }
 
   const moneyText = (value: number) =>
     `$${Math.round(Number(value || 0)).toLocaleString()}`
+  const sourceText = (evidence: Array<{ sourcePageNumber: number; pageNumber: number; sheetNumber: string | null; sheetTitle: string | null }>) =>
+    evidence.length > 0
+      ? Array.from(
+          new Set(
+            evidence.map((ref) =>
+              `${ref.sheetNumber || ref.sheetTitle || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`
+            )
+          )
+        )
+          .slice(0, 3)
+          .join("; ")
+      : ""
+  const statusLabel = (status: string) => status.replace(/_/g, " ")
+  const carryTone = (status: string) =>
+    status === "directly_carried"
+      ? { border: "#bfdbfe", bg: "#fff", color: "#1d4ed8" }
+      : status === "reinforced_or_embedded"
+        ? { border: "#dbeafe", bg: "#f8fbff", color: "#1d4ed8" }
+        : { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
 
   return (
     <div
@@ -10452,18 +10475,76 @@ function PlanAwareEstimatorReadbackCard({
         }}
       >
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
-          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Direct Support</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{directCount}</div>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Directly Carried</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{directCarryCount}</div>
         </div>
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
-          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Reinforced Support</div>
-          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{reinforcedCount}</div>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Reinforced / Embedded</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{reinforcedCarryCount}</div>
+        </div>
+        <div style={{ padding: 10, border: "1px solid #fdba74", borderRadius: 8, background: "#fff7ed" }}>
+          <div style={{ fontSize: 11, color: "#92400e", fontWeight: 800 }}>Not Carried Yet</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#92400e" }}>{notCarriedCount}</div>
         </div>
         <div style={{ padding: 10, border: "1px solid #fdba74", borderRadius: 8, background: "#fff7ed" }}>
           <div style={{ fontSize: 11, color: "#92400e", fontWeight: 800 }}>Needs Confirmation</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: "#92400e" }}>{confirmationCount}</div>
         </div>
       </div>
+
+      {pricingCarryReadback.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
+            Pricing Carry Readback
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {pricingCarryReadback.slice(0, 10).map((item) => {
+              const tone = carryTone(item.status)
+              return (
+                <div
+                  key={`pricing-carry-readback-${item.key}`}
+                  style={{
+                    padding: 10,
+                    border: `1px solid ${tone.border}`,
+                    borderRadius: 8,
+                    background: tone.bg,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#1f2937",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#111827" }}>
+                    {item.title} - {statusLabel(item.status)}
+                  </div>
+                  <div style={{ marginTop: 3 }}>{item.narration}</div>
+                  {(item.areaGroups.length > 0 || item.scopeGroupKey) && (
+                    <div style={{ marginTop: 4, color: "#4b5563" }}>
+                      {item.scopeGroupKey ? `Scope group: ${item.scopeGroupKey.replace(/_/g, " ")}` : ""}
+                      {item.scopeGroupKey && item.areaGroups.length > 0 ? " - " : ""}
+                      {item.areaGroups.length > 0 ? `Areas: ${item.areaGroups.slice(0, 4).join(", ")}` : ""}
+                    </div>
+                  )}
+                  {item.quantity != null && item.unit && (
+                    <div style={{ marginTop: 2, color: "#4b5563" }}>
+                      Carried quantity: {Number(item.quantity).toLocaleString()} {item.unit.replace(/_/g, " ")}
+                    </div>
+                  )}
+                  {sourceText(item.evidence) && (
+                    <div style={{ marginTop: 4, color: "#6b7280" }}>
+                      Sources: {sourceText(item.evidence)}
+                    </div>
+                  )}
+                  {item.status !== "directly_carried" && (
+                    <div style={{ marginTop: 5, color: tone.color }}>
+                      This item should not raise pricing confidence until the estimator confirms the missing or narrow support.
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {pricingSections.length > 0 && (
         <div style={{ marginTop: 12 }}>
