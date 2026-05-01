@@ -334,12 +334,45 @@ export type PlanGroupedScopeReadback = {
   evidence: PlanEvidenceRef[]
 }
 
+export type PlanScopeGapReadback = {
+  gapKey: string
+  title: string
+  status:
+    | "likely_ready"
+    | "needs_confirmation"
+    | "missing_or_incomplete"
+    | "risky_assumption"
+  scopeGroupKey: PlanGroupedScopeReadback["groupKey"] | null
+  trades: PlanTradeFinding["trade"][]
+  areaGroups: string[]
+  narration: string
+  confirmationPrompt: string
+  evidence: PlanEvidenceRef[]
+}
+
+export type PlanEstimatorFlowReadback = {
+  stepKey:
+    | "selected_sheets"
+    | "affected_spaces"
+    | "trade_paths"
+    | "scope_groups"
+    | "supported_quantities"
+    | "pricing_carry"
+    | "confirmations"
+  title: string
+  narration: string
+  supportLevel: PlanReadbackSupportLevel
+  evidence: PlanEvidenceRef[]
+}
+
 export type PlanExplanationReadback = {
   headline: string
+  estimatorFlowReadback: PlanEstimatorFlowReadback[]
   sheetNarration: PlanSheetReadback[]
   tradeNarration: PlanTradeReadback[]
   tradeScopeReadback: PlanTradeScopeReadback[]
   groupedScopeReadback: PlanGroupedScopeReadback[]
+  scopeGapReadback: PlanScopeGapReadback[]
   areaNarration: string[]
   areaQuantityReadback: PlanAreaQuantityReadback[]
   directlySupported: PlanReadbackItem[]

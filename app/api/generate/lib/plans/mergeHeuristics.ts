@@ -3122,6 +3122,390 @@ function buildGroupedScopeReadback(args: {
     )
 }
 
+function makeScopeGap(args: {
+  gapKey: string
+  title: string
+  status: PlanExplanationReadback["scopeGapReadback"][number]["status"]
+  scopeGroupKey: PlanExplanationReadback["scopeGapReadback"][number]["scopeGroupKey"]
+  trades?: PlanTradeFinding["trade"][]
+  areaGroups?: string[]
+  narration: string
+  confirmationPrompt: string
+  evidence?: PlanEvidenceRef[]
+}): PlanExplanationReadback["scopeGapReadback"][number] {
+  return {
+    gapKey: args.gapKey,
+    title: args.title,
+    status: args.status,
+    scopeGroupKey: args.scopeGroupKey,
+    trades: uniqStrings(args.trades || [], 8) as PlanTradeFinding["trade"][],
+    areaGroups: uniqStrings(args.areaGroups || [], 8),
+    narration: args.narration,
+    confirmationPrompt: args.confirmationPrompt,
+    evidence: uniqEvidence(args.evidence || [], 8),
+  }
+}
+
+function buildScopeGapReadback(args: {
+  groupedScopeReadback: PlanExplanationReadback["groupedScopeReadback"]
+  tradeScopeReadback: PlanExplanationReadback["tradeScopeReadback"]
+  areaQuantityReadback: PlanExplanationReadback["areaQuantityReadback"]
+  scopeAssist: { missingScopeFlags: string[]; suggestedAdditions: string[]; conflicts: string[] }
+  crossSheetConflictSignals: string[]
+  repeatedSpaceSignals: string[]
+  prototypeSignals: string[]
+}): PlanExplanationReadback["scopeGapReadback"] {
+  const gaps: PlanExplanationReadback["scopeGapReadback"] = []
+  const pushGap = (gap: PlanExplanationReadback["scopeGapReadback"][number]) => {
+    if (!gap.narration.trim() || gaps.some((item) => item.gapKey === gap.gapKey)) return
+    gaps.push(gap)
+  }
+
+  for (const group of args.groupedScopeReadback) {
+    const confirmationText = [...group.confirmationNotes, ...group.reinforcedSupport].join(" ")
+    if (group.supportLevel === "direct" && group.confirmationNotes.length === 0) {
+      pushGap(makeScopeGap({
+        gapKey: `ready-${group.groupKey}`,
+        title: `${group.title} looks price-ready`,
+        status: "likely_ready",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: `${group.title} has direct selected-sheet support and no major confirmation warning in the current readback.`,
+        confirmationPrompt: "Price conservatively from the supported quantities, while preserving final owner/protection authority.",
+        evidence: group.evidence,
+      }))
+      continue
+    }
+
+    if (group.supportLevel === "direct") {
+      pushGap(makeScopeGap({
+        gapKey: `confirm-${group.groupKey}`,
+        title: `${group.title} needs estimator confirmation`,
+        status: "needs_confirmation",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: `${group.title} has direct support, but the selected sheets still leave confirmation items visible.`,
+        confirmationPrompt: group.confirmationNotes[0] || "Confirm scope limits before pricing beyond directly supported quantities.",
+        evidence: group.evidence,
+      }))
+    } else {
+      pushGap(makeScopeGap({
+        gapKey: `incomplete-${group.groupKey}`,
+        title: `${group.title} is under-supported`,
+        status: "missing_or_incomplete",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: `${group.title} is carried by ${group.supportLevel} support rather than direct quantity authority.`,
+        confirmationPrompt: group.reinforcedSupport[0] || group.confirmationNotes[0] || "Confirm scope extent and quantities before treating this as a full takeoff.",
+        evidence: group.evidence,
+      }))
+    }
+
+    if (/elevation-only|shown wall\/wet-area|full-room authority|narrow/i.test(confirmationText)) {
+      pushGap(makeScopeGap({
+        gapKey: `narrow-${group.groupKey}`,
+        title: `${group.title} has narrow evidence`,
+        status: "risky_assumption",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: "Narrow/elevation-only support should not be expanded into broader room or trade authority.",
+        confirmationPrompt: "Confirm the actual wall, floor, full-room, or full-trade extent before pricing outside the shown surfaces.",
+        evidence: group.evidence,
+      }))
+    }
+
+    if (/schedule|scheduled item|count context|not automatic full takeoff/i.test(confirmationText)) {
+      pushGap(makeScopeGap({
+        gapKey: `schedule-${group.groupKey}`,
+        title: `${group.title} has schedule-backed limits`,
+        status: "needs_confirmation",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: "Schedule references reinforce the group, but do not automatically prove complete install/takeoff extent.",
+        confirmationPrompt: "Confirm whether the schedule count applies to the priced work area and whether installation extent is shown elsewhere.",
+        evidence: group.evidence,
+      }))
+    }
+
+    if (/demo|removal/i.test(`${group.groupKey} ${confirmationText}`)) {
+      pushGap(makeScopeGap({
+        gapKey: `demo-${group.groupKey}`,
+        title: `${group.title} must stay separate from install`,
+        status: "risky_assumption",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: "Removal support is visible, but rebuild/install authority must come from separate install-side evidence.",
+        confirmationPrompt: "Do not convert demolition/removal scope into install pricing unless selected sheets separately support install work.",
+        evidence: group.evidence,
+      }))
+    }
+
+    if (group.groupKey === "corridor_common") {
+      pushGap(makeScopeGap({
+        gapKey: "corridor-separate-from-rooms",
+        title: "Corridor/common-area scope stays separate",
+        status: "needs_confirmation",
+        scopeGroupKey: group.groupKey,
+        trades: group.trades,
+        areaGroups: group.areaGroups,
+        narration: "Corridor/common-area support does not imply guest-room-wide authority.",
+        confirmationPrompt: "Confirm whether corridor/common-area work is included as its own scope bucket rather than rolling it into room interiors.",
+        evidence: group.evidence,
+      }))
+    }
+  }
+
+  const repeatedText = [...args.repeatedSpaceSignals, ...args.prototypeSignals].join(" ")
+  if (repeatedText || args.groupedScopeReadback.some((group) => /prototype|repeated|repeat counts/i.test([...group.reinforcedSupport, ...group.confirmationNotes].join(" ")))) {
+    const group = args.groupedScopeReadback.find((item) => item.groupKey === "guest_room_finish")
+    pushGap(makeScopeGap({
+      gapKey: "confirm-repeat-counts",
+      title: "Repeated room count needs confirmation",
+      status: "needs_confirmation",
+      scopeGroupKey: group?.groupKey || "guest_room_finish",
+      trades: group?.trades || [],
+      areaGroups: group?.areaGroups || ["guest rooms"],
+      narration: "Prototype/repeated-room behavior is visible, but the selected sheets do not by themselves create measured room totals.",
+      confirmationPrompt: "Confirm actual repeat counts before scaling guest-room or typical-room pricing.",
+      evidence: group?.evidence || [],
+    }))
+  }
+
+  for (const trade of args.tradeScopeReadback) {
+    const text = [...trade.supportNarration, ...trade.confirmationNotes, trade.narration].join(" ")
+    if (/feature wall|wallcovering|elevation-only|full-room authority/i.test(text) && trade.trade === "wallcovering") {
+      pushGap(makeScopeGap({
+        gapKey: "wallcovering-partial-authority",
+        title: "Wallcovering may be partial",
+        status: "risky_assumption",
+        scopeGroupKey: trade.areaGroups.some((area) => /wet/i.test(area)) ? "wet_area" : "guest_room_finish",
+        trades: [trade.trade],
+        areaGroups: trade.areaGroups,
+        narration: "Wallcovering support appears specific, but may not prove full-room wallcovering authority.",
+        confirmationPrompt: "Confirm whether wallcovering is feature-wall/elevation-only or applies to full room areas.",
+        evidence: trade.evidence,
+      }))
+    }
+    if (trade.trade === "electrical" && /schedule|device|fixture/i.test(text)) {
+      pushGap(makeScopeGap({
+        gapKey: "electrical-install-extent",
+        title: "Electrical extent needs review",
+        status: "needs_confirmation",
+        scopeGroupKey: "ceiling_fixture",
+        trades: [trade.trade],
+        areaGroups: trade.areaGroups,
+        narration: "Electrical counts or schedules are present, but full branch/trim/ceiling installation extent may need confirmation.",
+        confirmationPrompt: "Confirm whether device counts cover fixture trim only, full installation, branch work, or coordination scope.",
+        evidence: trade.evidence,
+      }))
+    }
+  }
+
+  for (const area of args.areaQuantityReadback) {
+    if (area.supportLevel !== "direct" || /identified, but room area\/count remains review-only|no count is explicit/i.test([...area.scopeNotes, ...area.quantityNarration].join(" "))) {
+      pushGap(makeScopeGap({
+        gapKey: `area-incomplete-${area.areaType}`,
+        title: `${area.areaGroup} quantity authority is incomplete`,
+        status: "missing_or_incomplete",
+        scopeGroupKey: groupedScopeForAreaGroup(area.areaGroup).groupKey,
+        areaGroups: [area.areaGroup],
+        narration: `${area.areaGroup} appears in the selected sheets, but quantity authority is not complete enough to assume broad coverage.`,
+        confirmationPrompt: area.scopeNotes[0] || area.quantityNarration[0] || "Confirm affected area/count before pricing this as complete scope.",
+        evidence: area.evidence,
+      }))
+    }
+  }
+
+  for (const text of [
+    ...args.scopeAssist.missingScopeFlags,
+    ...args.scopeAssist.suggestedAdditions,
+    ...args.scopeAssist.conflicts,
+    ...args.crossSheetConflictSignals,
+  ]) {
+    const group = /fixture|bath|plumbing|tile|wet/i.test(text)
+      ? { groupKey: "wet_area" as const, title: "Wet-Area / Bathroom Scope" }
+      : /electrical|device|lighting|ceiling/i.test(text)
+        ? { groupKey: "ceiling_fixture" as const, title: "Ceiling / Light / Fixture Scope" }
+        : /demo|removal/i.test(text)
+          ? { groupKey: "demo_removal" as const, title: "Demo / Removal Scope" }
+          : /corridor|common/i.test(text)
+            ? { groupKey: "corridor_common" as const, title: "Corridor / Common-Area Scope" }
+            : { groupKey: "general_scope" as const, title: "General / Mixed Scope" }
+    pushGap(makeScopeGap({
+      gapKey: `assist-${gaps.length}-${group.groupKey}`,
+      title: `${group.title} confirmation`,
+      status: "missing_or_incomplete",
+      scopeGroupKey: group.groupKey,
+      narration: text,
+      confirmationPrompt: text,
+      evidence: [],
+    }))
+  }
+
+  const order: Record<PlanExplanationReadback["scopeGapReadback"][number]["status"], number> = {
+    risky_assumption: 0,
+    missing_or_incomplete: 1,
+    needs_confirmation: 2,
+    likely_ready: 3,
+  }
+
+  return gaps
+    .sort((a, b) => order[a.status] - order[b.status])
+    .slice(0, 12)
+}
+
+function buildEstimatorFlowReadback(args: {
+  headline: string
+  sheetNarration: PlanExplanationReadback["sheetNarration"]
+  areaQuantityReadback: PlanExplanationReadback["areaQuantityReadback"]
+  tradeScopeReadback: PlanExplanationReadback["tradeScopeReadback"]
+  groupedScopeReadback: PlanExplanationReadback["groupedScopeReadback"]
+  directlySupported: PlanExplanationReadback["directlySupported"]
+  reinforcedByCrossSheet: PlanExplanationReadback["reinforcedByCrossSheet"]
+  scopeGapReadback: PlanExplanationReadback["scopeGapReadback"]
+  packageReadback: PlanExplanationReadback["packageReadback"]
+}): PlanExplanationReadback["estimatorFlowReadback"] {
+  const steps: PlanExplanationReadback["estimatorFlowReadback"] = []
+  const pushStep = (step: PlanExplanationReadback["estimatorFlowReadback"][number]) => {
+    if (!step.narration.trim() || steps.some((item) => item.stepKey === step.stepKey)) return
+    steps.push({
+      ...step,
+      evidence: uniqEvidence(step.evidence || [], 6),
+    })
+  }
+
+  const primarySheets = args.sheetNarration
+    .slice(0, 3)
+    .map((sheet) => sheet.sheetTitle || sheet.sheetNumber || `source page ${sheet.sourcePageNumber}`)
+    .filter(Boolean)
+  pushStep({
+    stepKey: "selected_sheets",
+    title: "What the selected sheets appear to show",
+    narration:
+      primarySheets.length > 0
+        ? `${args.headline} Primary selected-sheet readback includes ${primarySheets.join(", ")}.`
+        : args.headline,
+    supportLevel: args.directlySupported.length > 0 ? "direct" : args.reinforcedByCrossSheet.length > 0 ? "reinforced" : "review",
+    evidence: args.sheetNarration.flatMap((sheet) => sheet.evidence),
+  })
+
+  if (args.areaQuantityReadback.length > 0) {
+    const directAreas = args.areaQuantityReadback
+      .filter((area) => area.supportLevel === "direct")
+      .map((area) => area.areaGroup)
+    const reviewAreas = args.areaQuantityReadback
+      .filter((area) => area.supportLevel !== "direct")
+      .map((area) => area.areaGroup)
+    pushStep({
+      stepKey: "affected_spaces",
+      title: "Affected spaces and room groups",
+      narration: [
+        directAreas.length > 0 ? `Direct area support appears around ${uniqStrings(directAreas, 5).join(", ")}.` : "",
+        reviewAreas.length > 0 ? `${uniqStrings(reviewAreas, 5).join(", ")} remain reinforced or review-level area context.` : "",
+      ].filter(Boolean).join(" "),
+      supportLevel: directAreas.length > 0 ? "direct" : "review",
+      evidence: args.areaQuantityReadback.flatMap((area) => area.evidence),
+    })
+  }
+
+  if (args.tradeScopeReadback.length > 0) {
+    const primaryTrades = args.tradeScopeReadback
+      .filter((trade) => trade.role === "likely primary")
+      .map((trade) => trade.trade)
+    const otherTrades = args.tradeScopeReadback
+      .filter((trade) => trade.role !== "likely primary")
+      .map((trade) => trade.trade)
+    pushStep({
+      stepKey: "trade_paths",
+      title: "Trades involved",
+      narration: [
+        primaryTrades.length > 0 ? `Likely primary trade paths: ${uniqStrings(primaryTrades, 6).join(", ")}.` : "",
+        otherTrades.length > 0 ? `Supporting or review-only trade paths: ${uniqStrings(otherTrades, 6).join(", ")}.` : "",
+      ].filter(Boolean).join(" "),
+      supportLevel: args.tradeScopeReadback.some((trade) => trade.supportLevel === "direct") ? "direct" : "review",
+      evidence: args.tradeScopeReadback.flatMap((trade) => trade.evidence),
+    })
+  }
+
+  if (args.groupedScopeReadback.length > 0) {
+    const primaryGroups = args.groupedScopeReadback
+      .filter((group) => group.role === "primary")
+      .map((group) => group.title)
+    const reviewGroups = args.groupedScopeReadback
+      .filter((group) => group.supportLevel !== "direct")
+      .map((group) => group.title)
+    pushStep({
+      stepKey: "scope_groups",
+      title: "How the work groups organize",
+      narration: [
+        primaryGroups.length > 0 ? `Main pre-pricing scope groups: ${uniqStrings(primaryGroups, 5).join(", ")}.` : "",
+        reviewGroups.length > 0 ? `${uniqStrings(reviewGroups, 5).join(", ")} need reinforced/review-level handling rather than broad authority.` : "",
+      ].filter(Boolean).join(" "),
+      supportLevel: args.groupedScopeReadback.some((group) => group.supportLevel === "direct") ? "direct" : "review",
+      evidence: args.groupedScopeReadback.flatMap((group) => group.evidence),
+    })
+  }
+
+  if (args.directlySupported.length > 0 || args.reinforcedByCrossSheet.length > 0) {
+    pushStep({
+      stepKey: "supported_quantities",
+      title: "Quantities, counts, and schedules",
+      narration: [
+        args.directlySupported.length > 0 ? `${args.directlySupported.length} directly supported quantity/count item(s) are visible.` : "",
+        args.reinforcedByCrossSheet.length > 0 ? `${args.reinforcedByCrossSheet.length} cross-sheet or schedule item(s) reinforce context without automatically becoming full takeoff authority.` : "",
+      ].filter(Boolean).join(" "),
+      supportLevel: args.directlySupported.length > 0 ? "direct" : "reinforced",
+      evidence: [
+        ...args.directlySupported.flatMap((item) => item.evidence),
+        ...args.reinforcedByCrossSheet.flatMap((item) => item.evidence),
+      ],
+    })
+  }
+
+  if (args.packageReadback.length > 0) {
+    const directPackages = args.packageReadback
+      .filter((pkg) => pkg.supportLevel === "direct")
+      .map((pkg) => pkg.title)
+    const reviewPackages = args.packageReadback
+      .filter((pkg) => pkg.supportLevel !== "direct")
+      .map((pkg) => pkg.title)
+    pushStep({
+      stepKey: "pricing_carry",
+      title: "How pricing should carry the supported work",
+      narration: [
+        directPackages.length > 0 ? `Estimator package support is strongest for ${uniqStrings(directPackages, 5).join(", ")}.` : "",
+        reviewPackages.length > 0 ? `${uniqStrings(reviewPackages, 5).join(", ")} should remain reinforced/review-level in pricing explanation unless final pricing authority separately supports it.` : "",
+        "Final pricing remains controlled by existing pricing owner logic and protections.",
+      ].filter(Boolean).join(" "),
+      supportLevel: directPackages.length > 0 ? "direct" : "review",
+      evidence: args.packageReadback.flatMap((pkg) => pkg.evidence),
+    })
+  }
+
+  if (args.scopeGapReadback.length > 0) {
+    const risks = args.scopeGapReadback.filter((gap) => gap.status === "risky_assumption" || gap.status === "missing_or_incomplete")
+    const confirmations = args.scopeGapReadback.filter((gap) => gap.status === "needs_confirmation")
+    pushStep({
+      stepKey: "confirmations",
+      title: "What still needs confirmation",
+      narration: [
+        risks.length > 0 ? `${risks.length} missing/incomplete or risky assumption item(s) should be resolved before high-confidence pricing.` : "",
+        confirmations.length > 0 ? `${confirmations.length} estimator confirmation item(s) remain visible.` : "",
+      ].filter(Boolean).join(" "),
+      supportLevel: "review",
+      evidence: args.scopeGapReadback.flatMap((gap) => gap.evidence),
+    })
+  }
+
+  return steps
+}
+
 function buildPlanExplanationReadback(args: {
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
@@ -3314,6 +3698,15 @@ function buildPlanExplanationReadback(args: {
     prototypeSignals: args.prototypeSignals,
     crossSheetConflictSignals: args.crossSheetConflictSignals,
   })
+  const scopeGapReadback = buildScopeGapReadback({
+    groupedScopeReadback,
+    tradeScopeReadback,
+    areaQuantityReadback,
+    scopeAssist: args.scopeAssist,
+    crossSheetConflictSignals: args.crossSheetConflictSignals,
+    repeatedSpaceSignals: args.repeatedSpaceSignals,
+    prototypeSignals: args.prototypeSignals,
+  })
 
   const sheetTypes = uniqStrings(
     sheetNarration.map((sheet) => sheet.sheetTitle || sheet.discipline).filter(Boolean),
@@ -3321,13 +3714,26 @@ function buildPlanExplanationReadback(args: {
   )
   const trades = args.detectedTrades.length ? args.detectedTrades.join(", ") : "limited trade"
   const headline = `Selected sheets appear to show ${sheetTypes.length ? sheetTypes.join(", ") : "plan"} support for ${trades} scope${args.detectedRooms.length ? ` around ${args.detectedRooms.slice(0, 3).join(", ")}` : ""}.`
+  const estimatorFlowReadback = buildEstimatorFlowReadback({
+    headline,
+    sheetNarration,
+    areaQuantityReadback,
+    tradeScopeReadback,
+    groupedScopeReadback,
+    directlySupported,
+    reinforcedByCrossSheet,
+    scopeGapReadback,
+    packageReadback,
+  })
 
   return {
     headline,
+    estimatorFlowReadback,
     sheetNarration,
     tradeNarration,
     tradeScopeReadback,
     groupedScopeReadback,
+    scopeGapReadback,
     areaNarration,
     areaQuantityReadback,
     directlySupported,

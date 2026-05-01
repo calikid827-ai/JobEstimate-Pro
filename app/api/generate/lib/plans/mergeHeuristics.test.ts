@@ -220,6 +220,20 @@ test("finish plan plus finish schedule reinforce finish scope without inflating 
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting" && /1,800 sqft/i.test(item.quantityNarration.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "guest_room_finish" && item.role === "primary" && item.trades.includes("painting")))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "guest_room_finish" && /1,800 sqft/i.test(item.directSupport.join(" "))))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.status === "needs_confirmation" && /schedule/i.test(`${item.narration} ${item.confirmationPrompt}`)))
+  assert.deepEqual(
+    result.planReadback?.estimatorFlowReadback.map((item) => item.stepKey),
+    [
+      "selected_sheets",
+      "affected_spaces",
+      "trade_paths",
+      "scope_groups",
+      "supported_quantities",
+      "pricing_carry",
+      "confirmations",
+    ]
+  )
+  assert(result.planReadback?.estimatorFlowReadback.some((item) => item.stepKey === "pricing_carry" && /Final pricing remains controlled by existing pricing owner logic and protections/i.test(item.narration)))
   assert(!result.planReadback?.tradeNarration.some((item) => item.trade === "electrical" || item.trade === "plumbing"))
 })
 
@@ -348,6 +362,7 @@ test("fixture schedules plus bath elevations reinforce wet-area context conserva
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "tile" && /Elevation-only evidence stays narrow/i.test(item.confirmationNotes.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "wet_area" && item.trades.includes("plumbing") && item.trades.includes("tile")))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "wet_area" && /Elevation-only evidence stays narrow|Elevation-only support stays limited/i.test(item.confirmationNotes.join(" "))))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.scopeGroupKey === "wet_area" && item.status === "risky_assumption" && /full-room|shown surfaces|outside the shown surfaces/i.test(`${item.narration} ${item.confirmationPrompt}`)))
   assert(!result.planReadback?.packageReadback.some((item) => /full-room authority/i.test(item.narration)))
 })
 
@@ -417,6 +432,7 @@ test("demolition and finish sheets reinforce removal context without manufacturi
   assert(result.planReadback?.areaQuantityReadback.some((item) => item.areaGroup === "demo / removal zones" && /removal-only/i.test(item.scopeNotes.join(" "))))
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "flooring" && /finish_refresh/i.test(item.phaseTypes.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "demo_removal" && /removal|demo/i.test(item.confirmationNotes.join(" "))))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.scopeGroupKey === "demo_removal" && item.status === "risky_assumption" && /install/i.test(item.confirmationPrompt)))
   assert(result.planReadback?.needsConfirmation.some((item) => /Removal\/demo support does not create install authority/i.test(item.text)))
 })
 
@@ -528,6 +544,8 @@ test("repeated room support across multiple selected sheets strengthens prototyp
   assert(result.planReadback?.tradeScopeReadback.every((item) => !/measured totals/i.test(item.supportNarration.join(" ")) || /not measured totals/i.test(item.supportNarration.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "guest_room_finish" && /scale-oriented grouping/i.test(item.reinforcedSupport.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "guest_room_finish" && /Confirm repeat counts/i.test(item.confirmationNotes.join(" "))))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.gapKey === "confirm-repeat-counts" && /Confirm actual repeat counts/i.test(item.confirmationPrompt)))
+  assert(result.planReadback?.estimatorFlowReadback.some((item) => item.stepKey === "confirmations" && /confirmation item/i.test(item.narration)))
   assert(result.planReadback?.packageReadback.every((item) => !/measured totals/i.test(item.narration) || /not measured totals/i.test(item.narration)))
 })
 
@@ -630,6 +648,7 @@ test("page and source provenance remains intact after cross-sheet synthesis", ()
   assert(result.planReadback?.areaQuantityReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.evidence.some((ref) => ref.sourcePageNumber === 8 && ref.pageNumber === 5)))
 })
 
 test("finish plan, finish schedule, and elevations synthesize into a quantity-backed finish package without inflating unrelated trades", () => {
@@ -714,6 +733,7 @@ test("finish plan, finish schedule, and elevations synthesize into a quantity-ba
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "wallcovering" && /Elevation-only evidence stays narrow|narrow elevation-only scope/i.test(item.confirmationNotes.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "guest_room_finish" && item.trades.includes("painting") && item.trades.includes("wallcovering")))
   assert(!result.planReadback?.groupedScopeReadback.some((item) => item.trades.includes("electrical")))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.scopeGroupKey === "guest_room_finish" && /wallcovering|full-room/i.test(`${item.title} ${item.narration} ${item.confirmationPrompt}`)))
   assert(!result.detectedTrades.includes("electrical"))
 })
 
@@ -840,6 +860,7 @@ test("wallcovering trade readback stays distinct from generic paint and finish n
   assert.equal(wallcovering.role, "likely primary")
   assert(/210 sqft/i.test(wallcovering.quantityNarration.join(" ")))
   assert(/narrow|Elevation-only/i.test(wallcovering.confirmationNotes.join(" ")))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.gapKey === "wallcovering-partial-authority" && /feature-wall|full room|full-room/i.test(item.confirmationPrompt)))
   assert(!result.planReadback?.tradeScopeReadback.some((item) => item.trade === "painting"))
 })
 
@@ -977,6 +998,7 @@ test("demo package stays separate from install-oriented finish packages", () => 
   assert(/640 sqft/i.test(demoGroup.directSupport.join(" ")))
   assert(/removal-only|install authority/i.test(demoGroup.confirmationNotes.join(" ")))
   assert(/1,200 sqft/i.test(finishGroup.directSupport.join(" ")))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.scopeGroupKey === "demo_removal" && /Do not convert demolition\/removal scope into install pricing/i.test(item.confirmationPrompt)))
 })
 
 test("corridor and common-area support stays separate from guest room interior quantity readback", () => {
@@ -1053,6 +1075,7 @@ test("corridor and common-area support stays separate from guest room interior q
   assert(/900 sqft/i.test(groupedGuest.directSupport.join(" ")))
   assert(!/700 sqft/i.test(groupedGuest.directSupport.join(" ")))
   assert(/700 sqft/i.test(groupedCorridor.directSupport.join(" ")))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.gapKey === "corridor-separate-from-rooms" && /does not imply guest-room-wide authority/i.test(item.narration)))
 })
 
 test("electrical reflected ceiling and schedule support synthesize into a ceiling-light-fixture package without crossing trades", () => {
@@ -1132,6 +1155,7 @@ test("electrical reflected ceiling and schedule support synthesize into a ceilin
   assert(result.planReadback?.tradeScopeReadback.some((item) => item.trade === "electrical" && /18 devices/i.test(item.quantityNarration.join(" "))))
   assert(result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "ceiling_fixture" && item.trades.includes("electrical") && /18 devices/i.test(item.directSupport.join(" "))))
   assert(!result.planReadback?.groupedScopeReadback.some((item) => item.groupKey === "ceiling_fixture" && item.trades.includes("plumbing")))
+  assert(result.planReadback?.scopeGapReadback.some((item) => item.gapKey === "electrical-install-extent" && /branch|trim|fixture/i.test(item.confirmationPrompt)))
   assert(!result.planReadback?.tradeScopeReadback.some((item) => item.trade === "plumbing"))
   assert(!result.planReadback?.tradeNarration.some((item) => item.trade === "plumbing"))
 })

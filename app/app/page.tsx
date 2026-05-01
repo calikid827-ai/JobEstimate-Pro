@@ -172,6 +172,22 @@ type PlanIntelligence = {
   summary?: string | null
   planReadback?: {
     headline: string
+    estimatorFlowReadback: Array<{
+      stepKey: string
+      title: string
+      narration: string
+      supportLevel: "direct" | "reinforced" | "review"
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
     sheetNarration: Array<{
       sheetNumber: string | null
       sheetTitle: string | null
@@ -241,6 +257,26 @@ type PlanIntelligence = {
       directSupport: string[]
       reinforcedSupport: string[]
       confirmationNotes: string[]
+      evidence: Array<{
+        uploadId: string
+        uploadName: string
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+        excerpt: string
+        confidence: number
+      }>
+    }>
+    scopeGapReadback: Array<{
+      gapKey: string
+      title: string
+      status: "likely_ready" | "needs_confirmation" | "missing_or_incomplete" | "risky_assumption"
+      scopeGroupKey: string | null
+      trades: string[]
+      areaGroups: string[]
+      narration: string
+      confirmationPrompt: string
       evidence: Array<{
         uploadId: string
         uploadName: string
@@ -464,6 +500,24 @@ const normalizePlanReadback = (value: unknown): PlanReadbackView | undefined => 
 
   return {
     headline: typeof record.headline === "string" ? record.headline.trim() : "",
+    estimatorFlowReadback: Array.isArray(record.estimatorFlowReadback)
+      ? record.estimatorFlowReadback
+          .map((item: unknown) => {
+            const step = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const stepKey = typeof step?.stepKey === "string" ? step.stepKey.trim() : ""
+            const title = typeof step?.title === "string" ? step.title.trim() : ""
+            const narration = typeof step?.narration === "string" ? step.narration.trim() : ""
+            if (!stepKey || !title || !narration) return null
+            return {
+              stepKey,
+              title,
+              narration,
+              supportLevel: normalizePlanReadbackSupport(step?.supportLevel),
+              evidence: normalizePlanEvidence(step?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["estimatorFlowReadback"][number] => item !== null)
+      : [],
     sheetNarration: Array.isArray(record.sheetNarration)
       ? record.sheetNarration
           .map((item: unknown) => {
@@ -562,6 +616,37 @@ const normalizePlanReadback = (value: unknown): PlanReadbackView | undefined => 
             }
           })
           .filter((item): item is PlanReadbackView["groupedScopeReadback"][number] => item !== null)
+      : [],
+    scopeGapReadback: Array.isArray(record.scopeGapReadback)
+      ? record.scopeGapReadback
+          .map((item: unknown) => {
+            const gap = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+            const gapKey = typeof gap?.gapKey === "string" ? gap.gapKey.trim() : ""
+            const title = typeof gap?.title === "string" ? gap.title.trim() : ""
+            const narration = typeof gap?.narration === "string" ? gap.narration.trim() : ""
+            const confirmationPrompt =
+              typeof gap?.confirmationPrompt === "string" ? gap.confirmationPrompt.trim() : ""
+            if (!gapKey || !title || !narration || !confirmationPrompt) return null
+            const status =
+              gap?.status === "likely_ready" ||
+              gap?.status === "needs_confirmation" ||
+              gap?.status === "missing_or_incomplete" ||
+              gap?.status === "risky_assumption"
+                ? gap.status
+                : "needs_confirmation"
+            return {
+              gapKey,
+              title,
+              status,
+              scopeGroupKey: typeof gap?.scopeGroupKey === "string" ? gap.scopeGroupKey : null,
+              trades: normalizePlanStrings(gap?.trades),
+              areaGroups: normalizePlanStrings(gap?.areaGroups),
+              narration,
+              confirmationPrompt,
+              evidence: normalizePlanEvidence(gap?.evidence),
+            }
+          })
+          .filter((item): item is PlanReadbackView["scopeGapReadback"][number] => item !== null)
       : [],
     areaNarration: normalizePlanStrings(record.areaNarration),
     areaQuantityReadback: Array.isArray(record.areaQuantityReadback)
@@ -9889,6 +9974,40 @@ function PlanIntelligenceCard({
           {readback.headline}
         </div>
 
+        {readback.estimatorFlowReadback.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Estimator Review Flow
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.estimatorFlowReadback.slice(0, 7).map((step, index) => (
+                <div
+                  key={`estimator-flow-${step.stepKey}`}
+                  style={{
+                    padding: 10,
+                    border: "1px solid #dbeafe",
+                    borderRadius: 8,
+                    background: "#fff",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#1f2937",
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#111827" }}>
+                    {index + 1}. {step.title} - {step.supportLevel} support
+                  </div>
+                  <div style={{ marginTop: 3 }}>{step.narration}</div>
+                  {sourceText(step.evidence) && (
+                    <div style={{ marginTop: 4, color: "#6b7280" }}>
+                      Sources: {sourceText(step.evidence)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {readback.sheetNarration.length > 0 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
@@ -9932,6 +10051,53 @@ function PlanIntelligenceCard({
           items={readback.needsConfirmation}
           tone="warning"
         />
+
+        {readback.scopeGapReadback.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+              Estimator Confirmation / Scope Gaps
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {readback.scopeGapReadback.slice(0, 8).map((gap) => {
+                const isRisk = gap.status === "risky_assumption" || gap.status === "missing_or_incomplete"
+                return (
+                  <div
+                    key={`scope-gap-${gap.gapKey}`}
+                    style={{
+                      padding: 10,
+                      border: `1px solid ${isRisk ? "#fdba74" : "#dbeafe"}`,
+                      borderRadius: 8,
+                      background: isRisk ? "#fff7ed" : "#fff",
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      color: "#1f2937",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, color: "#111827" }}>
+                      {gap.title} - {gap.status.replace(/_/g, " ")}
+                    </div>
+                    <div style={{ marginTop: 3 }}>{gap.narration}</div>
+                    <div style={{ marginTop: 5, color: isRisk ? "#92400e" : "#1d4ed8" }}>
+                      Confirm: {gap.confirmationPrompt}
+                    </div>
+                    {(gap.trades.length > 0 || gap.areaGroups.length > 0) && (
+                      <div style={{ marginTop: 4, color: "#4b5563" }}>
+                        {gap.trades.length > 0 ? `Trades: ${gap.trades.slice(0, 4).join(", ")}` : ""}
+                        {gap.trades.length > 0 && gap.areaGroups.length > 0 ? " - " : ""}
+                        {gap.areaGroups.length > 0 ? `Areas: ${gap.areaGroups.slice(0, 4).join(", ")}` : ""}
+                      </div>
+                    )}
+                    {sourceText(gap.evidence) && (
+                      <div style={{ marginTop: 4, color: "#6b7280" }}>
+                        Sources: {sourceText(gap.evidence)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {readback.groupedScopeReadback.length > 0 && (
           <div style={{ marginTop: 12 }}>
@@ -10193,6 +10359,159 @@ function PlanIntelligenceCard({
       <SectionList title="Detected Trades" items={detectedTrades} tone="neutral" />
       <SectionList title="Scope Flags" items={missingScopeFlags} tone="warning" />
       <SectionList title="Suggested Additions" items={suggestedAdditions} tone="info" />
+    </div>
+  )
+}
+
+function PlanAwareEstimatorReadbackCard({
+  planIntelligence,
+  estimateSections,
+}: {
+  planIntelligence: PlanIntelligence
+  estimateSections: EstimateStructuredSection[] | null
+}) {
+  const readback = planIntelligence?.planReadback
+  if (!readback) return null
+
+  const pricingSections = (estimateSections || [])
+    .filter((section) => section.estimatorTreatment === "section_row")
+    .slice(0, 6)
+  const burdenSections = (estimateSections || [])
+    .filter((section) => section.estimatorTreatment === "embedded_burden")
+    .slice(0, 3)
+  const keyFlow = readback.estimatorFlowReadback.slice(0, 7)
+  const directCount = readback.directlySupported.length
+  const reinforcedCount = readback.reinforcedByCrossSheet.length
+  const confirmationCount = readback.scopeGapReadback.filter(
+    (gap) => gap.status !== "likely_ready"
+  ).length
+
+  if (
+    keyFlow.length === 0 &&
+    readback.areaQuantityReadback.length === 0 &&
+    readback.tradeScopeReadback.length === 0 &&
+    pricingSections.length === 0
+  ) {
+    return null
+  }
+
+  const moneyText = (value: number) =>
+    `$${Math.round(Number(value || 0)).toLocaleString()}`
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #bae6fd",
+        borderRadius: 8,
+        background: "#f0f9ff",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 15, color: "#0f172a" }}>
+        Plan-Aware Estimator Readback
+      </div>
+      <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
+        {readback.headline}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          marginTop: 12,
+        }}
+      >
+        {keyFlow.map((step, index) => (
+          <div
+            key={`result-flow-${step.stepKey}`}
+            style={{
+              padding: 10,
+              border: "1px solid #dbeafe",
+              borderRadius: 8,
+              background: "#fff",
+              fontSize: 12,
+              lineHeight: 1.5,
+              color: "#1f2937",
+            }}
+          >
+            <strong>{index + 1}. {step.title}</strong>
+            <span style={{ color: "#4b5563" }}> - {step.supportLevel} support</span>
+            <div style={{ marginTop: 3 }}>{step.narration}</div>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: 8,
+          marginTop: 12,
+        }}
+      >
+        <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Direct Support</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{directCount}</div>
+        </div>
+        <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Reinforced Support</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{reinforcedCount}</div>
+        </div>
+        <div style={{ padding: 10, border: "1px solid #fdba74", borderRadius: 8, background: "#fff7ed" }}>
+          <div style={{ fontSize: 11, color: "#92400e", fontWeight: 800 }}>Needs Confirmation</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: "#92400e" }}>{confirmationCount}</div>
+        </div>
+      </div>
+
+      {pricingSections.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
+            Pricing Currently Carries
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {pricingSections.map((section, index) => (
+              <div
+                key={`pricing-carry-${section.trade}-${section.section}-${index}`}
+                style={{
+                  padding: 10,
+                  border: "1px solid #dbeafe",
+                  borderRadius: 8,
+                  background: "#fff",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "#1f2937",
+                }}
+              >
+                <strong>{section.trade}: {section.label}</strong>
+                <span style={{ color: "#4b5563" }}> - {moneyText(section.amount)}</span>
+                {section.quantity != null && section.unit && (
+                  <div style={{ color: "#4b5563", marginTop: 2 }}>
+                    Quantity basis: {Number(section.quantity).toLocaleString()} {section.unit.replace(/_/g, " ")}
+                  </div>
+                )}
+                {section.provenance?.summary && (
+                  <div style={{ color: "#4b5563", marginTop: 2 }}>
+                    Pricing basis: {section.provenance.summary}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {burdenSections.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.5 }}>
+          Embedded burdens remain separated from direct section rows:{" "}
+          {burdenSections.map((section) => `${section.trade} ${section.label}`).join("; ")}.
+        </div>
+      )}
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>
+        Pricing authority, protections, owner resolution, and totals remain controlled by the existing pricing path. This readback explains what the selected plans appear to support and what still needs estimator confirmation.
+      </div>
     </div>
   )
 }
@@ -10597,6 +10916,11 @@ function PlanIntelligenceCard({
         {result.text}
       </div>
     </div>
+
+    <PlanAwareEstimatorReadbackCard
+      planIntelligence={planIntelligence}
+      estimateSections={estimateSections}
+    />
 
     {smartScopePreview && (
       <div
