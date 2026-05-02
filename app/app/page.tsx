@@ -5714,6 +5714,12 @@ function loadHistoryItem(item: EstimateHistoryItem) {
       pdfPlanReadback?.scopeGapReadback
         .filter((gap) => gap.status !== "likely_ready")
         .slice(0, 4) ?? []
+    const pdfHasPlanContext = jobPlans.length > 0 || !!planIntelligence
+    const pdfHasEstimatorReviewContent =
+      !!pdfPlanReadback &&
+      (pdfEstimatorStory.length > 0 ||
+        pdfPricingCarryReadback.length > 0 ||
+        pdfScopeGaps.length > 0)
 
     const labelText = (value: string) => value.replace(/_/g, " ")
     const evidenceSourceText = (
@@ -5737,10 +5743,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
         : ""
 
     const pdfEstimatorStoryHtml =
-      pdfPlanReadback &&
-      (pdfEstimatorStory.length > 0 ||
-        pdfPricingCarryReadback.length > 0 ||
-        pdfScopeGaps.length > 0)
+      pdfHasEstimatorReviewContent
         ? `
           <div class="section">
             <div class="muted" style="margin-bottom:6px;">Estimator Plan Review</div>
@@ -5846,7 +5849,28 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             </div>
           </div>
         `
-        : ""
+        : pdfHasPlanContext
+          ? `
+            <div class="section">
+              <div class="muted" style="margin-bottom:6px;">Estimator Plan Review</div>
+              <div style="
+                border:1px solid #cfcfcf;
+                border-radius:10px;
+                padding:12px;
+                background:#fff;
+              ">
+                <div style="font-weight:800; font-size:13px; line-height:1.45; color:#111;">
+                  Plans were uploaded for review.
+                </div>
+                <ul style="margin:8px 0 0; padding-left:18px; line-height:1.45; font-size:12px; color:#222;">
+                  <li>No hard measured quantities were confirmed from the uploaded plan set.</li>
+                  <li>Final price confidence depends on confirming exact quantities, finish selections, and affected areas.</li>
+                  <li>Pricing remains based on the generated scope, estimator inputs, and existing pricing safeguards.</li>
+                </ul>
+              </div>
+            </div>
+          `
+          : ""
 
     win.document.write(`
       <html>
