@@ -1,22 +1,68 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 
+const EMAIL_KEY = "jobestimatepro_email"
+
 export default function SuccessPage() {
-  const router = useRouter()
+  const [status, setStatus] = useState<"loading" | "success" | "missing-email" | "error">("loading")
+  const [message, setMessage] = useState("Confirming your upgraded access...")
 
   useEffect(() => {
-    async function syncAndReturn() {
-      // Sync entitlement after successful Stripe checkout
-      await fetch("/api/entitlement")
-      // Redirect home and prevent back-button loop
-      router.replace("/")
+    let cancelled = false
+
+    async function syncEntitlement() {
+      const email = window.localStorage.getItem(EMAIL_KEY)?.trim().toLowerCase() || ""
+
+      if (!email) {
+        if (cancelled) return
+        setStatus("missing-email")
+        setMessage("Return to the app and enter the email address used at checkout so we can confirm your upgraded access.")
+        return
+      }
+
+      try {
+        const response = await fetch("/api/entitlement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        })
+
+        if (!response.ok) {
+          throw new Error("Entitlement check failed.")
+        }
+
+        const data = await response.json().catch(() => null)
+        if (cancelled) return
+
+        if (data?.entitled === true) {
+          setStatus("success")
+          setMessage("Your upgraded access is active. Return to the app to continue.")
+        } else {
+          setStatus("error")
+          setMessage("Payment succeeded, but upgraded access is not active yet. Return to the app and retry with the email used at checkout.")
+        }
+      } catch {
+        if (cancelled) return
+        setStatus("error")
+        setMessage("Payment succeeded, but we could not confirm upgraded access yet. Return to the app and retry with the email used at checkout.")
+      }
     }
 
-    syncAndReturn()
-  }, [router])
+    syncEntitlement()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const statusColor =
+    status === "success"
+      ? "#065f46"
+      : status === "loading"
+        ? "#555"
+        : "#92400e"
 
   return (
     <main
@@ -39,12 +85,31 @@ export default function SuccessPage() {
       <p style={{ fontSize: 16, color: "#555", lineHeight: 1.6 }}>
         Thank you for upgrading ScopeGuard.
         <br />
-        You now have <strong>unlimited access</strong> to AI-generated
-        change orders and estimates.
+        {status === "success"
+          ? "You now have unlimited access to AI-generated change orders and estimates."
+          : "We are checking your upgraded access."}
       </p>
 
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          marginTop: 18,
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 10,
+          background: status === "success" ? "#ecfdf5" : status === "loading" ? "#f9fafb" : "#fffbeb",
+          color: statusColor,
+          fontSize: 14,
+          lineHeight: 1.5,
+          fontWeight: 650,
+        }}
+      >
+        {message}
+      </div>
+
       <Link
-        href="/"
+        href="/app"
         style={{
           display: "inline-block",
           marginTop: 24,
@@ -56,7 +121,7 @@ export default function SuccessPage() {
           fontWeight: 600,
         }}
       >
-        Return to ScopeGuard
+        Return to JobEstimate Pro
       </Link>
 
       <p
@@ -66,7 +131,7 @@ export default function SuccessPage() {
           color: "#888",
         }}
       >
-        You may safely close this page.
+        {status === "loading" ? "This usually takes a few seconds." : "You may safely close this page after returning to the app."}
       </p>
     </main>
   )
