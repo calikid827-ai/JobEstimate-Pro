@@ -67,8 +67,6 @@ import {
   daysBetween,
   formatDelta,
   formatSignedNumber,
-  toISODate,
-  computeDueDateISO,
   buildActualsPatch,
   explainEstimateChanges,
   estimateDirectCost,
@@ -88,6 +86,7 @@ import {
   buildPlanEstimatorStorySections,
   buildPlanPricingCarryReadback,
 } from "./lib/plan-pricing-carry"
+import { buildInvoiceFromEstimate } from "./lib/invoices"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -6596,230 +6595,56 @@ ${inv.notes ? `<div class="box"><strong>Notes:</strong> ${esc(inv.notes)}</div>`
   win.close()
 }
 
-  function makeInvoiceNo() {
-  // simple + unique enough for now
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  const rand = Math.floor(Math.random() * 900 + 100)
-  return `INV-${y}${m}${day}-${rand}`
-}
-
 function createInvoiceFromEstimate(est: EstimateHistoryItem) {
-    const issue = new Date()
-
   const terms = companyProfile.paymentTerms?.trim() || "Net 7"
-  const dueISO = computeDueDateISO(issue, terms)
-
-  const client = est?.jobDetails?.clientName || jobDetails.clientName || "Client"
-  const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
-  const jobAddr = est?.jobDetails?.jobAddress || jobDetails.jobAddress || ""
+  const notePaymentTerms = companyProfile.paymentTerms?.trim() || "Due upon approval."
 
     if (hasAnyInvoiceForEstimate(est.id)) {
     setStatus("An invoice already exists for this estimate.")
     return
   }
 
-  const labor = Number(est?.pricing?.labor || 0)
-  const materials = Number(est?.pricing?.materials || 0)
-  const subs = Number(est?.pricing?.subs || 0)
-  const markupPct = Number(est?.pricing?.markup || 0)
+  const built = buildInvoiceFromEstimate({
+    estimate: est,
+    dueTerms: terms,
+    notePaymentTerms,
+    fallbackJobDetails: jobDetails,
+  })
+  if (!built.ok) return
 
-  // --- tax snapshot (from estimate history) ---
-  const taxEnabledSnap = Boolean(est.tax?.enabled)
-  const taxRateSnap = Number(est.tax?.rate || 0)
-
-  // --- compute estimate totals (same logic as UI/PDF) ---
-  const base = labor + materials + subs
-  const markedUp = base * (1 + markupPct / 100)
-  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
-  const estimateTotal = Math.round(markedUp + taxAmt)
-
-  // --- deposit snapshot (from estimate history) ---
-  const depEnabled = Boolean(est.deposit?.enabled)
-  const depType = est.deposit?.type === "fixed" ? "fixed" : "percent"
-  const depValue = Number(est.deposit?.value || 0)
-
-  // deposit is computed from the estimate TOTAL (including tax)
-  let depDue = 0
-  if (depEnabled && estimateTotal > 0) {
-    if (depType === "percent") {
-      const pct = Math.max(0, Math.min(100, depValue))
-      depDue = Math.round(estimateTotal * (pct / 100))
-    } else {
-      depDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
-    }
-  }
-  const depRemain = Math.max(0, estimateTotal - depDue)
-
-  // --- build line items ---
-  const lineItems: { label: string; amount: number }[] = []
-
-  if (depEnabled) {
-    // Deposit invoice: customer pays ONLY deposit now
-    const label =
-      depType === "percent"
-        ? `Deposit (${Math.max(0, Math.min(100, depValue))}% of total)`
-        : `Deposit (fixed amount)`
-    lineItems.push({ label, amount: depDue })
-  } else {
-    // Full invoice: show full breakdown + tax line
-    if (labor) lineItems.push({ label: "Labor", amount: labor })
-    if (materials) lineItems.push({ label: "Materials", amount: materials })
-    if (subs) lineItems.push({ label: "Other / Mobilization", amount: subs })
-
-    // If you want a visible tax line item (recommended)
-    if (taxEnabledSnap) {
-      lineItems.push({ label: `Sales Tax (${taxRateSnap}%)`, amount: taxAmt })
-    }
-  }
-
-  const inv: Invoice = {
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
-    jobId: est.jobId,
-    fromEstimateId: est.id,
-    invoiceNo: makeInvoiceNo(),
-    issueDate: toISODate(issue),
-    dueDate: dueISO,
-    billToName: client,
-    jobName: jobNm,
-    jobAddress: jobAddr,
-    lineItems,
-
-    // subtotal is what’s shown before total-due line; for deposit invoice it’s the deposit
-    subtotal: depEnabled ? depDue : Math.round(markedUp),
-    total: depEnabled ? depDue : estimateTotal,
-    estimateRows: est.estimateRows ?? null,
-    estimateEmbeddedBurdens: est.estimateEmbeddedBurdens ?? null,
-    estimateSections: est.estimateSections ?? null,
-
-    notes: depEnabled
-      ? `Deposit invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Remaining balance after deposit: $${depRemain.toLocaleString()}. Payment terms: ${
-          companyProfile.paymentTerms?.trim() || "Due upon approval."
-        }`
-      : `Payment terms: ${companyProfile.paymentTerms?.trim() || "Due upon approval."}`,
-
-      status: "draft",
-      paidAt: undefined,
-
-    deposit: depEnabled
-      ? {
-          enabled: true,
-          type: depType,
-          value: depValue,
-          depositDue: depDue,
-          remainingBalance: depRemain,
-          estimateTotal,
-        }
-      : undefined,
-  }
-
-  setInvoices((prev) => [inv, ...prev])
-  setStatus(`Invoice created: ${inv.invoiceNo}`)
+  setInvoices((prev) => [built.invoice, ...prev])
+  setStatus(`Invoice created: ${built.invoice.invoiceNo}`)
 }
 
 // ✅ Create Balance Invoice (Remaining Balance after Deposit)
 function createBalanceInvoiceFromEstimate(est: EstimateHistoryItem) {
-  const issue = new Date()
   const terms = companyProfile.paymentTerms?.trim() || "Net 7"
-  const dueISO = computeDueDateISO(issue, terms)
-
-  const client = est?.jobDetails?.clientName || jobDetails.clientName || "Client"
-  const jobNm = est?.jobDetails?.jobName || jobDetails.jobName || "Job"
-  const jobAddr = est?.jobDetails?.jobAddress || jobDetails.jobAddress || ""
+  const notePaymentTerms = companyProfile.paymentTerms?.trim() || "Due upon approval."
 
     if (hasBalanceInvoiceForEstimate(est.id)) {
     setStatus("A balance invoice already exists for this estimate.")
     return
   }
 
-  const labor = Number(est?.pricing?.labor || 0)
-  const materials = Number(est?.pricing?.materials || 0)
-  const subs = Number(est?.pricing?.subs || 0)
-  const markupPct = Number(est?.pricing?.markup || 0)
+  const built = buildInvoiceFromEstimate({
+    estimate: est,
+    mode: "balance",
+    dueTerms: terms,
+    notePaymentTerms,
+    fallbackJobDetails: jobDetails,
+  })
 
-  // --- tax snapshot (from estimate history) ---
-  const taxEnabledSnap = Boolean(est.tax?.enabled)
-  const taxRateSnap = Number(est.tax?.rate || 0)
-
-  // --- compute estimate totals (same logic as UI/PDF) ---
-  const base = labor + materials + subs
-  const markedUp = base * (1 + markupPct / 100)
-  const taxAmt = taxEnabledSnap ? Math.round(markedUp * (taxRateSnap / 100)) : 0
-  const estimateTotal = Math.round(markedUp + taxAmt)
-
-  // --- deposit snapshot (from estimate history) ---
-  const depEnabled = Boolean(est.deposit?.enabled)
-  const depType = est.deposit?.type === "fixed" ? "fixed" : "percent"
-  const depValue = Number(est.deposit?.value || 0)
-
-  // deposit is computed from the estimate TOTAL (including tax)
-  let depDue = 0
-  if (depEnabled && estimateTotal > 0) {
-    if (depType === "percent") {
-      const pct = Math.max(0, Math.min(100, depValue))
-      depDue = Math.round(estimateTotal * (pct / 100))
-    } else {
-      depDue = Math.min(estimateTotal, Math.round(Math.max(0, depValue)))
-    }
-  }
-
-  const balanceDue = Math.max(0, estimateTotal - depDue)
-
-  // ✅ Guardrails (avoid creating nonsense invoices)
-  if (!depEnabled) {
-    setStatus("No deposit was set on this estimate — use Create Invoice instead.")
-    return
-  }
-  if (balanceDue <= 0) {
-    setStatus("Remaining balance is $0 — nothing to invoice.")
+  if (!built.ok) {
+    setStatus(
+      built.reason === "missing_deposit"
+        ? "No deposit was set on this estimate — use Create Invoice instead."
+        : "Remaining balance is $0 — nothing to invoice."
+    )
     return
   }
 
-  const lineItems: { label: string; amount: number }[] = [
-    { label: "Remaining Balance", amount: balanceDue },
-  ]
-
-  const inv: Invoice = {
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
-    jobId: est.jobId,
-    fromEstimateId: est.id,
-    invoiceNo: makeInvoiceNo(),
-    issueDate: toISODate(issue),
-    dueDate: dueISO,
-    billToName: client,
-    jobName: jobNm,
-    jobAddress: jobAddr,
-    lineItems,
-    subtotal: balanceDue,
-    total: balanceDue,
-    estimateRows: est.estimateRows ?? null,
-    estimateEmbeddedBurdens: est.estimateEmbeddedBurdens ?? null,
-    estimateSections: est.estimateSections ?? null,
-
-    notes: `Balance invoice. Estimate total (incl. tax if applied): $${estimateTotal.toLocaleString()}. Deposit paid/required: $${depDue.toLocaleString()}. Remaining balance due: $${balanceDue.toLocaleString()}. Payment terms: ${
-      companyProfile.paymentTerms?.trim() || "Due upon approval."
-    }`,
-
-    status: "draft",
-    paidAt: undefined,
-
-    // keep deposit context so PDF can optionally show it
-    deposit: {
-      enabled: true,
-      type: depType,
-      value: depValue,
-      depositDue: depDue,
-      remainingBalance: balanceDue,
-      estimateTotal,
-    },
-  }
-
-  setInvoices((prev) => [inv, ...prev])
-  setStatus(`Balance invoice created: ${inv.invoiceNo}`)
+  setInvoices((prev) => [built.invoice, ...prev])
+  setStatus(`Balance invoice created: ${built.invoice.invoiceNo}`)
 }
 
 const isUserEdited = pricingEdited === true
