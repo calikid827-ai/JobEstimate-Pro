@@ -5701,6 +5701,153 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   `
 }
 
+    const pdfPlanReadback = planIntelligence?.planReadback ?? null
+    const pdfPricingCarryReadback = buildPlanPricingCarryReadback({
+      planReadback: pdfPlanReadback,
+      estimateSections,
+    })
+    const pdfEstimatorStory = buildPlanEstimatorStorySections({
+      planReadback: pdfPlanReadback,
+      pricingCarryReadback: pdfPricingCarryReadback,
+    })
+    const pdfScopeGaps =
+      pdfPlanReadback?.scopeGapReadback
+        .filter((gap) => gap.status !== "likely_ready")
+        .slice(0, 4) ?? []
+
+    const labelText = (value: string) => value.replace(/_/g, " ")
+    const evidenceSourceText = (
+      evidence: Array<{
+        sourcePageNumber: number
+        pageNumber: number
+        sheetNumber: string | null
+        sheetTitle: string | null
+      }>
+    ) =>
+      evidence.length > 0
+        ? Array.from(
+            new Set(
+              evidence.map((ref) =>
+                `${ref.sheetNumber || ref.sheetTitle || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`
+              )
+            )
+          )
+            .slice(0, 3)
+            .join("; ")
+        : ""
+
+    const pdfEstimatorStoryHtml =
+      pdfPlanReadback &&
+      (pdfEstimatorStory.length > 0 ||
+        pdfPricingCarryReadback.length > 0 ||
+        pdfScopeGaps.length > 0)
+        ? `
+          <div class="section">
+            <div class="muted" style="margin-bottom:6px;">Estimator Plan Review</div>
+            <div style="
+              border:1px solid #cfcfcf;
+              border-radius:10px;
+              padding:12px;
+              background:#fff;
+            ">
+              ${
+                pdfPlanReadback.headline
+                  ? `<div style="font-weight:800; font-size:13px; line-height:1.45; color:#111;">${esc(
+                      pdfPlanReadback.headline
+                    )}</div>`
+                  : ""
+              }
+
+              ${
+                pdfEstimatorStory.length > 0
+                  ? `<div style="margin-top:10px; display:grid; gap:8px;">
+                      ${pdfEstimatorStory
+                        .slice(0, 5)
+                        .map((section, index) => {
+                          const sources = evidenceSourceText(section.evidence)
+                          return `
+                            <div style="padding:9px; border:1px solid #e5e5e5; border-radius:8px; background:#fafafa; page-break-inside:avoid;">
+                              <div style="font-weight:800; font-size:12px; color:#111;">
+                                ${index + 1}. ${esc(section.title)}
+                                <span style="font-weight:600; color:#555;"> - ${esc(labelText(section.supportLabel))} support</span>
+                              </div>
+                              <div style="margin-top:4px; font-size:12px; line-height:1.45; color:#222;">${esc(section.summary)}</div>
+                              ${
+                                section.bullets.length > 0
+                                  ? `<ul style="margin:6px 0 0; padding-left:18px; line-height:1.4; font-size:12px;">
+                                      ${section.bullets.slice(0, 3).map((item) => `<li>${esc(item)}</li>`).join("")}
+                                    </ul>`
+                                  : ""
+                              }
+                              ${
+                                sources
+                                  ? `<div style="margin-top:5px; font-size:11px; color:#666;">Sources: ${esc(sources)}</div>`
+                                  : ""
+                              }
+                            </div>
+                          `
+                        })
+                        .join("")}
+                    </div>`
+                  : ""
+              }
+
+              ${
+                pdfPricingCarryReadback.length > 0
+                  ? `<div style="margin-top:12px;">
+                      <div style="font-size:12px; font-weight:800; color:#333; margin-bottom:6px;">Pricing Carry</div>
+                      <div style="display:grid; gap:7px;">
+                        ${pdfPricingCarryReadback
+                          .slice(0, 6)
+                          .map((item) => {
+                            const sources = evidenceSourceText(item.evidence)
+                            const quantity =
+                              item.quantity != null && item.unit
+                                ? `<div style="margin-top:3px; font-size:11px; color:#555;">Carried quantity: ${esc(
+                                    Number(item.quantity).toLocaleString()
+                                  )} ${esc(labelText(item.unit))}</div>`
+                                : ""
+                            return `
+                              <div style="padding:8px; border:1px solid #e5e5e5; border-radius:8px; background:#fff; page-break-inside:avoid;">
+                                <div style="font-weight:800; font-size:12px; color:#111;">
+                                  ${esc(item.title)} - ${esc(labelText(item.status))}
+                                </div>
+                                <div style="margin-top:3px; font-size:12px; line-height:1.4; color:#222;">${esc(item.narration)}</div>
+                                ${quantity}
+                                ${
+                                  sources
+                                    ? `<div style="margin-top:4px; font-size:11px; color:#666;">Sources: ${esc(sources)}</div>`
+                                    : ""
+                                }
+                              </div>
+                            `
+                          })
+                          .join("")}
+                      </div>
+                    </div>`
+                  : ""
+              }
+
+              ${
+                pdfScopeGaps.length > 0
+                  ? `<div style="margin-top:12px;">
+                      <div style="font-size:12px; font-weight:800; color:#333; margin-bottom:6px;">Confirm Before Final Pricing Confidence</div>
+                      <ul style="margin:0; padding-left:18px; line-height:1.45; font-size:12px;">
+                        ${pdfScopeGaps
+                          .map(
+                            (gap) =>
+                              `<li><strong>${esc(gap.title)}:</strong> ${esc(gap.narration)} ${esc(gap.confirmationPrompt)}</li>`
+                          )
+                          .join("")}
+                      </ul>
+                    </div>`
+                  : ""
+              }
+            </div>
+          </div>
+        `
+        : ""
+
     win.document.write(`
       <html>
         <head>
@@ -5958,6 +6105,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 </div>
 
           ${scheduleHtml(schedule)}
+
+          ${pdfEstimatorStoryHtml}
 
           ${estimateSectionsHtml}
 
