@@ -83,7 +83,7 @@ export default function SuccessPage() {
       </h1>
 
       <p style={{ fontSize: 16, color: "#555", lineHeight: 1.6 }}>
-        Thank you for upgrading ScopeGuard.
+        Thank you for upgrading JobEstimate Pro.
         <br />
         {status === "success"
           ? "You now have unlimited access to AI-generated change orders and estimates."

@@ -24,7 +24,7 @@ export default function CancelPage() {
       <p style={{ fontSize: 16, color: "#555", lineHeight: 1.6 }}>
         No charges were made.
         <br />
-        You can continue using ScopeGuard with free access
+        You can continue using JobEstimate Pro with free access
         or upgrade at any time.
       </p>
 
@@ -41,7 +41,7 @@ export default function CancelPage() {
           fontWeight: 600,
         }}
       >
-        Return to ScopeGuard
+        Return to JobEstimate Pro
       </Link>
 
       <p
