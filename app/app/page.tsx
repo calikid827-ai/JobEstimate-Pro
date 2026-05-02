@@ -2579,6 +2579,77 @@ const estimateConfidence = useMemo(() => {
   hasMeasurementReference,
 ])
 
+const planAssistedStatus = useMemo(() => {
+  const hasPlanContext = jobPlans.length > 0 || !!planIntelligence
+  const readback = planIntelligence?.planReadback ?? null
+  const hasUsefulReadback =
+    !!readback?.headline ||
+    (readback?.estimatorFlowReadback?.length ?? 0) > 0 ||
+    (readback?.areaQuantityReadback?.length ?? 0) > 0 ||
+    (readback?.tradeScopeReadback?.length ?? 0) > 0 ||
+    (readback?.groupedScopeReadback?.length ?? 0) > 0
+  const hasHardQuantitySupport =
+    readback?.areaQuantityReadback?.some(
+      (area) => area.supportLevel === "direct" && area.quantityNarration.length > 0
+    ) ||
+    readback?.tradeScopeReadback?.some(
+      (trade) => trade.supportLevel === "direct" && trade.quantityNarration.length > 0
+    ) ||
+    readback?.groupedScopeReadback?.some(
+      (group) => group.supportLevel === "direct" && group.directSupport.length > 0
+    ) ||
+    false
+  const hasConfirmationGaps =
+    readback?.scopeGapReadback?.some((gap) => gap.status !== "likely_ready") ||
+    (readback?.needsConfirmation?.length ?? 0) > 0 ||
+    false
+
+  if (!hasPlanContext) {
+    return {
+      label: "No plans provided",
+      tone: "neutral" as const,
+      message: "This estimate was generated without uploaded plan review.",
+      details: ["Use plan upload when you want a plan-assisted review of sheets, affected areas, and quantity support."],
+    }
+  }
+
+  if (hasHardQuantitySupport) {
+    return {
+      label: "Strong plan quantity support",
+      tone: "good" as const,
+      message: "Plans were uploaded and the plan readback includes direct quantity support.",
+      details: [
+        "Plan-assisted review is available.",
+        hasConfirmationGaps
+          ? "Some items may still need estimator confirmation before final pricing confidence."
+          : "Supported quantities should still be checked against final selections and affected areas.",
+      ],
+    }
+  }
+
+  if (hasUsefulReadback) {
+    return {
+      label: "Plan readback available",
+      tone: "warning" as const,
+      message: "Plans were uploaded and useful readback is available, but hard measured quantities were not confirmed.",
+      details: [
+        "Plan-assisted review is available.",
+        "Plans uploaded, but measured quantities still need confirmation.",
+      ],
+    }
+  }
+
+  return {
+    label: "Plan-assisted review",
+    tone: "warning" as const,
+    message: "Plans were uploaded, but hard measured quantities were not detected from the uploaded plans.",
+    details: [
+      "Hard quantities not detected from uploaded plans.",
+      "Final price confidence depends on confirming exact quantities, finish selections, and affected areas.",
+    ],
+  }
+}, [jobPlans.length, planIntelligence])
+
 const smartScopePreview = useMemo(() => {
   const base = (scopeChange || "").trim()
   if (!base) return null
@@ -6798,6 +6869,7 @@ const hasEstimateStatus =
   !!changeOrderDetection?.isChangeOrder ||
   !!scopeSignals?.needsReturnVisit ||
   hasPhotoStatus ||
+  !!planAssistedStatus ||
   needsMeasurementStatus
 
 const hasReviewInsights =
@@ -8427,6 +8499,7 @@ function EstimateStatusCard({
   jobPhotosCount,
   photoAnalysis,
   photoScopeAssist,
+  planAssistedStatus,
   measureEnabled,
   totalSqft,
   estimateConfidence,
@@ -8439,6 +8512,12 @@ function EstimateStatusCard({
   jobPhotosCount: number
   photoAnalysis: PhotoAnalysis
   photoScopeAssist: PhotoScopeAssist
+  planAssistedStatus: {
+    label: string
+    tone: "neutral" | "warning" | "good"
+    message: string
+    details: string[]
+  } | null
   measureEnabled: boolean
   totalSqft: number
   hasMeasurementReference: boolean
@@ -8447,6 +8526,7 @@ function EstimateStatusCard({
   const hasPhotos = jobPhotosCount > 0
   const hasPhotoAssist = !!photoAnalysis || !!photoScopeAssist
   const isPhotoOnly = hasPhotos && !hasPhotoAssist
+  const hasPlanSignal = !!planAssistedStatus
 
   const measurementsNeeded =
   (!measureEnabled || totalSqft <= 0) &&
@@ -8462,6 +8542,7 @@ function EstimateStatusCard({
     !!scopeSignals?.needsReturnVisit ||
     isPhotoOnly ||
     hasPhotoAssist ||
+    hasPlanSignal ||
     measurementsNeeded ||
     hasMeasurementSignal
 
@@ -8479,8 +8560,28 @@ function EstimateStatusCard({
   const showInputSignals =
     isPhotoOnly ||
     hasPhotoAssist ||
+    hasPlanSignal ||
     measurementsNeeded ||
     hasMeasurementSignal
+
+  const planTone =
+    planAssistedStatus?.tone === "good"
+      ? {
+          background: "#ecfdf5",
+          border: "#86efac",
+          color: "#065f46",
+        }
+      : planAssistedStatus?.tone === "warning"
+        ? {
+            background: "#fff7ed",
+            border: "#fdba74",
+            color: "#9a3412",
+          }
+        : {
+            background: "#f9fafb",
+            border: "#e5e7eb",
+            color: "#374151",
+          }
 
   return (
     <div
@@ -8636,6 +8737,22 @@ function EstimateStatusCard({
         </span>
       )}
 
+      {planAssistedStatus && (
+        <span
+          style={{
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: planTone.background,
+            border: `1px solid ${planTone.border}`,
+            fontSize: 12,
+            fontWeight: 800,
+            color: planTone.color,
+          }}
+        >
+          {planAssistedStatus.label}
+        </span>
+      )}
+
       {measurementsNeeded && (
         <span
           style={{
@@ -8670,6 +8787,30 @@ function EstimateStatusCard({
     </div>
   </div>
 )}
+
+      {planAssistedStatus && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            border: `1px solid ${planTone.border}`,
+            borderRadius: 12,
+            background: planTone.background,
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "#111827",
+          }}
+        >
+          <strong>{planAssistedStatus.label}:</strong> {planAssistedStatus.message}
+          {planAssistedStatus.details.length > 0 && (
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+              {planAssistedStatus.details.map((detail, index) => (
+                <li key={`plan-assisted-status-${index}`}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {(displayedChangeOrderNote ||
         displayedScheduleImpactNote ||
@@ -11168,6 +11309,7 @@ function PlanAwareEstimatorReadbackCard({
   jobPhotosCount={jobPhotos.length}
   photoAnalysis={photoAnalysis}
   photoScopeAssist={photoScopeAssist}
+  planAssistedStatus={planAssistedStatus}
   measureEnabled={measureEnabled}
   totalSqft={totalSqft}
   hasMeasurementReference={hasMeasurementReference}
