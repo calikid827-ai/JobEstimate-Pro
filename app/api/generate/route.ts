@@ -109,6 +109,7 @@ const PRIMARY_MODEL = "gpt-4.1-mini" as const
 const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
 const PHOTO_ANALYSIS_MODEL = "gpt-4o" as const
+const ENABLE_DETAILED_SERVER_LOGS = process.env.NODE_ENV !== "production"
 const MAX_PHOTOS = 8
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024 // 8 MB decoded size per image
 const ALLOWED_PHOTO_MIME = new Set([
@@ -2869,7 +2870,11 @@ exteriorSignals: {
       jobSummary,
     }
   } catch (err) {
-    console.warn("Photo analysis failed:", err)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("Photo analysis failed:", err)
+    } else {
+      console.warn("Photo analysis failed.")
+    }
     return null
   }
 }
@@ -3815,7 +3820,11 @@ async function tryGetCachedResult(args: { email: string; requestId: string }) {
     .maybeSingle()
 
   if (error) {
-    console.warn("generation_results read failed:", error)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("generation_results read failed:", error)
+    } else {
+      console.warn("generation_results read failed.")
+    }
     return null
   }
 
@@ -3835,7 +3844,11 @@ async function tryStoreCachedResult(args: { email: string; requestId: string; re
   if (error) {
     // If it already exists (duplicate key), ignore
     // Supabase/PostgREST typically returns 409 or a PG error code; we just ignore all insert errors here.
-    console.warn("generation_results insert failed (ignored):", error)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("generation_results insert failed (ignored):", error)
+    } else {
+      console.warn("generation_results insert failed (ignored).")
+    }
   }
 }
 
@@ -4022,7 +4035,11 @@ Return ONLY the rewritten paragraph.
 
     return out
   } catch (e) {
-    console.warn("4o polish failed — using original description.", e)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("4o polish failed — using original description.", e)
+    } else {
+      console.warn("4o polish failed — using original description.")
+    }
     return d
   }
 }
@@ -7291,7 +7308,9 @@ const cacheEligible = !!(headerKey || bodyKey)
 
   const inputParsed = GenerateSchema.safeParse(raw)
 if (!inputParsed.success) {
-  console.log("BAD_INPUT issues:", inputParsed.error.issues)
+  if (ENABLE_DETAILED_SERVER_LOGS) {
+    console.log("BAD_INPUT issues:", inputParsed.error.issues)
+  }
   return NextResponse.json(
     {
       ok: false,
@@ -7415,7 +7434,11 @@ if (!DEV_ALWAYS_PAID.includes(normalizedEmail)) {
   })
 
   if (error) {
-    console.error("consume_free_generation error:", error)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.error("consume_free_generation error:", error)
+    } else {
+      console.error("consume_free_generation error.")
+    }
     return NextResponse.json({ error: "Entitlement check failed" }, { status: 500 })
   }
 
@@ -7425,7 +7448,11 @@ if (!DEV_ALWAYS_PAID.includes(normalizedEmail)) {
     null
 
   if (!row) {
-    console.error("consume_free_generation returned empty data:", data)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.error("consume_free_generation returned empty data:", data)
+    } else {
+      console.error("consume_free_generation returned empty data.")
+    }
     return NextResponse.json({ error: "Entitlement check failed (empty)" }, { status: 500 })
   }
 
@@ -7435,7 +7462,11 @@ if (!DEV_ALWAYS_PAID.includes(normalizedEmail)) {
     row
 
   if (!payload || typeof payload.ok !== "boolean") {
-    console.error("consume_free_generation unexpected shape:", data)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.error("consume_free_generation unexpected shape:", data)
+    } else {
+      console.error("consume_free_generation unexpected shape.")
+    }
     return NextResponse.json({ error: "Entitlement check failed (shape)" }, { status: 500 })
   }
 
@@ -7487,9 +7518,11 @@ const tradeStack = detectTradeStack({
   primaryTrade: trade,
 })
 
-console.log("PG SPLIT SCOPES", splitScopes)
-console.log("PG IS MULTI TRADE", splitMultiTrade)
-console.log("PG TRADE STACK", tradeStack)
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG SPLIT SCOPES", splitScopes)
+  console.log("PG IS MULTI TRADE", splitMultiTrade)
+  console.log("PG TRADE STACK", tradeStack)
+}
 
 const paintScopeForJob: PaintScope | null = paintScope ?? null
 
@@ -7509,10 +7542,12 @@ const planIntelligence =
       })
     : null
 
-console.log(
-  "PLAN DEBUG:",
-  JSON.stringify(planIntelligence, null, 2)
-)
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log(
+    "PLAN DEBUG:",
+    JSON.stringify(planIntelligence, null, 2)
+  )
+}
 
 const photoAnalysis =
   photos && photos.length > 0
@@ -7720,18 +7755,20 @@ const multiTradeDet =
       })
     : null
 
-console.log("PG MULTI TRADE DET", {
-  okForDeterministic: multiTradeDet?.okForDeterministic ?? null,
-  okForVerified: multiTradeDet?.okForVerified ?? null,
-  pricing: multiTradeDet?.pricing ?? null,
-  perTrade: multiTradeDet?.perTrade?.map((x) => ({
-    trade: x.trade,
-    scope: x.scope,
-    total: x.pricing.total,
-    source: x.source,
-    crewDays: x.crewDays,
-  })) ?? [],
-})
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG MULTI TRADE DET", {
+    okForDeterministic: multiTradeDet?.okForDeterministic ?? null,
+    okForVerified: multiTradeDet?.okForVerified ?? null,
+    pricing: multiTradeDet?.pricing ?? null,
+    perTrade: multiTradeDet?.perTrade?.map((x) => ({
+      trade: x.trade,
+      scope: x.scope,
+      total: x.pricing.total,
+      source: x.source,
+      crewDays: x.crewDays,
+    })) ?? [],
+  })
+}
 
 const liveTradePricingInfluence = buildLiveTradePricingInfluence({
   trade,
@@ -7802,7 +7839,9 @@ const electricalDetBasis = mergeInfluencedDeterministicBasis({
   trade: "electrical",
 })
 
-    console.log("PG ELECTRICAL DET", electricalDet)
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG ELECTRICAL DET", electricalDet)
+}
 
 const electricalDetPricing: Pricing | null =
   electricalDet?.okForDeterministic
@@ -7842,11 +7881,13 @@ const plumbingDetPricing: Pricing | null =
       ? clampPricing(coercePricing(plumbingDet.pricing))
       : null
 
-console.log("PG PLUMBING CONFLICT", {
-  plumbingScopeConflict,
-  jobType: plumbingDet?.jobType ?? null,
-  okForDeterministic: plumbingDet?.okForDeterministic ?? null,
-})
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG PLUMBING CONFLICT", {
+    plumbingScopeConflict,
+    jobType: plumbingDet?.jobType ?? null,
+    okForDeterministic: plumbingDet?.okForDeterministic ?? null,
+  })
+}
 
     // Drywall deterministic engine (PriceGuard™)
 const drywallDetMeasurements =
@@ -7943,19 +7984,21 @@ const paintingDetPricing: Pricing | null =
 
     
    
+if (ENABLE_DETAILED_SERVER_LOGS) {
   console.log("PG FLAGS", {
-  trade,
-  painting_ok: paintingDet?.okForDeterministic,
-  flooring_ok: flooringDet?.okForDeterministic,
-  electrical_ok: electricalDet?.okForDeterministic,
-  plumbing_ok: plumbingDet?.okForDeterministic,
-  drywall_ok: drywallDet?.okForDeterministic,
-  wallcovering_ok: wallcoveringDet?.okForDeterministic,
-  painting_type: paintingDet?.jobType,
-  plumbing_type: plumbingDet?.jobType,
-  drywall_type: drywallDet?.jobType,
-  wallcovering_type: wallcoveringDet?.jobType,
-})
+    trade,
+    painting_ok: paintingDet?.okForDeterministic,
+    flooring_ok: flooringDet?.okForDeterministic,
+    electrical_ok: electricalDet?.okForDeterministic,
+    plumbing_ok: plumbingDet?.okForDeterministic,
+    drywall_ok: drywallDet?.okForDeterministic,
+    wallcovering_ok: wallcoveringDet?.okForDeterministic,
+    painting_type: paintingDet?.jobType,
+    plumbing_type: plumbingDet?.jobType,
+    drywall_type: drywallDet?.jobType,
+    wallcovering_type: wallcoveringDet?.jobType,
+  })
+}
 
 // Only treat as painting when the final trade is painting
 const looksLikePainting = trade === "painting"
@@ -7986,15 +8029,19 @@ const anchorHit =
     photoFloorSqft: quantityInputs.photoFloorSqft,
   })
 
-console.log("PG ANCHOR", { hit: anchorHit?.id ?? null })
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG ANCHOR", { hit: anchorHit?.id ?? null })
+}
 
 const anchorPricing: Pricing | null = anchorHit?.pricing ?? null
 
-console.log("PG ANCHOR PRICING", {
-  hit: anchorHit?.id ?? null,
-  hasAnchorPricing: !!anchorPricing,
-  anchorTotal: anchorPricing?.total ?? null,
-})
+if (ENABLE_DETAILED_SERVER_LOGS) {
+  console.log("PG ANCHOR PRICING", {
+    hit: anchorHit?.id ?? null,
+    hasAnchorPricing: !!anchorPricing,
+    anchorTotal: anchorPricing?.total ?? null,
+  })
+}
 
 const useBigJobPricing =
   looksLikePainting &&
@@ -8030,17 +8077,19 @@ const useDoorPricing =
 const effectivePaintScope: EffectivePaintScope =
   useDoorPricing ? "doors_only" : (paintScopeForJob ?? "walls")
 
+if (ENABLE_DETAILED_SERVER_LOGS) {
   console.log("PG PARSE", {
-  trade,
-  stateAbbrev,
-  paintScopeFromUI: paintScopeForJob,
-  rooms,
-  doors,
-  looksLikePainting,
-  doorsOnlyIntent,
-  effectivePaintScope,
-  scope: scopeChange,
-})
+    trade,
+    stateAbbrev,
+    paintScopeFromUI: paintScopeForJob,
+    rooms,
+    doors,
+    looksLikePainting,
+    doorsOnlyIntent,
+    effectivePaintScope,
+    scope: scopeChange,
+  })
+}
 
 const materialsList = buildMaterialsList({
   trade,
@@ -8590,7 +8639,11 @@ try {
     )
   }
 
-  console.error("OpenAI call failed:", err)
+  if (ENABLE_DETAILED_SERVER_LOGS) {
+    console.error("OpenAI call failed:", err)
+  } else {
+    console.error("OpenAI call failed.")
+  }
   return NextResponse.json(
     { error: "AI generation failed" },
     { status: 500 }
@@ -8604,7 +8657,11 @@ let aiParsed: any
 try {
   aiParsed = JSON.parse(rawContent)
 } catch (e) {
-  console.error("AI returned non-JSON:", rawContent)
+  if (ENABLE_DETAILED_SERVER_LOGS) {
+    console.error("AI returned non-JSON:", rawContent)
+  } else {
+    console.error("AI returned non-JSON.")
+  }
   return NextResponse.json(
     { error: "AI response was not valid JSON" },
     { status: 500 }
@@ -8698,7 +8755,11 @@ normalized.estimateBasis = syncEstimateBasisMath({
       }
     }
   } catch (e) {
-    console.warn("AI repair call failed; continuing with original output.", e)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("AI repair call failed; continuing with original output.", e)
+    } else {
+      console.warn("AI repair call failed; continuing with original output.")
+    }
   }
 
   // ✅ #3: Re-validate once after repair (or attempted repair)
@@ -8711,7 +8772,11 @@ normalized.estimateBasis = syncEstimateBasisMath({
 })
 
   if (!v2.ok) {
-    console.warn("AI output still failing validation after repair:", v2.reasons)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.warn("AI output still failing validation after repair:", v2.reasons)
+    } else {
+      console.warn("AI output still failing validation after repair.")
+    }
     // Optional (safe default): do nothing — your deterministic/merge safety floor still protects you later.
     // If you ever want to force non-AI behavior when it fails twice, this is the spot to do it.
   }
@@ -8831,8 +8896,15 @@ return await respondAndCache({
 })
 
   } catch (err) {
-    console.error("Generate failed:", err)
     const normalized = normalizeGenerateServerError(err)
+    if (ENABLE_DETAILED_SERVER_LOGS) {
+      console.error("Generate failed:", err)
+    } else {
+      console.error("Generate failed:", {
+        code: normalized.code,
+        status: normalized.status,
+      })
+    }
     return NextResponse.json(
       { ok: false, code: normalized.code, message: normalized.message },
       { status: normalized.status }

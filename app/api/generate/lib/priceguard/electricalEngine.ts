@@ -2,6 +2,8 @@
 
 import type { EstimateBasis, EstimateSectionProvenance } from "../estimator/types"
 
+const ENABLE_DETAILED_SERVER_LOGS = process.env.NODE_ENV !== "production"
+
 type Pricing = {
   labor: number
   materials: number
@@ -232,7 +234,9 @@ export function computeElectricalDeterministic(args: {
           total: Math.round(Number(args.planSectionInputs.supportedDeviceCount || 0)),
         }
       : parseElectricalDeviceBreakdown(scope)
-  console.log("PG ELECTRICAL DEVICES PARSED", { scope, devices })
+  if (ENABLE_DETAILED_SERVER_LOGS) {
+    console.log("PG ELECTRICAL DEVICES PARSED", { scope, devices })
+  }
   const dedicatedCircuits = parseDedicatedCircuits(scope)
   const panelCount = parsePanelCount(scope)
   const evChargerCount = parseEvChargerCount(scope)
