@@ -65,6 +65,34 @@ export type PlanPricingCarryItem = {
   evidence: PlanPricingCarryEvidence[]
 }
 
+export type PlanEstimatorStoryInput = PlanPricingCarryInput & {
+  headline?: string
+  estimatorFlowReadback?: Array<{
+    stepKey: string
+    title: string
+    narration: string
+    supportLevel: "direct" | "reinforced" | "review"
+    evidence: PlanPricingCarryEvidence[]
+  }>
+  areaQuantityReadback?: Array<{
+    areaGroup: string
+    supportLevel: "direct" | "reinforced" | "review"
+    narration: string
+    quantityNarration: string[]
+    scopeNotes: string[]
+    evidence: PlanPricingCarryEvidence[]
+  }>
+}
+
+export type PlanEstimatorStorySection = {
+  key: string
+  title: string
+  supportLabel: "direct" | "reinforced" | "review" | "mixed"
+  summary: string
+  bullets: string[]
+  evidence: PlanPricingCarryEvidence[]
+}
+
 const uniqStrings = (items: string[], max = 8): string[] => {
   const out: string[] = []
   for (const item of items.map((value) => String(value || "").trim()).filter(Boolean)) {
@@ -87,6 +115,51 @@ const uniqEvidence = (items: PlanPricingCarryEvidence[], max = 6): PlanPricingCa
 }
 
 const normalize = (value: string): string => String(value || "").toLowerCase().trim()
+
+const sentence = (value: string): string => {
+  const text = String(value || "").trim()
+  if (!text) return ""
+  return /[.!?]$/.test(text) ? text : `${text}.`
+}
+
+const supportRank: Record<"direct" | "reinforced" | "review", number> = {
+  direct: 0,
+  reinforced: 1,
+  review: 2,
+}
+
+const mixedSupport = (levels: Array<"direct" | "reinforced" | "review">): PlanEstimatorStorySection["supportLabel"] => {
+  const unique = Array.from(new Set(levels))
+  if (unique.length === 1) return unique[0]
+  return "mixed"
+}
+
+const strongestSupport = (levels: Array<"direct" | "reinforced" | "review">): PlanEstimatorStorySection["supportLabel"] => {
+  const filtered = levels.filter(Boolean)
+  if (filtered.length === 0) return "review"
+  return filtered.sort((a, b) => supportRank[a] - supportRank[b])[0]
+}
+
+const flowStep = (
+  planReadback: PlanEstimatorStoryInput,
+  key: string
+): NonNullable<PlanEstimatorStoryInput["estimatorFlowReadback"]>[number] | undefined =>
+  (planReadback.estimatorFlowReadback || []).find((step) => step.stepKey === key)
+
+const addStorySection = (
+  sections: PlanEstimatorStorySection[],
+  section: PlanEstimatorStorySection
+) => {
+  const bullets = uniqStrings(section.bullets.map(sentence).filter(Boolean), 5)
+  const summary = sentence(section.summary)
+  if (!summary && bullets.length === 0) return
+  sections.push({
+    ...section,
+    summary,
+    bullets,
+    evidence: uniqEvidence(section.evidence),
+  })
+}
 
 const sectionLooksLikeGroup = (
   section: EstimateStructuredSection,
@@ -235,4 +308,148 @@ export function buildPlanPricingCarryReadback(args: {
     .filter((item, index, all) => all.findIndex((other) => other.key === item.key) === index)
     .sort((a, b) => order[a.status] - order[b.status])
     .slice(0, 14)
+}
+
+export function buildPlanEstimatorStorySections(args: {
+  planReadback: PlanEstimatorStoryInput | null | undefined
+  pricingCarryReadback: PlanPricingCarryItem[]
+}): PlanEstimatorStorySection[] {
+  const planReadback = args.planReadback
+  if (!planReadback) return []
+
+  const sections: PlanEstimatorStorySection[] = []
+  const selectedSheets = flowStep(planReadback, "selected_sheets")
+  const affectedSpaces = flowStep(planReadback, "affected_spaces")
+  const tradePaths = flowStep(planReadback, "trade_paths")
+  const scopeGroups = flowStep(planReadback, "scope_groups")
+  const supportedQuantities = flowStep(planReadback, "supported_quantities")
+  const pricingCarry = flowStep(planReadback, "pricing_carry")
+  const confirmations = flowStep(planReadback, "confirmations")
+
+  addStorySection(sections, {
+    key: "selected_sheets",
+    title: "What the selected sheets appear to show",
+    supportLabel: selectedSheets?.supportLevel || "review",
+    summary: selectedSheets?.narration || planReadback.headline || "",
+    bullets: [
+      ...(planReadback.groupedScopeReadback || []).slice(0, 2).map((group) => group.narration),
+    ],
+    evidence: selectedSheets?.evidence || [],
+  })
+
+  addStorySection(sections, {
+    key: "affected_spaces",
+    title: "Where the work appears to apply",
+    supportLabel: mixedSupport((planReadback.areaQuantityReadback || []).map((area) => area.supportLevel)),
+    summary: affectedSpaces?.narration || "",
+    bullets: (planReadback.areaQuantityReadback || []).slice(0, 4).map((area) => {
+      const quantities = area.quantityNarration.length ? ` ${area.quantityNarration.slice(0, 2).join(" ")}` : ""
+      const notes = area.scopeNotes.length ? ` ${area.scopeNotes[0]}` : ""
+      return `${area.areaGroup}: ${area.narration}${quantities}${notes}`
+    }),
+    evidence: uniqEvidence([
+      ...(affectedSpaces?.evidence || []),
+      ...(planReadback.areaQuantityReadback || []).flatMap((area) => area.evidence),
+    ]),
+  })
+
+  addStorySection(sections, {
+    key: "trade_paths",
+    title: "Trades and scope paths",
+    supportLabel: mixedSupport((planReadback.tradeScopeReadback || []).map((trade) => trade.supportLevel)),
+    summary: tradePaths?.narration || "",
+    bullets: (planReadback.tradeScopeReadback || []).slice(0, 5).map((trade) => {
+      const areas = trade.areaGroups.length ? ` Areas: ${trade.areaGroups.slice(0, 3).join(", ")}.` : ""
+      const quantities = trade.quantityNarration.length ? ` ${trade.quantityNarration.slice(0, 2).join(" ")}` : ""
+      const confirmationsText = trade.confirmationNotes.length ? ` Confirmation: ${trade.confirmationNotes[0]}` : ""
+      return `${trade.trade} (${trade.role}, ${trade.supportLevel} support): ${trade.narration}${areas}${quantities}${confirmationsText}`
+    }),
+    evidence: uniqEvidence([
+      ...(tradePaths?.evidence || []),
+      ...(planReadback.tradeScopeReadback || []).flatMap((trade) => trade.evidence),
+    ]),
+  })
+
+  addStorySection(sections, {
+    key: "scope_groups",
+    title: "How the work organizes before pricing",
+    supportLabel: mixedSupport((planReadback.groupedScopeReadback || []).map((group) => group.supportLevel)),
+    summary: scopeGroups?.narration || "",
+    bullets: (planReadback.groupedScopeReadback || []).slice(0, 5).map((group) => {
+      const trades = group.trades.length ? ` Trades: ${group.trades.slice(0, 4).join(", ")}.` : ""
+      const direct = group.directSupport.length ? ` Direct: ${group.directSupport[0]}` : ""
+      const reinforced = group.reinforcedSupport.length ? ` Reinforced: ${group.reinforcedSupport[0]}` : ""
+      const confirm = group.confirmationNotes.length ? ` Confirm: ${group.confirmationNotes[0]}` : ""
+      return `${group.title} (${group.role}, ${group.supportLevel} support): ${group.narration}${trades}${direct}${reinforced}${confirm}`
+    }),
+    evidence: uniqEvidence([
+      ...(scopeGroups?.evidence || []),
+      ...(planReadback.groupedScopeReadback || []).flatMap((group) => group.evidence),
+    ]),
+  })
+
+  const quantityBullets = uniqStrings([
+    ...(planReadback.areaQuantityReadback || []).flatMap((area) =>
+      area.quantityNarration.map((item) => `${area.areaGroup}: ${item}`)
+    ),
+    ...(planReadback.tradeScopeReadback || []).flatMap((trade) =>
+      trade.quantityNarration.map((item) => `${trade.trade}: ${item}`)
+    ),
+    ...(planReadback.groupedScopeReadback || []).flatMap((group) =>
+      group.directSupport.map((item) => `${group.title}: ${item}`)
+    ),
+  ], 5)
+
+  addStorySection(sections, {
+    key: "supported_quantities",
+    title: "Quantities and supports the sheets can carry",
+    supportLabel: supportedQuantities?.supportLevel || strongestSupport((planReadback.areaQuantityReadback || []).map((area) => area.supportLevel)),
+    summary: supportedQuantities?.narration || "Direct quantities stay limited to the supports shown in the selected sheets.",
+    bullets: quantityBullets.length
+      ? quantityBullets
+      : ["No broader measured total is being inferred from schedule-only, elevation-only, or prototype support."],
+    evidence: supportedQuantities?.evidence || [],
+  })
+
+  const carryItems = args.pricingCarryReadback || []
+  const directlyCarried = carryItems.filter((item) => item.status === "directly_carried")
+  const reinforced = carryItems.filter((item) => item.status === "reinforced_or_embedded")
+  const notCarried = carryItems.filter((item) => item.status === "not_carried_yet")
+  const confirmationNeeded = carryItems.filter((item) => item.status === "confirmation_needed")
+  addStorySection(sections, {
+    key: "pricing_carry",
+    title: "What pricing is currently carrying",
+    supportLabel: directlyCarried.length > 0 && (notCarried.length > 0 || confirmationNeeded.length > 0) ? "mixed" : pricingCarry?.supportLevel || "review",
+    summary:
+      pricingCarry?.narration ||
+      `${directlyCarried.length} directly carried item(s), ${reinforced.length} reinforced or embedded item(s), ${notCarried.length} not-carried-yet item(s), and ${confirmationNeeded.length} confirmation item(s).`,
+    bullets: [
+      ...directlyCarried.slice(0, 3).map((item) => `${item.title}: ${item.narration}`),
+      ...reinforced.slice(0, 2).map((item) => `${item.title}: ${item.narration}`),
+      ...notCarried.slice(0, 2).map((item) => `${item.title}: ${item.narration}`),
+      ...confirmationNeeded.slice(0, 2).map((item) => `${item.title}: ${item.narration}`),
+    ],
+    evidence: uniqEvidence(carryItems.flatMap((item) => item.evidence)),
+  })
+
+  addStorySection(sections, {
+    key: "confirmations",
+    title: "What still needs estimator confirmation",
+    supportLabel: "review",
+    summary: confirmations?.narration || "",
+    bullets: [
+      ...(planReadback.scopeGapReadback || [])
+        .filter((gap) => gap.status !== "likely_ready")
+        .slice(0, 5)
+        .map((gap) => `${gap.title}: ${gap.narration} Confirm: ${gap.confirmationPrompt}`),
+      ...confirmationNeeded.slice(0, 3).map((item) => `${item.title}: ${item.narration}`),
+    ],
+    evidence: uniqEvidence([
+      ...(confirmations?.evidence || []),
+      ...(planReadback.scopeGapReadback || []).flatMap((gap) => gap.evidence),
+      ...confirmationNeeded.flatMap((item) => item.evidence),
+    ]),
+  })
+
+  return sections.slice(0, 7)
 }

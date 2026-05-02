@@ -84,7 +84,10 @@ import {
   getEstimateSectionTreatmentLabel,
   resolveCanonicalEstimateOutput,
 } from "./lib/estimate-sections"
-import { buildPlanPricingCarryReadback } from "./lib/plan-pricing-carry"
+import {
+  buildPlanEstimatorStorySections,
+  buildPlanPricingCarryReadback,
+} from "./lib/plan-pricing-carry"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -10385,12 +10388,17 @@ function PlanAwareEstimatorReadbackCard({
     .filter((section) => section.estimatorTreatment === "embedded_burden")
     .slice(0, 3)
   const keyFlow = readback.estimatorFlowReadback.slice(0, 7)
+  const estimatorStory = buildPlanEstimatorStorySections({
+    planReadback: readback,
+    pricingCarryReadback,
+  })
   const directCarryCount = pricingCarryReadback.filter((item) => item.status === "directly_carried").length
   const reinforcedCarryCount = pricingCarryReadback.filter((item) => item.status === "reinforced_or_embedded").length
   const notCarriedCount = pricingCarryReadback.filter((item) => item.status === "not_carried_yet").length
   const confirmationCount = pricingCarryReadback.filter((item) => item.status === "confirmation_needed").length
 
   if (
+    estimatorStory.length === 0 &&
     keyFlow.length === 0 &&
     readback.areaQuantityReadback.length === 0 &&
     readback.tradeScopeReadback.length === 0 &&
@@ -10414,6 +10422,15 @@ function PlanAwareEstimatorReadbackCard({
           .join("; ")
       : ""
   const statusLabel = (status: string) => status.replace(/_/g, " ")
+  const supportLabel = (status: string) => status.replace(/_/g, " ")
+  const supportTone = (status: string) =>
+    status === "direct"
+      ? { border: "#bfdbfe", bg: "#fff", color: "#1d4ed8" }
+      : status === "reinforced"
+        ? { border: "#dbeafe", bg: "#f8fbff", color: "#1d4ed8" }
+        : status === "mixed"
+          ? { border: "#bae6fd", bg: "#f0f9ff", color: "#075985" }
+          : { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
   const carryTone = (status: string) =>
     status === "directly_carried"
       ? { border: "#bfdbfe", bg: "#fff", color: "#1d4ed8" }
@@ -10433,38 +10450,57 @@ function PlanAwareEstimatorReadbackCard({
       }}
     >
       <div style={{ fontWeight: 900, fontSize: 15, color: "#0f172a" }}>
-        Plan-Aware Estimator Readback
+        Estimator Plan & Pricing Story
       </div>
       <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
         {readback.headline}
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          marginTop: 12,
-        }}
-      >
-        {keyFlow.map((step, index) => (
-          <div
-            key={`result-flow-${step.stepKey}`}
-            style={{
-              padding: 10,
-              border: "1px solid #dbeafe",
-              borderRadius: 8,
-              background: "#fff",
-              fontSize: 12,
-              lineHeight: 1.5,
-              color: "#1f2937",
-            }}
-          >
-            <strong>{index + 1}. {step.title}</strong>
-            <span style={{ color: "#4b5563" }}> - {step.supportLevel} support</span>
-            <div style={{ marginTop: 3 }}>{step.narration}</div>
-          </div>
-        ))}
-      </div>
+      {estimatorStory.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            marginTop: 12,
+          }}
+        >
+          {estimatorStory.map((section, index) => {
+            const tone = supportTone(section.supportLabel)
+            return (
+              <div
+                key={`result-story-${section.key}`}
+                style={{
+                  padding: 10,
+                  border: `1px solid ${tone.border}`,
+                  borderRadius: 8,
+                  background: tone.bg,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "#1f2937",
+                }}
+              >
+                <div style={{ fontWeight: 900, color: "#111827" }}>
+                  {index + 1}. {section.title}
+                  <span style={{ color: tone.color }}> - {supportLabel(section.supportLabel)} support</span>
+                </div>
+                <div style={{ marginTop: 3 }}>{section.summary}</div>
+                {section.bullets.length > 0 && (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                    {section.bullets.slice(0, 5).map((item, bulletIndex) => (
+                      <li key={`result-story-${section.key}-bullet-${bulletIndex}`}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+                {sourceText(section.evidence) && (
+                  <div style={{ marginTop: 5, color: "#6b7280" }}>
+                    Sources: {sourceText(section.evidence)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div
         style={{
@@ -10966,6 +11002,11 @@ function PlanAwareEstimatorReadbackCard({
 />
 )}
 
+    <PlanAwareEstimatorReadbackCard
+      planIntelligence={planIntelligence}
+      estimateSections={estimateSections}
+    />
+
     <div
       style={{
         marginBottom: 14,
@@ -10983,7 +11024,7 @@ function PlanAwareEstimatorReadbackCard({
           color: "#111827",
         }}
       >
-        AI Scope Description
+        {planIntelligence?.planReadback ? "Generated Scope Description" : "AI Scope Description"}
       </div>
 
       <div
@@ -10997,11 +11038,6 @@ function PlanAwareEstimatorReadbackCard({
         {result.text}
       </div>
     </div>
-
-    <PlanAwareEstimatorReadbackCard
-      planIntelligence={planIntelligence}
-      estimateSections={estimateSections}
-    />
 
     {smartScopePreview && (
       <div
