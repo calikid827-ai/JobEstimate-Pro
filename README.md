@@ -185,6 +185,7 @@ Plan upload support includes:
 - Browser-side selected-page PDF export when possible
 - Server-side selected-page extraction fallback
 - PDF splitting and page rendering for plan intelligence
+- Browser-derived selected-page PDFs render their reduced pages as `1..N` for image/vision fallback, while original source page numbers are preserved in plan provenance.
 - Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
 
 Important operational notes:

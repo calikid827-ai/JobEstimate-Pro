@@ -366,6 +366,7 @@ Implemented:
 - Staged upload manifest handling.
 - PDF splitting by page.
 - PDF rendering via Swift script.
+- Browser-derived selected-page PDFs render derived pages `1..N` for image/vision fallback while preserving original source page numbers through provenance mapping.
 - Sheet index creation.
 - Sheet discipline/title/number heuristics.
 - Per-sheet analysis.

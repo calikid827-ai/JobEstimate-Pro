@@ -189,6 +189,7 @@ Difficulty levels:
 
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
+- Status note: Browser-derived selected-page PDFs now render their reduced pages as `1..N` for image/vision fallback while preserving original source page provenance. Remaining work here is recovery polish for genuinely failed indexing/rendering cases.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`
