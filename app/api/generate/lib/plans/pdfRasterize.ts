@@ -32,6 +32,16 @@ function toDataUrlFromPng(buffer: Buffer): string {
   return `data:image/png;base64,${buffer.toString("base64")}`
 }
 
+function getRenderPageSelection(upload: PlanUpload): number[] | null {
+  if (!Array.isArray(upload.selectedSourcePages)) return null
+
+  if (Array.isArray(upload.sourcePageNumberMap) && upload.sourcePageNumberMap.length > 0) {
+    return upload.sourcePageNumberMap.map((_, index) => index + 1)
+  }
+
+  return upload.selectedSourcePages
+}
+
 export async function rasterizePdfToPages(
   upload: PlanUpload
 ): Promise<RasterizedPdfPage[]> {
@@ -55,8 +65,9 @@ export async function rasterizePdfToPages(
   const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-render-"))
   const pdfPath = path.join(tempRoot, "upload.pdf")
   const outputDir = path.join(tempRoot, "pages")
-  const selectedPagesCsv = Array.isArray(upload.selectedSourcePages)
-    ? upload.selectedSourcePages.join(",")
+  const renderPageSelection = getRenderPageSelection(upload)
+  const selectedPagesCsv = Array.isArray(renderPageSelection)
+    ? renderPageSelection.join(",")
     : ""
 
   try {

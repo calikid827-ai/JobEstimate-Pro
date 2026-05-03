@@ -278,6 +278,8 @@ test("selected-page derived pdf preserves original source page numbering through
       [2, 4]
     )
     assert(pages.every((page) => page.selectedForAnalysis))
+    assert(pages.every((page) => page.renderedImageAvailable))
+    assert(pages.every((page) => /^data:image\/png;base64,/.test(page.imageDataUrl)))
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }
