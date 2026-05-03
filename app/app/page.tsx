@@ -4625,6 +4625,49 @@ window.location.assign(data.url)
 }
 }
 
+async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
+  const localUrl = `${window.location.origin}/approve/${est.id}`
+  const ownerEmail = email.trim().toLowerCase()
+
+  if (!ownerEmail) {
+    await navigator.clipboard.writeText(localUrl)
+    setStatus(
+      "Local approval link copied. Enter an email to create a shareable approval link that works across devices."
+    )
+    return
+  }
+
+  try {
+    setStatus("Creating shareable approval link...")
+
+    const res = await fetch("/api/approvals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: ownerEmail,
+        estimate: est,
+        companyProfile,
+      }),
+    })
+
+    const data = await res.json().catch(() => null)
+    const approvalUrl =
+      typeof data?.approvalUrl === "string" ? data.approvalUrl : ""
+
+    if (!res.ok || !approvalUrl) {
+      throw new Error("Server approval link unavailable")
+    }
+
+    await navigator.clipboard.writeText(approvalUrl)
+    setStatus("Shareable approval link copied to clipboard.")
+  } catch {
+    await navigator.clipboard.writeText(localUrl)
+    setStatus(
+      "Server approval link unavailable. Local approval link copied instead; it only works on this device."
+    )
+  }
+}
+
 // ✅ Save History
 function saveToHistory(item: EstimateHistoryItem) {
   setHistory((prev) => {
@@ -11369,6 +11412,7 @@ function PlanAwareEstimatorReadbackCard({
   startChangeOrderFromJob={startChangeOrderFromJob}
   createInvoiceFromEstimate={createInvoiceFromEstimate}
   createBalanceInvoiceFromEstimate={createBalanceInvoiceFromEstimate}
+  copyApprovalLinkForEstimate={copyApprovalLinkForEstimate}
   selectJobAndJumpToInvoices={selectJobAndJumpToInvoices}
   downloadInvoicePDF={downloadInvoicePDF}
   updateJob={updateJob}
@@ -11396,6 +11440,7 @@ function PlanAwareEstimatorReadbackCard({
   loadHistoryItem={loadHistoryItem}
   createInvoiceFromEstimate={createInvoiceFromEstimate}
   createBalanceInvoiceFromEstimate={createBalanceInvoiceFromEstimate}
+  copyApprovalLinkForEstimate={copyApprovalLinkForEstimate}
   selectJobAndJumpToInvoices={selectJobAndJumpToInvoices}
   downloadInvoicePDF={downloadInvoicePDF}
   deleteHistoryItem={deleteHistoryItem}

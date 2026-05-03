@@ -9,6 +9,7 @@ type Props = {
   loadHistoryItem: (h: any) => void
   createInvoiceFromEstimate: (h: any) => void
   createBalanceInvoiceFromEstimate: (h: any) => void
+  copyApprovalLinkForEstimate: (h: any) => Promise<void> | void
   selectJobAndJumpToInvoices: (jobId: string) => void
   downloadInvoicePDF: (inv: any) => void
   deleteHistoryItem: (id: string) => void
@@ -47,6 +48,7 @@ export default function SavedEstimatesSection({
   loadHistoryItem,
   createInvoiceFromEstimate,
   createBalanceInvoiceFromEstimate,
+  copyApprovalLinkForEstimate,
   selectJobAndJumpToInvoices,
   downloadInvoicePDF,
   deleteHistoryItem,
@@ -58,9 +60,7 @@ export default function SavedEstimatesSection({
     if (!historyPipeline?.primaryAction) return
 
     if (historyPipeline.primaryAction === "copy_approval") {
-      const url = `${window.location.origin}/approve/${h.id}`
-      navigator.clipboard.writeText(url)
-      setStatus("Approval link copied to clipboard.")
+      void copyApprovalLinkForEstimate(h)
       return
     }
 

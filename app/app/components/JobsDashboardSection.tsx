@@ -34,6 +34,7 @@ type Props = {
   startChangeOrderFromJob: (jobId: string) => void
   createInvoiceFromEstimate: (est: any) => void
   createBalanceInvoiceFromEstimate: (est: any) => void
+  copyApprovalLinkForEstimate: (est: any) => Promise<void> | void
   selectJobAndJumpToInvoices: (jobId: string) => void
   downloadInvoicePDF: (inv: any) => void
   updateJob: (id: string, patch: any) => void
@@ -66,6 +67,7 @@ export default function JobsDashboardSection({
   startChangeOrderFromJob,
   createInvoiceFromEstimate,
   createBalanceInvoiceFromEstimate,
+  copyApprovalLinkForEstimate,
   selectJobAndJumpToInvoices,
   downloadInvoicePDF,
   updateJob,
@@ -657,9 +659,7 @@ export default function JobsDashboardSection({
                           <button
                             type="button"
                             onClick={() => {
-                              const url = `${window.location.origin}/approve/${latest.id}`
-                              navigator.clipboard.writeText(url)
-                              setStatus("Approval link copied to clipboard.")
+                              void copyApprovalLinkForEstimate(latest)
                             }}
                             style={{ fontSize: 12 }}
                           >
