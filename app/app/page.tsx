@@ -4687,15 +4687,33 @@ async function syncServerApprovals() {
     }
 
     const approvalsByEstimateId = new Map<string, any>()
+    const approvalInvoices: any[] = []
     for (const approval of data.approvals) {
       const estimateId =
         typeof approval?.local_estimate_id === "string"
           ? approval.local_estimate_id
           : ""
       if (estimateId) approvalsByEstimateId.set(estimateId, approval)
+      if (approval?.approval_invoice?.invoice_snapshot) {
+        approvalInvoices.push(approval.approval_invoice.invoice_snapshot)
+      }
     }
 
     let updatedCount = 0
+    const missingApprovalInvoices = approvalInvoices.filter((invoice) => {
+      const invoiceId = typeof invoice?.id === "string" ? invoice.id : ""
+      const fromEstimateId =
+        typeof invoice?.fromEstimateId === "string" ? invoice.fromEstimateId : ""
+
+      if (!invoiceId || !fromEstimateId) return false
+
+      return !invoices.some(
+        (existing) =>
+          existing.id === invoiceId ||
+          existing.fromEstimateId === fromEstimateId
+      )
+    })
+    const importedInvoiceCount = missingApprovalInvoices.length
 
     setHistory((prev) => {
       let changed = false
@@ -4756,9 +4774,41 @@ async function syncServerApprovals() {
       return next
     })
 
+    if (missingApprovalInvoices.length > 0) {
+      setInvoices((prev) => {
+        let changed = false
+        const next = [...prev]
+
+        for (const invoice of missingApprovalInvoices) {
+          const invoiceId = typeof invoice?.id === "string" ? invoice.id : ""
+          const fromEstimateId =
+            typeof invoice?.fromEstimateId === "string" ? invoice.fromEstimateId : ""
+
+          if (!invoiceId || !fromEstimateId) continue
+
+          const alreadyExists = next.some(
+            (existing) =>
+              existing.id === invoiceId ||
+              existing.fromEstimateId === fromEstimateId
+          )
+
+          if (alreadyExists) continue
+
+          next.unshift(invoice)
+          changed = true
+        }
+
+        if (changed) {
+          localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+        }
+
+        return next
+      })
+    }
+
     setStatus(
-      updatedCount > 0
-        ? `Synced ${updatedCount} approval status update${updatedCount === 1 ? "" : "s"}.`
+      updatedCount > 0 || importedInvoiceCount > 0
+        ? `Synced ${updatedCount} approval update${updatedCount === 1 ? "" : "s"} and ${importedInvoiceCount} invoice${importedInvoiceCount === 1 ? "" : "s"}.`
         : "Approvals are already up to date."
     )
   } catch {

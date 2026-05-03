@@ -29,6 +29,13 @@ type ApprovalRow = {
   signature_data_url: string | null
 }
 
+type ApprovalInvoiceRow = {
+  proposal_id: string
+  local_invoice_id: string | null
+  invoice_snapshot: any
+  status: string | null
+}
+
 export async function GET(req: Request) {
   try {
     const emailRaw = new URL(req.url).searchParams.get("email")
@@ -56,6 +63,7 @@ export async function GET(req: Request) {
     const proposalRows = (Array.isArray(proposals) ? proposals : []) as ProposalRow[]
     const proposalIds = proposalRows.map((proposal) => proposal.id).filter(Boolean)
     const approvalsByProposal = new Map<string, ApprovalRow>()
+    const invoicesByProposal = new Map<string, ApprovalInvoiceRow>()
 
     if (proposalIds.length > 0) {
       const { data: approvals, error: approvalsError } = await supabase
@@ -74,6 +82,22 @@ export async function GET(req: Request) {
           approvalsByProposal.set(approval.proposal_id, approval)
         }
       }
+
+      const { data: approvalInvoices, error: invoicesError } = await supabase
+        .from("approval_invoices")
+        .select("proposal_id, local_invoice_id, invoice_snapshot, status")
+        .in("proposal_id", proposalIds)
+
+      if (invoicesError) {
+        console.error("Approval status invoice lookup failed:", invoicesError)
+        return NextResponse.json({ error: "Approval statuses could not be loaded." }, { status: 500 })
+      }
+
+      for (const invoice of (Array.isArray(approvalInvoices) ? approvalInvoices : []) as ApprovalInvoiceRow[]) {
+        if (!invoicesByProposal.has(invoice.proposal_id)) {
+          invoicesByProposal.set(invoice.proposal_id, invoice)
+        }
+      }
     }
 
     return NextResponse.json({
@@ -81,6 +105,7 @@ export async function GET(req: Request) {
         .filter((proposal) => proposal.local_estimate_id)
         .map((proposal) => {
           const approval = approvalsByProposal.get(proposal.id)
+          const approvalInvoice = invoicesByProposal.get(proposal.id)
 
           return {
             local_estimate_id: proposal.local_estimate_id,
@@ -88,6 +113,13 @@ export async function GET(req: Request) {
             approved_by: approval?.approved_by ?? null,
             approved_at: approval?.approved_at ?? null,
             signature_data_url: approval?.signature_data_url ?? null,
+            approval_invoice: approvalInvoice?.invoice_snapshot
+              ? {
+                  local_invoice_id: approvalInvoice.local_invoice_id,
+                  status: approvalInvoice.status || "draft",
+                  invoice_snapshot: approvalInvoice.invoice_snapshot,
+                }
+              : null,
           }
         }),
     })
