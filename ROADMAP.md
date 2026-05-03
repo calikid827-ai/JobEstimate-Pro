@@ -1,6 +1,6 @@
 # JobEstimate Pro Roadmap
 
-This roadmap is based on `FEATURE_INVENTORY.md`. It prioritizes production readiness first, then stability, polish, server-backed workflows, and premium future capabilities.
+This roadmap is based on `FEATURE_INVENTORY.md`. It prioritizes pre-launch production readiness first, then feature completion, stability, polish, server-backed workflows, and premium future capabilities.
 
 Risk levels:
 
@@ -13,6 +13,15 @@ Difficulty levels:
 - Small: hours to one day.
 - Medium: one to several days.
 - Large: multi-day or multi-phase work.
+
+## Pre-Launch Strategy Notes
+
+- JobEstimate Pro has no current paying users, so the billing model can still change safely before public launch.
+- The current Stripe setup is a one-time payment flow using `mode: "payment"` and a configured `STRIPE_PRICE_ID`. Treat the current one-time $29 unlimited-access offer as temporary/pre-launch.
+- Recommended future direction: move to a monthly subscription before public launch, unless the final cost model proves one-time access is sustainable.
+- Avoid promising unlimited generations forever until OpenAI, plan-rendering, storage, support, and abuse costs are proven.
+- Finish the existing core workflows before adding broad new features: estimate generation, plan intelligence readback, approvals, invoices, PDFs, account/entitlement status, and billing model clarity.
+- Do not implement billing changes until the pricing plan is decided. First decide the subscription offer, free limit, trial/grace behavior, cancellation behavior, and entitlement shape.
 
 ## 1. Critical Fixes
 
@@ -70,6 +79,53 @@ Difficulty levels:
 - Difficulty: Small
 - Suggested order: 5
 
+### 1.6 Prepare Subscription Billing Model
+
+- Why it matters: The product has not launched with paying users yet, so the billing model can still move from one-time unlimited access to a recurring subscription without customer migration risk. This should be decided before public launch.
+- Files likely affected:
+  - `app/api/checkout/route.ts`
+  - `app/api/webhook/route.ts`
+  - `app/api/entitlement/route.ts`
+  - `app/success/page.tsx`
+  - `app/cancel/page.tsx`
+  - Supabase entitlement records/schema
+  - Stripe product/price configuration
+- Notes:
+  - Stripe Price should likely become recurring monthly.
+  - Entitlement records may need `subscription_status`, `current_period_end`, `cancel_at_period_end`, and `stripe_customer_id`.
+  - Success/cancel pages may need subscription-aware copy.
+  - Webhook should eventually handle subscription lifecycle events such as subscription created/updated/deleted, invoice paid, invoice payment failed, and checkout completion.
+  - Do not implement billing changes until the pricing plan is decided.
+- Risk level: High
+- Difficulty: Medium
+- Suggested order: 6
+
+### 1.7 Pre-Launch Feature Completion Pass
+
+- Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
+- Files likely affected:
+  - `app/app/page.tsx`
+  - `app/app/components/*`
+  - `app/app/lib/*`
+  - `app/approve/[id]/page.tsx`
+  - `app/success/page.tsx`
+  - `app/cancel/page.tsx`
+  - `README.md`
+  - `app/api/checkout/route.ts`
+  - `app/api/webhook/route.ts`
+  - `app/api/entitlement/route.ts`
+- Priority scope:
+  - Plan intelligence polish
+  - Approval workflow
+  - Invoice workflow
+  - PDF polish
+  - Account/entitlement status
+  - Billing model
+  - README/setup
+- Risk level: Medium
+- Difficulty: Medium
+- Suggested order: 7
+
 ## 2. Stability Upgrades
 
 ### 2.1 Centralize LocalStorage Access
@@ -83,7 +139,7 @@ Difficulty levels:
   - `app/app/lib/constants.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 6
+- Suggested order: 8
 
 ### 2.2 Reduce `app/app/page.tsx` Responsibility
 
@@ -94,7 +150,7 @@ Difficulty levels:
   - New helpers under `app/app/lib/`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 7
+- Suggested order: 9
 
 ### 2.3 Fix Repo-Wide Lint Hotspots Incrementally
 
@@ -107,7 +163,7 @@ Difficulty levels:
   - `app/approve/[id]/page.tsx`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 8
+- Suggested order: 10
 
 ### 2.4 Add Focused Tests for Invoice and Approval Helpers
 
@@ -118,7 +174,7 @@ Difficulty levels:
   - `app/app/lib/types.ts`
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 9
+- Suggested order: 11
 
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
@@ -130,7 +186,7 @@ Difficulty levels:
   - `app/api/generate/lib/plans/*`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 10
+- Suggested order: 12
 
 ## 3. Product Polish
 
@@ -143,7 +199,7 @@ Difficulty levels:
   - `app/app/lib/plan-pricing-carry.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 11
+- Suggested order: 13
 
 ### 3.2 Simplify Advanced Analysis Panels
 
@@ -154,7 +210,7 @@ Difficulty levels:
   - Possible new `AdvancedAnalysisSection` component file.
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 12
+- Suggested order: 14
 
 ### 3.3 Improve PDF Visual Hierarchy
 
@@ -164,7 +220,7 @@ Difficulty levels:
   - Future PDF helper files if extracted.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 13
+- Suggested order: 15
 
 ### 3.4 Add Account/Entitlement Status Surface
 
@@ -175,7 +231,7 @@ Difficulty levels:
   - `app/api/entitlement/route.ts`
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 14
+- Suggested order: 16
 
 ### 3.5 Product Copy Consistency Pass
 
@@ -188,7 +244,7 @@ Difficulty levels:
   - `README.md`
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 15
+- Suggested order: 17
 
 ## 4. Server-Backed Features
 
@@ -203,7 +259,7 @@ Difficulty levels:
   - `app/app/lib/types.ts`
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 16
+- Suggested order: 18
 
 ### 4.2 Server-Backed Jobs
 
@@ -215,7 +271,7 @@ Difficulty levels:
   - `app/app/page.tsx`
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 17
+- Suggested order: 19
 
 ### 4.3 Shareable Approval Links
 
@@ -227,7 +283,7 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 18
+- Suggested order: 20
 
 ### 4.4 Server-Backed Invoices
 
@@ -240,7 +296,7 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 19
+- Suggested order: 21
 
 ### 4.5 Server-Backed Business Profile
 
@@ -251,13 +307,13 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 20
+- Suggested order: 22
 
 ## 5. Premium Future Features
 
 ### 5.1 Billing Portal and Account Management
 
-- Why it matters: Paid users need a way to manage billing, receipts, and subscription/account status.
+- Why it matters: Paid users need a way to manage billing, receipts, and subscription/account status after the pre-launch billing model is decided.
 - Files likely affected:
   - `app/api/checkout/route.ts`
   - New billing portal API route.
@@ -265,7 +321,7 @@ Difficulty levels:
   - Stripe/Supabase entitlement records.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 21
+- Suggested order: 23
 
 ### 5.2 Server-Side PDF Generation
 
@@ -277,7 +333,7 @@ Difficulty levels:
   - Potential use of `pdfkit` or another renderer.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 22
+- Suggested order: 24
 
 ### 5.3 Better Plan Quantity Extraction
 
@@ -289,7 +345,7 @@ Difficulty levels:
   - Tests under `app/api/generate/lib/plans/`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 23
+- Suggested order: 25
 
 ### 5.4 Client Portal
 
@@ -300,7 +356,7 @@ Difficulty levels:
   - Auth/session layer.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 24
+- Suggested order: 26
 
 ### 5.5 Team/Multi-User Workspaces
 
@@ -312,7 +368,7 @@ Difficulty levels:
   - App navigation and permissions.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 25
+- Suggested order: 27
 
 ### 5.6 Payments on Invoices
 
@@ -325,5 +381,4 @@ Difficulty levels:
   - Approval workflow.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 26
-
+- Suggested order: 28
