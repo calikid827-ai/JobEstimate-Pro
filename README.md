@@ -6,13 +6,14 @@ The app currently includes:
 
 - Main estimating workspace at `/app`
 - Customer approval page at `/approve/[id]`
+- Server-backed approval links with frozen proposal snapshots, server approval submission, status sync, and approval-created invoice sync
 - Stripe checkout success and cancel pages
 - AI-backed document generation through `/api/generate`
 - Deterministic PriceGuard pricing protections
 - Plan upload, selected-page staging, PDF splitting/rendering, and plan intelligence
 - Photo intelligence and scope review helpers
 - Browser-generated estimate and invoice PDFs
-- Local browser persistence for estimates, jobs, invoices, approvals, budgets, actuals, company settings, and email
+- Local browser persistence for estimates, jobs, invoices, budgets, actuals, company settings, and email, with server-backed approval snapshot/status/invoice sync
 
 ## Local Development
 
@@ -106,6 +107,18 @@ Notes:
 - `POST /api/entitlement`
   - Checks entitlement status by email and returns free-limit usage information.
 
+- `POST /api/approvals`
+  - Saves a frozen customer-safe approval snapshot and returns a shareable `/approve/{token}` link.
+
+- `GET /api/approvals/[token]`
+  - Loads a server-backed approval snapshot for the public approval page.
+
+- `POST /api/approvals/[token]/approve`
+  - Saves customer approval/signature, marks the proposal approved, and creates one draft approval invoice snapshot when missing.
+
+- `GET /api/approvals/status?email=...`
+  - Syncs approval status and approval-created invoice snapshots back into the app for the current owner email.
+
 ## Stripe Webhook Notes
 
 For local webhook testing, forward Stripe events to:
@@ -141,6 +154,19 @@ Current server-side expectations include:
 - Optional generation result caching keyed by email and request id
 
 The generate route blocks free users when the Supabase RPC reports the free limit is reached.
+
+## Supabase Approval Links
+
+Server-backed approval links require Supabase tables for approval snapshots and sync:
+
+- `estimate_proposals`
+- `approval_links`
+- `proposal_approvals`
+- `approval_invoices`
+
+The approval flow stores frozen customer-safe proposal snapshots and hashed approval tokens. Public approval pages read snapshots by token, customer signatures are saved server-side, and the contractor app can manually sync approved status and approval-created draft invoices back into localStorage.
+
+This is not a full server-backed job/estimate/invoice system yet. The main contractor workspace remains localStorage-first outside the approval snapshot workflow.
 
 ## Plan Upload And Rendering Notes
 
@@ -181,8 +207,8 @@ Legacy keys may be migrated in the app from older `scopeguard_*` names.
 
 ## Current Limitations
 
-- Saved estimates, jobs, invoices, approvals, budgets, and actuals are localStorage-backed.
-- Approval links only work on the browser/device where the estimate exists.
+- Saved estimates, jobs, invoices, budgets, and actuals are still mostly localStorage-backed.
+- Approval links are server-backed through Supabase approval snapshot tables, but full server-backed jobs/estimates/invoices are not implemented yet.
 - Estimate and invoice PDFs are generated with browser print windows, not server-side PDF rendering.
 - Plan intelligence is strong but can still degrade on difficult PDFs or incomplete selected sheets.
 - Some advanced analysis panels are diagnostic and not fully customer-facing.
@@ -219,4 +245,4 @@ npm run lint
    - Plan upload/page selection
    - Estimate PDF
    - Invoice creation
-   - Approval flow
+   - Server-backed approval link creation/read/submit/sync

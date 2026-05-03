@@ -8,8 +8,8 @@ The app has:
 
 - A marketing landing page at `/`.
 - A main estimating app at `/app`.
-- Server APIs for document generation, entitlement checks, Stripe checkout/webhooks, and staged plan uploads.
-- Local browser persistence for estimates, jobs, invoices, budgets, actuals, company settings, and email.
+- Server APIs for document generation, entitlement checks, Stripe checkout/webhooks, staged plan uploads, and server-backed approval snapshots.
+- Local browser persistence for estimates, jobs, invoices, budgets, actuals, company settings, and email, with server-backed approval snapshot/status/invoice sync.
 - A large estimator backend with AI generation, deterministic pricing engines, PriceGuard protections, photo intelligence, and plan intelligence.
 
 The product is already broad. The highest-risk areas are not missing core features, but production readiness, persistence, duplicated local logic, and final-output polish.
@@ -78,6 +78,12 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Invoice creation and invoice list.
 - Invoice status changes.
 - Customer approval page with signature capture.
+- Server-backed shareable approval links:
+  - Frozen approval snapshot creation
+  - Cross-device approval page read
+  - Server approval submission/signature saving
+  - Approval status sync back to the app
+  - Approval-created draft invoice snapshot sync
 - Estimate PDF generation.
 - Invoice PDF generation.
 - Advanced analysis panels:
@@ -92,12 +98,13 @@ The product is already broad. The highest-risk areas are not missing core featur
 
 ## Partially Built Features
 
-- Customer approval links are localStorage-backed, so they only work on the same browser/device where the estimate exists.
-- Approval-page invoice creation exists, but duplicates logic from the main app and has a simpler invoice shape.
+- Full jobs, estimates, invoices, budgets, and actuals are still mostly localStorage-backed.
+- Server-backed approval links are implemented, but they rely on Supabase approval snapshot tables rather than full server-backed job/estimate/invoice persistence.
+- Same-device local approval invoice creation still exists as a fallback path.
 - Stripe success entitlement refresh has been fixed to POST the saved email, but there is still no full account/billing page.
 - Plan intelligence readback is rich in the app UI, but not fully represented in generated PDFs.
 - AI-generated scope prose can still be generic even when typed plan readback is stronger.
-- Jobs, estimates, invoices, budgets, actuals, and approvals are local-only.
+- Jobs, estimates, invoices, budgets, and actuals remain local-first outside the server-backed approval snapshot workflow.
 - Some advanced analysis panels are more diagnostic than customer-facing.
 - README still contains default Next.js content and does not document product setup.
 - PDF generation works through browser print windows, not server-side document generation.
@@ -140,6 +147,25 @@ The product is already broad. The highest-risk areas are not missing core featur
 - `POST /api/entitlement`
   - Looks up entitlement status by email.
   - Returns active entitlement state, usage count, and free limit.
+
+- `POST /api/approvals`
+  - Saves a frozen customer-safe approval proposal snapshot.
+  - Creates a long public approval token.
+  - Stores only the token hash server-side.
+  - Returns a shareable `/approve/{token}` URL.
+
+- `GET /api/approvals/[token]`
+  - Reads a server-backed approval snapshot by token.
+  - Returns customer-safe proposal snapshot and approval status.
+  - Preserves localStorage fallback in the approval page when no server token is found.
+
+- `POST /api/approvals/[token]/approve`
+  - Saves server-backed approval name/signature/timestamp.
+  - Updates the server proposal status to approved.
+  - Creates one draft approval invoice snapshot from the frozen proposal when missing.
+
+- `GET /api/approvals/status?email=...`
+  - Returns owner-scoped approval status and approval-created invoice snapshots for app sync.
 
 ## Pricing & Guard Logic
 
@@ -186,7 +212,9 @@ Main screens:
   - Primary estimating application.
 
 - `/approve/[id]`
-  - Local client approval/signature page.
+  - Client approval/signature page.
+  - Reads server-backed approval snapshots by token when available.
+  - Falls back to localStorage estimate lookup for same-device approvals.
 
 - `/success`
   - Stripe checkout success page and entitlement refresh.
@@ -256,11 +284,12 @@ There is also migration support from older `scopeguard_*` keys for email/company
 
 Current persistence is useful for a single user on one device, but it limits:
 
-- Shared approvals.
 - Cross-device access.
 - Team workflows.
 - Recovery after browser storage loss.
 - Server-side invoice/payment workflows.
+
+Server-backed approvals are an exception to the local-first model. Approval links created through the current workflow save frozen proposal snapshots, approval rows, and approval-created draft invoice snapshots in Supabase, then sync approved status and invoice snapshots back into localStorage.
 
 ## PDF/Invoice Features
 
@@ -381,7 +410,7 @@ Known gaps:
 
 - `app/app/page.tsx` is very large and mixes UI, business logic, PDF generation, persistence, and API orchestration.
 - Many components and routes use `any`, causing repo-wide lint failures.
-- Approval links are not server-backed.
+- Full server-backed jobs/estimates/invoices are not implemented yet; only the approval snapshot/status/invoice sync workflow is server-backed.
 - Invoice creation logic is duplicated between `/app` and `/approve/[id]`.
 - PDF HTML generation is large, duplicated, and brittle.
 - LocalStorage writes are scattered across app and components.
@@ -394,8 +423,8 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Server-backed saved estimates, jobs, invoices, and approvals.
-- Real shareable approval links that work across devices.
+- Server-backed saved estimates, jobs, and full invoice management.
+- Hardening/polish for the implemented shareable approval links.
 - Estimate PDFs that include estimator story, plan readback, pricing carry, and confirmation gaps.
 - Stripe/account status page with entitlement refresh and billing guidance.
 - Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, fixture/device counts.
@@ -420,6 +449,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 - Jobs dashboard foundation.
 - Invoice creation and invoice status management.
 - Customer approval/signature page.
+- Server-backed approval snapshot and approval-status sync flow.
 - Photo upload and photo intelligence.
 - Plan upload, page selection, staging, selected-page transport.
 - Plan intelligence readbacks.

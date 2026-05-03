@@ -1,24 +1,42 @@
 # Server-Backed Approvals Plan
 
+Status: implemented through Phase 4B.
+
+Implemented:
+
+- Server approval snapshot creation through `POST /api/approvals`.
+- Cross-device approval page read through `GET /api/approvals/[token]`.
+- Server approval submission/signature saving through `POST /api/approvals/[token]/approve`.
+- Approval status sync back to `/app` through `GET /api/approvals/status?email=...`.
+- Approval-created draft invoice snapshot creation and sync back into local invoices.
+
+Still not implemented:
+
+- Full server-backed jobs, estimates, and invoices.
+- Authenticated accounts/workspaces.
+- Server-side invoice payment collection.
+- Automatic balance invoice creation after deposit payment.
+
 ## Current Approval Workflow
 
 1. `/api/generate` returns an estimate result.
 2. `/app` builds an estimate history item with job details, scope text, pricing, schedule, tax, deposit, plan/readback outputs, estimator outputs, and `approval: { status: "pending" }`.
 3. The estimate is saved to localStorage key `jobestimatepro_history_v1`.
 4. The app and jobs dashboard show `Copy Approval Link` while the estimate is pending approval.
-5. The copied URL is currently `/approve/{estimateId}`.
-6. `/approve/[id]` reads `jobestimatepro_history_v1` from the current browser.
-7. The approval page finds the estimate by matching the local estimate ID.
-8. The customer enters a name, checks the approval box, signs, and approves.
-9. `/approve/[id]` updates the matching localStorage estimate with approved status, approver name, approval timestamp, and signature data URL.
-10. The approval page auto-creates a draft invoice in localStorage key `jobestimatepro_invoices` using `buildInvoiceFromEstimate()`.
-11. `/app` listens for `jobestimatepro:update` and refreshes local history and invoices.
+5. The app first saves a frozen customer-safe approval snapshot to Supabase and copies `/approve/{token}`.
+6. If the server snapshot cannot be saved, the app falls back to the local-only `/approve/{estimateId}` link.
+7. `/approve/[id]` first attempts to read the server snapshot by token.
+8. If no server snapshot is found, `/approve/[id]` falls back to localStorage lookup for same-device approvals.
+9. Server-backed approval submission writes the approval row and signature to Supabase, then marks the proposal approved.
+10. Server-backed approval submission creates one draft approval invoice snapshot when none exists.
+11. `/app` can manually sync approval status and approval-created invoice snapshots back into localStorage.
+12. Existing same-device local approval still updates localStorage and can auto-create a local invoice.
 
 ## Current Limitation
 
-Approval links are localStorage-backed. The URL only contains an estimate ID, and the approval page can only load the estimate if that same browser/device already has the estimate in `jobestimatepro_history_v1`.
+The old local-only approval limitation is resolved for links created after the server-backed approval implementation. New approval links use Supabase approval snapshot tables and work across devices.
 
-This means copied approval links are not truly shareable across devices or browsers.
+Important remaining limitation: the main contractor workspace is still mostly localStorage-backed. Server-backed approval snapshots, approval status, and approval-created invoice snapshots can sync back into localStorage, but full server-backed jobs, estimates, and invoices are not implemented yet.
 
 ## Server-Side Data Needed
 
@@ -168,17 +186,17 @@ Server behavior:
 - Optionally create the approval invoice snapshot.
 - Return approval status and invoice-created flag.
 
-### Later Sync Route
+### Implemented Sync Route
 
 `GET /api/approvals/status?email=...`
 
-Used by `/app` to pull server approval statuses for estimates owned by the current email.
+Used by `/app` to pull server approval statuses and approval-created invoice snapshots for estimates owned by the current email.
 
 ### Optional Later Route
 
 `POST /api/approvals/[token]/invoice`
 
-Only needed if invoice creation should be separated from approval submission.
+Not currently needed. Approval-created invoice snapshot creation now happens inside `POST /api/approvals/[token]/approve`.
 
 ## LocalStorage Fallback Behavior
 
@@ -187,7 +205,7 @@ Keep localStorage as the local workspace and fallback cache:
 - Continue saving estimates to `jobestimatepro_history_v1`.
 - Continue saving invoices to `jobestimatepro_invoices`.
 - If server approval-link creation fails, keep the current local-only copy link with a clear warning that it only works on this device.
-- After server approval, sync the approved status back into localStorage when `/app` opens.
+- After server approval, use the manual `Sync approvals` action in `/app` to patch approved status and import missing approval-created invoices into localStorage.
 - Keep `buildInvoiceFromEstimate()` as the invoice calculation source so approval-created invoices stay consistent.
 
 ## Risks and Edge Cases
@@ -214,7 +232,7 @@ Keep localStorage as the local workspace and fallback cache:
 - Return a tokenized `/approve/{token}` URL.
 - Keep local-only fallback if server save fails.
 
-This makes the link portable without changing the approval page too broadly.
+Status: implemented.
 
 ### Phase 2: Public Approval Page Reads Server Snapshot
 
@@ -223,17 +241,19 @@ This makes the link portable without changing the approval page too broadly.
 - Render the server snapshot when found.
 - Fall back to current localStorage lookup if server token lookup fails.
 
-This lets customers open approval links on any device.
+Status: implemented.
 
-### Phase 3: Approved Status Syncs Back To App
+### Phase 3: Server Approval Submission And Status Sync
 
+- Add server approval submission by token.
+- Save approval result/signature to Supabase.
 - Add server approval status fetch for owner email.
 - On `/app` load or refresh, merge server approval status into matching local estimates.
 - Preserve local estimate content and only patch approval fields.
 
-This lets the contractor see approvals completed from another device.
+Status: implemented with manual `Sync approvals` action.
 
-### Phase 4: Approval-Created Invoice Remains Consistent
+### Phase 4B: Approval-Created Invoice Remains Consistent
 
 - Move approval-created invoice generation behind the server approval endpoint or sync server-created invoice snapshots back to the app.
 - Use the same invoice calculation helper behavior as `/app`.
@@ -241,19 +261,21 @@ This lets the contractor see approvals completed from another device.
 - Prevent duplicate invoices by `proposal_id`.
 - Sync invoice snapshots back to localStorage for the current UI.
 
-This keeps approval-created invoices consistent and recoverable.
+Status: implemented.
 
 ## Recommended Minimal First Implementation
 
 Do not server-back every estimate, job, or invoice in the first pass.
 
-The smallest safe implementation is:
+The minimal implementation now in place is:
 
 1. Keep `/app` localStorage as the primary workspace.
 2. Add server-backed frozen approval proposal snapshots.
 3. Generate tokenized public approval links.
 4. Let `/approve/[id]` read server snapshots by token.
 5. Keep the existing localStorage approval lookup as fallback.
-6. Add server-to-local approval status sync in a later phase.
+6. Save server-backed approval submission/signature to Supabase.
+7. Sync server approval status back into local history.
+8. Create and sync one approval-created draft invoice snapshot.
 
-This fixes the real cross-device approval-link problem without a broad persistence rewrite.
+This fixes the core cross-device approval-link problem without a broad persistence rewrite.

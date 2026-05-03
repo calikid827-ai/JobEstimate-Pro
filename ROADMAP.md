@@ -261,7 +261,7 @@ Difficulty levels:
 
 ### 4.1 Server-Backed Saved Estimates
 
-- Why it matters: LocalStorage history is not reliable across devices and cannot support real approval links or teams.
+- Why it matters: LocalStorage history is not reliable across devices and cannot support teams or full account recovery. Server-backed approval snapshots now cover shareable approvals, but full estimate persistence is still local-first.
 - Files likely affected:
   - New API routes for estimates.
   - Supabase schema/migrations.
@@ -286,19 +286,21 @@ Difficulty levels:
 
 ### 4.3 Shareable Approval Links
 
-- Why it matters: Current approval links only work on the device with localStorage data. Real customer approval requires server-backed documents.
+- Status: Implemented through Phase 4B.
+- Why it matters: Approval links now use server-backed frozen proposal snapshots, tokenized public reads, server approval submission/signature saving, approval status sync, and approval-created draft invoice sync. Further work should focus on hardening, tests, and better UI/status polish rather than rebuilding the core shareable-link workflow.
 - Files likely affected:
   - `app/approve/[id]/page.tsx`
-  - New approval API routes.
-  - Server-backed estimate storage.
+  - `app/api/approvals/*`
+  - `app/app/page.tsx`
+  - `app/app/components/SavedEstimatesSection.tsx`
   - Supabase schema/migrations.
-- Risk level: High
-- Difficulty: Large
+- Risk level: Medium
+- Difficulty: Medium
 - Suggested order: 20
 
 ### 4.4 Server-Backed Invoices
 
-- Why it matters: Invoices should survive browser storage loss, be visible across devices, and support future payment collection.
+- Why it matters: Approval-created draft invoice snapshots can now sync from Supabase, but full invoice management is still localStorage-backed. Invoices should eventually survive browser storage loss, be visible across devices, and support future payment collection.
 - Files likely affected:
   - New invoice API routes.
   - `app/app/components/InvoicesSection.tsx`
