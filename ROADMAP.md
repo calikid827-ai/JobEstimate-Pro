@@ -287,7 +287,11 @@ Difficulty levels:
 ### 4.3 Shareable Approval Links
 
 - Status: Implemented through Phase 4B.
-- Why it matters: Approval links now use server-backed frozen proposal snapshots, tokenized public reads, server approval submission/signature saving, approval status sync, and approval-created draft invoice sync. Further work should focus on hardening, tests, and better UI/status polish rather than rebuilding the core shareable-link workflow.
+- Why it matters: Approval links now use server-backed frozen proposal snapshots, long random public tokens with server-side token hashes, minimized customer-safe public reads, server approval submission/signature saving, owner-email plus owner-sync-token approval status sync, and approval-created draft invoice sync. Proposal, approval row, and approval-created invoice flows are duplicate-protected/idempotent. Further work should focus on tests, monitoring, and better UI/status polish rather than rebuilding the core shareable-link workflow.
+- Security notes:
+  - The owner sync token is stored client-side as `jobestimatepro_owner_sync_token`.
+  - Supabase stores only the owner sync token hash.
+  - This is not full authentication; user accounts/workspaces are still a future server-backed feature.
 - Files likely affected:
   - `app/approve/[id]/page.tsx`
   - `app/api/approvals/*`

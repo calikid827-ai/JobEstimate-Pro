@@ -82,8 +82,11 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Frozen approval snapshot creation
   - Cross-device approval page read
   - Server approval submission/signature saving
-  - Approval status sync back to the app
+  - Approval status sync back to the app using owner email plus owner sync token
   - Approval-created draft invoice snapshot sync
+  - Hashed public approval tokens and hashed owner sync tokens
+  - Minimized customer-safe public approval payloads
+  - Duplicate-protected proposal, approval, and approval-created invoice flows
 - Estimate PDF generation.
 - Invoice PDF generation.
 - Advanced analysis panels:
@@ -100,6 +103,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 
 - Full jobs, estimates, invoices, budgets, and actuals are still mostly localStorage-backed.
 - Server-backed approval links are implemented, but they rely on Supabase approval snapshot tables rather than full server-backed job/estimate/invoice persistence.
+- Approval sync is hardened with an owner sync token, but it is not full authentication and does not replace user accounts/workspaces.
 - Same-device local approval invoice creation still exists as a fallback path.
 - Stripe success entitlement refresh has been fixed to POST the saved email, but there is still no full account/billing page.
 - Plan intelligence readback is rich in the app UI, but not fully represented in generated PDFs.
@@ -152,19 +156,25 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Saves a frozen customer-safe approval proposal snapshot.
   - Creates a long public approval token.
   - Stores only the token hash server-side.
+  - Generates an owner sync token, stores only its hash server-side, and returns the raw token to `/app`.
+  - Reuses/updates existing proposal records for the same owner email and local estimate when possible.
   - Returns a shareable `/approve/{token}` URL.
 
 - `GET /api/approvals/[token]`
   - Reads a server-backed approval snapshot by token.
-  - Returns customer-safe proposal snapshot and approval status.
+  - Returns a minimized customer-safe proposal snapshot and approval status.
+  - Does not expose estimate rows, embedded burdens, estimate sections, raw plan intelligence, or invoice-supporting internals.
   - Preserves localStorage fallback in the approval page when no server token is found.
 
 - `POST /api/approvals/[token]/approve`
   - Saves server-backed approval name/signature/timestamp.
   - Updates the server proposal status to approved.
-  - Creates one draft approval invoice snapshot from the frozen proposal when missing.
+  - Handles already-approved submissions idempotently.
+  - Creates one draft approval invoice snapshot from the frozen proposal when missing and prevents duplicates by proposal.
 
-- `GET /api/approvals/status?email=...`
+- `GET /api/approvals/status?email=...&ownerSyncToken=...`
+  - Requires owner email plus the server-issued owner sync token.
+  - Validates against the hashed owner sync token stored in Supabase.
   - Returns owner-scoped approval status and approval-created invoice snapshots for app sync.
 
 ## Pricing & Guard Logic
@@ -290,6 +300,8 @@ Current persistence is useful for a single user on one device, but it limits:
 - Server-side invoice/payment workflows.
 
 Server-backed approvals are an exception to the local-first model. Approval links created through the current workflow save frozen proposal snapshots, approval rows, and approval-created draft invoice snapshots in Supabase, then sync approved status and invoice snapshots back into localStorage.
+
+Approval status sync stores the owner sync token in localStorage key `jobestimatepro_owner_sync_token`. Supabase stores only the token hash. This hardens the previous email-only sync model, but it is not full authentication.
 
 ## PDF/Invoice Features
 

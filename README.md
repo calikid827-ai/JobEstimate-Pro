@@ -108,16 +108,20 @@ Notes:
   - Checks entitlement status by email and returns free-limit usage information.
 
 - `POST /api/approvals`
-  - Saves a frozen customer-safe approval snapshot and returns a shareable `/approve/{token}` link.
+  - Saves a frozen customer-safe approval snapshot and returns a shareable `/approve/{token}` link plus an owner sync token for contractor-side status sync.
+  - Stores only token hashes server-side.
 
 - `GET /api/approvals/[token]`
   - Loads a server-backed approval snapshot for the public approval page.
+  - Returns only the minimized customer-safe payload needed by the approval page.
 
 - `POST /api/approvals/[token]/approve`
   - Saves customer approval/signature, marks the proposal approved, and creates one draft approval invoice snapshot when missing.
+  - Handles already-approved submissions and duplicate approval-created invoice creation safely.
 
-- `GET /api/approvals/status?email=...`
+- `GET /api/approvals/status?email=...&ownerSyncToken=...`
   - Syncs approval status and approval-created invoice snapshots back into the app for the current owner email.
+  - Requires the server-issued owner sync token; Supabase stores only its hash.
 
 ## Stripe Webhook Notes
 
@@ -161,12 +165,15 @@ Server-backed approval links require Supabase tables for approval snapshots and 
 
 - `estimate_proposals`
 - `approval_links`
+- `approval_owner_sync_tokens`
 - `proposal_approvals`
 - `approval_invoices`
 
-The approval flow stores frozen customer-safe proposal snapshots and hashed approval tokens. Public approval pages read snapshots by token, customer signatures are saved server-side, and the contractor app can manually sync approved status and approval-created draft invoices back into localStorage.
+The approval flow stores frozen customer-safe proposal snapshots and hashed approval tokens. Public approval pages read snapshots by token and receive only a minimized customer-safe payload. Customer signatures are saved server-side, and the contractor app can manually sync approved status and approval-created draft invoices back into localStorage using the owner email plus owner sync token.
 
-This is not a full server-backed job/estimate/invoice system yet. The main contractor workspace remains localStorage-first outside the approval snapshot workflow.
+The owner sync token is stored client-side in `jobestimatepro_owner_sync_token`. Supabase stores only the hashed token. Proposal reuse, approval rows, and approval-created invoices are duplicate-protected/idempotent where implemented.
+
+This is not full authentication and does not replace user accounts/workspaces. The main contractor workspace remains localStorage-first outside the approval snapshot workflow, and full server-backed jobs/estimates/invoices are not implemented yet.
 
 ## Plan Upload And Rendering Notes
 

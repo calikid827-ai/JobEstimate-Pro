@@ -7,8 +7,14 @@ Implemented:
 - Server approval snapshot creation through `POST /api/approvals`.
 - Cross-device approval page read through `GET /api/approvals/[token]`.
 - Server approval submission/signature saving through `POST /api/approvals/[token]/approve`.
-- Approval status sync back to `/app` through `GET /api/approvals/status?email=...`.
+- Approval status sync back to `/app` through `GET /api/approvals/status?email=...&ownerSyncToken=...`.
 - Approval-created draft invoice snapshot creation and sync back into local invoices.
+- Approval security hardening:
+  - Long random approval tokens are returned to the client, while only token hashes are stored server-side.
+  - Public approval reads return a minimized customer-safe payload, not the full internal estimate snapshot.
+  - Owner approval status sync requires the owner email plus a server-issued owner sync token.
+  - The owner sync token is stored client-side as `jobestimatepro_owner_sync_token`; Supabase stores only its hash.
+  - Proposal, approval row, and approval-created invoice flows are idempotent or duplicate-protected.
 
 Still not implemented:
 
@@ -24,19 +30,22 @@ Still not implemented:
 3. The estimate is saved to localStorage key `jobestimatepro_history_v1`.
 4. The app and jobs dashboard show `Copy Approval Link` while the estimate is pending approval.
 5. The app first saves a frozen customer-safe approval snapshot to Supabase and copies `/approve/{token}`.
-6. If the server snapshot cannot be saved, the app falls back to the local-only `/approve/{estimateId}` link.
-7. `/approve/[id]` first attempts to read the server snapshot by token.
-8. If no server snapshot is found, `/approve/[id]` falls back to localStorage lookup for same-device approvals.
-9. Server-backed approval submission writes the approval row and signature to Supabase, then marks the proposal approved.
-10. Server-backed approval submission creates one draft approval invoice snapshot when none exists.
-11. `/app` can manually sync approval status and approval-created invoice snapshots back into localStorage.
-12. Existing same-device local approval still updates localStorage and can auto-create a local invoice.
+6. The approval snapshot response also returns an owner sync token, which `/app` stores in localStorage as `jobestimatepro_owner_sync_token`.
+7. If the server snapshot cannot be saved, the app falls back to the local-only `/approve/{estimateId}` link.
+8. `/approve/[id]` first attempts to read the server snapshot by token.
+9. If no server snapshot is found, `/approve/[id]` falls back to localStorage lookup for same-device approvals.
+10. Server-backed approval submission writes the approval row and signature to Supabase, then marks the proposal approved.
+11. Server-backed approval submission creates one draft approval invoice snapshot when none exists.
+12. `/app` can manually sync approval status and approval-created invoice snapshots back into localStorage only when it has the owner email and owner sync token.
+13. Existing same-device local approval still updates localStorage and can auto-create a local invoice.
 
 ## Current Limitation
 
 The old local-only approval limitation is resolved for links created after the server-backed approval implementation. New approval links use Supabase approval snapshot tables and work across devices.
 
 Important remaining limitation: the main contractor workspace is still mostly localStorage-backed. Server-backed approval snapshots, approval status, and approval-created invoice snapshots can sync back into localStorage, but full server-backed jobs, estimates, and invoices are not implemented yet.
+
+Security limitation: owner sync tokens are a hardening step, not full authentication. Anyone with both the owner email and current owner sync token can request approval sync data for that owner. Full user accounts, workspaces, sessions, and role-based authorization are not implemented yet.
 
 ## Server-Side Data Needed
 
@@ -69,6 +78,10 @@ Minimum data to store:
   - Token hash stored server-side
   - Status
   - Expiration/revocation flags if needed
+- Owner sync token data:
+  - Owner email
+  - Owner sync token hash stored server-side
+  - Updated timestamp
 - Approval result:
   - Approved by
   - Approved at
@@ -110,6 +123,14 @@ The first pass should avoid a full account/workspace model. Use owner email plus
 - `created_at timestamptz default now()`
 - `last_viewed_at timestamptz`
 
+### `approval_owner_sync_tokens`
+
+- `id uuid primary key`
+- `owner_email text not null unique`
+- `token_hash text not null`
+- `created_at timestamptz default now()`
+- `updated_at timestamptz default now()`
+
 ### `proposal_approvals`
 
 - `id uuid primary key`
@@ -135,8 +156,11 @@ The first pass should avoid a full account/workspace model. Use owner email plus
 Implementation notes:
 
 - Store only `token_hash`, not raw approval tokens.
+- Store only the owner sync token hash, not the raw owner sync token.
 - Keep public approval reads and writes behind API routes.
-- Store customer-safe frozen proposal snapshots, not every internal diagnostic field.
+- Store customer-safe frozen proposal snapshots for approval display, while retaining the frozen server-side estimate snapshot needed for invoice creation.
+- Public approval reads must return only the minimized customer-safe fields needed by `/approve/[id]`.
+- Use uniqueness/idempotency protections for `estimate_proposals(owner_email, local_estimate_id)`, `proposal_approvals(proposal_id)`, and `approval_invoices(proposal_id)`.
 
 ## Minimal API Routes
 
@@ -156,7 +180,9 @@ Server behavior:
 - Store a frozen customer-safe proposal snapshot.
 - Create a long random token.
 - Store only the token hash.
-- Return `/approve/{token}`.
+- Generate a fresh owner sync token.
+- Upsert the owner sync token hash by `owner_email`.
+- Return `/approve/{token}` and the raw `ownerSyncToken` to the app.
 
 ### `GET /api/approvals/[token]`
 
@@ -166,7 +192,7 @@ Server behavior:
 
 - Hash the token.
 - Find an active approval link.
-- Return the customer-safe proposal snapshot and approval status.
+- Return a minimized customer-safe proposal snapshot and approval status.
 - Optionally update `last_viewed_at`.
 
 ### `POST /api/approvals/[token]/approve`
@@ -181,16 +207,16 @@ Request body:
 Server behavior:
 
 - Validate token is active and not expired.
-- Write the approval row.
+- Write the approval row idempotently.
 - Update proposal status to `approved`.
-- Optionally create the approval invoice snapshot.
+- Create the approval invoice snapshot when one does not already exist.
 - Return approval status and invoice-created flag.
 
 ### Implemented Sync Route
 
-`GET /api/approvals/status?email=...`
+`GET /api/approvals/status?email=...&ownerSyncToken=...`
 
-Used by `/app` to pull server approval statuses and approval-created invoice snapshots for estimates owned by the current email.
+Used by `/app` to pull server approval statuses and approval-created invoice snapshots for estimates owned by the current email. The route requires both owner email and the current owner sync token, hashes the token server-side, and rejects missing or invalid tokens.
 
 ### Optional Later Route
 
@@ -204,6 +230,7 @@ Keep localStorage as the local workspace and fallback cache:
 
 - Continue saving estimates to `jobestimatepro_history_v1`.
 - Continue saving invoices to `jobestimatepro_invoices`.
+- Store the server-issued owner sync token in `jobestimatepro_owner_sync_token`.
 - If server approval-link creation fails, keep the current local-only copy link with a clear warning that it only works on this device.
 - After server approval, use the manual `Sync approvals` action in `/app` to patch approved status and import missing approval-created invoices into localStorage.
 - Keep `buildInvoiceFromEstimate()` as the invoice calculation source so approval-created invoices stay consistent.
@@ -212,6 +239,8 @@ Keep localStorage as the local workspace and fallback cache:
 
 - Approval tokens must be long, random, and unguessable.
 - Store token hashes, not raw tokens.
+- Owner sync tokens must be long, random, and stored server-side only as hashes.
+- Owner sync token checks are not full auth; they reduce email-only exposure but do not replace accounts/workspaces.
 - The approval snapshot should be frozen so the customer approves the exact estimate version sent.
 - Duplicate approval submissions should be idempotent or clearly rejected.
 - Server invoice creation should prevent duplicate invoices for one proposal.
