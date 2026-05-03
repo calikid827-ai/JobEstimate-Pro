@@ -1,36 +1,222 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# JobEstimate Pro
 
-## Getting Started
+JobEstimate Pro is a Next.js estimating app for contractors. It creates estimates, change orders, invoices, approval pages, and plan-aware estimator readbacks from user-entered scope, photos, measurements, and uploaded plans.
 
-First, run the development server:
+The app currently includes:
+
+- Main estimating workspace at `/app`
+- Customer approval page at `/approve/[id]`
+- Stripe checkout success and cancel pages
+- AI-backed document generation through `/api/generate`
+- Deterministic PriceGuard pricing protections
+- Plan upload, selected-page staging, PDF splitting/rendering, and plan intelligence
+- Photo intelligence and scope review helpers
+- Browser-generated estimate and invoice PDFs
+- Local browser persistence for estimates, jobs, invoices, approvals, budgets, actuals, company settings, and email
+
+## Local Development
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create a local environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+If `.env.example` does not exist, create `.env.local` manually using the variables below.
+
+Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Common checks:
 
-## Learn More
+```bash
+npx tsc --noEmit
+npm run lint
+```
 
-To learn more about Next.js, take a look at the following resources:
+Estimator-focused tests:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run test:estimator
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Environment Variables
 
-## Deploy on Vercel
+Required for generation and entitlement checks:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+OPENAI_API_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Required for Stripe checkout and webhook handling:
+
+```bash
+STRIPE_SECRET_KEY=
+STRIPE_PRICE_ID=
+STRIPE_WEBHOOK_SECRET=
+```
+
+Optional origin allowlist for production generate requests:
+
+```bash
+ALLOWED_ORIGIN_HOSTS=
+```
+
+Notes:
+
+- `NEXT_PUBLIC_SITE_URL` is used by checkout redirects and same-origin request protection.
+- `SUPABASE_SERVICE_ROLE_KEY` is server-only. Do not expose it in client code.
+- Detailed server logs are development-only in the generate path; production logs should not include customer scope, plan, or pricing details.
+
+## API Routes
+
+- `POST /api/generate`
+  - Validates requests, checks same-origin, rate-limits usage, consumes free generation entitlement, runs plan/photo intelligence, calls OpenAI, applies estimator orchestration, and returns pricing/readback outputs.
+
+- `POST /api/plan-upload`
+  - Starts and completes staged plan uploads, supports selected-page upload metadata, and returns structured staging errors.
+
+- `PUT /api/plan-upload`
+  - Uploads chunks for staged plan uploads.
+
+- `POST /api/checkout`
+  - Creates a Stripe Checkout session for the configured `STRIPE_PRICE_ID`.
+
+- `POST /api/webhook`
+  - Verifies Stripe webhook signatures and activates entitlements after checkout completion.
+
+- `POST /api/entitlement`
+  - Checks entitlement status by email and returns free-limit usage information.
+
+## Stripe Webhook Notes
+
+For local webhook testing, forward Stripe events to:
+
+```text
+http://localhost:3000/api/webhook
+```
+
+The webhook route expects:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+The checkout route expects:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_PRICE_ID`
+- `NEXT_PUBLIC_SITE_URL`
+
+The success page refreshes entitlement by posting the saved email from `jobestimatepro_email` to `/api/entitlement`.
+
+## Supabase Entitlement / Free Limit
+
+The app uses Supabase for entitlement and usage checks.
+
+Current server-side expectations include:
+
+- A free generation consume RPC used by `/api/generate`
+- Entitlement lookup used by `/api/entitlement`
+- Stripe webhook event dedupe/entitlement activation used by `/api/webhook`
+- Optional generation result caching keyed by email and request id
+
+The generate route blocks free users when the Supabase RPC reports the free limit is reached.
+
+## Plan Upload And Rendering Notes
+
+Plan upload support includes:
+
+- PDF, PNG, JPG, JPEG, and WEBP intake
+- Local PDF page indexing for page selection
+- Selected-page staging and chunked upload
+- Browser-side selected-page PDF export when possible
+- Server-side selected-page extraction fallback
+- PDF splitting and page rendering for plan intelligence
+- Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
+
+Important operational notes:
+
+- Large PDFs should be narrowed with page selection before generation.
+- If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
+- Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
+- Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.
+
+## LocalStorage Keys
+
+Most app data is currently browser-local.
+
+Important keys:
+
+- `jobestimatepro_email`
+- `jobestimatepro_company`
+- `jobestimatepro_job`
+- `jobestimatepro_invoices`
+- `jobestimatepro_history_v1`
+- `jobestimatepro_budgets_v1`
+- `jobestimatepro_actuals_v1`
+- `jobestimatepro_crews_v1`
+- `jobestimatepro_jobs_v1`
+
+Legacy keys may be migrated in the app from older `scopeguard_*` names.
+
+## Current Limitations
+
+- Saved estimates, jobs, invoices, approvals, budgets, and actuals are localStorage-backed.
+- Approval links only work on the browser/device where the estimate exists.
+- Estimate and invoice PDFs are generated with browser print windows, not server-side PDF rendering.
+- Plan intelligence is strong but can still degrade on difficult PDFs or incomplete selected sheets.
+- Some advanced analysis panels are diagnostic and not fully customer-facing.
+- Lint may still report existing project-wide cleanup issues.
+- There is no full account or billing management page yet.
+
+## Development Guidance
+
+- Do not change pricing authority, pricing protections, owner logic, or totals casually.
+- Keep Stripe checkout/webhook changes isolated from estimator work.
+- Keep entitlement changes isolated from generation and pricing logic.
+- Prefer extending existing plan intelligence/readback structures over adding parallel engines.
+- Use `npx tsc --noEmit` after production-readiness changes.
+
+## Deployment Checklist
+
+Before deploying:
+
+1. Set all required environment variables in the hosting provider.
+2. Configure Stripe Checkout price and webhook endpoint.
+3. Confirm Supabase RPCs/tables needed by entitlement and webhook flows exist.
+4. Set `NEXT_PUBLIC_SITE_URL` to the production URL.
+5. Run:
+
+```bash
+npx tsc --noEmit
+npm run lint
+```
+
+6. Test:
+   - Free generation
+   - Stripe checkout
+   - Success entitlement refresh
+   - Plan upload/page selection
+   - Estimate PDF
+   - Invoice creation
+   - Approval flow
