@@ -23,6 +23,17 @@ Difficulty levels:
 - Finish the existing core workflows before adding broad new features: estimate generation, plan intelligence readback, approvals, invoices, PDFs, account/entitlement status, and billing model clarity.
 - Do not implement billing changes until the pricing plan is decided. First decide the subscription offer, free limit, trial/grace behavior, cancellation behavior, and entitlement shape.
 
+## Proposed Pre-Launch Pricing Model
+
+- Free: 3 free generations.
+- Pro: $29/month.
+- Avoid lifetime unlimited access.
+- Avoid marketing the Pro plan as truly unlimited until OpenAI, plan rendering, upload/storage, support, and abuse costs are proven.
+- Use fair-use language instead of unlimited language, such as “includes generous fair-use access for normal contractor estimating workflows.”
+- Future Business tier can be added later after launch for teams, higher usage, server-backed storage, client portal, invoice payments, or priority support.
+- Exact generation limits, fair-use thresholds, plan names, and launch pricing can still change before public launch.
+- Billing implementation should follow this direction only after the pricing decision is final.
+
 ## 1. Critical Fixes
 
 ### 1.1 Remove or Gate Production Debug Logging
