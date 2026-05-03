@@ -120,6 +120,30 @@ function getSiteUrl(req: Request) {
   return new URL(req.url).origin.replace(/\/$/, "")
 }
 
+function isUniqueViolation(error: unknown) {
+  const msg = String((error as any)?.message || "")
+  const code = String((error as any)?.code || "")
+  return code === "23505" || /duplicate key|unique/i.test(msg)
+}
+
+async function findReusableProposal(args: {
+  ownerEmail: string
+  localEstimateId: string
+}) {
+  const { data, error } = await supabase
+    .from("estimate_proposals")
+    .select("id")
+    .eq("owner_email", args.ownerEmail)
+    .eq("local_estimate_id", args.localEstimateId)
+    .in("status", ["pending", "approved"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) return null
+  return data?.id ? { id: data.id as string } : null
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null)
@@ -136,25 +160,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "A valid estimate snapshot is required." }, { status: 400 })
     }
 
-    const { data: proposal, error: proposalError } = await supabase
-      .from("estimate_proposals")
-      .insert({
-        owner_email: ownerEmail,
-        local_estimate_id: snapshot.id,
-        local_job_id: snapshot.jobId,
-        document_type: snapshot.documentType,
-        client_name: snapshot.jobDetails.clientName,
-        job_name: snapshot.jobDetails.jobName,
-        job_address: snapshot.jobDetails.jobAddress,
-        status: "pending",
-        estimate_snapshot: snapshot,
-      })
-      .select("id")
-      .single()
+    let proposal = await findReusableProposal({
+      ownerEmail,
+      localEstimateId: snapshot.id,
+    })
 
-    if (proposalError || !proposal?.id) {
-      console.error("Approval proposal snapshot write failed:", proposalError)
-      return NextResponse.json({ error: "Approval snapshot could not be saved." }, { status: 500 })
+    if (!proposal) {
+      const { data: insertedProposal, error: proposalError } = await supabase
+        .from("estimate_proposals")
+        .insert({
+          owner_email: ownerEmail,
+          local_estimate_id: snapshot.id,
+          local_job_id: snapshot.jobId,
+          document_type: snapshot.documentType,
+          client_name: snapshot.jobDetails.clientName,
+          job_name: snapshot.jobDetails.jobName,
+          job_address: snapshot.jobDetails.jobAddress,
+          status: "pending",
+          estimate_snapshot: snapshot,
+        })
+        .select("id")
+        .single()
+
+      if (proposalError || !insertedProposal?.id) {
+        if (isUniqueViolation(proposalError)) {
+          proposal = await findReusableProposal({
+            ownerEmail,
+            localEstimateId: snapshot.id,
+          })
+        }
+
+        if (!proposal) {
+          console.error("Approval proposal snapshot write failed:", proposalError)
+          return NextResponse.json({ error: "Approval snapshot could not be saved." }, { status: 500 })
+        }
+      } else {
+        proposal = { id: insertedProposal.id }
+      }
     }
 
     const token = makeApprovalToken()
