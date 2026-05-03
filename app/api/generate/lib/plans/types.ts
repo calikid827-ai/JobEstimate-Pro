@@ -381,6 +381,20 @@ export type PlanExplanationReadback = {
   packageReadback: PlanPackageReadback[]
 }
 
+export type PlanEvidenceStrength = {
+  level: "strong" | "useful" | "review_only"
+  label: "Strong" | "Useful" | "Review-only"
+  selectedPagesCount: number
+  indexedPagesCount: number
+  skippedPagesCount: number
+  textPagesCount: number
+  renderedPagesCount: number
+  hardQuantityCount: number
+  confirmationNeeded: boolean
+  summary: string
+  details: string[]
+}
+
 export type PlanIntelligence = {
   ok: boolean
   uploadsCount: number
@@ -429,6 +443,7 @@ export type PlanIntelligence = {
   tradePackageSignals?: string[]
   bidAssistNotes?: string[]
   planReadback?: PlanExplanationReadback
+  evidenceStrength?: PlanEvidenceStrength
   detectedSheets?: string[]
   notes?: string[]
   summary: string

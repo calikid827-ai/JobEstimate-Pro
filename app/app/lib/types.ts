@@ -267,6 +267,19 @@ export type PhotoScopeAssist = {
 
 export type PlanIntelligenceSummary = {
   summary?: string | null
+  evidenceStrength?: {
+    level: "strong" | "useful" | "review_only"
+    label: "Strong" | "Useful" | "Review-only"
+    selectedPagesCount: number
+    indexedPagesCount: number
+    skippedPagesCount: number
+    textPagesCount: number
+    renderedPagesCount: number
+    hardQuantityCount: number
+    confirmationNeeded: boolean
+    summary: string
+    details: string[]
+  }
   estimatorPackages?: Array<{
     key: string
     title: string

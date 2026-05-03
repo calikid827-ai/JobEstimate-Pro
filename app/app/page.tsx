@@ -174,6 +174,19 @@ type JobPlan = {
 
 type PlanIntelligence = {
   summary?: string | null
+  evidenceStrength?: {
+    level: "strong" | "useful" | "review_only"
+    label: "Strong" | "Useful" | "Review-only"
+    selectedPagesCount: number
+    indexedPagesCount: number
+    skippedPagesCount: number
+    textPagesCount: number
+    renderedPagesCount: number
+    hardQuantityCount: number
+    confirmationNeeded: boolean
+    summary: string
+    details: string[]
+  }
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -703,6 +716,40 @@ const normalizePlanReadback = (value: unknown): PlanReadbackView | undefined => 
           })
           .filter((item): item is PlanReadbackView["packageReadback"][number] => item !== null)
       : [],
+  }
+}
+
+const normalizePlanEvidenceStrength = (
+  value: unknown
+): NonNullable<PlanIntelligence>["evidenceStrength"] | undefined => {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null
+  if (!record) return undefined
+
+  const level =
+    record.level === "strong" || record.level === "useful" || record.level === "review_only"
+      ? record.level
+      : "review_only"
+  const label =
+    record.label === "Strong" || record.label === "Useful" || record.label === "Review-only"
+      ? record.label
+      : level === "strong"
+        ? "Strong"
+        : level === "useful"
+          ? "Useful"
+          : "Review-only"
+
+  return {
+    level,
+    label,
+    selectedPagesCount: Math.max(0, Math.floor(Number(record.selectedPagesCount) || 0)),
+    indexedPagesCount: Math.max(0, Math.floor(Number(record.indexedPagesCount) || 0)),
+    skippedPagesCount: Math.max(0, Math.floor(Number(record.skippedPagesCount) || 0)),
+    textPagesCount: Math.max(0, Math.floor(Number(record.textPagesCount) || 0)),
+    renderedPagesCount: Math.max(0, Math.floor(Number(record.renderedPagesCount) || 0)),
+    hardQuantityCount: Math.max(0, Math.floor(Number(record.hardQuantityCount) || 0)),
+    confirmationNeeded: record.confirmationNeeded === true,
+    summary: typeof record.summary === "string" ? record.summary.trim() : "",
+    details: normalizePlanStrings(record.details).slice(0, 6),
   }
 }
 
@@ -3559,6 +3606,7 @@ setPlanIntelligence(
           typeof data.planIntelligence?.summary === "string"
             ? data.planIntelligence.summary.trim()
             : null,
+        evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -4450,6 +4498,7 @@ const estItem: EstimateHistoryItem = {
             typeof data.planIntelligence?.summary === "string"
               ? data.planIntelligence.summary.trim()
               : null,
+          evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
           estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
           detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
           detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
@@ -4939,6 +4988,7 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
             typeof x.planIntelligence?.summary === "string"
               ? x.planIntelligence.summary.trim()
               : null,
+          evidenceStrength: normalizePlanEvidenceStrength(x.planIntelligence?.evidenceStrength),
           estimatorPackages: normalizePlanPackages(x.planIntelligence?.estimatorPackages),
           detectedRooms: normalizeDefenseLists(x.planIntelligence?.detectedRooms),
           detectedTrades: normalizeDefenseLists(x.planIntelligence?.detectedTrades),
@@ -10738,6 +10788,7 @@ function PlanAwareEstimatorReadbackCard({
   const reinforcedCarryCount = pricingCarryReadback.filter((item) => item.status === "reinforced_or_embedded").length
   const notCarriedCount = pricingCarryReadback.filter((item) => item.status === "not_carried_yet").length
   const confirmationCount = pricingCarryReadback.filter((item) => item.status === "confirmation_needed").length
+  const evidenceStrength = planIntelligence?.evidenceStrength ?? null
 
   if (
     estimatorStory.length === 0 &&
@@ -10779,6 +10830,12 @@ function PlanAwareEstimatorReadbackCard({
       : status === "reinforced_or_embedded"
         ? { border: "#dbeafe", bg: "#f8fbff", color: "#1d4ed8" }
         : { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
+  const evidenceTone =
+    evidenceStrength?.level === "strong"
+      ? { border: "#86efac", bg: "#f0fdf4", color: "#166534" }
+      : evidenceStrength?.level === "useful"
+        ? { border: "#bfdbfe", bg: "#eff6ff", color: "#1d4ed8" }
+        : { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
 
   return (
     <div
@@ -10797,6 +10854,35 @@ function PlanAwareEstimatorReadbackCard({
       <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
         {readback.headline}
       </div>
+
+      {evidenceStrength && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 10,
+            border: `1px solid ${evidenceTone.border}`,
+            borderRadius: 8,
+            background: evidenceTone.bg,
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: "#1f2937",
+          }}
+        >
+          <div style={{ fontWeight: 900, color: evidenceTone.color }}>
+            Plan evidence: {evidenceStrength.label}
+          </div>
+          <div style={{ marginTop: 3 }}>{evidenceStrength.summary}</div>
+          <div style={{ marginTop: 4, color: "#4b5563" }}>
+            {evidenceStrength.selectedPagesCount} selected sheet/page{evidenceStrength.selectedPagesCount === 1 ? "" : "s"} reviewed
+            {" - "}
+            {evidenceStrength.textPagesCount > 0 ? "Text extracted" : "Text not confirmed"}
+            {" - "}
+            {evidenceStrength.renderedPagesCount > 0 ? "Images rendered" : "Images not confirmed"}
+            {" - "}
+            {evidenceStrength.hardQuantityCount > 0 ? "Hard quantities found" : "Measured quantities still need confirmation"}
+          </div>
+        </div>
+      )}
 
       {estimatorStory.length > 0 && (
         <div
