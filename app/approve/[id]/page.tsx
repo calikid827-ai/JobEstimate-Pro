@@ -93,6 +93,7 @@ export default function ApproveEstimatePage() {
   const id = String(params?.id || "")
 
   const [estimate, setEstimate] = useState<EstimateHistoryItem | null>(null)
+  const [loadingEstimate, setLoadingEstimate] = useState(true)
   const [clientName, setClientName] = useState("")
   const [agree, setAgree] = useState(false)
   const [status, setStatus] = useState("")
@@ -100,19 +101,63 @@ export default function ApproveEstimatePage() {
   const [signatureError, setSignatureError] = useState("")
 
   useEffect(() => {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    if (!raw) return
+    let cancelled = false
 
-    try {
-      const parsed = JSON.parse(raw)
-      if (!Array.isArray(parsed)) return
+    function loadLocalEstimate() {
+      const raw = localStorage.getItem(HISTORY_KEY)
+      if (!raw) return null
 
-      const found = parsed.find((x: any) => String(x?.id) === id) || null
+      try {
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return null
+        return parsed.find((x: any) => String(x?.id) === id) || null
+      } catch {
+        return null
+      }
+    }
+
+    async function loadEstimate() {
+      setLoadingEstimate(true)
+
+      try {
+        const res = await fetch(`/api/approvals/${encodeURIComponent(id)}`)
+        const data = await res.json().catch(() => null)
+
+        if (res.ok && data?.estimate && typeof data.estimate === "object") {
+          const serverEstimate: EstimateHistoryItem = {
+            ...data.estimate,
+            approval: {
+              ...(data.estimate.approval || {}),
+              status: data.status === "approved" ? "approved" : "pending",
+            },
+          }
+
+          if (cancelled) return
+          setEstimate(serverEstimate)
+          if (serverEstimate.jobDetails?.clientName) {
+            setClientName(serverEstimate.jobDetails.clientName)
+          }
+          return
+        }
+      } catch {
+        // Fall back to localStorage below.
+      }
+
+      const found = loadLocalEstimate()
+      if (cancelled) return
       setEstimate(found)
       if (found?.jobDetails?.clientName) {
         setClientName(found.jobDetails.clientName)
       }
-    } catch {}
+    }
+
+    void loadEstimate().finally(() => {
+      if (!cancelled) setLoadingEstimate(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   const depositSummary = useMemo(() => {
@@ -248,6 +293,15 @@ export default function ApproveEstimatePage() {
     setStatus("Approval failed.")
   }
 }
+
+  if (loadingEstimate) {
+    return (
+      <main style={{ maxWidth: 720, margin: "60px auto", padding: 24, fontFamily: "system-ui" }}>
+        <h1>Loading approval</h1>
+        <p>Loading this approval document...</p>
+      </main>
+    )
+  }
 
   if (!estimate) {
     return (
