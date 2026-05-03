@@ -1,6 +1,7 @@
 export const FREE_LIMIT = 3
 
 export const EMAIL_KEY = "jobestimatepro_email"
+export const OWNER_SYNC_TOKEN_KEY = "jobestimatepro_owner_sync_token"
 export const COMPANY_KEY = "jobestimatepro_company"
 export const JOB_KEY = "jobestimatepro_job"
 export const INVOICE_KEY = "jobestimatepro_invoices"

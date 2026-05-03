@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   FREE_LIMIT,
   EMAIL_KEY,
+  OWNER_SYNC_TOKEN_KEY,
   COMPANY_KEY,
   JOB_KEY,
   INVOICE_KEY,
@@ -4653,11 +4654,14 @@ async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
     const data = await res.json().catch(() => null)
     const approvalUrl =
       typeof data?.approvalUrl === "string" ? data.approvalUrl : ""
+    const ownerSyncToken =
+      typeof data?.ownerSyncToken === "string" ? data.ownerSyncToken : ""
 
-    if (!res.ok || !approvalUrl) {
+    if (!res.ok || !approvalUrl || !ownerSyncToken) {
       throw new Error("Server approval link unavailable")
     }
 
+    localStorage.setItem(OWNER_SYNC_TOKEN_KEY, ownerSyncToken)
     await navigator.clipboard.writeText(approvalUrl)
     setStatus("Shareable approval link copied to clipboard.")
   } catch {
@@ -4678,8 +4682,16 @@ async function syncServerApprovals() {
 
   try {
     setStatus("Syncing approvals...")
+    const ownerSyncToken = localStorage.getItem(OWNER_SYNC_TOKEN_KEY)?.trim() || ""
 
-    const res = await fetch(`/api/approvals/status?email=${encodeURIComponent(ownerEmail)}`)
+    if (!ownerSyncToken) {
+      setStatus("Create or copy a shareable approval link before syncing approvals.")
+      return
+    }
+
+    const res = await fetch(
+      `/api/approvals/status?email=${encodeURIComponent(ownerEmail)}&ownerSyncToken=${encodeURIComponent(ownerSyncToken)}`
+    )
     const data = await res.json().catch(() => null)
 
     if (!res.ok || !Array.isArray(data?.approvals)) {

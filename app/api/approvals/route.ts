@@ -21,6 +21,10 @@ function makeApprovalToken() {
   return randomBytes(32).toString("base64url")
 }
 
+function makeOwnerSyncToken() {
+  return randomBytes(32).toString("base64url")
+}
+
 function hashApprovalToken(token: string) {
   return createHash("sha256").update(token).digest("hex")
 }
@@ -144,6 +148,29 @@ async function findReusableProposal(args: {
   return data?.id ? { id: data.id as string } : null
 }
 
+async function createOwnerSyncToken(ownerEmail: string) {
+  const token = makeOwnerSyncToken()
+  const tokenHash = hashApprovalToken(token)
+
+  const { error } = await supabase
+    .from("approval_owner_sync_tokens")
+    .upsert(
+      {
+        owner_email: ownerEmail,
+        token_hash: tokenHash,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "owner_email" }
+    )
+
+  if (error) {
+    console.error("Approval owner sync token write failed:", error)
+    return null
+  }
+
+  return token
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null)
@@ -201,6 +228,11 @@ export async function POST(req: Request) {
 
     const token = makeApprovalToken()
     const tokenHash = hashApprovalToken(token)
+    const ownerSyncToken = await createOwnerSyncToken(ownerEmail)
+
+    if (!ownerSyncToken) {
+      return NextResponse.json({ error: "Approval sync token could not be created." }, { status: 500 })
+    }
 
     const { error: linkError } = await supabase
       .from("approval_links")
@@ -218,6 +250,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       approvalUrl: `${getSiteUrl(req)}/approve/${token}`,
       proposalId: proposal.id,
+      ownerSyncToken,
     })
   } catch (err) {
     console.error("Approval snapshot route failed:", err)

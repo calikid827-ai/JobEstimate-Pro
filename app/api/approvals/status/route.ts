@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createHash } from "crypto"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -14,6 +15,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
+}
+
+function hashOwnerSyncToken(token: string) {
+  return createHash("sha256").update(token).digest("hex")
 }
 
 type ProposalRow = {
@@ -39,15 +44,28 @@ type ApprovalInvoiceRow = {
 export async function GET(req: Request) {
   try {
     const emailRaw = new URL(req.url).searchParams.get("email")
+    const ownerSyncTokenRaw = new URL(req.url).searchParams.get("ownerSyncToken")
 
-    if (!emailRaw) {
-      return NextResponse.json({ error: "Email is required." }, { status: 400 })
+    if (!emailRaw || !ownerSyncTokenRaw) {
+      return NextResponse.json({ error: "Email and owner sync token are required." }, { status: 400 })
     }
 
     const ownerEmail = normalizeEmail(emailRaw)
+    const ownerSyncToken = ownerSyncTokenRaw.trim()
 
-    if (!ownerEmail) {
-      return NextResponse.json({ error: "Email is required." }, { status: 400 })
+    if (!ownerEmail || !ownerSyncToken) {
+      return NextResponse.json({ error: "Email and owner sync token are required." }, { status: 400 })
+    }
+
+    const { data: syncToken, error: syncTokenError } = await supabase
+      .from("approval_owner_sync_tokens")
+      .select("id")
+      .eq("owner_email", ownerEmail)
+      .eq("token_hash", hashOwnerSyncToken(ownerSyncToken))
+      .maybeSingle()
+
+    if (syncTokenError || !syncToken?.id) {
+      return NextResponse.json({ error: "Approval sync token is invalid." }, { status: 403 })
     }
 
     const { data: proposals, error: proposalsError } = await supabase
