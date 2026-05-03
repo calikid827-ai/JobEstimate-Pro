@@ -25,7 +25,7 @@ export default function CancelPage() {
         No charges were made.
         <br />
         You can continue using JobEstimate Pro with free access
-        or upgrade at any time.
+        or upgrade when you need continued generation access.
       </p>
 
       <Link

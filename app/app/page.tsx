@@ -3226,7 +3226,7 @@ async function generate(scopeOverride?: string) {
   }
 
   if (!paid && remaining <= 0) {
-    setStatus("Free limit reached. Please upgrade.")
+    setStatus("Free limit reached. Upgrade to continue generating estimates.")
     setShowUpgrade(true)
     generatingRef.current = false
     return
@@ -3479,7 +3479,7 @@ if (jobPlans.length > 0) {
 }
 
     if (res.status === 403) {
-      setStatus("Free limit reached. Please upgrade.")
+      setStatus("Free limit reached. Upgrade to continue generating estimates.")
       setShowUpgrade(true)
       setRemaining(0)
       return
@@ -10845,7 +10845,7 @@ function PlanAwareEstimatorReadbackCard({
       </p>
     ) : (
       <p style={{ fontSize: 13, color: "#c53030", margin: 0 }}>
-        Free uses are up. Upgrade for unlimited access.
+        Free uses are up. Upgrade to continue generating estimates with Pro access.
       </p>
     )}
   </div>
@@ -11408,7 +11408,7 @@ function PlanAwareEstimatorReadbackCard({
     onClick={upgrade}
     style={{ width: "100%", marginTop: 12 }}
   >
-    Upgrade for Unlimited Access
+    Upgrade for Pro Access
   </button>
 )}
 
