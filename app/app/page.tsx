@@ -4668,6 +4668,104 @@ async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
   }
 }
 
+async function syncServerApprovals() {
+  const ownerEmail = email.trim().toLowerCase()
+
+  if (!ownerEmail) {
+    setStatus("Enter your email to sync server-backed approvals.")
+    return
+  }
+
+  try {
+    setStatus("Syncing approvals...")
+
+    const res = await fetch(`/api/approvals/status?email=${encodeURIComponent(ownerEmail)}`)
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok || !Array.isArray(data?.approvals)) {
+      throw new Error("Approval sync failed")
+    }
+
+    const approvalsByEstimateId = new Map<string, any>()
+    for (const approval of data.approvals) {
+      const estimateId =
+        typeof approval?.local_estimate_id === "string"
+          ? approval.local_estimate_id
+          : ""
+      if (estimateId) approvalsByEstimateId.set(estimateId, approval)
+    }
+
+    let updatedCount = 0
+
+    setHistory((prev) => {
+      let changed = false
+
+      const next = prev.map((item) => {
+        const serverApproval = approvalsByEstimateId.get(item.id)
+        if (!serverApproval) return item
+
+        const serverStatus =
+          serverApproval.status === "approved" ? "approved" : "pending"
+        const currentStatus = item.approval?.status ?? "pending"
+
+        if (serverStatus !== "approved" && currentStatus === "approved") {
+          return item
+        }
+
+        const approvedAtMs =
+          typeof serverApproval.approved_at === "string"
+            ? Date.parse(serverApproval.approved_at)
+            : NaN
+
+        const nextApproval =
+          serverStatus === "approved"
+            ? {
+                status: "approved" as const,
+                approvedBy:
+                  typeof serverApproval.approved_by === "string"
+                    ? serverApproval.approved_by
+                    : item.approval?.approvedBy,
+                approvedAt: Number.isFinite(approvedAtMs)
+                  ? approvedAtMs
+                  : item.approval?.approvedAt,
+                signatureDataUrl:
+                  typeof serverApproval.signature_data_url === "string"
+                    ? serverApproval.signature_data_url
+                    : item.approval?.signatureDataUrl,
+              }
+            : {
+                status: "pending" as const,
+              }
+
+        if (JSON.stringify(item.approval ?? { status: "pending" }) === JSON.stringify(nextApproval)) {
+          return item
+        }
+
+        changed = true
+        updatedCount += 1
+        return {
+          ...item,
+          approval: nextApproval,
+        }
+      })
+
+      if (changed) {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+      }
+
+      return next
+    })
+
+    setStatus(
+      updatedCount > 0
+        ? `Synced ${updatedCount} approval status update${updatedCount === 1 ? "" : "s"}.`
+        : "Approvals are already up to date."
+    )
+  } catch {
+    setStatus("Approval sync failed. Try again later.")
+  }
+}
+
 // ✅ Save History
 function saveToHistory(item: EstimateHistoryItem) {
   setHistory((prev) => {
@@ -11434,6 +11532,7 @@ function PlanAwareEstimatorReadbackCard({
 <SavedEstimatesSection
   filteredHistory={filteredHistory}
   clearHistory={clearHistory}
+  syncServerApprovals={syncServerApprovals}
   getJobPipelineStatus={getJobPipelineStatus}
   latestInvoiceForJob={latestInvoiceForJob}
   hasAnyInvoiceForEstimate={hasAnyInvoiceForEstimate}

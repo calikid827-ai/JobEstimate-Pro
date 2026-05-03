@@ -3,6 +3,7 @@
 type Props = {
   filteredHistory: any[]
   clearHistory: () => void
+  syncServerApprovals: () => Promise<void> | void
   getJobPipelineStatus: (jobId: string) => any
   latestInvoiceForJob: (jobId: string) => any
   hasAnyInvoiceForEstimate: (estimateId: string) => boolean
@@ -42,6 +43,7 @@ function historyPrimaryActionLabel(historyPipeline: any) {
 export default function SavedEstimatesSection({
   filteredHistory,
   clearHistory,
+  syncServerApprovals,
   getJobPipelineStatus,
   latestInvoiceForJob,
   hasAnyInvoiceForEstimate,
@@ -106,9 +108,14 @@ export default function SavedEstimatesSection({
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <h3 style={{ margin: 0 }}>Saved Estimates</h3>
-        <button type="button" onClick={clearHistory} style={{ fontSize: 12 }}>
-          Clear all
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button type="button" onClick={() => void syncServerApprovals()} style={{ fontSize: 12 }}>
+            Sync approvals
+          </button>
+          <button type="button" onClick={clearHistory} style={{ fontSize: 12 }}>
+            Clear all
+          </button>
+        </div>
       </div>
 
       <p style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: "#666" }}>
