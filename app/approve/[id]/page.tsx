@@ -94,6 +94,7 @@ export default function ApproveEstimatePage() {
 
   const [estimate, setEstimate] = useState<EstimateHistoryItem | null>(null)
   const [loadingEstimate, setLoadingEstimate] = useState(true)
+  const [estimateSource, setEstimateSource] = useState<"server" | "local" | null>(null)
   const [clientName, setClientName] = useState("")
   const [agree, setAgree] = useState(false)
   const [status, setStatus] = useState("")
@@ -134,6 +135,7 @@ export default function ApproveEstimatePage() {
 
           if (cancelled) return
           setEstimate(serverEstimate)
+          setEstimateSource("server")
           if (serverEstimate.jobDetails?.clientName) {
             setClientName(serverEstimate.jobDetails.clientName)
           }
@@ -146,6 +148,7 @@ export default function ApproveEstimatePage() {
       const found = loadLocalEstimate()
       if (cancelled) return
       setEstimate(found)
+      setEstimateSource(found ? "local" : null)
       if (found?.jobDetails?.clientName) {
         setClientName(found.jobDetails.clientName)
       }
@@ -212,7 +215,63 @@ export default function ApproveEstimatePage() {
     return true
   }
 
-  function approveNow() {
+  function approveLocally(
+    localEstimate: EstimateHistoryItem,
+    approvedAt: number,
+    signatureDataUrl: string
+  ) {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    if (!raw) {
+      setStatus("No estimate history found.")
+      return false
+    }
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      setStatus("Invalid estimate history.")
+      return false
+    }
+
+    const next = parsed.map((x: any) =>
+      String(x?.id) === localEstimate.id
+        ? {
+            ...x,
+            approval: {
+              status: "approved",
+              approvedBy: clientName.trim(),
+              approvedAt,
+              signatureDataUrl,
+            },
+          }
+        : x
+    )
+
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+
+    const approvedEstimate: EstimateHistoryItem = {
+      ...localEstimate,
+      approval: {
+        status: "approved",
+        approvedBy: clientName.trim(),
+        approvedAt,
+        signatureDataUrl,
+      },
+    }
+
+    const invoiceCreated = autoCreateInvoiceForApprovedEstimate(approvedEstimate)
+
+    setEstimate(approvedEstimate)
+
+    setStatus(
+      invoiceCreated
+        ? "Approved successfully. Draft invoice created."
+        : "Approved successfully."
+    )
+    window.dispatchEvent(new Event("jobestimatepro:update"))
+    return true
+  }
+
+  async function approveNow() {
   if (!estimate) return
 
   setStatus("")
@@ -240,55 +299,44 @@ export default function ApproveEstimatePage() {
     .getTrimmedCanvas()
     .toDataURL("image/png")
 
+  if (estimateSource === "server") {
+    try {
+      setStatus("Saving approval...")
+
+      const res = await fetch(`/api/approvals/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvedBy: clientName.trim(),
+          approvedAt: new Date(approvedAt).toISOString(),
+          signatureDataUrl,
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Server approval failed")
+      }
+
+      const approvedEstimate: EstimateHistoryItem = {
+        ...estimate,
+        approval: {
+          status: "approved",
+          approvedBy: clientName.trim(),
+          approvedAt,
+          signatureDataUrl,
+        },
+      }
+
+      setEstimate(approvedEstimate)
+      setStatus("Approved successfully.")
+      return
+    } catch {
+      // Preserve existing local approval behavior as fallback below.
+    }
+  }
+
   try {
-    const raw = localStorage.getItem(HISTORY_KEY)
-    if (!raw) {
-      setStatus("No estimate history found.")
-      return
-    }
-
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      setStatus("Invalid estimate history.")
-      return
-    }
-
-    const next = parsed.map((x: any) =>
-      String(x?.id) === estimate.id
-        ? {
-            ...x,
-            approval: {
-              status: "approved",
-              approvedBy: clientName.trim(),
-              approvedAt,
-              signatureDataUrl,
-            },
-          }
-        : x
-    )
-
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
-
-    const approvedEstimate: EstimateHistoryItem = {
-      ...estimate,
-      approval: {
-        status: "approved",
-        approvedBy: clientName.trim(),
-        approvedAt,
-        signatureDataUrl,
-      },
-    }
-
-    const invoiceCreated = autoCreateInvoiceForApprovedEstimate(approvedEstimate)
-
-    setEstimate(approvedEstimate)
-
-    setStatus(
-      invoiceCreated
-        ? "Approved successfully. Draft invoice created."
-        : "Approved successfully."
-    )
-    window.dispatchEvent(new Event("jobestimatepro:update"))
+    approveLocally(estimate, approvedAt, signatureDataUrl)
   } catch {
     setStatus("Approval failed.")
   }
