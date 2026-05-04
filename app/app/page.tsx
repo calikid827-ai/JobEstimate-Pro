@@ -125,6 +125,8 @@ import {
   readPlanUploadStageErrorMessage,
 } from "../lib/plan-upload"
 
+const ENABLE_CLIENT_DEBUG_LOGS = process.env.NODE_ENV !== "production"
+
 type ShotType =
   | "overview"
   | "corner"
@@ -968,7 +970,9 @@ async function stagePlanForGenerate(
         })
       }
     } catch (error) {
-      console.error("Browser selected-page PDF export failed:", error)
+      if (ENABLE_CLIENT_DEBUG_LOGS) {
+        console.error("Browser selected-page PDF export failed:", error)
+      }
       if (isSelectedPageExportCapacityError(error)) {
         throw new Error(getErrorMessage(error))
       }
@@ -1174,7 +1178,9 @@ async function handlePhotoUpload(files: FileList | null) {
 
     setJobPhotos(merged.slice(0, MAX_JOB_PHOTOS))
   } catch (err) {
-    console.error(err)
+    if (ENABLE_CLIENT_DEBUG_LOGS) {
+      console.error("Photo intake failed:", err)
+    }
     setStatus("Could not load selected photo(s).")
   }
 }
@@ -1315,7 +1321,9 @@ async function handlePlanUpload(files: FileList | null) {
 
     setStatus(notices.join(" "))
   } catch (err) {
-    console.error(err)
+    if (ENABLE_CLIENT_DEBUG_LOGS) {
+      console.error("Plan intake failed:", err)
+    }
     const message =
       err instanceof Error && err.message.trim()
         ? err.message.trim()
@@ -3407,19 +3415,21 @@ if (estimatedSelectedPlanBytes > MAX_TOTAL_PLAN_FILE_BYTES) {
   return
 }
 
-console.log("photo count:", jobPhotos.length)
-console.log(
-  "selected photo count:",
-  photosToSend?.length ?? 0
-)
-console.log(
-  "selected photo sizes:",
-  photosToSend?.map((p) => p.dataUrl.length) ?? []
-)
-console.log(
-  "selected total photo payload:",
-  photosToSend?.reduce((sum, p) => sum + p.dataUrl.length, 0) ?? 0
-)
+if (ENABLE_CLIENT_DEBUG_LOGS) {
+  console.log("photo count:", jobPhotos.length)
+  console.log(
+    "selected photo count:",
+    photosToSend?.length ?? 0
+  )
+  console.log(
+    "selected photo sizes:",
+    photosToSend?.map((p) => p.dataUrl.length) ?? []
+  )
+  console.log(
+    "selected total photo payload:",
+    photosToSend?.reduce((sum, p) => sum + p.dataUrl.length, 0) ?? 0
+  )
+}
 
 const requestPayload = {
   requestId,
@@ -3551,7 +3561,9 @@ if (jobPlans.length > 0) {
     }
 
     const data = await res.json()
-    console.log("pricingSource:", data.pricingSource)
+    if (ENABLE_CLIENT_DEBUG_LOGS) {
+      console.log("pricingSource:", data.pricingSource)
+    }
 
     const nextVerified = data?.priceGuardVerified === true
     setPriceGuardVerified(nextVerified)
@@ -4629,7 +4641,9 @@ lastSavedEstimateIdRef.current = newId
 await checkEntitlementNow()
 setStatus("")
   } catch (err) {
-    console.error(err)
+    if (ENABLE_CLIENT_DEBUG_LOGS) {
+      console.error("Generate failed:", err)
+    }
     setStatus(getGenerateExceptionMessage(err))
   } finally {
     setLoading(false)
@@ -4670,7 +4684,9 @@ async function upgrade() {
    // 🔑 Force full-page navigation
 window.location.assign(data.url)
 } catch (err) {
-  console.error(err)
+  if (ENABLE_CLIENT_DEBUG_LOGS) {
+    console.error("Checkout failed:", err)
+  }
   setStatus("Checkout error.")
 }
 }
