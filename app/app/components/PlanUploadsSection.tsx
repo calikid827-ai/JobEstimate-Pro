@@ -4,7 +4,6 @@ import {
   buildSelectedPageUploadDebugSummary,
   estimateSelectedPdfBytes,
   formatPlanUploadBytes,
-  getSelectedPageUploadModeSummary,
   resolvePlanUploadDisplayMode,
 } from "../../lib/plan-upload"
 
@@ -41,6 +40,34 @@ type Props = {
   maxJobPlans: number
 }
 
+function getCustomerPlanProcessingLabel(
+  mode: JobPlan["selectedPageUploadMode"] | "original"
+): string {
+  if (mode === "browser-derived-selected-pages") return "Selected pages prepared in browser"
+  if (mode === "server-derived-selected-pages") return "Selected pages prepared on server"
+  if (mode === "original-fallback") return "Original PDF fallback"
+  return "Original PDF"
+}
+
+function getCustomerPlanProcessingSummary(args: {
+  mode: JobPlan["selectedPageUploadMode"] | "original"
+  originalBytes: number
+  stagedBytes: number
+  analyzedPages: number
+  originalSourcePageCount: number
+}): string {
+  return buildSelectedPageUploadDebugSummary({
+    mode: args.mode,
+    originalBytes: args.originalBytes,
+    stagedBytes: args.stagedBytes,
+    analyzedPages: args.analyzedPages,
+    originalSourcePageCount: args.originalSourcePageCount,
+  }).replace(
+    /^(Browser-derived selected pages|Server-derived selected pages|Original PDF fallback|Original PDF)\./,
+    `${getCustomerPlanProcessingLabel(args.mode)}.`
+  )
+}
+
 export default function PlanUploadsSection({
   jobPlans,
   handlePlanUpload,
@@ -71,8 +98,8 @@ export default function PlanUploadsSection({
           lineHeight: 1.4,
         }}
       >
-        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to analyze before pricing. Larger plan PDFs are sent through reliable file upload transport instead of one giant inline payload. Accepted: PDF, PNG, JPG, JPEG, WEBP.
-        {" "}Generate uploads plan files only after you finish page selection, and large PDFs fall back to reliable chunked staging when browser-side selected-page export is unavailable.
+        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to review before pricing. Larger plan PDFs are prepared in smaller steps so selected pages can be analyzed without sending the whole plan set at once. Accepted: PDF, PNG, JPG, JPEG, WEBP.
+        {" "}Generate uploads plan files only after you finish page selection, and large PDFs can fall back to original-PDF processing when selected-page preparation is unavailable.
         {plansAtLimit ? " Remove a plan to add another file." : ""}
       </div>
 
@@ -153,8 +180,8 @@ export default function PlanUploadsSection({
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
                     {plan.sourceKind === "pdf"
-                      ? `${selectedPages} of ${plan.pages.length} indexed PDF page(s) selected for analysis.`
-                      : "Single image plan selected for analysis."}
+                      ? `${selectedPages} of ${plan.pages.length} PDF page(s) selected for plan review.`
+                      : "Single image plan selected for plan review."}
                   </div>
                   {plan.sourceKind === "pdf" && (
                     <>
@@ -162,11 +189,11 @@ export default function PlanUploadsSection({
                         Original PDF: {formatPlanUploadBytes(plan.originalBytes)}
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        Selected export basis: {selectedPages} of {plan.sourcePageCount} source pages
+                        Selected pages for review: {selectedPages} of {plan.sourcePageCount}
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        {plan.stagedUploadId ? "Last staged upload path" : "Planned upload path"}:{" "}
-                        {getSelectedPageUploadModeSummary(displayMode).label}
+                        {plan.stagedUploadId ? "Last plan processing method" : "Plan processing"}:{" "}
+                        {getCustomerPlanProcessingLabel(displayMode)}
                       </div>
                       <div
                         style={{
@@ -180,7 +207,7 @@ export default function PlanUploadsSection({
                           marginTop: 2,
                         }}
                       >
-                        {buildSelectedPageUploadDebugSummary({
+                        {getCustomerPlanProcessingSummary({
                           mode: displayMode,
                           originalBytes: plan.originalBytes,
                           stagedBytes: displayStagedBytes,
