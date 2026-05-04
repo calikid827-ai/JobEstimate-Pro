@@ -320,6 +320,14 @@ Estimate PDF:
 - Tax.
 - Deposit due and remaining balance.
 - PriceGuard/edited badge.
+- Customer-safe Estimator Plan Review when uploaded plans are present.
+- Compact plan evidence summary:
+  - Plan evidence strength.
+  - Selected pages reviewed.
+  - Text extraction status.
+  - Rendered image status.
+  - Hard quantity status.
+  - Confirmation-needed status.
 - Contractor and customer approval sections.
 - Approved customer signature display when available.
 
@@ -400,7 +408,7 @@ Known weaknesses:
 - Finish schedule parsing is limited.
 - Room matrix/repeated-room count extraction is limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
-- Rich plan story is not yet fully included in PDFs.
+- Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
 - AI-generated prose may still be less specific than typed readback.
 
 ## Stripe/Payment Status

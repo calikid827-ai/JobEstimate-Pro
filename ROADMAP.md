@@ -59,6 +59,7 @@ Difficulty levels:
 
 ### 1.3 Add Estimator Story to Estimate PDF Output
 
+- Status note: Estimate PDFs now include a customer-safe Estimator Plan Review plus a compact plan evidence summary showing evidence strength, selected pages reviewed, text extraction status, rendered image status, hard quantity status, and confirmation-needed status.
 - Why it matters: The app now shows a plan-aware estimator story in the UI, but the generated PDF can still look like a generic estimate. The PDF is the customer-facing artifact.
 - Files likely affected:
   - `app/app/page.tsx`
@@ -190,7 +191,7 @@ Difficulty levels:
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
 - Status note: Browser-derived selected-page PDFs now render their reduced pages as `1..N` for image/vision fallback while preserving original source page provenance. Remaining work here is recovery polish for genuinely failed indexing/rendering cases.
-- Status note: Plan Intelligence now reports evidence strength as Strong, Useful, or Review-only, including selected/indexed/skipped pages, text extraction, rendered image availability, hard quantity support, and confirmation-needed status.
+- Status note: Plan Intelligence now reports evidence strength as Strong, Useful, or Review-only, including selected/indexed/skipped pages, text extraction, rendered image availability, hard quantity support, and confirmation-needed status. Estimate PDFs also include a compact customer-safe version of this plan evidence/readiness summary.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`

@@ -200,6 +200,7 @@ Important operational notes:
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
 - Evidence-strength readback is readiness messaging, not a full measured takeoff. Hard quantity extraction is still heuristic.
 - Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.
+- Estimate PDFs also include a compact plan evidence summary showing evidence strength, selected pages reviewed, text extraction status, rendered image status, hard quantity status, and confirmation-needed status. This is plan evidence/readiness messaging, not a full measured takeoff.
 
 ## LocalStorage Keys
 
