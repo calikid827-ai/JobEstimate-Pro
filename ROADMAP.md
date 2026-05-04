@@ -38,7 +38,8 @@ Difficulty levels:
 
 ### 1.1 Remove or Gate Production Debug Logging
 
-- Why it matters: `/api/generate` still logs plan intelligence, pricing splits, trade stacks, and pricing internals. This can leak sensitive job data and makes production logs noisy.
+- Status: Completed for the recently inspected generate path and client app debug paths. Remaining risk is a full repo-wide audit, not the known launch-critical logs.
+- Why it matters: Production logs should not expose customer scope, plan, or pricing details.
 - Files likely affected:
   - `app/api/generate/route.ts`
   - `app/api/generate/lib/priceguard/electricalEngine.ts`
@@ -49,7 +50,8 @@ Difficulty levels:
 
 ### 1.2 Clean Up Stripe Success/Cancel Branding
 
-- Why it matters: Some payment pages still refer to ScopeGuard while the product is JobEstimate Pro. This creates trust friction right after payment.
+- Status: Completed for the known success/cancel payment pages.
+- Why it matters: Payment surfaces should consistently use JobEstimate Pro copy.
 - Files likely affected:
   - `app/success/page.tsx`
   - `app/cancel/page.tsx`
@@ -59,8 +61,8 @@ Difficulty levels:
 
 ### 1.3 Add Estimator Story to Estimate PDF Output
 
-- Status note: Estimate PDFs now include a customer-safe Estimator Plan Review plus a compact plan evidence summary showing evidence strength, selected pages reviewed, text extraction status, rendered image status, hard quantity status, and confirmation-needed status.
-- Why it matters: The app now shows a plan-aware estimator story in the UI, but the generated PDF can still look like a generic estimate. The PDF is the customer-facing artifact.
+- Status: Completed for customer-safe plan review and compact evidence/readiness summary. Remaining PDF work is visual hierarchy polish, not missing plan readback.
+- Why it matters: The PDF is the customer-facing artifact and should make plan-assisted estimates easy to understand.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/app/lib/plan-pricing-carry.ts`
@@ -71,11 +73,12 @@ Difficulty levels:
 
 ### 1.4 Extract Shared Invoice Creation Logic
 
-- Why it matters: Invoice creation is duplicated between `/app` and `/approve/[id]`, which risks inconsistent deposit, tax, balance, and line-item behavior.
+- Status: Completed through `buildInvoiceFromEstimate()`, shared by `/app`, same-device approval fallback, and server approval invoice creation.
+- Why it matters: Deposit, tax, balance, and approval-created invoice behavior should remain consistent as invoice workflows grow.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/approve/[id]/page.tsx`
-  - New helper such as `app/app/lib/invoices.ts` or `app/lib/invoices.ts`
+  - `app/app/lib/invoices.ts`
   - `app/app/lib/types.ts`
 - Risk level: Medium
 - Difficulty: Medium
@@ -83,7 +86,8 @@ Difficulty levels:
 
 ### 1.5 Document Required Environment and Setup
 
-- Why it matters: README is still the default Next.js file. Production work needs clear OpenAI, Stripe, Supabase, webhook, and plan-rendering setup notes.
+- Status: Completed in `README.md` for current product setup, API routes, environment variables, Stripe, Supabase, approval links, localStorage, and plan upload/rendering notes.
+- Why it matters: Production work needs clear OpenAI, Stripe, Supabase, webhook, and plan-rendering setup notes.
 - Files likely affected:
   - `README.md`
   - Possibly `.env.example` if added.
@@ -249,7 +253,8 @@ Difficulty levels:
 
 ### 3.5 Product Copy Consistency Pass
 
-- Why it matters: ScopeGuard/JobEstimate Pro naming is mixed in several places. Consistent naming improves trust.
+- Status: Known payment page copy is current. Legacy `scopeguard_*` localStorage migration keys remain intentionally.
+- Why it matters: Product-facing copy should consistently use JobEstimate Pro. Migration internals can keep legacy names when needed for data continuity.
 - Files likely affected:
   - `app/page.tsx`
   - `app/app/page.tsx`

@@ -106,11 +106,11 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Approval sync is hardened with an owner sync token, but it is not full authentication and does not replace user accounts/workspaces.
 - Same-device local approval invoice creation still exists as a fallback path.
 - Stripe success entitlement refresh has been fixed to POST the saved email, but there is still no full account/billing page.
-- Plan intelligence readback is rich in the app UI, but not fully represented in generated PDFs.
+- Plan intelligence readback is rich in the app UI and represented in generated estimate PDFs through a customer-safe Estimator Plan Review and compact plan evidence summary.
 - AI-generated scope prose can still be generic even when typed plan readback is stronger.
 - Jobs, estimates, invoices, budgets, and actuals remain local-first outside the server-backed approval snapshot workflow.
 - Some advanced analysis panels are more diagnostic than customer-facing.
-- README still contains default Next.js content and does not document product setup.
+- README documents the product, local development, environment variables, API routes, Stripe webhook notes, Supabase expectations, approval links, plan upload/rendering notes, localStorage keys, limitations, and development guidance.
 - PDF generation works through browser print windows, not server-side document generation.
 
 ## Backend/API Routes
@@ -432,34 +432,33 @@ Known gaps:
 - No subscription management UI.
 - Entitlement is email-based, not user-auth based.
 - No robust webhook-delay recovery UI beyond entitlement refresh.
-- Success/cancel pages still use some old ScopeGuard copy.
+- Success/cancel pages use current JobEstimate Pro payment flow copy.
 
 ## Technical Debt / Broken Areas
 
 - `app/app/page.tsx` is very large and mixes UI, business logic, PDF generation, persistence, and API orchestration.
 - Many components and routes use `any`, causing repo-wide lint failures.
 - Full server-backed jobs/estimates/invoices are not implemented yet; only the approval snapshot/status/invoice sync workflow is server-backed.
-- Invoice creation logic is duplicated between `/app` and `/approve/[id]`.
+- Shared invoice creation logic is centralized through `buildInvoiceFromEstimate()` and used by `/app`, same-device approval fallback, and server approval invoice creation.
 - PDF HTML generation is large, duplicated, and brittle.
 - LocalStorage writes are scattered across app and components.
 - Advanced analysis UI is powerful but dense.
-- Plan intelligence is present in UI but not fully represented in PDFs.
-- Debug `console.log` statements remain in production route code.
+- Plan intelligence is represented in PDFs through customer-safe plan review and compact evidence/readiness summary, though broader PDF visual hierarchy can still be improved.
+- Recently inspected generate-route and app debug/customer-detail logs are development-gated; a full repo-wide log audit is not guaranteed complete.
 - Several helper functions are unused or partially wired.
-- README does not describe the actual app, environment variables, Supabase requirements, Stripe setup, or plan-rendering scripts.
-- Some branding still says ScopeGuard while the app is called JobEstimate Pro.
+- README describes the actual app, environment variables, Supabase requirements, Stripe setup, approval links, and plan upload/rendering behavior.
+- Legacy `scopeguard_*` localStorage migration support remains intentionally, but current product-facing copy should use JobEstimate Pro.
 
 ## Recommended Next Features
 
 - Server-backed saved estimates, jobs, and full invoice management.
 - Hardening/polish for the implemented shareable approval links.
-- Estimate PDFs that include estimator story, plan readback, pricing carry, and confirmation gaps.
+- PDF visual hierarchy polish for dense estimates and plan-assisted results.
 - Stripe/account status page with entitlement refresh and billing guidance.
 - Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, fixture/device counts.
-- Shared invoice creation helper used by app and approval page.
 - Centralized persistence layer for localStorage now and server persistence later.
-- Production logging cleanup.
-- Actual product README/setup guide.
+- Account/entitlement status surface with current email, free usage, access state, and refresh action.
+- Production Supabase schema checklist for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
 - UI simplification for advanced analysis into customer-facing and estimator-facing modes.
 
 ## Features We Should Not Rebuild
@@ -490,8 +489,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Add the estimator plan/pricing story to estimate PDF output.
-2. Extract invoice creation into one shared helper used by `/app` and `/approve/[id]`.
-3. Remove or gate production debug logging in `/api/generate`.
-4. Clean up Stripe success/cancel copy to consistently say JobEstimate Pro.
-5. Create a real README with environment variables, Supabase schema expectations, Stripe setup, and plan-rendering script notes.
+1. Add an account/entitlement status surface in `/app`.
+2. Add focused invoice helper tests for full, deposit, balance, tax, missing-deposit, and approval-created invoice behavior.
+3. Create a production Supabase schema checklist for entitlement, webhook dedupe, approvals, owner sync tokens, and approval invoices.
+4. Improve mobile usability for the estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
+5. Polish estimate/invoice PDF visual hierarchy while keeping browser print-window output.

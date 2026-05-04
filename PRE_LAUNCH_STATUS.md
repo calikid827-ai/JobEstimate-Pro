@@ -144,7 +144,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - PARTIAL: Polish PDF visual hierarchy for customer-facing readability.
 - PARTIAL: Simplify or separate advanced analysis into customer-facing and estimator/debug views.
 - PARTIAL: Centralize localStorage access with a small persistence helper.
-- PARTIAL: Update roadmap/feature inventory to remove stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work.
+- DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
 - PARTIAL: Run `npm run lint` and decide which lint failures are launch-blocking versus post-launch cleanup.
 
 ## Can-Wait Until After Launch
@@ -164,8 +164,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. DONE/PARTIAL: Reconcile stale docs in `FEATURE_INVENTORY.md` and `ROADMAP.md` with current state.
-   - Update items that still say README is default, ScopeGuard copy remains, debug logs remain, invoice helper is duplicated, approval tests are missing, or PDFs lack plan readback.
+1. DONE: Reconcile stale docs in `FEATURE_INVENTORY.md` and `ROADMAP.md` with current state.
+   - Items that said README is default, ScopeGuard copy remains, debug logs remain, invoice helper is duplicated, approval tests are missing, or PDFs lack plan readback have been updated.
 
 2. PARTIAL: Add account/entitlement status surface in `/app`.
    - Show current email, free usage, entitlement/access state, and refresh action without changing billing logic.
