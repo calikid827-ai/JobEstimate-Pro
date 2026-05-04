@@ -6025,6 +6025,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 }
 
     const pdfPlanReadback = planIntelligence?.planReadback ?? null
+    const pdfEvidenceStrength = planIntelligence?.evidenceStrength ?? null
     const pdfPricingCarryReadback = buildPlanPricingCarryReadback({
       planReadback: pdfPlanReadback,
       estimateSections,
@@ -6065,6 +6066,25 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             .join("; ")
         : ""
 
+    const pdfEvidenceStrengthHtml = pdfEvidenceStrength
+      ? `
+        <div style="margin-bottom:10px; padding:10px; border:1px solid #e5e5e5; border-radius:8px; background:#fafafa; page-break-inside:avoid;">
+          <div style="font-weight:800; font-size:12px; color:#111;">Plan evidence: ${esc(
+            pdfEvidenceStrength.label
+          )}</div>
+          <div style="margin-top:6px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:5px 12px; font-size:12px; line-height:1.35; color:#222;">
+            <div><strong>Selected pages reviewed:</strong> ${esc(
+              pdfEvidenceStrength.selectedPagesCount
+            )}</div>
+            <div><strong>Text extracted:</strong> ${pdfEvidenceStrength.textPagesCount > 0 ? "Yes" : "No"}</div>
+            <div><strong>Images rendered:</strong> ${pdfEvidenceStrength.renderedPagesCount > 0 ? "Yes" : "No"}</div>
+            <div><strong>Hard quantities:</strong> ${pdfEvidenceStrength.hardQuantityCount > 0 ? "Found" : "Not confirmed"}</div>
+            <div style="grid-column:1 / -1;"><strong>Confirmation:</strong> ${pdfEvidenceStrength.confirmationNeeded ? "Needed" : "No major gap flagged"}</div>
+          </div>
+        </div>
+      `
+      : ""
+
     const pdfEstimatorStoryHtml =
       pdfHasEstimatorReviewContent
         ? `
@@ -6076,6 +6096,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
               padding:12px;
               background:#fff;
             ">
+              ${pdfEvidenceStrengthHtml}
+
               ${
                 pdfPlanReadback.headline
                   ? `<div style="font-weight:800; font-size:13px; line-height:1.45; color:#111;">${esc(
@@ -6182,6 +6204,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
                 padding:12px;
                 background:#fff;
               ">
+                ${pdfEvidenceStrengthHtml}
+
                 <div style="font-weight:800; font-size:13px; line-height:1.45; color:#111;">
                   Plans were uploaded for review.
                 </div>
