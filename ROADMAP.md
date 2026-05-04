@@ -190,6 +190,7 @@ Difficulty levels:
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
 - Status note: Browser-derived selected-page PDFs now render their reduced pages as `1..N` for image/vision fallback while preserving original source page provenance. Remaining work here is recovery polish for genuinely failed indexing/rendering cases.
+- Status note: Plan Intelligence now reports evidence strength as Strong, Useful, or Review-only, including selected/indexed/skipped pages, text extraction, rendered image availability, hard quantity support, and confirmation-needed status.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`
@@ -355,7 +356,7 @@ Difficulty levels:
 
 ### 5.3 Better Plan Quantity Extraction
 
-- Why it matters: Plan intelligence has strong structure, but hard quantity extraction remains the main blocker to estimator-grade confidence from complex plan sets.
+- Why it matters: Plan intelligence has strong structure and now reports evidence/readiness strength, but hard quantity extraction remains heuristic and is still the main blocker to estimator-grade confidence from complex plan sets.
 - Files likely affected:
   - `app/api/generate/lib/plans/analysisHeuristics.ts`
   - `app/api/generate/lib/plans/visionFallback.ts`

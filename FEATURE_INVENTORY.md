@@ -378,6 +378,12 @@ Implemented:
 - Trade-by-trade readback.
 - Grouped scope/bid-division readback.
 - Scope-gap and confirmation prompts.
+- Evidence-strength readback with Strong, Useful, and Review-only labels.
+  - Includes selected/indexed/skipped page counts.
+  - Includes text extraction status.
+  - Includes rendered image availability.
+  - Includes hard quantity support status.
+  - Includes confirmation-needed status.
 - Estimator packages.
 - Estimator section skeleton handoff.
 - Estimate structure consumption.
@@ -389,6 +395,7 @@ Implemented:
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
+- Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
 - Schedule table extraction is limited.
 - Finish schedule parsing is limited.
 - Room matrix/repeated-room count extraction is limited.

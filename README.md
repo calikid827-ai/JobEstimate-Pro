@@ -187,12 +187,18 @@ Plan upload support includes:
 - PDF splitting and page rendering for plan intelligence
 - Browser-derived selected-page PDFs render their reduced pages as `1..N` for image/vision fallback, while original source page numbers are preserved in plan provenance.
 - Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
+- Plan evidence-strength readback with `Strong`, `Useful`, and `Review-only` labels.
+  - Summarizes selected, indexed, and skipped pages.
+  - Reports whether text was extracted and whether page images rendered.
+  - Reports whether hard quantity support was found.
+  - Reports whether estimator confirmation is still needed.
 
 Important operational notes:
 
 - Large PDFs should be narrowed with page selection before generation.
 - If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
+- Evidence-strength readback is readiness messaging, not a full measured takeoff. Hard quantity extraction is still heuristic.
 - Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.
 
 ## LocalStorage Keys
