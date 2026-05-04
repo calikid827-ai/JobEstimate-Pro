@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
 import { createHash } from "crypto"
 
@@ -41,7 +41,10 @@ type ApprovalInvoiceRow = {
   status: string | null
 }
 
-export async function GET(req: Request) {
+export async function handleApprovalStatusGet(
+  req: Request,
+  client: typeof supabase = supabase
+) {
   try {
     const emailRaw = new URL(req.url).searchParams.get("email")
     const ownerSyncTokenRaw = new URL(req.url).searchParams.get("ownerSyncToken")
@@ -57,7 +60,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Email and owner sync token are required." }, { status: 400 })
     }
 
-    const { data: syncToken, error: syncTokenError } = await supabase
+    const { data: syncToken, error: syncTokenError } = await client
       .from("approval_owner_sync_tokens")
       .select("id")
       .eq("owner_email", ownerEmail)
@@ -68,7 +71,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Approval sync token is invalid." }, { status: 403 })
     }
 
-    const { data: proposals, error: proposalsError } = await supabase
+    const { data: proposals, error: proposalsError } = await client
       .from("estimate_proposals")
       .select("id, local_estimate_id, status")
       .eq("owner_email", ownerEmail)
@@ -84,7 +87,7 @@ export async function GET(req: Request) {
     const invoicesByProposal = new Map<string, ApprovalInvoiceRow>()
 
     if (proposalIds.length > 0) {
-      const { data: approvals, error: approvalsError } = await supabase
+      const { data: approvals, error: approvalsError } = await client
         .from("proposal_approvals")
         .select("proposal_id, approved_by, approved_at, signature_data_url")
         .in("proposal_id", proposalIds)
@@ -101,7 +104,7 @@ export async function GET(req: Request) {
         }
       }
 
-      const { data: approvalInvoices, error: invoicesError } = await supabase
+      const { data: approvalInvoices, error: invoicesError } = await client
         .from("approval_invoices")
         .select("proposal_id, local_invoice_id, invoice_snapshot, status")
         .in("proposal_id", proposalIds)
@@ -145,4 +148,8 @@ export async function GET(req: Request) {
     console.error("Approval status route failed:", err)
     return NextResponse.json({ error: "Approval statuses could not be loaded." }, { status: 500 })
   }
+}
+
+export async function GET(req: Request) {
+  return handleApprovalStatusGet(req)
 }

@@ -1,5 +1,5 @@
 import { createHash } from "crypto"
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
 import { buildInvoiceFromEstimate } from "../../../../app/lib/invoices"
 
@@ -40,8 +40,8 @@ function isExpired(expiresAt: unknown) {
   return Number.isFinite(expiresMs) && expiresMs <= Date.now()
 }
 
-async function getExistingApprovalInvoice(proposalId: string) {
-  const { data, error } = await supabase
+async function getExistingApprovalInvoice(client: typeof supabase, proposalId: string) {
+  const { data, error } = await client
     .from("approval_invoices")
     .select("invoice_snapshot")
     .eq("proposal_id", proposalId)
@@ -57,8 +57,8 @@ function isUniqueViolation(error: unknown) {
   return code === "23505" || /duplicate key|unique/i.test(msg)
 }
 
-async function getExistingApproval(proposalId: string) {
-  const { data, error } = await supabase
+async function getExistingApproval(client: typeof supabase, proposalId: string) {
+  const { data, error } = await client
     .from("proposal_approvals")
     .select("id, approved_by, approved_at, signature_data_url")
     .eq("proposal_id", proposalId)
@@ -69,10 +69,11 @@ async function getExistingApproval(proposalId: string) {
 }
 
 async function createApprovalInvoiceIfMissing(args: {
+  client: typeof supabase
   proposal: ProposalRow
   approvalId: string | null
 }) {
-  const existing = await getExistingApprovalInvoice(args.proposal.id)
+  const existing = await getExistingApprovalInvoice(args.client, args.proposal.id)
   if (existing) {
     return { created: false, invoice: existing }
   }
@@ -87,7 +88,7 @@ async function createApprovalInvoiceIfMissing(args: {
     return { created: false, invoice: null }
   }
 
-  const { error } = await supabase
+  const { error } = await args.client
     .from("approval_invoices")
     .insert({
       proposal_id: args.proposal.id,
@@ -102,7 +103,7 @@ async function createApprovalInvoiceIfMissing(args: {
 
   if (error) {
     if (isUniqueViolation(error)) {
-      const duplicate = await getExistingApprovalInvoice(args.proposal.id)
+      const duplicate = await getExistingApprovalInvoice(args.client, args.proposal.id)
       return { created: false, invoice: duplicate }
     }
     throw error
@@ -111,9 +112,10 @@ async function createApprovalInvoiceIfMissing(args: {
   return { created: true, invoice: built.invoice }
 }
 
-export async function POST(
+export async function handleApprovalSubmitPost(
   req: Request,
-  { params }: { params: Promise<{ token?: string }> }
+  { params }: { params: Promise<{ token?: string }> },
+  client: typeof supabase = supabase
 ) {
   try {
     const { token: rawToken } = await params
@@ -139,7 +141,7 @@ export async function POST(
 
     const tokenHash = hashApprovalToken(token)
 
-    const { data: link, error: linkError } = await supabase
+    const { data: link, error: linkError } = await client
       .from("approval_links")
       .select("proposal_id, status, expires_at")
       .eq("token_hash", tokenHash)
@@ -149,7 +151,7 @@ export async function POST(
       return NextResponse.json({ error: "Approval link not found." }, { status: 404 })
     }
 
-    const { data: proposal, error: proposalError } = await supabase
+    const { data: proposal, error: proposalError } = await client
       .from("estimate_proposals")
       .select("id, status, owner_email, local_estimate_id, local_job_id, estimate_snapshot")
       .eq("id", link.proposal_id)
@@ -162,8 +164,8 @@ export async function POST(
     const proposalRow = proposal as ProposalRow
 
     if (proposalRow.status === "approved") {
-      const existingInvoice = await getExistingApprovalInvoice(proposalRow.id)
-      const existingApproval = await getExistingApproval(proposalRow.id)
+      const existingInvoice = await getExistingApprovalInvoice(client, proposalRow.id)
+      const existingApproval = await getExistingApproval(client, proposalRow.id)
       return NextResponse.json({
         status: "approved",
         alreadyApproved: true,
@@ -175,7 +177,7 @@ export async function POST(
     }
 
     let approval: ApprovalRow | null = null
-    const { data: insertedApproval, error: approvalError } = await supabase
+    const { data: insertedApproval, error: approvalError } = await client
       .from("proposal_approvals")
       .insert({
         proposal_id: proposalRow.id,
@@ -188,7 +190,7 @@ export async function POST(
 
     if (approvalError || !insertedApproval?.id) {
       if (isUniqueViolation(approvalError)) {
-        approval = await getExistingApproval(proposalRow.id)
+        approval = await getExistingApproval(client, proposalRow.id)
       }
 
       if (!approval) {
@@ -198,7 +200,7 @@ export async function POST(
       approval = insertedApproval as ApprovalRow
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await client
       .from("estimate_proposals")
       .update({
         status: "approved",
@@ -211,6 +213,7 @@ export async function POST(
     }
 
     const invoiceResult = await createApprovalInvoiceIfMissing({
+      client,
       proposal: proposalRow,
       approvalId: approval.id,
     })
@@ -225,4 +228,11 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "Approval could not be saved." }, { status: 500 })
   }
+}
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ token?: string }> }
+) {
+  return handleApprovalSubmitPost(req, context)
 }

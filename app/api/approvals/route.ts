@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto"
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
@@ -130,11 +130,11 @@ function isUniqueViolation(error: unknown) {
   return code === "23505" || /duplicate key|unique/i.test(msg)
 }
 
-async function findReusableProposal(args: {
+async function findReusableProposal(client: typeof supabase, args: {
   ownerEmail: string
   localEstimateId: string
 }) {
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("estimate_proposals")
     .select("id")
     .eq("owner_email", args.ownerEmail)
@@ -148,11 +148,11 @@ async function findReusableProposal(args: {
   return data?.id ? { id: data.id as string } : null
 }
 
-async function createOwnerSyncToken(ownerEmail: string) {
+async function createOwnerSyncToken(client: typeof supabase, ownerEmail: string) {
   const token = makeOwnerSyncToken()
   const tokenHash = hashApprovalToken(token)
 
-  const { error } = await supabase
+  const { error } = await client
     .from("approval_owner_sync_tokens")
     .upsert(
       {
@@ -171,7 +171,10 @@ async function createOwnerSyncToken(ownerEmail: string) {
   return token
 }
 
-export async function POST(req: Request) {
+export async function handleApprovalSnapshotPost(
+  req: Request,
+  client: typeof supabase = supabase
+) {
   try {
     const body = await req.json().catch(() => null)
     const emailRaw = body?.email
@@ -187,13 +190,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "A valid estimate snapshot is required." }, { status: 400 })
     }
 
-    let proposal = await findReusableProposal({
+    let proposal = await findReusableProposal(client, {
       ownerEmail,
       localEstimateId: snapshot.id,
     })
 
     if (!proposal) {
-      const { data: insertedProposal, error: proposalError } = await supabase
+      const { data: insertedProposal, error: proposalError } = await client
         .from("estimate_proposals")
         .insert({
           owner_email: ownerEmail,
@@ -211,7 +214,7 @@ export async function POST(req: Request) {
 
       if (proposalError || !insertedProposal?.id) {
         if (isUniqueViolation(proposalError)) {
-          proposal = await findReusableProposal({
+          proposal = await findReusableProposal(client, {
             ownerEmail,
             localEstimateId: snapshot.id,
           })
@@ -228,13 +231,13 @@ export async function POST(req: Request) {
 
     const token = makeApprovalToken()
     const tokenHash = hashApprovalToken(token)
-    const ownerSyncToken = await createOwnerSyncToken(ownerEmail)
+    const ownerSyncToken = await createOwnerSyncToken(client, ownerEmail)
 
     if (!ownerSyncToken) {
       return NextResponse.json({ error: "Approval sync token could not be created." }, { status: 500 })
     }
 
-    const { error: linkError } = await supabase
+    const { error: linkError } = await client
       .from("approval_links")
       .insert({
         proposal_id: proposal.id,
@@ -256,4 +259,8 @@ export async function POST(req: Request) {
     console.error("Approval snapshot route failed:", err)
     return NextResponse.json({ error: "Approval link could not be created." }, { status: 500 })
   }
+}
+
+export async function POST(req: Request) {
+  return handleApprovalSnapshotPost(req)
 }

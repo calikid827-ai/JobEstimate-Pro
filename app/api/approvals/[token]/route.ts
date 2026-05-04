@@ -1,5 +1,5 @@
 import { createHash } from "crypto"
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
 
 export const dynamic = "force-dynamic"
@@ -85,9 +85,10 @@ function buildPublicApprovalEstimate(snapshot: unknown, status: string) {
   }
 }
 
-export async function GET(
+export async function handlePublicApprovalGet(
   _req: Request,
-  { params }: { params: Promise<{ token?: string }> }
+  { params }: { params: Promise<{ token?: string }> },
+  client: typeof supabase = supabase
 ) {
   try {
     const { token: rawToken } = await params
@@ -99,7 +100,7 @@ export async function GET(
 
     const tokenHash = hashApprovalToken(token)
 
-    const { data: link, error: linkError } = await supabase
+    const { data: link, error: linkError } = await client
       .from("approval_links")
       .select("proposal_id, status, expires_at")
       .eq("token_hash", tokenHash)
@@ -109,7 +110,7 @@ export async function GET(
       return NextResponse.json({ error: "Approval link not found." }, { status: 404 })
     }
 
-    const { data: proposal, error: proposalError } = await supabase
+    const { data: proposal, error: proposalError } = await client
       .from("estimate_proposals")
       .select("id, status, estimate_snapshot")
       .eq("id", link.proposal_id)
@@ -119,7 +120,7 @@ export async function GET(
       return NextResponse.json({ error: "Approval link not found." }, { status: 404 })
     }
 
-    await supabase
+    await client
       .from("approval_links")
       .update({ last_viewed_at: new Date().toISOString() })
       .eq("token_hash", tokenHash)
@@ -135,4 +136,11 @@ export async function GET(
   } catch {
     return NextResponse.json({ error: "Approval link not found." }, { status: 404 })
   }
+}
+
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ token?: string }> }
+) {
+  return handlePublicApprovalGet(req, context)
 }
