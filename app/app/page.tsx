@@ -88,6 +88,15 @@ import {
   buildPlanPricingCarryReadback,
 } from "./lib/plan-pricing-carry"
 import { buildInvoiceFromEstimate } from "./lib/invoices"
+import {
+  getLocalValue,
+  LEGACY_LOCAL_STORAGE_KEYS,
+  migrateLocalValue,
+  readLocalJson,
+  removeLocalValue,
+  setLocalValue,
+  writeLocalJson,
+} from "./lib/local-persistence"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -1402,15 +1411,13 @@ useEffect(() => {
   if (typeof window === "undefined") return
 
   // migrate old key once if it exists
-  const old = localStorage.getItem("scopeguard_email")
+  const old = migrateLocalValue(LEGACY_LOCAL_STORAGE_KEYS.email, EMAIL_KEY)
   if (old) {
-    localStorage.setItem(EMAIL_KEY, old)
-    localStorage.removeItem("scopeguard_email")
     setEmail(old)
     return
   }
 
-  const saved = localStorage.getItem(EMAIL_KEY)
+  const saved = getLocalValue(EMAIL_KEY)
   if (saved) setEmail(saved)
 }, [])
 
@@ -1418,9 +1425,9 @@ useEffect(() => {
   if (typeof window === "undefined") return
 
   if (email) {
-    localStorage.setItem(EMAIL_KEY, email)
+    setLocalValue(EMAIL_KEY, email)
   } else {
-    localStorage.removeItem(EMAIL_KEY)
+    removeLocalValue(EMAIL_KEY)
   }
 }, [email])
 
@@ -2178,57 +2185,42 @@ function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
   useEffect(() => {
   if (typeof window === "undefined") return
 
-  const old = localStorage.getItem("scopeguard_company")
+  const old = migrateLocalValue(LEGACY_LOCAL_STORAGE_KEYS.company, COMPANY_KEY)
   if (old) {
-    localStorage.setItem(COMPANY_KEY, old)
-    localStorage.removeItem("scopeguard_company")
     try {
       setCompanyProfile(JSON.parse(old))
     } catch {}
     return
   }
 
-  const saved = localStorage.getItem(COMPANY_KEY)
-  if (saved) {
-    try {
-      setCompanyProfile(JSON.parse(saved))
-    } catch {}
-  }
+  setCompanyProfile(readLocalJson(COMPANY_KEY, companyProfile))
 }, [])
 
   useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(COMPANY_KEY, JSON.stringify(companyProfile))
+  writeLocalJson(COMPANY_KEY, companyProfile)
 }, [companyProfile])
   
 useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(JOB_KEY)
-  if (saved) setJobDetails(JSON.parse(saved))
+  setJobDetails(readLocalJson(JOB_KEY, jobDetails))
 }, [])
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(JOB_KEY, JSON.stringify(jobDetails))
+  writeLocalJson(JOB_KEY, jobDetails)
 }, [jobDetails])
 
 useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(HISTORY_KEY)
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) {
-        const cleaned: EstimateHistoryItem[] =
-          parsed.map(normalizeEstimateHistoryItem)
+  const parsed = readLocalJson<unknown>(HISTORY_KEY, null)
+  if (Array.isArray(parsed)) {
+    const cleaned: EstimateHistoryItem[] =
+      parsed.map(normalizeEstimateHistoryItem)
 
-        setHistory(cleaned)
-      }
-    } catch {
-      // ignore bad data
-    }
+    setHistory(cleaned)
   }
 
   setHistoryHydrated(true)
@@ -2991,21 +2983,15 @@ async function regenerateWithSmartScope() {
 useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(JOBS_KEY)
-
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) setJobs(parsed)
-    } catch {}
-  }
+  const parsed = readLocalJson<unknown>(JOBS_KEY, null)
+  if (Array.isArray(parsed)) setJobs(parsed)
 
   setJobsHydrated(true)
 }, [])
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(JOBS_KEY, JSON.stringify(jobs))
+  writeLocalJson(JOBS_KEY, jobs)
 }, [jobs])
 
 // -------------------------
@@ -3031,7 +3017,7 @@ useEffect(() => {
     })
 
     if (changed) {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+      writeLocalJson(HISTORY_KEY, next)
     }
 
     return next
@@ -3041,13 +3027,10 @@ useEffect(() => {
   useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(INVOICE_KEY)
-  if (!saved) return
+  const parsed = readLocalJson<unknown>(INVOICE_KEY, null)
+  if (!Array.isArray(parsed)) return
 
   try {
-    const parsed = JSON.parse(saved)
-    if (!Array.isArray(parsed)) return
-
     const cleaned: Invoice[] = parsed.map((x: any) => ({
       ...resolveCanonicalEstimateOutput(x),
       id: String(x?.id ?? crypto.randomUUID()),
@@ -3070,7 +3053,7 @@ useEffect(() => {
     }))
 
     setInvoices(cleaned)
-    localStorage.setItem(INVOICE_KEY, JSON.stringify(cleaned))
+    writeLocalJson(INVOICE_KEY, cleaned)
   } catch {
     // ignore bad data
   }
@@ -3079,45 +3062,39 @@ useEffect(() => {
 useEffect(() => {
   function refreshData() {
     try {
-      const histRaw = localStorage.getItem(HISTORY_KEY)
-      const invRaw = localStorage.getItem(INVOICE_KEY)
+      const parsedHist = readLocalJson<unknown>(HISTORY_KEY, null)
+      const parsedInv = readLocalJson<unknown>(INVOICE_KEY, null)
 
-      if (histRaw) {
-        const parsedHist = JSON.parse(histRaw)
-        if (Array.isArray(parsedHist)) {
-          const cleanedHistory: EstimateHistoryItem[] =
-  parsedHist.map(normalizeEstimateHistoryItem)
+      if (Array.isArray(parsedHist)) {
+        const cleanedHistory: EstimateHistoryItem[] =
+          parsedHist.map(normalizeEstimateHistoryItem)
 
-          setHistory(cleanedHistory)
-        }
+        setHistory(cleanedHistory)
       }
 
-      if (invRaw) {
-        const parsedInv = JSON.parse(invRaw)
-        if (Array.isArray(parsedInv)) {
-          const cleanedInvoices: Invoice[] = parsedInv.map((x: any) => ({
-            ...resolveCanonicalEstimateOutput(x),
-            id: String(x?.id ?? crypto.randomUUID()),
-            createdAt: Number(x?.createdAt ?? Date.now()),
-            jobId: x?.jobId ? String(x.jobId) : undefined,
-            fromEstimateId: String(x?.fromEstimateId ?? ""),
-            invoiceNo: String(x?.invoiceNo ?? "INV-UNKNOWN"),
-            issueDate: String(x?.issueDate ?? ""),
-            dueDate: String(x?.dueDate ?? ""),
-            billToName: String(x?.billToName ?? ""),
-            jobName: String(x?.jobName ?? ""),
-            jobAddress: String(x?.jobAddress ?? ""),
-            lineItems: Array.isArray(x?.lineItems) ? x.lineItems : [],
-            subtotal: Number(x?.subtotal ?? 0),
-            total: Number(x?.total ?? 0),
-            notes: String(x?.notes ?? ""),
-            deposit: x?.deposit ?? undefined,
-            status: normalizeInvoiceStatus(x),
-            paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
-          }))
+      if (Array.isArray(parsedInv)) {
+        const cleanedInvoices: Invoice[] = parsedInv.map((x: any) => ({
+          ...resolveCanonicalEstimateOutput(x),
+          id: String(x?.id ?? crypto.randomUUID()),
+          createdAt: Number(x?.createdAt ?? Date.now()),
+          jobId: x?.jobId ? String(x.jobId) : undefined,
+          fromEstimateId: String(x?.fromEstimateId ?? ""),
+          invoiceNo: String(x?.invoiceNo ?? "INV-UNKNOWN"),
+          issueDate: String(x?.issueDate ?? ""),
+          dueDate: String(x?.dueDate ?? ""),
+          billToName: String(x?.billToName ?? ""),
+          jobName: String(x?.jobName ?? ""),
+          jobAddress: String(x?.jobAddress ?? ""),
+          lineItems: Array.isArray(x?.lineItems) ? x.lineItems : [],
+          subtotal: Number(x?.subtotal ?? 0),
+          total: Number(x?.total ?? 0),
+          notes: String(x?.notes ?? ""),
+          deposit: x?.deposit ?? undefined,
+          status: normalizeInvoiceStatus(x),
+          paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
+        }))
 
-          setInvoices(cleanedInvoices)
-        }
+        setInvoices(cleanedInvoices)
       }
     } catch {}
   }
@@ -3131,47 +3108,37 @@ useEffect(() => {
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(INVOICE_KEY, JSON.stringify(invoices))
+  writeLocalJson(INVOICE_KEY, invoices)
 }, [invoices])
 
 
 useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(BUDGET_KEY)
-  if (!saved) return
-
-  try {
-    const parsed = JSON.parse(saved)
-    if (Array.isArray(parsed)) setBudgets(parsed)
-  } catch {}
+  const parsed = readLocalJson<unknown>(BUDGET_KEY, null)
+  if (Array.isArray(parsed)) setBudgets(parsed)
 }, [])
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(BUDGET_KEY, JSON.stringify(budgets))
+  writeLocalJson(BUDGET_KEY, budgets)
 }, [budgets])
 
 useEffect(() => {
   if (typeof window === "undefined") return
 
-  const saved = localStorage.getItem(ACTUALS_KEY)
-  if (!saved) return
-
-  try {
-    const parsed = JSON.parse(saved)
-    if (Array.isArray(parsed)) setActuals(parsed)
-  } catch {}
+  const parsed = readLocalJson<unknown>(ACTUALS_KEY, null)
+  if (Array.isArray(parsed)) setActuals(parsed)
 }, [])
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(ACTUALS_KEY, JSON.stringify(actuals))
+  writeLocalJson(ACTUALS_KEY, actuals)
 }, [actuals])
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  const saved = localStorage.getItem(CREW_KEY)
+  const saved = getLocalValue(CREW_KEY)
   if (saved) {
     const n = Number(saved)
     if (Number.isFinite(n) && n > 0) setCrewCount(Math.max(1, Math.round(n)))
@@ -3180,7 +3147,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (typeof window === "undefined") return
-  localStorage.setItem(CREW_KEY, String(crewCount))
+  setLocalValue(CREW_KEY, String(crewCount))
 }, [crewCount])
   
   useEffect(() => {
@@ -4792,7 +4759,7 @@ async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
       throw new Error("Server approval link unavailable")
     }
 
-    localStorage.setItem(OWNER_SYNC_TOKEN_KEY, ownerSyncToken)
+    setLocalValue(OWNER_SYNC_TOKEN_KEY, ownerSyncToken)
     await navigator.clipboard.writeText(approvalUrl)
     setStatus("Shareable approval link copied to clipboard.")
   } catch {
@@ -4813,7 +4780,7 @@ async function syncServerApprovals() {
 
   try {
     setStatus("Syncing approvals...")
-    const ownerSyncToken = localStorage.getItem(OWNER_SYNC_TOKEN_KEY)?.trim() || ""
+    const ownerSyncToken = getLocalValue(OWNER_SYNC_TOKEN_KEY)?.trim() || ""
 
     if (!ownerSyncToken) {
       setStatus("Create or copy a shareable approval link before syncing approvals.")
@@ -4911,7 +4878,7 @@ async function syncServerApprovals() {
       })
 
       if (changed) {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+        writeLocalJson(HISTORY_KEY, next)
       }
 
       return next
@@ -4942,7 +4909,7 @@ async function syncServerApprovals() {
         }
 
         if (changed) {
-          localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+          writeLocalJson(INVOICE_KEY, next)
         }
 
         return next
@@ -4963,7 +4930,7 @@ async function syncServerApprovals() {
 function saveToHistory(item: EstimateHistoryItem) {
   setHistory((prev) => {
     const next = [item, ...prev].slice(0, 25)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    writeLocalJson(HISTORY_KEY, next)
     return next
   })
 }
@@ -4972,7 +4939,7 @@ function saveToHistory(item: EstimateHistoryItem) {
 function updateHistoryItem(id: string, patch: Partial<EstimateHistoryItem>) {
   setHistory((prev) => {
     const next = prev.map((h) => (h.id === id ? { ...h, ...patch } : h))
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    writeLocalJson(HISTORY_KEY, next)
     return next
   })
 }
@@ -4980,7 +4947,7 @@ function updateHistoryItem(id: string, patch: Partial<EstimateHistoryItem>) {
 function updateInvoice(id: string, patch: Partial<Invoice>) {
   setInvoices((prev) => {
     const next = prev.map((inv) => (inv.id === id ? { ...inv, ...patch } : inv))
-    localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+    writeLocalJson(INVOICE_KEY, next)
     return next
   })
 }
@@ -5756,21 +5723,21 @@ function deleteJob(id: string) {
   // remove all estimates tied to it
   setHistory((prev) => {
     const next = prev.filter((h) => h.jobId !== id)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    writeLocalJson(HISTORY_KEY, next)
     return next
   })
 
   // remove all invoices tied to it
   setInvoices((prev) => {
     const next = prev.filter((inv) => inv.jobId !== id)
-    localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
+    writeLocalJson(INVOICE_KEY, next)
     return next
   })
 
     // remove actuals tied to it
   setActuals((prev) => {
     const next = prev.filter((a) => a.jobId !== id)
-    localStorage.setItem(ACTUALS_KEY, JSON.stringify(next))
+    writeLocalJson(ACTUALS_KEY, next)
     return next
   })
 
@@ -5782,7 +5749,7 @@ function deleteJob(id: string) {
 function deleteHistoryItem(id: string) {
   setHistory((prev) => {
     const next = prev.filter((h) => h.id !== id)
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    writeLocalJson(HISTORY_KEY, next)
     return next
   })
 }
@@ -5790,7 +5757,7 @@ function deleteHistoryItem(id: string) {
 // ✅ Clear history
 function clearHistory() {
   setHistory([])
-  localStorage.setItem(HISTORY_KEY, JSON.stringify([]))
+  writeLocalJson(HISTORY_KEY, [])
 }
 
 // ✅ Load history item back into the form

@@ -71,14 +71,14 @@ Required for Stripe checkout and webhook handling:
 
 ```bash
 STRIPE_SECRET_KEY=
-STRIPE_PRICE_ID=
+STRIPE_PRO_MONTHLY_PRICE_ID=
 STRIPE_WEBHOOK_SECRET=
 ```
 
-Prepared for upcoming subscription checkout:
+Legacy/pre-launch one-time checkout fallback only:
 
 ```bash
-STRIPE_PRO_MONTHLY_PRICE_ID=
+STRIPE_PRICE_ID=
 ```
 
 Optional origin allowlist for production generate requests:
@@ -91,8 +91,8 @@ Notes:
 
 - `NEXT_PUBLIC_SITE_URL` is used by checkout redirects and same-origin request protection.
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Do not expose it in client code.
-- Current live checkout still uses the one-time `STRIPE_PRICE_ID` with `mode: "payment"` until subscription billing code is implemented.
-- A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
+- Current checkout uses the recurring monthly `STRIPE_PRO_MONTHLY_PRICE_ID` with `mode: "subscription"`.
+- A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, the app was redeployed after adding the env var, and final subscription payment/webhook entitlement verification is still pending.
 - Detailed server logs are development-only in the generate path; production logs should not include customer scope, plan, or pricing details.
 
 ## API Routes
@@ -107,13 +107,13 @@ Notes:
   - Uploads chunks for staged plan uploads.
 
 - `POST /api/checkout`
-  - Creates a Stripe Checkout session for the configured `STRIPE_PRICE_ID`.
+  - Creates a Stripe subscription Checkout session for the configured `STRIPE_PRO_MONTHLY_PRICE_ID`.
 
 - `POST /api/webhook`
-  - Verifies Stripe webhook signatures and activates entitlements after checkout completion.
+  - Verifies Stripe webhook signatures, dedupes Stripe events, and updates subscription-aware entitlements for checkout, subscription lifecycle, and invoice events.
 
 - `POST /api/entitlement`
-  - Checks entitlement status by email and returns free-limit usage information.
+  - Checks entitlement status by email and returns subscription-aware access fields plus free-limit usage information.
 
 - `POST /api/approvals`
   - Saves a frozen customer-safe approval snapshot and returns a shareable `/approve/{token}` link plus an owner sync token for contractor-side status sync.
@@ -149,7 +149,7 @@ The webhook route expects:
 The checkout route expects:
 
 - `STRIPE_SECRET_KEY`
-- `STRIPE_PRICE_ID`
+- `STRIPE_PRO_MONTHLY_PRICE_ID`
 - `NEXT_PUBLIC_SITE_URL`
 
 The success page refreshes entitlement by posting the saved email from `jobestimatepro_email` to `/api/entitlement`.

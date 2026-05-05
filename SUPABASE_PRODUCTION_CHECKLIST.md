@@ -2,7 +2,7 @@
 
 Use this checklist before public launch to verify production Supabase matches the code paths currently used by JobEstimate Pro. This is documentation only; it is not a migration file.
 
-Current launch path: PWA/web app first. Stripe/subscription planning remains web-first and subscription billing is still pending final pricing decision.
+Current launch path: PWA/web app first. Subscription billing foundation is implemented and remains web-first; final subscription payment/webhook entitlement verification is still pending.
 
 ## Required Environment Variables
 
@@ -13,8 +13,8 @@ Set these in the production hosting environment:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_SITE_URL`
 - `STRIPE_SECRET_KEY`
-- `STRIPE_PRICE_ID`
-- `STRIPE_PRO_MONTHLY_PRICE_ID` is already set in Vercel for the upcoming subscription implementation, but current live code does not use it yet.
+- `STRIPE_PRO_MONTHLY_PRICE_ID`
+- `STRIPE_PRICE_ID` only if retaining legacy/pre-launch one-time fallback references outside the current checkout code.
 - `STRIPE_WEBHOOK_SECRET`
 - Optional: `ALLOWED_ORIGIN_HOSTS`
 
@@ -23,9 +23,10 @@ Verify:
 - `NEXT_PUBLIC_SITE_URL` has the production origin and no trailing-path mistakes.
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only and never exposed to client code.
 - Stripe webhook endpoint points to `POST /api/webhook`.
-- Stripe Checkout currently uses one-time `mode: "payment"` with `STRIPE_PRICE_ID`; subscription mode is not implemented yet.
-- A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after adding the env var.
-- Current live app behavior remains one-time payment until checkout, webhook, entitlement, and UI code are changed for subscriptions.
+- Stripe Checkout uses `mode: "subscription"` with `STRIPE_PRO_MONTHLY_PRICE_ID`.
+- Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after adding the env var.
+- Stripe webhook endpoint is configured for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`.
+- Final subscription payment/webhook entitlement verification is still pending.
 
 ## RLS / Service-Role Assumptions
 
@@ -59,11 +60,21 @@ Current code expects at least:
 - `active boolean`
 - `usage_count integer` or numeric-compatible
 - `stripe_customer_id text` nullable
+- `plan text`
+- `subscription_status text`
+- `stripe_subscription_id text` nullable
+- `current_period_start timestamptz` nullable
+- `current_period_end timestamptz` nullable
+- `cancel_at_period_end boolean`
+- `canceled_at timestamptz` nullable
+- `trial_end timestamptz` nullable
+- `free_limit integer`
+- `updated_at timestamptz`
 
 Required behavior:
 
-- `POST /api/entitlement` selects `active, usage_count` by `email`.
-- Stripe webhook upserts `{ email, stripe_customer_id, active: true }` with `onConflict: "email"`.
+- `POST /api/entitlement` selects `active, usage_count, plan, subscription_status, current_period_end, cancel_at_period_end, free_limit` by `email`.
+- Stripe webhook upserts subscription-aware fields with `onConflict: "email"`.
 - Webhook upsert must not reset `usage_count`.
 
 Required constraints/indexes:
@@ -536,10 +547,10 @@ Run this with production-like environment variables and Stripe test mode or an a
 
 2. Stripe checkout and entitlement
    - Start checkout from `/app`.
-   - Complete payment.
+   - Complete subscription payment.
    - Confirm webhook writes `stripe_webhook_events.event_id`.
-   - Confirm `entitlements.active = true` for the checkout email.
-   - Confirm `/success` and `/app` entitlement refresh show Pro access.
+   - Confirm `entitlements.plan = 'pro'`, `subscription_status` reflects Stripe, `stripe_subscription_id` is set, and `active = true` for active/trialing access.
+   - Confirm `/success`, `/api/entitlement`, and `/app` entitlement refresh show subscription-aware Pro access.
 
 3. Generate after entitlement
    - Generate with the paid email.
@@ -585,4 +596,4 @@ Run this with production-like environment variables and Stripe test mode or an a
 - Whether `estimate_proposals(owner_email, local_estimate_id)` is a hard unique constraint or only an application-level duplicate-prevention expectation.
 - Whether RLS is enabled and, if so, whether service-role behavior is verified in production.
 - Whether signature data URLs need Supabase Storage later because of row-size or payload limits.
-- Final subscription schema fields remain pending pricing decision; do not add subscription fields piecemeal until billing policy is final.
+- Final subscription payment/webhook entitlement verification remains pending; use `SUBSCRIPTION_TEST_CHECKLIST.md`.

@@ -115,19 +115,21 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 - DONE: Stripe checkout route exists.
 - DONE: Stripe webhook route verifies signatures and dedupes webhook events.
-- DONE: Stripe webhook currently activates email-based entitlement on `checkout.session.completed`.
-- DONE: Success page entitlement refresh posts the saved `jobestimatepro_email` to `/api/entitlement`.
-- DONE: Free generation limit is currently 3 through Supabase/RPC-backed usage flow.
 - DONE: Stripe recurring monthly Pro price has been created as a subscription billing prerequisite.
 - DONE: Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set and the app was redeployed after adding the env var.
+- DONE: Supabase subscription entitlement columns have been added.
+- DONE: Stripe webhook endpoint is configured for all 6 required subscription events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`.
+- DONE: Subscription checkout foundation is implemented: `/api/checkout` uses `STRIPE_PRO_MONTHLY_PRICE_ID` and `mode: "subscription"`.
+- DONE: Stripe webhook handles subscription lifecycle events, keeps event dedupe, writes subscription status/period fields, and does not reset `usage_count`.
+- DONE: `/api/entitlement` returns subscription-aware fields and messages.
+- DONE: `/app` Account & Access shows plan, subscription status, and current period information.
+- DONE: `/success` and `/cancel` use subscription-oriented copy.
+- DONE: Focused entitlement tests cover active, trialing, past-due, canceled, unpaid/incomplete, and legacy access rules.
+- DONE: Success page entitlement refresh posts the saved `jobestimatepro_email` to `/api/entitlement`.
+- DONE: Free generation limit is currently 3 through Supabase/RPC-backed usage flow.
 - PARTIAL: Billing is still email-based and does not use full accounts/auth.
-- PARTIAL: Checkout is still one-time payment mode using `STRIPE_PRICE_ID` and `mode: "payment"`.
-- PARTIAL: Current live app behavior is still one-time payment until subscription billing code is implemented.
-- PARTIAL: Product docs recommend moving to subscription before public launch.
+- PARTIAL/PENDING: Final subscription payment, webhook delivery, and entitlement activation verification is still pending because a payment has not been completed yet.
 - PARTIAL: Subscription planning is web/PWA-first through Stripe Checkout and web entitlement flows. Do not design around Apple in-app purchases or App Store subscription requirements yet.
-- NOT STARTED: Subscription checkout mode.
-- NOT STARTED: Subscription lifecycle webhook handling.
-- NOT STARTED: Subscription-aware entitlement schema/status.
 - NOT STARTED: Billing portal/account management.
 - DEFERRED: Business tier, invoice payments, and client portal billing can wait.
 
@@ -146,10 +148,11 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 ## Remaining Must-Fix Before Launch
 
 - PARTIAL: Keep launch readiness scoped to the PWA/web app path unless the launch-channel decision changes.
-- PARTIAL: Implement the final subscription billing model before accepting public paid users.
-- PARTIAL: If launching with subscriptions, migrate Stripe checkout to recurring subscription mode and update entitlement/webhook handling.
-- DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, and post-env-var redeploy are complete prerequisites.
+- PARTIAL: Verify the final subscription billing path before accepting public paid users.
+- DONE: Subscription checkout, webhook lifecycle handling, entitlement response, Account & Access status display, success/cancel copy, and focused entitlement tests are implemented.
+- DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, post-env-var redeploy, and 6-event webhook configuration are complete.
 - DONE: Production Supabase schema, RPCs, and uniqueness constraints were manually verified for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
+- PENDING: Complete final subscription payment/webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - DONE: Full production-readiness smoke test passed:
   - Free generation.
   - Account/access refresh.
@@ -197,15 +200,15 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. NOT STARTED: Subscription billing implementation pass after final pricing decision.
-   - If the final decision is subscription, switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
-   - Use the existing Stripe recurring monthly price and Vercel `STRIPE_PRO_MONTHLY_PRICE_ID`; current live app remains one-time payment until code changes ship.
+1. PENDING: Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
+   - Complete a real subscription checkout/payment in the intended Stripe mode, confirm all required webhook deliveries, and verify the Supabase entitlement row plus `/success`, `/api/entitlement`, and `/app` Account & Access behavior.
 
-2. PARTIAL: Resolve any non-billing launch blockers found after the smoke test and Supabase verification.
+2. PARTIAL: Subscription/free-limit regression tests after final billing verification.
+   - Extend coverage if the manual subscription verification finds gaps beyond the focused entitlement access-rule tests.
+   - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh as needed.
+
+3. PARTIAL: Resolve any subscription or non-billing launch blockers found during final verification.
    - Keep fixes narrowly scoped to verified production-readiness failures.
-
-3. PARTIAL: Subscription/free-limit regression tests after billing model decision.
-   - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
 
 4. PARTIAL: Centralize localStorage access with a small persistence helper.
    - Keep it thin and compatible with existing localStorage keys.

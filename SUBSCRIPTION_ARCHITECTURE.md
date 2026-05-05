@@ -1,8 +1,8 @@
 # JobEstimate Pro Subscription Architecture
 
-This document explains how JobEstimate Pro can migrate from the current one-time Stripe payment model to a monthly subscription model later.
+This document explains the JobEstimate Pro migration from the pre-launch one-time Stripe payment model to the current monthly subscription foundation.
 
-JobEstimate Pro is pre-launch and has no paying users, so there is no customer migration burden yet. The current `$29` one-time unlimited-access setup should be treated as temporary/pre-launch.
+JobEstimate Pro is pre-launch and has no paying users, so there is no customer migration burden yet. The old `$29` one-time unlimited-access setup should be treated as temporary/pre-launch legacy only.
 
 ## Pricing Direction
 
@@ -25,25 +25,23 @@ Current checkout flow:
 2. The app saves the email in localStorage key `jobestimatepro_email`.
 3. The app calls `POST /api/checkout`.
 4. `app/api/checkout/route.ts` creates a Stripe Checkout session with:
-   - `mode: "payment"`
-   - `STRIPE_PRICE_ID`
+   - `mode: "subscription"`
+   - `STRIPE_PRO_MONTHLY_PRICE_ID`
    - `customer_email`
+   - checkout and subscription metadata for `email`, `plan: pro`, and `source: checkout`
    - `success_url: /success`
    - `cancel_url: /cancel`
 5. Stripe redirects back to `/success`.
 6. `app/success/page.tsx` reads `jobestimatepro_email` and calls `POST /api/entitlement`.
-7. `app/api/entitlement/route.ts` checks Supabase `entitlements.active`.
+7. `app/api/entitlement/route.ts` returns subscription-aware entitlement fields and messages.
 
 Current webhook flow:
 
 1. Stripe sends events to `POST /api/webhook`.
 2. `app/api/webhook/route.ts` verifies the Stripe signature.
 3. The route writes event IDs to `stripe_webhook_events` for dedupe.
-4. It currently handles only `checkout.session.completed`.
-5. If payment succeeded, it upserts:
-   - `email`
-   - `stripe_customer_id`
-   - `active: true`
+4. It handles `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`.
+5. It upserts subscription-aware entitlement fields including plan, subscription status, customer/subscription IDs, period timestamps, cancellation flags, and `active`.
 6. It does not overwrite `usage_count`.
 
 Current entitlement behavior:
@@ -51,13 +49,16 @@ Current entitlement behavior:
 - `/api/generate` consumes free generations through Supabase RPC.
 - `/api/entitlement` returns:
   - `entitled`
+  - `plan`
+  - `subscription_status`
+  - `current_period_end`
+  - `cancel_at_period_end`
+  - `message`
   - `usage_count`
   - `free_limit`
 - Free limit is currently 3.
 
-## Proposed Subscription Flow
-
-Target checkout flow:
+## Subscription Flow
 
 1. User enters an email in the app.
 2. The app saves the email in `jobestimatepro_email`.
@@ -72,18 +73,17 @@ Target checkout flow:
 7. The entitlement API returns subscription-aware status.
 8. The app shows Pro access only when subscription state is active or otherwise allowed by the chosen grace/trial policy.
 
-Target entitlement behavior:
+Current entitlement behavior:
 
 - Free users keep 3 free generations.
 - Pro users get fair-use access while subscription is active.
-- Canceled or past-due users should fall back according to the final product policy:
-  - immediate free-tier fallback, or
-  - grace period until `current_period_end`, or
-  - limited retry state while invoice payment is pending.
+- Trialing subscriptions get Pro access.
+- Past-due subscriptions get temporary Pro access through `current_period_end`.
+- Unpaid, incomplete, and incomplete-expired subscriptions do not get Pro access.
+- Canceled subscriptions get Pro access only while `current_period_end` is still in the future.
+- `legacy_beta` and `manual_comp` rows with `subscription_status = 'legacy_active'` continue to get Pro access.
 
 ## Required Stripe Changes
-
-Do not implement until pricing is final.
 
 Required Stripe configuration:
 
@@ -91,27 +91,17 @@ Required Stripe configuration:
 - DONE: A recurring monthly price for Pro has been created.
 - DONE: Vercel now has `STRIPE_PRO_MONTHLY_PRICE_ID` set.
 - DONE: The app was redeployed after adding `STRIPE_PRO_MONTHLY_PRICE_ID`.
-- NOT STARTED: Replace the current one-time `STRIPE_PRICE_ID` code path with the recurring price ID.
-- Decide whether to rename env vars:
-  - current: `STRIPE_PRICE_ID`
-  - subscription: `STRIPE_PRO_MONTHLY_PRICE_ID`
+- DONE: Replaced the current checkout code path with the recurring price ID.
+- DONE: Stripe webhook endpoint is configured for the 6 required subscription events.
 - Decide whether to add a Stripe Billing Portal later.
 
 Important current-state note:
 
-- Current live app behavior is still one-time payment until code changes are implemented.
-- `app/api/checkout/route.ts` still uses `mode: "payment"` and `STRIPE_PRICE_ID`.
-- Subscription checkout, subscription lifecycle webhooks, and subscription-aware entitlement responses are still not started.
+- Current app code uses subscription Checkout with `STRIPE_PRO_MONTHLY_PRICE_ID`.
+- Subscription checkout, subscription lifecycle webhooks, subscription-aware entitlement responses, Account & Access display, and success/cancel copy are implemented.
+- Final subscription payment/webhook entitlement verification is still pending because payment has not been completed yet.
 
-Required checkout code changes later:
-
-- Change Checkout session mode from:
-
-```ts
-mode: "payment"
-```
-
-to:
+Implemented checkout behavior:
 
 ```ts
 mode: "subscription"
@@ -126,16 +116,7 @@ mode: "subscription"
 
 ## Required Supabase Entitlement Changes
 
-Do not implement until pricing is final.
-
-Current entitlement rows appear to support:
-
-- `email`
-- `stripe_customer_id`
-- `active`
-- `usage_count`
-
-Recommended future fields:
+Supabase entitlement subscription columns have been added. The current entitlement shape includes:
 
 - `email`
 - `active`
@@ -165,13 +146,11 @@ Suggested status values:
 - `incomplete`
 - `incomplete_expired`
 
-The final schema should be chosen before implementation. Avoid adding fields piecemeal without deciding the entitlement policy.
+Final fair-use thresholds may still evolve, but subscription status/period fields are now part of the implemented billing foundation.
 
 ## Webhook Events To Support
 
-Do not implement until pricing is final.
-
-Minimum subscription events:
+Implemented subscription events:
 
 - `checkout.session.completed`
 - `customer.subscription.created`
@@ -186,7 +165,7 @@ Useful later events:
 - `invoice.payment_action_required`
 - `customer.updated`
 
-Webhook behavior should:
+Webhook behavior:
 
 - Continue deduping all Stripe event IDs.
 - Keep webhook handlers idempotent.
@@ -196,11 +175,9 @@ Webhook behavior should:
 - Respect `cancel_at_period_end`.
 - Avoid resetting free usage when subscription events arrive.
 
-## Entitlement Logic Changes Needed
+## Entitlement Logic
 
-Do not implement until pricing is final.
-
-`POST /api/entitlement` should eventually return:
+`POST /api/entitlement` now returns:
 
 - `entitled`
 - `plan`
@@ -209,11 +186,9 @@ Do not implement until pricing is final.
 - `cancel_at_period_end`
 - `usage_count`
 - `free_limit`
-- `fair_use_generation_count`
-- `fair_use_limit`
 - `message`
 
-`POST /api/generate` should eventually authorize generation by:
+`POST /api/generate` continues to use the existing entitlement/free-limit path. The intended authorization shape remains:
 
 1. Normalizing email.
 2. Checking active subscription status.
@@ -227,25 +202,21 @@ Do not implement until pricing is final.
 
 The existing pricing authority, estimator logic, and generation behavior should not change as part of subscription work.
 
-## Success And Cancel Page Copy Changes
+## Success And Cancel Page Copy
 
-Do not implement until pricing is final.
-
-Current `/success` copy says upgraded users have unlimited access. That should change before launch.
-
-Recommended success copy direction:
+Implemented success copy direction:
 
 - “Your Pro subscription is active.”
 - “You now have Pro access with fair-use generation included.”
 - “Return to JobEstimate Pro to continue estimating.”
 
-Recommended pending/error copy:
+Implemented pending/error copy:
 
 - “Payment succeeded, but subscription access is still syncing.”
 - “Return to the app and use the email from checkout.”
 - “If access is not active after a minute, retry entitlement refresh.”
 
-Recommended cancel copy direction:
+Implemented cancel copy direction:
 
 - “Checkout was canceled.”
 - “You can continue with 3 free generations.”
@@ -308,8 +279,6 @@ If any test users bought the one-time plan before launch:
 
 ## Step-By-Step Implementation Plan
 
-Do not start this implementation until pricing is final.
-
 1. Finalize pricing and copy.
    - Confirm Free and Pro names.
    - Confirm `$29/month`.
@@ -320,42 +289,42 @@ Do not start this implementation until pricing is final.
    - DONE: Create recurring monthly Pro price.
    - DONE: Save the recurring price ID in Vercel as `STRIPE_PRO_MONTHLY_PRICE_ID`.
    - DONE: Redeploy app after adding the env var.
-   - Configure webhook endpoint events.
+   - DONE: Configure webhook endpoint events.
 
 3. Design and apply Supabase schema migration.
-   - Add subscription fields.
-   - Preserve `usage_count`.
-   - Preserve email-based entitlement lookup for now.
+   - DONE: Add subscription fields.
+   - DONE: Preserve `usage_count`.
+   - DONE: Preserve email-based entitlement lookup for now.
 
 4. Update checkout route.
-   - Switch to `mode: "subscription"`.
-   - Use recurring price ID.
-   - Keep customer email binding.
+   - DONE: Switch to `mode: "subscription"`.
+   - DONE: Use recurring price ID.
+   - DONE: Keep customer email binding.
 
 5. Update webhook route.
-   - Handle subscription lifecycle events.
-   - Store customer and subscription IDs.
-   - Update status/current period fields.
-   - Keep event dedupe.
+   - DONE: Handle subscription lifecycle events.
+   - DONE: Store customer and subscription IDs.
+   - DONE: Update status/current period fields.
+   - DONE: Keep event dedupe.
 
 6. Update entitlement route.
-   - Return subscription-aware status.
-   - Include clear customer-facing messages.
+   - DONE: Return subscription-aware status.
+   - DONE: Include clear customer-facing messages.
 
 7. Update generate authorization.
-   - Active Pro subscription allows fair-use generation.
+   - Existing generate entitlement integration remains in place.
+   - Active Pro subscription allows generation through the existing entitlement response path.
    - Free users remain limited to 3 generations.
    - Blocked users get exact recovery messages.
 
 8. Update success/cancel/app copy.
-   - Remove unlimited language.
-   - Add Pro/fair-use language.
-   - Add subscription syncing recovery text.
+   - DONE: Remove unlimited language.
+   - DONE: Add Pro/fair-use language.
+   - DONE: Add subscription syncing recovery text.
 
 9. Add tests.
-   - Checkout mode/price config.
-   - Webhook event handling.
-   - Entitlement active/trialing/past_due/canceled cases.
+   - DONE: Focused entitlement active/trialing/past_due/canceled/unpaid/incomplete/legacy cases.
+   - Pending if needed after verification: checkout/webhook integration tests.
    - Free-limit fallback.
    - Success-page entitlement refresh.
 
@@ -372,16 +341,9 @@ Do not start this implementation until pricing is final.
     - Confirm Supabase schema.
     - Confirm public copy does not promise unlimited/lifetime access.
 
-## Explicitly Not Yet
+## Still Not Done
 
-Do not implement these until pricing is final:
-
-- Switching Checkout to `mode: "subscription"`.
-- Replacing `STRIPE_PRICE_ID`.
-- Adding subscription schema fields.
-- Adding subscription lifecycle webhook mutations.
-- Changing generation entitlement behavior.
-- Changing success/cancel page subscription copy.
+- Final subscription payment/webhook entitlement verification with `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - Changing public marketing copy to paid subscription claims.
 - Adding a Billing Portal.
 - Adding a Business tier.

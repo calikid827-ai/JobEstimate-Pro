@@ -1,14 +1,14 @@
 # Subscription Supabase Migration
 
-Use this checklist before implementing subscription billing code. This migration is additive and preserves the current one-time/email entitlement behavior until checkout, webhook, entitlement, and UI code are changed.
+Use this checklist to verify or reproduce the subscription entitlement migration. This migration is additive and preserves legacy one-time/email entitlement behavior while supporting the current subscription checkout, webhook, entitlement, and UI code.
 
 Important current state:
 
-- Current live checkout still uses `STRIPE_PRICE_ID` with `mode: "payment"`.
-- `STRIPE_PRO_MONTHLY_PRICE_ID` is already set in Vercel for the upcoming subscription code path.
-- `/api/entitlement` currently reads `active, usage_count`.
-- `/api/webhook` currently upserts `email, stripe_customer_id, active: true` and must not reset `usage_count`.
-- This migration must be applied before switching checkout/webhook code to subscription mode.
+- Current checkout code uses `STRIPE_PRO_MONTHLY_PRICE_ID` with `mode: "subscription"`.
+- `STRIPE_PRO_MONTHLY_PRICE_ID` is set in Vercel.
+- `/api/entitlement` reads subscription-aware fields and free usage.
+- `/api/webhook` upserts subscription fields and must not reset `usage_count`.
+- This migration must be applied in any target Supabase project before running the subscription checkout/webhook code there.
 
 ## Preflight Checks
 
@@ -267,7 +267,7 @@ Expected result:
 
 ## Code Cutover Guardrail
 
-Do not switch application code to subscription mode until all of these are true:
+For any new target environment, do not run application code in subscription mode until all of these are true:
 
 - This migration has been applied in the target Supabase project.
 - Verification queries pass.
@@ -275,7 +275,7 @@ Do not switch application code to subscription mode until all of these are true:
 - Stripe webhook endpoint is ready to receive subscription lifecycle events.
 - Existing one-time/manual active entitlements have been classified without resetting `usage_count`.
 
-After this migration, the next code work can safely update:
+After this migration, subscription code can safely use:
 
 - `app/api/checkout/route.ts`
 - `app/api/webhook/route.ts`
