@@ -17,19 +17,31 @@ export async function POST(req: Request) {
     }
 
     const secretKey = process.env.STRIPE_SECRET_KEY
-    const priceId = process.env.STRIPE_PRICE_ID
+    const priceId = process.env.STRIPE_PRO_MONTHLY_PRICE_ID
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
     if (!secretKey) throw new Error("STRIPE_SECRET_KEY missing")
-    if (!priceId) throw new Error("STRIPE_PRICE_ID missing")
+    if (!priceId) throw new Error("STRIPE_PRO_MONTHLY_PRICE_ID missing")
     if (!siteUrl) throw new Error("NEXT_PUBLIC_SITE_URL missing")
 
     const stripe = new Stripe(secretKey)
 
     const session = await stripe.checkout.sessions.create({
-      mode: "payment",
+      mode: "subscription",
       customer_email: email, // ✅ critical: locks checkout to the same email you use for entitlements
       line_items: [{ price: priceId, quantity: 1 }],
+      metadata: {
+        email,
+        plan: "pro",
+        source: "checkout",
+      },
+      subscription_data: {
+        metadata: {
+          email,
+          plan: "pro",
+          source: "checkout",
+        },
+      },
       success_url: `${siteUrl}/success`,
       cancel_url: `${siteUrl}/cancel`,
     })

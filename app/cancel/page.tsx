@@ -18,14 +18,13 @@ export default function CancelPage() {
       }}
     >
       <h1 style={{ fontSize: 28, marginBottom: 12 }}>
-        Checkout Cancelled
+        Checkout Canceled
       </h1>
 
       <p style={{ fontSize: 16, color: "#555", lineHeight: 1.6 }}>
         No charges were made.
         <br />
-        You can continue using JobEstimate Pro with free access
-        or upgrade when you need continued generation access.
+        You can continue with 3 free generations and subscribe to Pro when you are ready.
       </p>
 
       <Link

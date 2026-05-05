@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { resolveEntitlement } from "./access"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
     const { data, error } = await supabase
       .from("entitlements")
-      .select("active, usage_count")
+      .select("active, usage_count, plan, subscription_status, current_period_end, cancel_at_period_end, free_limit")
       .eq("email", email)
       .maybeSingle()
 
@@ -40,10 +41,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ entitled: false, usage_count: 0, free_limit: FREE_LIMIT })
     }
 
+    const resolved = resolveEntitlement(data)
+    const freeLimit =
+      typeof data?.free_limit === "number" ? data.free_limit : FREE_LIMIT
+
     return NextResponse.json({
-      entitled: data?.active === true,
+      ...resolved,
       usage_count: typeof data?.usage_count === "number" ? data.usage_count : 0,
-      free_limit: FREE_LIMIT,
+      free_limit: freeLimit,
     })
   } catch (err) {
     console.error("Entitlement route failed:", err)

@@ -7,7 +7,7 @@ const EMAIL_KEY = "jobestimatepro_email"
 
 export default function SuccessPage() {
   const [status, setStatus] = useState<"loading" | "success" | "missing-email" | "error">("loading")
-  const [message, setMessage] = useState("Confirming your Pro access...")
+  const [message, setMessage] = useState("Confirming your Pro subscription...")
 
   useEffect(() => {
     let cancelled = false
@@ -18,7 +18,7 @@ export default function SuccessPage() {
       if (!email) {
         if (cancelled) return
         setStatus("missing-email")
-        setMessage("Return to the app and enter the email address used at checkout so we can confirm your Pro access.")
+        setMessage("Return to the app and enter the email address used at checkout so we can confirm your Pro subscription.")
         return
       }
 
@@ -38,15 +38,15 @@ export default function SuccessPage() {
 
         if (data?.entitled === true) {
           setStatus("success")
-          setMessage("Your Pro access is active. Return to the app to continue.")
+          setMessage(data?.message || "Your Pro subscription is active. Return to the app to continue.")
         } else {
           setStatus("error")
-          setMessage("Payment succeeded, but Pro access is not active yet. Return to the app and retry with the email used at checkout.")
+          setMessage(data?.message || "Checkout succeeded, but subscription access is still syncing. Return to the app and retry with the email used at checkout.")
         }
       } catch {
         if (cancelled) return
         setStatus("error")
-        setMessage("Payment succeeded, but we could not confirm Pro access yet. Return to the app and retry with the email used at checkout.")
+        setMessage("Checkout succeeded, but we could not confirm subscription access yet. Return to the app and retry with the email used at checkout.")
       }
     }
 
@@ -83,11 +83,11 @@ export default function SuccessPage() {
       </h1>
 
       <p style={{ fontSize: 16, color: "#555", lineHeight: 1.6 }}>
-        Thank you for upgrading JobEstimate Pro.
+        Thank you for subscribing to JobEstimate Pro.
         <br />
         {status === "success"
           ? "You now have Pro access with generous fair-use generation for normal contractor estimating workflows."
-          : "We are checking your Pro access."}
+          : "We are checking your subscription access."}
       </p>
 
       <div

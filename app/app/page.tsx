@@ -1372,6 +1372,10 @@ const [paid, setPaid] = useState(false)
 const [remaining, setRemaining] = useState(FREE_LIMIT)
 const [usageCount, setUsageCount] = useState<number | null>(null)
 const [freeLimit, setFreeLimit] = useState<number | null>(null)
+const [accessPlan, setAccessPlan] = useState("free")
+const [subscriptionStatus, setSubscriptionStatus] = useState("free")
+const [currentPeriodEnd, setCurrentPeriodEnd] = useState<string | null>(null)
+const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false)
 const [entitlementKnown, setEntitlementKnown] = useState(false)
 const [entitlementRefreshing, setEntitlementRefreshing] = useState(false)
 const [entitlementMessage, setEntitlementMessage] = useState("")
@@ -1429,6 +1433,10 @@ useEffect(() => {
     setRemaining(FREE_LIMIT)
     setUsageCount(null)
     setFreeLimit(null)
+    setAccessPlan("free")
+    setSubscriptionStatus("free")
+    setCurrentPeriodEnd(null)
+    setCancelAtPeriodEnd(false)
     setEntitlementKnown(false)
     setEntitlementMessage("")
     setEntitlementRefreshing(false)
@@ -1454,6 +1462,10 @@ useEffect(() => {
       setRemaining(FREE_LIMIT) // optional fallback
       setUsageCount(null)
       setFreeLimit(null)
+      setAccessPlan("free")
+      setSubscriptionStatus("free")
+      setCurrentPeriodEnd(null)
+      setCancelAtPeriodEnd(false)
       setEntitlementKnown(false)
       setEntitlementMessage("Access status could not be refreshed. Try again.")
       setShowUpgrade(false) // optional fallback
@@ -1474,7 +1486,16 @@ useEffect(() => {
       typeof data?.free_limit === "number" ? data.free_limit : FREE_LIMIT
     setUsageCount(used)
     setFreeLimit(limit)
+    setAccessPlan(typeof data?.plan === "string" ? data.plan : "free")
+    setSubscriptionStatus(
+      typeof data?.subscription_status === "string" ? data.subscription_status : "free"
+    )
+    setCurrentPeriodEnd(
+      typeof data?.current_period_end === "string" ? data.current_period_end : null
+    )
+    setCancelAtPeriodEnd(data?.cancel_at_period_end === true)
     setEntitlementKnown(true)
+    setEntitlementMessage(typeof data?.message === "string" ? data.message : "")
 
     if (!entitled) {
       const remainingNow = Math.max(0, limit - used)
@@ -1493,6 +1514,10 @@ useEffect(() => {
     setRemaining(FREE_LIMIT)
     setUsageCount(null)
     setFreeLimit(null)
+    setAccessPlan("free")
+    setSubscriptionStatus("free")
+    setCurrentPeriodEnd(null)
+    setCancelAtPeriodEnd(false)
     setEntitlementKnown(false)
     setEntitlementMessage("Access status could not be refreshed. Try again.")
     setEntitlementRefreshing(false)
@@ -1507,6 +1532,10 @@ useEffect(() => {
     setRemaining(FREE_LIMIT)
     setUsageCount(null)
     setFreeLimit(null)
+    setAccessPlan("free")
+    setSubscriptionStatus("free")
+    setCurrentPeriodEnd(null)
+    setCancelAtPeriodEnd(false)
     setEntitlementKnown(false)
     setEntitlementMessage("")
     setEntitlementRefreshing(false)
@@ -11270,12 +11299,40 @@ function PlanAwareEstimatorReadbackCard({
 }
 
 const normalizedEmail = email.trim().toLowerCase()
+const currentPeriodEndLabel =
+  currentPeriodEnd && Number.isFinite(Date.parse(currentPeriodEnd))
+    ? new Date(currentPeriodEnd).toLocaleDateString()
+    : ""
 const accessStatusLabel = !normalizedEmail
   ? "Unknown"
   : entitlementKnown
-    ? paid
-      ? "Pro access"
-      : "Free"
+    ? subscriptionStatus === "active"
+      ? cancelAtPeriodEnd && currentPeriodEndLabel
+        ? `Pro access until ${currentPeriodEndLabel}`
+        : "Pro subscription active"
+      : subscriptionStatus === "trialing"
+        ? "Pro trial active"
+        : subscriptionStatus === "past_due"
+          ? paid
+            ? "Payment past due - temporary Pro access"
+            : "Payment past due"
+          : subscriptionStatus === "canceled"
+            ? paid && currentPeriodEndLabel
+              ? `Canceled - access until ${currentPeriodEndLabel}`
+              : "Canceled"
+            : subscriptionStatus === "unpaid"
+              ? "Payment unpaid"
+              : subscriptionStatus === "incomplete"
+                ? "Checkout incomplete"
+                : subscriptionStatus === "incomplete_expired"
+                  ? "Checkout expired"
+                  : subscriptionStatus === "legacy_active" && paid
+                    ? accessPlan === "manual_comp"
+                      ? "Manual Pro access"
+                      : "Legacy beta Pro access"
+                    : paid
+                      ? "Pro access"
+                      : "Free"
     : "Unknown"
 const canShowUsage = usageCount != null && freeLimit != null
 const freeRemaining = canShowUsage
@@ -11449,6 +11506,19 @@ const accountAccessMessage = !normalizedEmail
         <div>
           Access status: <strong>{accessStatusLabel}</strong>
         </div>
+        {entitlementKnown && (
+          <div>
+            Plan: <strong>{accessPlan === "pro" ? "Pro" : accessPlan === "manual_comp" ? "Manual comp" : accessPlan === "legacy_beta" ? "Legacy beta" : "Free"}</strong>
+            {subscriptionStatus && subscriptionStatus !== "free" && (
+              <> ({subscriptionStatus.replace(/_/g, " ")})</>
+            )}
+          </div>
+        )}
+        {currentPeriodEndLabel && (
+          <div>
+            Current period ends: <strong>{currentPeriodEndLabel}</strong>
+          </div>
+        )}
         {canShowUsage && (
           <>
             <div>
