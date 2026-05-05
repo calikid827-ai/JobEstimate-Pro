@@ -8858,10 +8858,10 @@ function EstimateStatusCard({
       >
         <div>
           <div style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>
-            Estimate Status
+            Estimate Review Notes
           </div>
           <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-            What the engine decided about this document and schedule.
+            Key scope, schedule, photo, plan, and measurement notes to review before sending.
           </div>
         </div>
 
@@ -9380,7 +9380,7 @@ function EstimateSectionsCard({
   )
 
   return (
-    <div
+    <details
       style={{
         marginTop: 14,
         padding: 12,
@@ -9389,10 +9389,18 @@ function EstimateSectionsCard({
         background: "#fff",
       }}
     >
-      <div style={{ fontWeight: 900, fontSize: 15 }}>Estimate Rows</div>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Line Item Detail
+      </summary>
       <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-        Direct section rows come from the winning estimate basis. Embedded burden
-        items remain included in the total, but are not standalone priced scope lines.
+        Optional detail behind the pricing summary. Embedded burden items remain included in the total,
+        but are not standalone priced scope lines.
       </div>
 
       {rows.length > 0 ? (
@@ -9493,7 +9501,7 @@ function EstimateSectionsCard({
           </ul>
         </div>
       ) : null}
-    </div>
+    </details>
   )
 }
 
@@ -9579,11 +9587,11 @@ function AdvancedAnalysisSection({
           fontSize: 15,
         }}
       >
-        Advanced Analysis
+        Estimator Diagnostics
       </summary>
 
       <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-        Deep-dive diagnostics, scope logic, material planning, and estimator review tools.
+        Optional deep-dive analysis, scope logic, material planning, and review tools.
       </div>
 
       {(photoAnalysis || photoScopeAssist) && (
@@ -11025,7 +11033,7 @@ function PlanAwareEstimatorReadbackCard({
       }}
     >
       <div style={{ fontWeight: 900, fontSize: 15, color: "#0f172a" }}>
-        Estimator Plan & Pricing Story
+        Plan Review Summary
       </div>
       <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
         {readback.headline}
@@ -11115,15 +11123,15 @@ function PlanAwareEstimatorReadbackCard({
         }}
       >
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
-          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Directly Carried</div>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Included From Plans</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{directCarryCount}</div>
         </div>
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
-          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Reinforced / Embedded</div>
+          <div style={{ fontSize: 11, color: "#4b5563", fontWeight: 800 }}>Supported In Price</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>{reinforcedCarryCount}</div>
         </div>
         <div style={{ padding: 10, border: "1px solid #fdba74", borderRadius: 8, background: "#fff7ed" }}>
-          <div style={{ fontSize: 11, color: "#92400e", fontWeight: 800 }}>Not Carried Yet</div>
+          <div style={{ fontSize: 11, color: "#92400e", fontWeight: 800 }}>Needs Review</div>
           <div style={{ fontSize: 18, fontWeight: 900, color: "#92400e" }}>{notCarriedCount}</div>
         </div>
         <div style={{ padding: 10, border: "1px solid #fdba74", borderRadius: 8, background: "#fff7ed" }}>
@@ -11132,107 +11140,131 @@ function PlanAwareEstimatorReadbackCard({
         </div>
       </div>
 
-      {pricingCarryReadback.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
-            Pricing Carry Readback
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {pricingCarryReadback.slice(0, 10).map((item) => {
-              const tone = carryTone(item.status)
-              return (
-                <div
-                  key={`pricing-carry-readback-${item.key}`}
-                  style={{
-                    padding: 10,
-                    border: `1px solid ${tone.border}`,
-                    borderRadius: 8,
-                    background: tone.bg,
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: "#1f2937",
-                  }}
-                >
-                  <div style={{ fontWeight: 900, color: "#111827" }}>
-                    {item.title} - {statusLabel(item.status)}
-                  </div>
-                  <div style={{ marginTop: 3 }}>{item.narration}</div>
-                  {(item.areaGroups.length > 0 || item.scopeGroupKey) && (
-                    <div style={{ marginTop: 4, color: "#4b5563" }}>
-                      {item.scopeGroupKey ? `Scope group: ${item.scopeGroupKey.replace(/_/g, " ")}` : ""}
-                      {item.scopeGroupKey && item.areaGroups.length > 0 ? " - " : ""}
-                      {item.areaGroups.length > 0 ? `Areas: ${item.areaGroups.slice(0, 4).join(", ")}` : ""}
-                    </div>
-                  )}
-                  {item.quantity != null && item.unit && (
-                    <div style={{ marginTop: 2, color: "#4b5563" }}>
-                      Carried quantity: {Number(item.quantity).toLocaleString()} {item.unit.replace(/_/g, " ")}
-                    </div>
-                  )}
-                  {sourceText(item.evidence) && (
-                    <div style={{ marginTop: 4, color: "#6b7280" }}>
-                      Sources: {sourceText(item.evidence)}
-                    </div>
-                  )}
-                  {item.status !== "directly_carried" && (
-                    <div style={{ marginTop: 5, color: tone.color }}>
-                      This item should not raise pricing confidence until the estimator confirms the missing or narrow support.
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {(pricingCarryReadback.length > 0 || pricingSections.length > 0 || burdenSections.length > 0) && (
+        <details
+          style={{
+            marginTop: 12,
+            padding: 10,
+            border: "1px solid #bae6fd",
+            borderRadius: 8,
+            background: "#fff",
+          }}
+        >
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 900,
+              color: "#374151",
+            }}
+          >
+            Estimator diagnostics
+          </summary>
 
-      {pricingSections.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
-            Pricing Currently Carries
+          <div style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.5, marginTop: 6 }}>
+            Detailed plan-to-price support for estimator review. Pricing authority, protections,
+            owner resolution, and totals remain controlled by the existing pricing path.
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {pricingSections.map((section, index) => (
-              <div
-                key={`pricing-carry-${section.trade}-${section.section}-${index}`}
-                style={{
-                  padding: 10,
-                  border: "1px solid #dbeafe",
-                  borderRadius: 8,
-                  background: "#fff",
-                  fontSize: 12,
-                  lineHeight: 1.5,
-                  color: "#1f2937",
-                }}
-              >
-                <strong>{section.trade}: {section.label}</strong>
-                <span style={{ color: "#4b5563" }}> - {moneyText(section.amount)}</span>
-                {section.quantity != null && section.unit && (
-                  <div style={{ color: "#4b5563", marginTop: 2 }}>
-                    Quantity basis: {Number(section.quantity).toLocaleString()} {section.unit.replace(/_/g, " ")}
-                  </div>
-                )}
-                {section.provenance?.summary && (
-                  <div style={{ color: "#4b5563", marginTop: 2 }}>
-                    Pricing basis: {section.provenance.summary}
-                  </div>
-                )}
+
+          {pricingCarryReadback.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
+                Pricing Support Readback
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <div style={{ display: "grid", gap: 8 }}>
+                {pricingCarryReadback.slice(0, 10).map((item) => {
+                  const tone = carryTone(item.status)
+                  return (
+                    <div
+                      key={`pricing-carry-readback-${item.key}`}
+                      style={{
+                        padding: 10,
+                        border: `1px solid ${tone.border}`,
+                        borderRadius: 8,
+                        background: tone.bg,
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: "#1f2937",
+                      }}
+                    >
+                      <div style={{ fontWeight: 900, color: "#111827" }}>
+                        {item.title} - {statusLabel(item.status)}
+                      </div>
+                      <div style={{ marginTop: 3 }}>{item.narration}</div>
+                      {(item.areaGroups.length > 0 || item.scopeGroupKey) && (
+                        <div style={{ marginTop: 4, color: "#4b5563" }}>
+                          {item.scopeGroupKey ? `Scope group: ${item.scopeGroupKey.replace(/_/g, " ")}` : ""}
+                          {item.scopeGroupKey && item.areaGroups.length > 0 ? " - " : ""}
+                          {item.areaGroups.length > 0 ? `Areas: ${item.areaGroups.slice(0, 4).join(", ")}` : ""}
+                        </div>
+                      )}
+                      {item.quantity != null && item.unit && (
+                        <div style={{ marginTop: 2, color: "#4b5563" }}>
+                          Carried quantity: {Number(item.quantity).toLocaleString()} {item.unit.replace(/_/g, " ")}
+                        </div>
+                      )}
+                      {sourceText(item.evidence) && (
+                        <div style={{ marginTop: 4, color: "#6b7280" }}>
+                          Sources: {sourceText(item.evidence)}
+                        </div>
+                      )}
+                      {item.status !== "directly_carried" && (
+                        <div style={{ marginTop: 5, color: tone.color }}>
+                          This item should not raise pricing confidence until the estimator confirms the missing or narrow support.
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
-      {burdenSections.length > 0 && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.5 }}>
-          Embedded burdens remain separated from direct section rows:{" "}
-          {burdenSections.map((section) => `${section.trade} ${section.label}`).join("; ")}.
-        </div>
-      )}
+          {pricingSections.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#374151", marginBottom: 6 }}>
+                Pricing Currently Carries
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {pricingSections.map((section, index) => (
+                  <div
+                    key={`pricing-carry-${section.trade}-${section.section}-${index}`}
+                    style={{
+                      padding: 10,
+                      border: "1px solid #dbeafe",
+                      borderRadius: 8,
+                      background: "#fff",
+                      fontSize: 12,
+                      lineHeight: 1.5,
+                      color: "#1f2937",
+                    }}
+                  >
+                    <strong>{section.trade}: {section.label}</strong>
+                    <span style={{ color: "#4b5563" }}> - {moneyText(section.amount)}</span>
+                    {section.quantity != null && section.unit && (
+                      <div style={{ color: "#4b5563", marginTop: 2 }}>
+                        Quantity basis: {Number(section.quantity).toLocaleString()} {section.unit.replace(/_/g, " ")}
+                      </div>
+                    )}
+                    {section.provenance?.summary && (
+                      <div style={{ color: "#4b5563", marginTop: 2 }}>
+                        Pricing basis: {section.provenance.summary}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-      <div style={{ marginTop: 10, fontSize: 12, color: "#92400e", lineHeight: 1.5 }}>
-        Pricing authority, protections, owner resolution, and totals remain controlled by the existing pricing path. This readback explains what the selected plans appear to support and what still needs estimator confirmation.
-      </div>
+          {burdenSections.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.5 }}>
+              Embedded burdens remain separated from direct section rows:{" "}
+              {burdenSections.map((section) => `${section.trade} ${section.label}`).join("; ")}.
+            </div>
+          )}
+        </details>
+      )}
     </div>
   )
 }
@@ -11704,20 +11736,35 @@ const accountAccessMessage = !normalizedEmail
       overflowX: "hidden",
     }}
   >
-    <h3 style={{ marginBottom: 8 }}>
-      Generated {displayedDocumentType}
-    </h3>
-
-    <p
+    <div
       style={{
-        fontSize: 13,
-        color: "#666",
-        marginBottom: 12,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #dbeafe",
+        borderRadius: 14,
+        background: "#f8fbff",
       }}
     >
-      Generated from the scope provided
-      {jobPhotos.length > 0 ? " and uploaded photos" : ""}.
-    </p>
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#1d4ed8", marginBottom: 4 }}>
+        Estimate ready
+      </div>
+      <h3 style={{ margin: 0 }}>
+        {displayedDocumentType} Summary
+      </h3>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: "#4b5563",
+          marginTop: 8,
+          marginBottom: 0,
+          lineHeight: 1.5,
+        }}
+      >
+        Review the customer-facing scope, pricing, schedule, and plan evidence below. Deeper estimator
+        diagnostics are kept in collapsed sections for follow-up review.
+      </p>
+    </div>
 
     {hasEstimateStatus && (
   <EstimateStatusCard
@@ -11759,7 +11806,7 @@ const accountAccessMessage = !normalizedEmail
           color: "#111827",
         }}
       >
-        {planIntelligence?.planReadback ? "Generated Scope Description" : "AI Scope Description"}
+        Customer-Facing Scope
       </div>
 
       <div
