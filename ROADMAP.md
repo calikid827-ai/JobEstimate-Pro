@@ -38,6 +38,14 @@ Difficulty levels:
 - Exact generation limits, fair-use thresholds, plan names, and launch pricing can still change before public launch.
 - Billing implementation should follow this direction only after the pricing decision is final, and should stay focused on the web/PWA Stripe Checkout path for now.
 
+## Current Next Active Tasks
+
+1. Production Supabase schema checklist for entitlement, webhook dedupe, approvals, owner sync tokens, and approval invoices.
+2. Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
+3. Estimate/invoice PDF visual hierarchy polish.
+4. Advanced analysis customer-facing mode.
+5. Subscription billing implementation only after final pricing decision.
+
 ## 1. Critical Fixes
 
 ### 1.1 Remove or Gate Production Debug Logging
@@ -101,6 +109,7 @@ Difficulty levels:
 
 ### 1.6 Prepare Subscription Billing Model
 
+- Status: Not started / pending final pricing decision.
 - Why it matters: The product has not launched with paying users yet, so the billing model can still move from one-time unlimited access to a recurring subscription without customer migration risk. This should be decided before public launch.
 - Files likely affected:
   - `app/api/checkout/route.ts`
@@ -121,7 +130,24 @@ Difficulty levels:
 - Difficulty: Medium
 - Suggested order: 6
 
-### 1.7 PWA/Web Launch Channel Focus
+### 1.7 Production Supabase Schema Checklist
+
+- Status: Active next task.
+- Why it matters: Production Supabase schema, RPCs, indexes, and uniqueness constraints must match the launch-critical entitlement, webhook dedupe, approval snapshot, owner sync token, approval, and approval-created invoice workflows.
+- Files likely affected:
+  - New or updated production schema documentation.
+  - No app logic unless a later verification pass finds a real schema/code mismatch.
+- Scope:
+  - Entitlement/free-limit tables and RPCs.
+  - Stripe webhook event dedupe table/constraint.
+  - Approval proposal/link/token/sync tables.
+  - Proposal approval and approval invoice tables.
+  - Required uniqueness constraints for duplicate-protected flows.
+- Risk level: Low
+- Difficulty: Small
+- Suggested order: 7
+
+### 1.8 PWA/Web Launch Channel Focus
 
 - Status: Current pre-launch path.
 - Why it matters: The product still needs web/PWA workflow completion, subscription readiness, mobile web usability, and production safety before adding native distribution complexity.
@@ -134,9 +160,9 @@ Difficulty levels:
   - Documentation only until the launch-channel decision changes.
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 7
+- Suggested order: 8
 
-### 1.8 Pre-Launch Feature Completion Pass
+### 1.9 Pre-Launch Feature Completion Pass
 
 - Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
 - Files likely affected:
@@ -155,13 +181,13 @@ Difficulty levels:
   - Approval workflow
   - Invoice workflow
   - PDF polish
-  - Account/entitlement status
+  - Account/entitlement status surface is complete; keep it stable.
   - Web/PWA subscription billing model
   - Mobile web usability
   - README/setup
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 8
+- Suggested order: 9
 
 ## 2. Stability Upgrades
 
@@ -176,7 +202,7 @@ Difficulty levels:
   - `app/app/lib/constants.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 9
+- Suggested order: 10
 
 ### 2.2 Reduce `app/app/page.tsx` Responsibility
 
@@ -187,7 +213,7 @@ Difficulty levels:
   - New helpers under `app/app/lib/`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 10
+- Suggested order: 11
 
 ### 2.3 Fix Repo-Wide Lint Hotspots Incrementally
 
@@ -200,18 +226,19 @@ Difficulty levels:
   - `app/approve/[id]/page.tsx`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 11
+- Suggested order: 12
 
 ### 2.4 Add Focused Tests for Invoice and Approval Helpers
 
+- Status: Done for approval workflow regression tests and focused invoice helper tests.
 - Why it matters: Deposit, tax, balance invoice, and approval-auto-invoice logic are important money workflows. They need tests before server persistence is introduced.
 - Files likely affected:
-  - New invoice helper tests.
-  - New approval helper tests if logic is extracted.
+  - `app/api/approvals/approvalWorkflow.test.ts`
+  - `app/app/lib/invoices.test.ts`
   - `app/app/lib/types.ts`
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 12
+- Suggested order: Completed
 
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
@@ -225,7 +252,7 @@ Difficulty levels:
   - `app/api/generate/lib/plans/*`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 13
+- Suggested order: 14
 
 ## 3. Product Polish
 
@@ -238,7 +265,7 @@ Difficulty levels:
   - `app/app/lib/plan-pricing-carry.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 14
+- Suggested order: 15
 
 ### 3.2 Simplify Advanced Analysis Panels
 
@@ -249,7 +276,7 @@ Difficulty levels:
   - Possible new `AdvancedAnalysisSection` component file.
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 15
+- Suggested order: 16
 
 ### 3.3 Improve PDF Visual Hierarchy
 
@@ -259,10 +286,11 @@ Difficulty levels:
   - Future PDF helper files if extracted.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 16
+- Suggested order: 17
 
 ### 3.4 Add Account/Entitlement Status Surface
 
+- Status: Done. `/app` now shows saved email, Free/Pro/Unknown access state, usage count/free limit, remaining free generations, no-email guidance, and manual entitlement refresh via the existing `/api/entitlement` endpoint.
 - Why it matters: Users need to know which email is active, whether they are upgraded, and what to do if payment is not reflected yet.
 - Files likely affected:
   - `app/app/page.tsx`
@@ -270,7 +298,7 @@ Difficulty levels:
   - `app/api/entitlement/route.ts`
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 17
+- Suggested order: Completed
 
 ### 3.5 Product Copy Consistency Pass
 

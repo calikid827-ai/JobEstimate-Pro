@@ -33,7 +33,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Idempotent approval submission behavior.
 - DONE: Duplicate approval invoice prevention.
 - DONE: Approval workflow regression tests.
+- DONE: Account/access status panel in `/app` shows saved email, access state, free usage, remaining free generations, and manual entitlement refresh.
 - DONE: Shared invoice helper, `buildInvoiceFromEstimate()`, is used by `/app`, same-device approval fallback, and server approval invoice creation.
+- DONE: Focused invoice helper regression tests cover full, deposit, balance, tax, missing-deposit guard, and invoice snapshot preservation behavior.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
@@ -75,6 +77,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 - DONE: App supports invoice creation, deposit invoices, balance invoices, invoice list, status updates, invoice deletion/clear actions, and browser-generated invoice PDFs.
 - DONE: `buildInvoiceFromEstimate()` centralizes invoice construction for app-created invoices and approval-created invoice snapshots.
+- DONE: `buildInvoiceFromEstimate()` has focused regression tests for full invoices, percent/fixed deposit invoices, balance invoices, missing-deposit guard behavior, sales tax calculation, and estimate row/section/burden snapshot preservation.
 - DONE: Server-backed approvals create one draft invoice snapshot after approval and sync it back to local invoices.
 - DONE: Approval-created invoice sync avoids overwriting existing local invoices and avoids duplicate imports by invoice ID or source estimate ID.
 - PARTIAL: Full invoice management is still localStorage-backed outside approval-created invoice snapshots.
@@ -149,8 +152,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Should-Improve Before Launch
 
-- PARTIAL: Add an account/entitlement status surface in `/app` showing active email, free usage, access state, and refresh action.
-- PARTIAL: Add focused invoice helper tests for deposit/full/balance invoice behavior and approval-created invoice consistency.
+- DONE: Account/entitlement status surface in `/app` shows active email, free usage, access state, and refresh action.
+- DONE: Focused invoice helper tests cover deposit/full/balance invoice behavior and approval-created invoice consistency.
 - PARTIAL: Improve mobile usability for core workflows: estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
 - PARTIAL: Polish PDF visual hierarchy for customer-facing readability.
 - PARTIAL: Simplify or separate advanced analysis into customer-facing and estimator/debug views.
@@ -176,32 +179,32 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. DONE: Reconcile stale docs in `FEATURE_INVENTORY.md` and `ROADMAP.md` with current state.
-   - Items that said README is default, ScopeGuard copy remains, debug logs remain, invoice helper is duplicated, approval tests are missing, or PDFs lack plan readback have been updated.
-
-2. PARTIAL: Add account/entitlement status surface in `/app`.
-   - Show current email, free usage, entitlement/access state, and refresh action without changing billing logic.
-
-3. PARTIAL: Add focused invoice helper tests.
-   - Cover full invoice, deposit invoice, balance invoice, tax handling, zero/missing deposit guard, and approval-created invoice consistency.
-
-4. PARTIAL: Production Supabase schema checklist.
+1. PARTIAL: Production Supabase schema checklist.
    - Create or update a docs file listing required tables, RPCs, indexes, and constraints for entitlement, webhook dedupe, approvals, and approval invoices.
 
-5. PARTIAL: Mobile core workflow polish pass.
+2. PARTIAL: Mobile core workflow polish pass.
    - Fix layout/overflow/usability for estimate input, plan upload, pricing summary, saved estimates, approvals sync, and invoices.
 
-6. PARTIAL: Estimate/invoice PDF visual hierarchy polish.
+3. PARTIAL: Estimate/invoice PDF visual hierarchy polish.
    - Keep browser print-window output, but improve spacing, section ordering, and readability.
 
-7. PARTIAL: Advanced analysis customer-facing mode.
+4. PARTIAL: Advanced analysis customer-facing mode.
    - Keep diagnostics, but make the default result less experimental and easier to scan.
 
-8. PARTIAL: Subscription billing implementation pass after final pricing decision.
+5. PARTIAL: Subscription billing implementation pass after final pricing decision.
    - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
 
-9. PARTIAL: Subscription/free-limit regression tests.
+6. PARTIAL: Subscription/free-limit regression tests after billing model decision.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
+
+7. PARTIAL: Full production-readiness smoke test.
+   - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
+
+8. PARTIAL: Centralize localStorage access with a small persistence helper.
+   - Keep it thin and compatible with existing localStorage keys.
+
+9. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
+   - Separate real launch blockers from broader post-launch cleanup.
 
 10. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
 
