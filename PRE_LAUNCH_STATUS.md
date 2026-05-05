@@ -38,6 +38,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Focused invoice helper regression tests cover full, deposit, balance, tax, missing-deposit guard, and invoice snapshot preservation behavior.
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` documents production Supabase setup requirements, verification queries, constraints, and smoke tests.
 - DONE: Mobile core workflow polish pass applied style-only responsive improvements in `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
+- DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
@@ -93,6 +94,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Invoice PDFs are generated through browser print-window HTML.
 - DONE: Estimate PDFs include company branding, client/job metadata, scope/description, schedule, estimate rows, embedded burden reference, pricing summary, tax, deposit, approval sections, and approved signature display when available.
 - DONE: Estimate PDFs include a customer-safe Estimator Plan Review when uploaded plans are present.
+- DONE: Estimate PDFs now have improved document header hierarchy, metadata panels, stronger section labels, pricing card, and page-break avoidance.
+- DONE: Invoice PDFs now have an improved total-due block, bill-to/date panels, invoice summary card, stronger section labels, and page-break avoidance.
 - DONE: Estimate PDFs now include compact plan evidence summary:
   - Plan evidence strength.
   - Selected pages reviewed.
@@ -101,7 +104,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
   - Hard quantity status.
   - Confirmation-needed status.
 - PARTIAL: Browser print-window PDFs are brittle compared with server-side PDF generation.
-- PARTIAL: PDF visual hierarchy can still be improved for dense estimates and plan-assisted results.
+- DONE: Estimate/invoice PDF visual hierarchy polish is complete for the current browser print-window launch pass.
 - DEFERRED: Server-side PDF generation can wait until after launch unless browser PDF output becomes a blocker.
 
 ## Stripe/Billing Status
@@ -158,7 +161,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Focused invoice helper tests cover deposit/full/balance invoice behavior and approval-created invoice consistency.
 - DONE: Production Supabase schema checklist is documented in `SUPABASE_PRODUCTION_CHECKLIST.md`.
 - DONE: Mobile core workflow polish improved small-screen layout, wrapping, spacing, and tap targets for estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
-- PARTIAL: Polish PDF visual hierarchy for customer-facing readability.
+- DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - PARTIAL: Simplify or separate advanced analysis into customer-facing and estimator/debug views.
 - PARTIAL: Centralize localStorage access with a small persistence helper.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
@@ -182,33 +185,32 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Estimate/invoice PDF visual hierarchy polish.
-   - Keep browser print-window output, but improve spacing, section ordering, and readability.
-
-2. PARTIAL: Advanced analysis customer-facing mode.
+1. PARTIAL: Advanced analysis customer-facing mode.
    - Keep diagnostics, but make the default result less experimental and easier to scan.
 
-3. PARTIAL: Full production-readiness smoke test.
+2. PARTIAL: Full production-readiness smoke test.
    - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
 
-4. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+3. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
    - Confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
 
-5. PARTIAL: Subscription billing implementation pass after final pricing decision.
+4. PARTIAL: Subscription billing implementation pass after final pricing decision.
    - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
 
-6. PARTIAL: Subscription/free-limit regression tests after billing model decision.
+5. PARTIAL: Subscription/free-limit regression tests after billing model decision.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
 
-7. PARTIAL: Centralize localStorage access with a small persistence helper.
+6. PARTIAL: Centralize localStorage access with a small persistence helper.
    - Keep it thin and compatible with existing localStorage keys.
 
-8. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
+7. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
    - Separate real launch blockers from broader post-launch cleanup.
 
-9. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+8. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
 
-10. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+9. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+
+10. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
 
 ## Features We Should Not Rebuild
 

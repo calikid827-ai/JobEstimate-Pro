@@ -40,15 +40,16 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Estimate/invoice PDF visual hierarchy polish.
-2. Advanced analysis customer-facing mode.
-3. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
-4. Subscription billing implementation only after final pricing decision.
-5. Full production-readiness smoke test.
+1. Advanced analysis customer-facing mode.
+2. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+3. Subscription billing implementation only after final pricing decision.
+4. Full production-readiness smoke test.
+5. Centralize localStorage access with a small persistence helper.
 
 Completed pre-launch task kept visible:
 
 - DONE: Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
+- DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 
 ## 1. Critical Fixes
 
@@ -286,13 +287,17 @@ Completed pre-launch task kept visible:
 
 ### 3.3 Improve PDF Visual Hierarchy
 
+- Status: Done for the current browser print-window launch pass.
 - Why it matters: PDFs are the final customer artifact. The estimate should clearly show scope, estimator story, pricing, schedule, approvals, and payment terms.
 - Files likely affected:
   - `app/app/page.tsx`
-  - Future PDF helper files if extracted.
+  - Future PDF helper files if extracted after launch.
+- Completed scope:
+  - Estimate PDFs now have improved document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, and page-break avoidance.
+  - Invoice PDFs now have an improved total-due block, bill-to/date panels, invoice summary card, stronger section labels, and page-break avoidance.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 17
+- Suggested order: Completed
 
 ### 3.4 Add Account/Entitlement Status Surface
 
