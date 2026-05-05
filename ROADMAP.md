@@ -40,11 +40,15 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
-2. Estimate/invoice PDF visual hierarchy polish.
-3. Advanced analysis customer-facing mode.
-4. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
-5. Subscription billing implementation only after final pricing decision.
+1. Estimate/invoice PDF visual hierarchy polish.
+2. Advanced analysis customer-facing mode.
+3. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+4. Subscription billing implementation only after final pricing decision.
+5. Full production-readiness smoke test.
+
+Completed pre-launch task kept visible:
+
+- DONE: Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 
 ## 1. Critical Fixes
 
@@ -165,6 +169,7 @@ Difficulty levels:
 
 ### 1.9 Pre-Launch Feature Completion Pass
 
+- Status note: Mobile core workflow polish is done. Style-only responsive improvements were applied to `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
 - Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
 - Files likely affected:
   - `app/app/page.tsx`
@@ -184,7 +189,7 @@ Difficulty levels:
   - PDF polish
   - Account/entitlement status surface is complete; keep it stable.
   - Web/PWA subscription billing model
-  - Mobile web usability
+  - Mobile web usability is complete for the current launch polish pass; keep it stable unless new issues appear in testing.
   - README/setup
 - Risk level: Medium
 - Difficulty: Medium
