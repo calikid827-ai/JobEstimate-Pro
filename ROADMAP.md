@@ -40,16 +40,17 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Advanced analysis customer-facing mode.
+1. Full production-readiness smoke test.
 2. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
 3. Subscription billing implementation only after final pricing decision.
-4. Full production-readiness smoke test.
-5. Centralize localStorage access with a small persistence helper.
+4. Centralize localStorage access with a small persistence helper.
+5. Run `npm run lint` and triage launch-blocking issues.
 
 Completed pre-launch task kept visible:
 
 - DONE: Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
+- DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
 
 ## 1. Critical Fixes
 
@@ -265,25 +266,29 @@ Completed pre-launch task kept visible:
 
 ### 3.1 Customer-Facing Estimate Result Mode
 
+- Status: Done for the current launch polish pass.
 - Why it matters: Advanced diagnostics are useful, but users need a clean estimator-facing summary and a separate advanced/debug area.
+- Completed scope: Estimate results now open with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/app/components/PricingSummarySection.tsx`
   - `app/app/lib/plan-pricing-carry.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 15
+- Suggested order: Completed
 
 ### 3.2 Simplify Advanced Analysis Panels
 
+- Status: Done for the current launch polish pass.
 - Why it matters: The app has many analysis cards. Grouping them into clearer sections would make the product feel less experimental.
+- Completed scope: Advanced analysis data is preserved but grouped behind clearer estimator diagnostics, collapsed line-item detail, and nested plan-to-price diagnostics.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/app/components/PhotoIntelligenceCard.tsx`
   - Possible new `AdvancedAnalysisSection` component file.
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 16
+- Suggested order: Completed
 
 ### 3.3 Improve PDF Visual Hierarchy
 

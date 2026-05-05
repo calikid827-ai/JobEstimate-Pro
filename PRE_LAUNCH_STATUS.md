@@ -10,7 +10,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - PARTIAL: Launch-channel strategy is PWA/web app first. Apple App Store/native iOS distribution is undecided and deferred until after real user, pricing, support, and cost-model validation.
 - PARTIAL: The contractor workspace is still mostly localStorage-backed. Estimates, jobs, invoices, budgets, actuals, company settings, and email live primarily in browser storage.
 - PARTIAL: Server persistence exists for approval snapshots, approval status, approval signatures, owner sync tokens, and approval-created invoice snapshots only.
-- PARTIAL: The app is feature-rich but still dense. Some advanced analysis surfaces are estimator/debug-oriented rather than fully customer-facing.
+- DONE: The estimate result now opens with a cleaner customer-facing summary while preserving estimator diagnostics in clearly separated advanced sections.
 
 ## Launch Channel Strategy
 
@@ -39,6 +39,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` documents production Supabase setup requirements, verification queries, constraints, and smoke tests.
 - DONE: Mobile core workflow polish pass applied style-only responsive improvements in `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
+- DONE: Advanced analysis customer-facing mode now opens estimate results with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
@@ -162,7 +163,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Production Supabase schema checklist is documented in `SUPABASE_PRODUCTION_CHECKLIST.md`.
 - DONE: Mobile core workflow polish improved small-screen layout, wrapping, spacing, and tap targets for estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
-- PARTIAL: Simplify or separate advanced analysis into customer-facing and estimator/debug views.
+- DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
 - PARTIAL: Centralize localStorage access with a small persistence helper.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
 - PARTIAL: Run `npm run lint` and decide which lint failures are launch-blocking versus post-launch cleanup.
@@ -185,32 +186,31 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Advanced analysis customer-facing mode.
-   - Keep diagnostics, but make the default result less experimental and easier to scan.
-
-2. PARTIAL: Full production-readiness smoke test.
+1. PARTIAL: Full production-readiness smoke test.
    - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
 
-3. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+2. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
    - Confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
 
-4. PARTIAL: Subscription billing implementation pass after final pricing decision.
+3. PARTIAL: Subscription billing implementation pass after final pricing decision.
    - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
 
-5. PARTIAL: Subscription/free-limit regression tests after billing model decision.
+4. PARTIAL: Subscription/free-limit regression tests after billing model decision.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
 
-6. PARTIAL: Centralize localStorage access with a small persistence helper.
+5. PARTIAL: Centralize localStorage access with a small persistence helper.
    - Keep it thin and compatible with existing localStorage keys.
 
-7. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
+6. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
    - Separate real launch blockers from broader post-launch cleanup.
 
-8. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+7. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
 
-9. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+8. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
 
-10. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
+9. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
+
+10. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
 
 ## Features We Should Not Rebuild
 
