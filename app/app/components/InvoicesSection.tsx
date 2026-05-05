@@ -36,7 +36,7 @@ export default function InvoicesSection({
         background: "#fff",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <h3 style={{ margin: 0 }}>Invoices</h3>
         <button
           type="button"
@@ -65,8 +65,8 @@ export default function InvoicesSection({
                 background: "#fafafa",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div>
+              <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div data-mobile-content style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 700 }}>{inv.invoiceNo}</div>
 
@@ -129,7 +129,7 @@ export default function InvoicesSection({
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div data-mobile-actions style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <button type="button" onClick={() => downloadInvoicePDF(inv)}>
                     Download Invoice PDF
                   </button>

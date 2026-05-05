@@ -70,6 +70,7 @@ export default function PricingSummarySection({
   return (
     <>
       <h3
+        data-mobile-stack
         style={{
           marginTop: 24,
           display: "flex",
@@ -187,7 +188,7 @@ export default function PricingSummarySection({
           Set markup automatically based on your desired profit margin.
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div data-mobile-actions style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" onClick={() => applyProfitTarget(20)} style={{ fontSize: 12 }}>
             Hit 20% Profit
           </button>
@@ -236,7 +237,7 @@ export default function PricingSummarySection({
 
             {depositEnabled && (
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10 }}>
+                <div data-mobile-grid style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10 }}>
                   <select
                     value={depositType}
                     onChange={(e) => setDepositType(e.target.value as any)}

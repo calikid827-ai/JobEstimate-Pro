@@ -85,7 +85,7 @@ export default function JobsDashboardSection({
         background: "#fff",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h3 style={{ margin: 0 }}>Jobs</h3>
           <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
@@ -93,7 +93,7 @@ export default function JobsDashboardSection({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div data-mobile-actions style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button
             type="button"
             onClick={() => setActiveJobId("")}
@@ -168,7 +168,7 @@ export default function JobsDashboardSection({
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div data-mobile-stack style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 12, color: "#444", fontWeight: 700 }}>
             Crews:
           </span>
@@ -270,6 +270,7 @@ export default function JobsDashboardSection({
                       {w.jobs.map((job: any, idx: number) => (
                         <div
                           key={`${w.weekStartISO}_${job.jobId}_${idx}`}
+                          data-mobile-stack
                           style={{
                             display: "flex",
                             justifyContent: "space-between",
@@ -347,8 +348,8 @@ export default function JobsDashboardSection({
                     background: isActive ? "#f0f9ff" : "#fafafa",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ minWidth: 240, flex: 1 }}>
+                  <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div data-mobile-content style={{ minWidth: 240, flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <div style={{ fontWeight: 800 }}>
                           {j.jobName || "Untitled Job"}
@@ -609,7 +610,7 @@ export default function JobsDashboardSection({
                       </div>
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
+                    <div data-mobile-actions style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
                       <button
                         type="button"
                         onClick={() => {

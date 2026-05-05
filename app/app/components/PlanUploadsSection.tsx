@@ -156,6 +156,7 @@ export default function PlanUploadsSection({
               }}
             >
               <div
+                data-mobile-grid
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr auto",
@@ -270,6 +271,7 @@ export default function PlanUploadsSection({
                   }}
                 >
                   <div
+                    data-mobile-toolbar
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr auto auto",

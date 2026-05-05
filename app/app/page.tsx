@@ -11204,6 +11204,49 @@ const accountAccessMessage = !normalizedEmail
       }
 
       @media (max-width: 640px) {
+        main {
+          margin: 0 !important;
+          padding: 16px !important;
+          border-left: 0 !important;
+          border-right: 0 !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+        }
+
+        button,
+        input,
+        select,
+        textarea {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
+        button {
+          min-height: 40px !important;
+          white-space: normal !important;
+        }
+
+        [data-mobile-stack] {
+          flex-direction: column !important;
+          align-items: stretch !important;
+        }
+
+        [data-mobile-content],
+        [data-mobile-actions] {
+          width: 100% !important;
+          min-width: 0 !important;
+        }
+
+        [data-mobile-actions] {
+          display: grid !important;
+          grid-template-columns: 1fr !important;
+        }
+
+        [data-mobile-grid],
+        [data-mobile-toolbar] {
+          grid-template-columns: 1fr !important;
+        }
+
         [data-print-result] {
           overflow-x: hidden !important;
         }

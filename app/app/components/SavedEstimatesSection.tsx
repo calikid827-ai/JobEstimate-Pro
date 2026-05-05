@@ -106,7 +106,7 @@ export default function SavedEstimatesSection({
         background: "#fff",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <h3 style={{ margin: 0 }}>Saved Estimates</h3>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button type="button" onClick={() => void syncServerApprovals()} style={{ fontSize: 12 }}>
@@ -137,8 +137,8 @@ export default function SavedEstimatesSection({
                 background: "#fafafa",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div>
+              <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div data-mobile-content style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <div style={{ fontWeight: 700 }}>
                       {h.jobDetails?.jobName || "Untitled Job"}
@@ -226,7 +226,7 @@ export default function SavedEstimatesSection({
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
+                <div data-mobile-actions style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>
   {(() => {
     const primaryLabel = historyPrimaryActionLabel(historyPipeline)
 
