@@ -1370,6 +1370,11 @@ const [crewCount, setCrewCount] = useState<number>(1)
 const [email, setEmail] = useState("")
 const [paid, setPaid] = useState(false)
 const [remaining, setRemaining] = useState(FREE_LIMIT)
+const [usageCount, setUsageCount] = useState<number | null>(null)
+const [freeLimit, setFreeLimit] = useState<number | null>(null)
+const [entitlementKnown, setEntitlementKnown] = useState(false)
+const [entitlementRefreshing, setEntitlementRefreshing] = useState(false)
+const [entitlementMessage, setEntitlementMessage] = useState("")
 const [showUpgrade, setShowUpgrade] = useState(false)
 
 // -------------------------
@@ -1419,9 +1424,22 @@ useEffect(() => {
   const reqId = ++entitlementReqId.current
 
   const e = email.trim().toLowerCase()
-  if (!e) return
+  if (!e) {
+    setPaid(false)
+    setRemaining(FREE_LIMIT)
+    setUsageCount(null)
+    setFreeLimit(null)
+    setEntitlementKnown(false)
+    setEntitlementMessage("")
+    setEntitlementRefreshing(false)
+    setShowUpgrade(false)
+    return
+  }
 
   try {
+    setEntitlementRefreshing(true)
+    setEntitlementMessage("")
+
     const res = await fetch("/api/entitlement", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1434,7 +1452,12 @@ useEffect(() => {
     if (!res.ok) {
       setPaid(false)
       setRemaining(FREE_LIMIT) // optional fallback
+      setUsageCount(null)
+      setFreeLimit(null)
+      setEntitlementKnown(false)
+      setEntitlementMessage("Access status could not be refreshed. Try again.")
       setShowUpgrade(false) // optional fallback
+      setEntitlementRefreshing(false)
       return
     }
 
@@ -1449,21 +1472,30 @@ useEffect(() => {
     const used = typeof data?.usage_count === "number" ? data.usage_count : 0
     const limit =
       typeof data?.free_limit === "number" ? data.free_limit : FREE_LIMIT
+    setUsageCount(used)
+    setFreeLimit(limit)
+    setEntitlementKnown(true)
 
     if (!entitled) {
       const remainingNow = Math.max(0, limit - used)
       setRemaining(remainingNow)
       setShowUpgrade(remainingNow <= 0)
     } else {
-      setRemaining(FREE_LIMIT) // optional
+      setRemaining(Math.max(0, limit - used))
       setShowUpgrade(false)
     }
+    setEntitlementRefreshing(false)
   } catch {
     // ignore stale responses
     if (reqId !== entitlementReqId.current) return
 
     setPaid(false)
     setRemaining(FREE_LIMIT)
+    setUsageCount(null)
+    setFreeLimit(null)
+    setEntitlementKnown(false)
+    setEntitlementMessage("Access status could not be refreshed. Try again.")
+    setEntitlementRefreshing(false)
     setShowUpgrade(false)
   }
 }
@@ -1473,6 +1505,11 @@ useEffect(() => {
   if (!e) {
     setPaid(false)
     setRemaining(FREE_LIMIT)
+    setUsageCount(null)
+    setFreeLimit(null)
+    setEntitlementKnown(false)
+    setEntitlementMessage("")
+    setEntitlementRefreshing(false)
     setShowUpgrade(false)
     return
   }
@@ -11101,6 +11138,27 @@ function PlanAwareEstimatorReadbackCard({
   )
 }
 
+const normalizedEmail = email.trim().toLowerCase()
+const accessStatusLabel = !normalizedEmail
+  ? "Unknown"
+  : entitlementKnown
+    ? paid
+      ? "Pro access"
+      : "Free"
+    : "Unknown"
+const canShowUsage = usageCount != null && freeLimit != null
+const freeRemaining = canShowUsage
+  ? Math.max(0, Number(freeLimit) - Number(usageCount))
+  : null
+const accountAccessMessage = !normalizedEmail
+  ? "Enter the email you use for checkout and generation to check access."
+  : entitlementMessage ||
+    (entitlementKnown
+      ? paid
+        ? "Pro access is active for this email."
+        : "Free generation access is active for this email."
+      : "Refresh access to check the latest entitlement status.")
+
   // -------------------------
   // UI
   // -------------------------
@@ -11166,20 +11224,6 @@ function PlanAwareEstimatorReadbackCard({
   Professional change orders & estimates — generated instantly.
 </p>
 
-{!paid && (
-  <div style={{ marginBottom: 12 }}>
-    {remaining > 0 ? (
-      <p style={{ fontSize: 13, color: "#666", margin: 0 }}>
-        Free uses remaining: <strong>{remaining}</strong> / {FREE_LIMIT}
-      </p>
-    ) : (
-      <p style={{ fontSize: 13, color: "#c53030", margin: 0 }}>
-        Free uses are up. Upgrade to continue generating estimates with Pro access.
-      </p>
-    )}
-  </div>
-)}
-
       <input
   type="email"
   placeholder="Enter your email to generate documents"
@@ -11200,6 +11244,86 @@ function PlanAwareEstimatorReadbackCard({
 >
   * Required
 </p>
+
+<div
+  style={{
+    marginBottom: 14,
+    padding: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    background: "#f9fafb",
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      gap: 12,
+      alignItems: "flex-start",
+      flexWrap: "wrap",
+    }}
+  >
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 4 }}>
+        Account & Access
+      </div>
+      <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.5 }}>
+        <div>
+          Email:{" "}
+          <strong>{normalizedEmail || "No email entered"}</strong>
+        </div>
+        <div>
+          Access status: <strong>{accessStatusLabel}</strong>
+        </div>
+        {canShowUsage && (
+          <>
+            <div>
+              Free usage: <strong>{usageCount}</strong> / {freeLimit}
+            </div>
+            <div>
+              Remaining free generations: <strong>{freeRemaining}</strong>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+
+    <button
+      type="button"
+      onClick={checkEntitlementNow}
+      disabled={!normalizedEmail || entitlementRefreshing}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: "1px solid #d1d5db",
+        background: !normalizedEmail || entitlementRefreshing ? "#f3f4f6" : "#fff",
+        color: !normalizedEmail || entitlementRefreshing ? "#9ca3af" : "#111827",
+        fontSize: 12,
+        fontWeight: 800,
+        cursor: !normalizedEmail || entitlementRefreshing ? "not-allowed" : "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {entitlementRefreshing ? "Refreshing..." : "Refresh access"}
+    </button>
+  </div>
+
+  <div
+    style={{
+      marginTop: 8,
+      fontSize: 12,
+      lineHeight: 1.45,
+      color:
+        normalizedEmail && entitlementMessage
+          ? "#b45309"
+          : normalizedEmail && entitlementKnown && paid
+            ? "#047857"
+            : "#6b7280",
+    }}
+  >
+    {accountAccessMessage}
+  </div>
+</div>
 
 {/* -------------------------
     ⚙️ Business Settings (Collapsed)
