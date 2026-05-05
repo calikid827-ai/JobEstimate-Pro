@@ -36,6 +36,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Account/access status panel in `/app` shows saved email, access state, free usage, remaining free generations, and manual entitlement refresh.
 - DONE: Shared invoice helper, `buildInvoiceFromEstimate()`, is used by `/app`, same-device approval fallback, and server approval invoice creation.
 - DONE: Focused invoice helper regression tests cover full, deposit, balance, tax, missing-deposit guard, and invoice snapshot preservation behavior.
+- DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` documents production Supabase setup requirements, verification queries, constraints, and smoke tests.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
@@ -128,7 +129,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Approval status sync requires owner email plus owner sync token instead of email-only.
 - PARTIAL: Full repo-wide log audit is not guaranteed complete outside the recently inspected routes and app page.
 - PARTIAL: Lint may still report pre-existing project-wide issues such as `any`, unused helpers, and hook warnings.
-- PARTIAL: Supabase production schema and indexes must match the approval implementation before launch.
+- PARTIAL: Supabase production schema and indexes must still be verified against `SUPABASE_PRODUCTION_CHECKLIST.md` before launch.
 - PARTIAL: No full authentication/workspace isolation yet.
 
 ## Remaining Must-Fix Before Launch
@@ -147,13 +148,14 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
   - Approve from another browser/device.
   - Sync approval status.
   - Confirm one approval-created invoice imports.
-- PARTIAL: Add/update docs for exact production Supabase SQL/schema if not already tracked elsewhere.
+- DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` exists and lists required production tables, RPCs, indexes, constraints, RLS/service-role assumptions, manual queries, and smoke tests.
 - PARTIAL: Reconcile stale roadmap/inventory items that still describe completed work as open.
 
 ## Should-Improve Before Launch
 
 - DONE: Account/entitlement status surface in `/app` shows active email, free usage, access state, and refresh action.
 - DONE: Focused invoice helper tests cover deposit/full/balance invoice behavior and approval-created invoice consistency.
+- DONE: Production Supabase schema checklist is documented in `SUPABASE_PRODUCTION_CHECKLIST.md`.
 - PARTIAL: Improve mobile usability for core workflows: estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
 - PARTIAL: Polish PDF visual hierarchy for customer-facing readability.
 - PARTIAL: Simplify or separate advanced analysis into customer-facing and estimator/debug views.
@@ -179,26 +181,26 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Production Supabase schema checklist.
-   - Create or update a docs file listing required tables, RPCs, indexes, and constraints for entitlement, webhook dedupe, approvals, and approval invoices.
-
-2. PARTIAL: Mobile core workflow polish pass.
+1. PARTIAL: Mobile core workflow polish pass.
    - Fix layout/overflow/usability for estimate input, plan upload, pricing summary, saved estimates, approvals sync, and invoices.
 
-3. PARTIAL: Estimate/invoice PDF visual hierarchy polish.
+2. PARTIAL: Estimate/invoice PDF visual hierarchy polish.
    - Keep browser print-window output, but improve spacing, section ordering, and readability.
 
-4. PARTIAL: Advanced analysis customer-facing mode.
+3. PARTIAL: Advanced analysis customer-facing mode.
    - Keep diagnostics, but make the default result less experimental and easier to scan.
 
-5. PARTIAL: Subscription billing implementation pass after final pricing decision.
+4. PARTIAL: Full production-readiness smoke test.
+   - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
+
+5. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+   - Confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
+
+6. PARTIAL: Subscription billing implementation pass after final pricing decision.
    - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
 
-6. PARTIAL: Subscription/free-limit regression tests after billing model decision.
+7. PARTIAL: Subscription/free-limit regression tests after billing model decision.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
-
-7. PARTIAL: Full production-readiness smoke test.
-   - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
 
 8. PARTIAL: Centralize localStorage access with a small persistence helper.
    - Keep it thin and compatible with existing localStorage keys.

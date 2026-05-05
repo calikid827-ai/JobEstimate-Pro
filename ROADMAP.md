@@ -40,10 +40,10 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Production Supabase schema checklist for entitlement, webhook dedupe, approvals, owner sync tokens, and approval invoices.
-2. Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
-3. Estimate/invoice PDF visual hierarchy polish.
-4. Advanced analysis customer-facing mode.
+1. Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
+2. Estimate/invoice PDF visual hierarchy polish.
+3. Advanced analysis customer-facing mode.
+4. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
 5. Subscription billing implementation only after final pricing decision.
 
 ## 1. Critical Fixes
@@ -132,10 +132,10 @@ Difficulty levels:
 
 ### 1.7 Production Supabase Schema Checklist
 
-- Status: Active next task.
+- Status: Done. `SUPABASE_PRODUCTION_CHECKLIST.md` now exists.
 - Why it matters: Production Supabase schema, RPCs, indexes, and uniqueness constraints must match the launch-critical entitlement, webhook dedupe, approval snapshot, owner sync token, approval, and approval-created invoice workflows.
 - Files likely affected:
-  - New or updated production schema documentation.
+  - `SUPABASE_PRODUCTION_CHECKLIST.md`
   - No app logic unless a later verification pass finds a real schema/code mismatch.
 - Scope:
   - Entitlement/free-limit tables and RPCs.
@@ -143,9 +143,10 @@ Difficulty levels:
   - Approval proposal/link/token/sync tables.
   - Proposal approval and approval invoice tables.
   - Required uniqueness constraints for duplicate-protected flows.
+- Next step: Run the checklist's manual verification queries and smoke tests against production; do not recreate the checklist.
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 7
+- Suggested order: Completed
 
 ### 1.8 PWA/Web Launch Channel Focus
 
