@@ -40,8 +40,8 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Full production-readiness smoke test.
-2. Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
+1. Run the full production-readiness smoke test using `PRE_LAUNCH_SMOKE_TEST.md`.
+2. Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
 3. Subscription billing implementation only after final pricing decision.
 4. Centralize localStorage access with a small persistence helper.
 5. Run `npm run lint` and triage launch-blocking issues.
@@ -51,6 +51,7 @@ Completed pre-launch task kept visible:
 - DONE: Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
+- DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
 
 ## 1. Critical Fixes
 
@@ -150,6 +151,15 @@ Completed pre-launch task kept visible:
   - Proposal approval and approval invoice tables.
   - Required uniqueness constraints for duplicate-protected flows.
 - Next step: Run the checklist's manual verification queries and smoke tests against production; do not recreate the checklist.
+- Risk level: Low
+- Difficulty: Small
+- Suggested order: Completed
+
+### 1.7a Pre-Launch Smoke Test Checklist
+
+- Status: Done. `PRE_LAUNCH_SMOKE_TEST.md` now exists.
+- Why it matters: The current PWA/web launch path now has a practical manual checklist covering environment variables, free generation, account/access refresh, selected-page plan generation, estimate/invoice PDFs, current Stripe Checkout, success entitlement refresh, server-backed approvals, approval-created invoice import, production log safety, and Supabase checkpoints.
+- Next step: Run the checklist against production or the production-equivalent launch environment; do not recreate the checklist.
 - Risk level: Low
 - Difficulty: Small
 - Suggested order: Completed

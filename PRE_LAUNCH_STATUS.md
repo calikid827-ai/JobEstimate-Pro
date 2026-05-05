@@ -46,6 +46,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate PDF includes customer-safe Estimator Plan Review and compact plan evidence summary.
 - DONE: Production debug/customer-detail logging is gated in the generate path and client app debug paths inspected in the latest pass.
 - DONE: Product README, feature inventory, roadmap, subscription architecture, and server-backed approval plan documents exist.
+- DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and documents the current PWA/web production-readiness smoke test path.
 
 ## Approval Workflow Status
 
@@ -154,6 +155,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
   - Sync approval status.
   - Confirm one approval-created invoice imports.
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` exists and lists required production tables, RPCs, indexes, constraints, RLS/service-role assumptions, manual queries, and smoke tests.
+- DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and lists the manual smoke-test steps, expected results, failure handling, log-safety checks, and Supabase checkpoints.
 - PARTIAL: Reconcile stale roadmap/inventory items that still describe completed work as open.
 
 ## Should-Improve Before Launch
@@ -186,11 +188,12 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Full production-readiness smoke test.
-   - Exercise free generation, checkout, success refresh, plan upload, estimate PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
+1. PARTIAL: Run the full production-readiness smoke test and production Supabase verification.
+   - Use `PRE_LAUNCH_SMOKE_TEST.md` to exercise free generation, checkout, success refresh, plan upload, estimate PDF, invoice PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
+   - Use `SUPABASE_PRODUCTION_CHECKLIST.md` to confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
 
-2. PARTIAL: Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
-   - Confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
+2. PARTIAL: Resolve any launch blockers found by the smoke test or Supabase verification.
+   - Keep fixes narrowly scoped to verified production-readiness failures.
 
 3. PARTIAL: Subscription billing implementation pass after final pricing decision.
    - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
