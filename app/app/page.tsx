@@ -5908,7 +5908,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
       pdfEstimateRows.length > 0 || pdfEstimateEmbeddedBurdens.length > 0
         ? `
           <div class="section">
-            <div class="muted" style="margin-bottom:6px;">Estimate Rows</div>
+            <div class="sectionTitle">Estimate Rows</div>
             ${
               pdfEstimateRows.length > 0
                 ? `<table>
@@ -5953,7 +5953,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             }
             ${
               pdfEstimateEmbeddedBurdens.length > 0
-                ? `<div class="muted" style="margin-top:8px; margin-bottom:4px;">Embedded burden reference</div>
+                ? `<div class="sectionTitle" style="margin-top:12px;">Embedded Burden Reference</div>
             <table>
               <tr>
                 <th>Section</th>
@@ -6013,7 +6013,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 
   return `
     <div class="section">
-      <div class="muted" style="margin-bottom:6px;">Estimated Schedule</div>
+      <div class="sectionTitle">Estimated Schedule</div>
 
       <div style="
         border:1px solid #cfcfcf;
@@ -6142,7 +6142,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
       pdfHasEstimatorReviewContent
         ? `
           <div class="section">
-            <div class="muted" style="margin-bottom:6px;">Estimator Plan Review</div>
+            <div class="sectionTitle">Estimator Plan Review</div>
             <div style="
               border:1px solid #cfcfcf;
               border-radius:10px;
@@ -6250,7 +6250,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
         : pdfHasPlanContext
           ? `
             <div class="section">
-              <div class="muted" style="margin-bottom:6px;">Estimator Plan Review</div>
+              <div class="sectionTitle">Estimator Plan Review</div>
               <div style="
                 border:1px solid #cfcfcf;
                 border-radius:10px;
@@ -6282,6 +6282,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             body {
               font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
               color: #111;
+              font-size: 13px;
+              line-height: 1.45;
             }
             .header {
               display: flex;
@@ -6303,6 +6305,45 @@ function loadHistoryItem(item: EstimateHistoryItem) {
               font-size: 11px;
               color: #666;
             }
+            .docTitleRow {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              gap: 18px;
+              margin: 18px 0 12px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .docEyebrow {
+              font-size: 10px;
+              font-weight: 800;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              color: #555;
+              margin-bottom: 4px;
+            }
+            .docDate {
+              font-size: 12px;
+              color: #444;
+              text-align: right;
+              white-space: nowrap;
+            }
+            .metaGrid {
+              display: grid;
+              grid-template-columns: 1.4fr 0.9fr;
+              gap: 12px;
+              margin: 8px 0 14px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .metaPanel {
+              border: 1px solid #e5e5e5;
+              border-radius: 10px;
+              padding: 11px 12px;
+              background: #fafafa;
+              font-size: 12px;
+              line-height: 1.55;
+            }
             .company {
               text-align: right;
               font-size: 12px;
@@ -6321,6 +6362,18 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             }
             .section {
               margin-top: 18px;
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .sectionTitle {
+              margin-bottom: 7px;
+              padding-bottom: 5px;
+              border-bottom: 1px solid #e5e5e5;
+              color: #111;
+              font-size: 12px;
+              font-weight: 850;
+              letter-spacing: 0.04em;
+              text-transform: uppercase;
             }
             .box {
   margin-top: 10px;
@@ -6350,6 +6403,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
             .totalRow td {
               font-weight: 800;
               border-top: 2px solid #111;
+              background: #f8f8f8;
+              font-size: 14px;
             }
             .badge {
               display: inline-block;
@@ -6359,6 +6414,14 @@ function loadHistoryItem(item: EstimateHistoryItem) {
               background: #f0f0f0;
               color: #333;
               margin-left: 8px;
+            }
+            .pricingCard {
+              border: 1px solid #cfcfcf;
+              border-radius: 12px;
+              padding: 12px;
+              background: #fff;
+              page-break-inside: avoid;
+              break-inside: avoid;
             }
             .sign {
               margin-top: 34px;
@@ -6478,33 +6541,43 @@ function loadHistoryItem(item: EstimateHistoryItem) {
 </div>
           </div>
 
-          <h1>${esc(pdfDocumentTypeLabel || "Estimate")}
-            ${
-              pdfShowPriceGuard
-                ? `<span class="badge">${esc(pdfPriceGuardLabel)}</span>`
-                : pdfEdited
-                ? `<span class="badge">Edited</span>`
-                : ""
-             }
-          </h1>
+          <div class="docTitleRow">
+            <div>
+              <div class="docEyebrow">Customer document</div>
+              <h1 style="margin:0;">${esc(pdfDocumentTypeLabel || "Estimate")}
+                ${
+                  pdfShowPriceGuard
+                    ? `<span class="badge">${esc(pdfPriceGuardLabel)}</span>`
+                    : pdfEdited
+                    ? `<span class="badge">Edited</span>`
+                    : ""
+                 }
+              </h1>
+            </div>
+            <div class="docDate">
+              <div><strong>Date</strong></div>
+              <div>${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())}</div>
+              ${changeOrderNo ? `<div style="margin-top:4px;"><strong>Change Order #:</strong> ${esc(changeOrderNo)}</div>` : ""}
+            </div>
+          </div>
 
-<div class="muted" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-  <div>
+<div class="metaGrid">
+  <div class="metaPanel">
+    <div class="docEyebrow">Prepared for</div>
     ${clientName ? `<div><strong>Client:</strong> ${esc(clientName)}</div>` : ""}
     ${jobName ? `<div><strong>Job:</strong> ${esc(jobName)}</div>` : ""}
     ${jobAddress ? `<div><strong>Address:</strong> ${esc(jobAddress)}</div>` : ""}
   </div>
 
-  <div style="text-align:right;">
-    ${changeOrderNo ? `<div><strong>Change Order #:</strong> ${esc(changeOrderNo)}</div>` : ""}
-    <div><strong>Date:</strong> ${esc(jobDetails.date ? new Date(jobDetails.date).toLocaleDateString() : new Date().toLocaleDateString())}</div>
+  <div class="metaPanel">
+    <div class="docEyebrow">Prepared by</div>
+    <div><strong>${esc(companyName)}</strong></div>
+    <div>Generated by ${esc(brandName)}</div>
   </div>
 </div>
 
-<div class="muted" style="margin-top:6px;">Generated by ${esc(brandName)}</div>
-
           <div class="section">
-  <div class="muted" style="margin-bottom:6px;">Scope / Description</div>
+  <div class="sectionTitle">Scope / Description</div>
   <div class="box">${safeResult}</div>
 
   ${
@@ -6535,7 +6608,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
           ${estimateSectionsHtml}
 
           <div class="section">
-            <div class="muted" style="margin-bottom:6px;">Pricing Summary</div>
+            <div class="sectionTitle">Pricing Summary</div>
+            <div class="pricingCard">
             <table>
               <tr><th>Category</th><th style="text-align:right;">Amount</th></tr>
               <tr><td>Labor</td><td style="text-align:right;">$${Number(pricing.labor || 0).toLocaleString()}</td></tr>
@@ -6557,6 +6631,7 @@ ${
                   : ""
               }
             </table>
+            </div>
 
             ${pdfEdited ? `
   <div class="muted" style="margin-top:8px; line-height:1.4;">
@@ -6729,8 +6804,8 @@ ${
   const estimateSectionsReferenceHtml =
     invoiceEstimateRows.length > 0 || invoiceEstimateEmbeddedBurdens.length > 0
       ? `
-        <div style="margin-top:16px;">
-          <div class="muted" style="margin-bottom:6px;">Estimate Row Reference</div>
+        <div class="section">
+          <div class="sectionTitle">Estimate Row Reference</div>
           ${
             invoiceEstimateRows.length > 0
               ? `<table>
@@ -6764,7 +6839,8 @@ ${
           }
           ${
             invoiceEstimateEmbeddedBurdens.length > 0
-              ? `<table style="margin-top:10px;">
+              ? `<div class="sectionTitle" style="margin-top:12px;">Embedded Burden Reference</div>
+          <table style="margin-top:10px;">
             <tr><th>Embedded burden</th><th>Treatment</th><th style="text-align:right;">Amount</th></tr>
             ${invoiceEstimateEmbeddedBurdens
               .map((section) => {
@@ -6808,18 +6884,27 @@ ${
         <meta charset="utf-8" />
         <style>
           @page { margin: 22mm 18mm; }
-          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; }
-          .header { display:flex; justify-content:space-between; gap:16px; padding-bottom:12px; border-bottom:2px solid #111; }
+          body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; font-size:13px; line-height:1.45; }
+          .header { display:flex; justify-content:space-between; gap:16px; padding-bottom:14px; border-bottom:2px solid #111; }
           .brand { font-size:14px; font-weight:600; color:#444; letter-spacing:0.2px; }
           .company { text-align:right; font-size:12px; line-height:1.5; color:#222; max-width:55%; word-wrap:break-word; }
           h1 { font-size:18px; margin:16px 0 6px; }
           .muted { color:#555; font-size:12px; }
+          .docTitleRow { display:flex; justify-content:space-between; align-items:flex-end; gap:18px; margin:18px 0 12px; page-break-inside:avoid; break-inside:avoid; }
+          .docEyebrow { font-size:10px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#555; margin-bottom:4px; }
+          .amountDue { min-width:190px; border:1px solid #111; border-radius:12px; padding:12px 14px; text-align:right; background:#fafafa; }
+          .amountDueLabel { font-size:10px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#555; }
+          .amountDueValue { margin-top:4px; font-size:22px; font-weight:900; color:#111; }
+          .section { margin-top:18px; page-break-inside:avoid; break-inside:avoid; }
+          .sectionTitle { margin-bottom:7px; padding-bottom:5px; border-bottom:1px solid #e5e5e5; color:#111; font-size:12px; font-weight:850; letter-spacing:0.04em; text-transform:uppercase; }
           table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
           td, th { padding:10px; border-bottom:1px solid #e5e5e5; }
           th { text-align:left; font-size:12px; color:#444; }
-          .totalRow td { font-weight:800; border-top:2px solid #111; }
+          .totalRow td { font-weight:800; border-top:2px solid #111; background:#f8f8f8; font-size:14px; }
           .meta { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:8px; }
-          .box { margin-top:10px; padding:12px; border:1px solid #e5e5e5; border-radius:10px; font-size:12px; color:#333; }
+          .metaPanel { flex:1; min-width:240px; border:1px solid #e5e5e5; border-radius:10px; padding:11px 12px; background:#fafafa; font-size:12px; line-height:1.55; }
+          .box { margin-top:10px; padding:12px; border:1px solid #e5e5e5; border-radius:10px; font-size:12px; color:#333; page-break-inside:avoid; break-inside:avoid; }
+          .summaryCard { border:1px solid #cfcfcf; border-radius:12px; padding:12px; background:#fff; page-break-inside:avoid; break-inside:avoid; }
           .approvalsRow{ margin-top:14px; padding-top:10px; border-top:1px solid #e5e5e5; display:flex; gap:16px; }
           .approval{ flex:1; padding:10px 12px; border:1px solid #e5e5e5; border-radius:10px; }
           .approvalTitle{ font-size:12px; font-weight:700; margin:0 0 8px; }
@@ -6843,27 +6928,41 @@ ${
           </div>
         </div>
 
-        <h1>Invoice <span style="font-weight:700;">${esc(inv.invoiceNo)}</span></h1>
+        <div class="docTitleRow">
+          <div>
+            <div class="docEyebrow">Invoice</div>
+            <h1 style="margin:0;">Invoice <span style="font-weight:700;">${esc(inv.invoiceNo)}</span></h1>
+          </div>
+          <div class="amountDue">
+            <div class="amountDueLabel">Total due</div>
+            <div class="amountDueValue">${money(inv.total)}</div>
+            <div class="muted" style="margin-top:4px;">Due ${esc(new Date(inv.dueDate).toLocaleDateString())}</div>
+          </div>
+        </div>
 
         <div class="meta muted">
-          <div>
+          <div class="metaPanel">
+            <div class="docEyebrow">Bill to</div>
             <div><strong>Bill To:</strong> ${esc(inv.billToName)}</div>
             <div><strong>Job:</strong> ${esc(inv.jobName)}</div>
             ${inv.jobAddress ? `<div><strong>Address:</strong> ${esc(inv.jobAddress)}</div>` : ""}
           </div>
-          <div style="text-align:right;">
+          <div class="metaPanel" style="text-align:right;">
+            <div class="docEyebrow">Invoice dates</div>
             <div><strong>Issue Date:</strong> ${esc(new Date(inv.issueDate).toLocaleDateString())}</div>
             <div><strong>Due Date:</strong> ${esc(new Date(inv.dueDate).toLocaleDateString())}</div>
           </div>
         </div>
 
-        <div style="margin-top:16px;">
-          <div class="muted" style="margin-bottom:6px;">Invoice Summary</div>
+        <div class="section">
+          <div class="sectionTitle">Invoice Summary</div>
+          <div class="summaryCard">
           <table>
             <tr><th>Description</th><th style="text-align:right;">Amount</th></tr>
             ${rows}
             <tr class="totalRow"><td>Total Due</td><td style="text-align:right;">${money(inv.total)}</td></tr>
           </table>
+          </div>
         </div>
 
         ${estimateSectionsReferenceHtml}
