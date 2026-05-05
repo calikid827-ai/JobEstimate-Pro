@@ -3031,26 +3031,7 @@ useEffect(() => {
   if (!Array.isArray(parsed)) return
 
   try {
-    const cleaned: Invoice[] = parsed.map((x: any) => ({
-      ...resolveCanonicalEstimateOutput(x),
-      id: String(x?.id ?? crypto.randomUUID()),
-      createdAt: Number(x?.createdAt ?? Date.now()),
-      jobId: x?.jobId ? String(x.jobId) : undefined,
-      fromEstimateId: String(x?.fromEstimateId ?? ""),
-      invoiceNo: String(x?.invoiceNo ?? "INV-UNKNOWN"),
-      issueDate: String(x?.issueDate ?? ""),
-      dueDate: String(x?.dueDate ?? ""),
-      billToName: String(x?.billToName ?? ""),
-      jobName: String(x?.jobName ?? ""),
-      jobAddress: String(x?.jobAddress ?? ""),
-      lineItems: Array.isArray(x?.lineItems) ? x.lineItems : [],
-      subtotal: Number(x?.subtotal ?? 0),
-      total: Number(x?.total ?? 0),
-      notes: String(x?.notes ?? ""),
-      deposit: x?.deposit ?? undefined,
-      status: normalizeInvoiceStatus(x),
-      paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
-    }))
+    const cleaned: Invoice[] = parsed.map(normalizeStoredInvoice)
 
     setInvoices(cleaned)
     writeLocalJson(INVOICE_KEY, cleaned)
@@ -3073,26 +3054,7 @@ useEffect(() => {
       }
 
       if (Array.isArray(parsedInv)) {
-        const cleanedInvoices: Invoice[] = parsedInv.map((x: any) => ({
-          ...resolveCanonicalEstimateOutput(x),
-          id: String(x?.id ?? crypto.randomUUID()),
-          createdAt: Number(x?.createdAt ?? Date.now()),
-          jobId: x?.jobId ? String(x.jobId) : undefined,
-          fromEstimateId: String(x?.fromEstimateId ?? ""),
-          invoiceNo: String(x?.invoiceNo ?? "INV-UNKNOWN"),
-          issueDate: String(x?.issueDate ?? ""),
-          dueDate: String(x?.dueDate ?? ""),
-          billToName: String(x?.billToName ?? ""),
-          jobName: String(x?.jobName ?? ""),
-          jobAddress: String(x?.jobAddress ?? ""),
-          lineItems: Array.isArray(x?.lineItems) ? x.lineItems : [],
-          subtotal: Number(x?.subtotal ?? 0),
-          total: Number(x?.total ?? 0),
-          notes: String(x?.notes ?? ""),
-          deposit: x?.deposit ?? undefined,
-          status: normalizeInvoiceStatus(x),
-          paidAt: typeof x?.paidAt === "number" ? x.paidAt : undefined,
-        }))
+        const cleanedInvoices: Invoice[] = parsedInv.map(normalizeStoredInvoice)
 
         setInvoices(cleanedInvoices)
       }
@@ -4954,6 +4916,34 @@ function updateInvoice(id: string, patch: Partial<Invoice>) {
 
 function makeJobId() {
   return crypto.randomUUID()
+}
+
+function normalizeStoredInvoice(x: unknown): Invoice {
+  const source =
+    x && typeof x === "object" ? (x as Record<string, unknown>) : {}
+
+  return {
+    ...resolveCanonicalEstimateOutput(x),
+    id: String(source.id ?? crypto.randomUUID()),
+    createdAt: Number(source.createdAt ?? Date.now()),
+    jobId: source.jobId ? String(source.jobId) : undefined,
+    fromEstimateId: String(source.fromEstimateId ?? ""),
+    invoiceNo: String(source.invoiceNo ?? "INV-UNKNOWN"),
+    issueDate: String(source.issueDate ?? ""),
+    dueDate: String(source.dueDate ?? ""),
+    billToName: String(source.billToName ?? ""),
+    jobName: String(source.jobName ?? ""),
+    jobAddress: String(source.jobAddress ?? ""),
+    lineItems: Array.isArray(source.lineItems)
+      ? (source.lineItems as Invoice["lineItems"])
+      : [],
+    subtotal: Number(source.subtotal ?? 0),
+    total: Number(source.total ?? 0),
+    notes: String(source.notes ?? ""),
+    deposit: source.deposit as Invoice["deposit"] | undefined,
+    status: normalizeInvoiceStatus(source),
+    paidAt: typeof source.paidAt === "number" ? source.paidAt : undefined,
+  }
 }
 
 function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
