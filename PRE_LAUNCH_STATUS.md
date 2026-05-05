@@ -178,7 +178,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Mobile core workflow polish improved small-screen layout, wrapping, spacing, and tap targets for estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
-- PARTIAL: Centralize localStorage access with a small persistence helper.
+- DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
 - PARTIAL: Run `npm run lint` and decide which lint failures are launch-blocking versus post-launch cleanup.
 
@@ -210,21 +210,21 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 3. PARTIAL: Resolve any subscription or non-billing launch blockers found during final verification.
    - Keep fixes narrowly scoped to verified production-readiness failures.
 
-4. PARTIAL: Centralize localStorage access with a small persistence helper.
-   - Keep it thin and compatible with existing localStorage keys.
-
-5. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
+4. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
    - Separate real launch blockers from broader post-launch cleanup.
 
-6. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+5. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+   - Full server-backed persistence remains deferred; the completed localStorage helper pass did not change data shapes or add server-backed jobs/estimates/invoices.
 
-7. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+6. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
 
-8. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
+7. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
 
-9. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
+8. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
 
-10. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
+9. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
+
+10. DEFERRED: Broader persistence refactors beyond the thin localStorage helper until after launch-critical workflows are stable.
 
 ## Features We Should Not Rebuild
 

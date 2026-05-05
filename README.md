@@ -225,8 +225,11 @@ Important keys:
 - `jobestimatepro_actuals_v1`
 - `jobestimatepro_crews_v1`
 - `jobestimatepro_jobs_v1`
+- `jobestimatepro_owner_sync_token`
 
 Legacy keys may be migrated in the app from older `scopeguard_*` names.
+
+The app includes a thin local persistence helper at `app/app/lib/local-persistence.ts` for typed key groups, safe get/set/remove access, JSON read/write wrappers, and legacy email/company migration. It preserves the existing keys and data shapes; full server-backed persistence is not implemented yet.
 
 ## Current Limitations
 

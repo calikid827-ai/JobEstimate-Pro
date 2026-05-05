@@ -292,6 +292,8 @@ The app currently persists most product data in browser localStorage:
 
 There is also migration support from older `scopeguard_*` keys for email/company data.
 
+A thin local persistence helper now centralizes typed JobEstimate Pro key groups, safe string get/set/remove helpers, JSON read/write helpers, and legacy email/company migration support for safe page-level storage paths.
+
 Current persistence is useful for a single user on one device, but it limits:
 
 - Cross-device access.
@@ -441,7 +443,7 @@ Known gaps:
 - Full server-backed jobs/estimates/invoices are not implemented yet; only the approval snapshot/status/invoice sync workflow is server-backed.
 - Shared invoice creation logic is centralized through `buildInvoiceFromEstimate()` and used by `/app`, same-device approval fallback, and server approval invoice creation.
 - PDF HTML generation is large, duplicated, and brittle.
-- LocalStorage writes are scattered across app and components.
+- LocalStorage writes are partially centralized through `app/app/lib/local-persistence.ts` for safe page-level paths; some component and fallback-route persistence remains localStorage-first.
 - Advanced analysis UI is powerful but dense.
 - Plan intelligence is represented in PDFs through customer-safe plan review and compact evidence/readiness summary, though broader PDF visual hierarchy can still be improved.
 - Recently inspected generate-route and app debug/customer-detail logs are development-gated; a full repo-wide log audit is not guaranteed complete.
@@ -456,7 +458,7 @@ Known gaps:
 - PDF visual hierarchy polish for dense estimates and plan-assisted results.
 - Stripe/account status page with entitlement refresh and billing guidance.
 - Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, fixture/device counts.
-- Centralized persistence layer for localStorage now and server persistence later.
+- Broader server-backed persistence layer for saved estimates, jobs, invoices, budgets, and actuals.
 - Account/entitlement status surface with current email, free usage, access state, and refresh action.
 - Production Supabase schema checklist for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
 - UI simplification for advanced analysis into customer-facing and estimator-facing modes.

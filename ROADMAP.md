@@ -42,9 +42,8 @@ Difficulty levels:
 
 1. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
 2. Subscription/free-limit regression tests after final billing verification if still needed.
-3. Centralize localStorage access with a small persistence helper.
-4. Run `npm run lint` and triage launch-blocking issues.
-5. Resolve any remaining launch blockers found after production smoke testing.
+3. Run `npm run lint` and triage launch-blocking issues.
+4. Resolve any remaining launch blockers found after production smoke testing.
 
 Completed pre-launch task kept visible:
 
@@ -56,6 +55,7 @@ Completed pre-launch task kept visible:
 - DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
 - DONE: Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
 - DONE/PARTIAL: Subscription billing implementation foundation is in place: checkout mode switch, monthly price env var, Supabase columns, 6-event webhook handling, subscription-aware entitlement response, Account & Access status copy, success/cancel copy, and focused entitlement tests are done; final payment/webhook entitlement verification remains pending.
+- DONE/PARTIAL: Thin localStorage persistence helper is in place. `app/app/lib/local-persistence.ts` centralizes typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard` email/company migration support; broader server-backed persistence remains future work.
 
 ## 1. Critical Fixes
 
@@ -221,13 +221,22 @@ Completed pre-launch task kept visible:
 
 ### 2.1 Centralize LocalStorage Access
 
+- Status: Done/Partial. Done for the thin helper and safe page-level usage migration; partial only for broader future persistence/server-backed work.
 - Why it matters: LocalStorage reads/writes are scattered through pages and components. A thin persistence helper would reduce data-shape drift before server persistence is added.
 - Files likely affected:
-  - `app/app/page.tsx`
+  - `app/app/page.tsx` (safe page-level usage migration completed)
   - `app/app/components/InvoicesSection.tsx`
   - `app/approve/[id]/page.tsx`
-  - New helper such as `app/app/lib/local-persistence.ts`
+  - `app/app/lib/local-persistence.ts` (created)
   - `app/app/lib/constants.ts`
+- Completed scope:
+  - Typed key groups for existing JobEstimate Pro localStorage keys.
+  - Safe get/set/remove helpers.
+  - JSON read/write helpers with fallback behavior.
+  - Legacy `scopeguard_email` and `scopeguard_company` migration helper.
+  - Existing localStorage keys and data shapes preserved.
+- Remaining broader work:
+  - Full server-backed saved estimates, jobs, invoices, budgets, actuals, and account/workspace persistence remain deferred.
 - Risk level: Medium
 - Difficulty: Medium
 - Suggested order: 10
