@@ -88,12 +88,20 @@ Do not implement until pricing is final.
 Required Stripe configuration:
 
 - Create or update the JobEstimate Pro product.
-- Create a recurring monthly price for Pro, likely `$29/month`.
-- Replace the current one-time `STRIPE_PRICE_ID` with a recurring price ID.
+- DONE: A recurring monthly price for Pro has been created.
+- DONE: Vercel now has `STRIPE_PRO_MONTHLY_PRICE_ID` set.
+- DONE: The app was redeployed after adding `STRIPE_PRO_MONTHLY_PRICE_ID`.
+- NOT STARTED: Replace the current one-time `STRIPE_PRICE_ID` code path with the recurring price ID.
 - Decide whether to rename env vars:
   - current: `STRIPE_PRICE_ID`
-  - possible future: `STRIPE_PRO_MONTHLY_PRICE_ID`
+  - subscription: `STRIPE_PRO_MONTHLY_PRICE_ID`
 - Decide whether to add a Stripe Billing Portal later.
+
+Important current-state note:
+
+- Current live app behavior is still one-time payment until code changes are implemented.
+- `app/api/checkout/route.ts` still uses `mode: "payment"` and `STRIPE_PRICE_ID`.
+- Subscription checkout, subscription lifecycle webhooks, and subscription-aware entitlement responses are still not started.
 
 Required checkout code changes later:
 
@@ -309,8 +317,9 @@ Do not start this implementation until pricing is final.
    - Confirm whether there is a trial.
 
 2. Update Stripe configuration.
-   - Create recurring monthly Pro price.
-   - Save the recurring price ID.
+   - DONE: Create recurring monthly Pro price.
+   - DONE: Save the recurring price ID in Vercel as `STRIPE_PRO_MONTHLY_PRICE_ID`.
+   - DONE: Redeploy app after adding the env var.
    - Configure webhook endpoint events.
 
 3. Design and apply Supabase schema migration.

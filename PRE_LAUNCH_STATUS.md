@@ -47,6 +47,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Production debug/customer-detail logging is gated in the generate path and client app debug paths inspected in the latest pass.
 - DONE: Product README, feature inventory, roadmap, subscription architecture, and server-backed approval plan documents exist.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and documents the current PWA/web production-readiness smoke test path.
+- DONE: Full production-readiness smoke test passed for the current PWA/web launch path, including free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
+- DONE: Manual production Supabase verification queries passed for the launch-critical entitlement, free-generation, Stripe webhook dedupe, approval, owner sync token, and approval-created invoice paths.
 
 ## Approval Workflow Status
 
@@ -116,8 +118,11 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Stripe webhook currently activates email-based entitlement on `checkout.session.completed`.
 - DONE: Success page entitlement refresh posts the saved `jobestimatepro_email` to `/api/entitlement`.
 - DONE: Free generation limit is currently 3 through Supabase/RPC-backed usage flow.
+- DONE: Stripe recurring monthly Pro price has been created as a subscription billing prerequisite.
+- DONE: Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set and the app was redeployed after adding the env var.
 - PARTIAL: Billing is still email-based and does not use full accounts/auth.
 - PARTIAL: Checkout is still one-time payment mode using `STRIPE_PRICE_ID` and `mode: "payment"`.
+- PARTIAL: Current live app behavior is still one-time payment until subscription billing code is implemented.
 - PARTIAL: Product docs recommend moving to subscription before public launch.
 - PARTIAL: Subscription planning is web/PWA-first through Stripe Checkout and web entitlement flows. Do not design around Apple in-app purchases or App Store subscription requirements yet.
 - NOT STARTED: Subscription checkout mode.
@@ -135,25 +140,29 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Approval status sync requires owner email plus owner sync token instead of email-only.
 - PARTIAL: Full repo-wide log audit is not guaranteed complete outside the recently inspected routes and app page.
 - PARTIAL: Lint may still report pre-existing project-wide issues such as `any`, unused helpers, and hook warnings.
-- PARTIAL: Supabase production schema and indexes must still be verified against `SUPABASE_PRODUCTION_CHECKLIST.md` before launch.
+- DONE: Supabase production schema and indexes have been manually verified against `SUPABASE_PRODUCTION_CHECKLIST.md` for the current launch-critical paths.
 - PARTIAL: No full authentication/workspace isolation yet.
 
 ## Remaining Must-Fix Before Launch
 
 - PARTIAL: Keep launch readiness scoped to the PWA/web app path unless the launch-channel decision changes.
-- PARTIAL: Decide and implement the final billing model before accepting public paid users.
+- PARTIAL: Implement the final subscription billing model before accepting public paid users.
 - PARTIAL: If launching with subscriptions, migrate Stripe checkout to recurring subscription mode and update entitlement/webhook handling.
-- PARTIAL: Verify production Supabase schema, RPCs, and uniqueness constraints for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
-- PARTIAL: Run a full production-readiness smoke test:
+- DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, and post-env-var redeploy are complete prerequisites.
+- DONE: Production Supabase schema, RPCs, and uniqueness constraints were manually verified for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
+- DONE: Full production-readiness smoke test passed:
   - Free generation.
+  - Account/access refresh.
   - Stripe checkout.
   - Success entitlement refresh.
   - Plan upload and selected-page generation.
   - Estimate PDF with compact plan evidence summary.
+  - Invoice creation and invoice PDF download.
   - Copy approval link.
   - Approve from another browser/device.
   - Sync approval status.
   - Confirm one approval-created invoice imports.
+  - Supabase verification queries.
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` exists and lists required production tables, RPCs, indexes, constraints, RLS/service-role assumptions, manual queries, and smoke tests.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and lists the manual smoke-test steps, expected results, failure handling, log-safety checks, and Supabase checkpoints.
 - PARTIAL: Reconcile stale roadmap/inventory items that still describe completed work as open.
@@ -188,32 +197,31 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Run the full production-readiness smoke test and production Supabase verification.
-   - Use `PRE_LAUNCH_SMOKE_TEST.md` to exercise free generation, checkout, success refresh, plan upload, estimate PDF, invoice PDF, approval link, cross-device approval, approval sync, and one approval-created invoice import.
-   - Use `SUPABASE_PRODUCTION_CHECKLIST.md` to confirm production tables, RPCs, unique constraints, indexes, RLS/service-role behavior, and approval invoice duplicate protection.
+1. NOT STARTED: Subscription billing implementation pass after final pricing decision.
+   - If the final decision is subscription, switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
+   - Use the existing Stripe recurring monthly price and Vercel `STRIPE_PRO_MONTHLY_PRICE_ID`; current live app remains one-time payment until code changes ship.
 
-2. PARTIAL: Resolve any launch blockers found by the smoke test or Supabase verification.
+2. PARTIAL: Resolve any non-billing launch blockers found after the smoke test and Supabase verification.
    - Keep fixes narrowly scoped to verified production-readiness failures.
 
-3. PARTIAL: Subscription billing implementation pass after final pricing decision.
-   - Switch checkout to subscription mode, add subscription fields, handle lifecycle webhooks, and update entitlement responses.
-
-4. PARTIAL: Subscription/free-limit regression tests after billing model decision.
+3. PARTIAL: Subscription/free-limit regression tests after billing model decision.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh.
 
-5. PARTIAL: Centralize localStorage access with a small persistence helper.
+4. PARTIAL: Centralize localStorage access with a small persistence helper.
    - Keep it thin and compatible with existing localStorage keys.
 
-6. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
+5. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
    - Separate real launch blockers from broader post-launch cleanup.
 
-7. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+6. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
 
-8. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+7. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
 
-9. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
+8. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
 
-10. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
+9. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
+
+10. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
 
 ## Features We Should Not Rebuild
 

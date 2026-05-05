@@ -14,6 +14,7 @@ Set these in the production hosting environment:
 - `NEXT_PUBLIC_SITE_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PRICE_ID`
+- `STRIPE_PRO_MONTHLY_PRICE_ID` is already set in Vercel for the upcoming subscription implementation, but current live code does not use it yet.
 - `STRIPE_WEBHOOK_SECRET`
 - Optional: `ALLOWED_ORIGIN_HOSTS`
 
@@ -23,6 +24,8 @@ Verify:
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only and never exposed to client code.
 - Stripe webhook endpoint points to `POST /api/webhook`.
 - Stripe Checkout currently uses one-time `mode: "payment"` with `STRIPE_PRICE_ID`; subscription mode is not implemented yet.
+- A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after adding the env var.
+- Current live app behavior remains one-time payment until checkout, webhook, entitlement, and UI code are changed for subscriptions.
 
 ## RLS / Service-Role Assumptions
 

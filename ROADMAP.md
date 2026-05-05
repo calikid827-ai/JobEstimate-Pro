@@ -40,11 +40,11 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Run the full production-readiness smoke test using `PRE_LAUNCH_SMOKE_TEST.md`.
-2. Run production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md`.
-3. Subscription billing implementation only after final pricing decision.
-4. Centralize localStorage access with a small persistence helper.
-5. Run `npm run lint` and triage launch-blocking issues.
+1. Subscription billing implementation after final pricing decision.
+2. Subscription/free-limit regression tests after billing implementation.
+3. Centralize localStorage access with a small persistence helper.
+4. Run `npm run lint` and triage launch-blocking issues.
+5. Resolve any remaining launch blockers found after production smoke testing.
 
 Completed pre-launch task kept visible:
 
@@ -52,6 +52,9 @@ Completed pre-launch task kept visible:
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
+- DONE: Full production-readiness smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, current Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
+- DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
+- DONE: Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
 
 ## 1. Critical Fixes
 
@@ -116,7 +119,7 @@ Completed pre-launch task kept visible:
 
 ### 1.6 Prepare Subscription Billing Model
 
-- Status: Not started / pending final pricing decision.
+- Status: Stripe/Vercel prerequisites complete; subscription billing code not started.
 - Why it matters: The product has not launched with paying users yet, so the billing model can still move from one-time unlimited access to a recurring subscription without customer migration risk. This should be decided before public launch.
 - Files likely affected:
   - `app/api/checkout/route.ts`
@@ -127,7 +130,9 @@ Completed pre-launch task kept visible:
   - Supabase entitlement records/schema
   - Stripe product/price configuration
 - Notes:
-  - Stripe Price should likely become recurring monthly.
+  - Stripe recurring monthly Pro price has been created.
+  - Vercel now has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after adding the env var.
+  - Current live app behavior is still one-time payment because the code still uses `STRIPE_PRICE_ID` with `mode: "payment"`.
   - Entitlement records may need `subscription_status`, `current_period_end`, `cancel_at_period_end`, and `stripe_customer_id`.
   - Success/cancel pages may need subscription-aware copy.
   - Webhook should eventually handle subscription lifecycle events such as subscription created/updated/deleted, invoice paid, invoice payment failed, and checkout completion.
@@ -139,7 +144,7 @@ Completed pre-launch task kept visible:
 
 ### 1.7 Production Supabase Schema Checklist
 
-- Status: Done. `SUPABASE_PRODUCTION_CHECKLIST.md` now exists.
+- Status: Done. `SUPABASE_PRODUCTION_CHECKLIST.md` exists, and production Supabase verification has been completed for the current launch-critical paths.
 - Why it matters: Production Supabase schema, RPCs, indexes, and uniqueness constraints must match the launch-critical entitlement, webhook dedupe, approval snapshot, owner sync token, approval, and approval-created invoice workflows.
 - Files likely affected:
   - `SUPABASE_PRODUCTION_CHECKLIST.md`
@@ -150,16 +155,16 @@ Completed pre-launch task kept visible:
   - Approval proposal/link/token/sync tables.
   - Proposal approval and approval invoice tables.
   - Required uniqueness constraints for duplicate-protected flows.
-- Next step: Run the checklist's manual verification queries and smoke tests against production; do not recreate the checklist.
+- Verification completed: Manual production checks passed for entitlement/free-limit tables and RPCs, Stripe webhook dedupe, approval proposal/link/token/sync tables, proposal approvals, approval invoices, and required duplicate-protection paths.
 - Risk level: Low
 - Difficulty: Small
 - Suggested order: Completed
 
 ### 1.7a Pre-Launch Smoke Test Checklist
 
-- Status: Done. `PRE_LAUNCH_SMOKE_TEST.md` now exists.
+- Status: Done. `PRE_LAUNCH_SMOKE_TEST.md` exists, and the full app-side production-readiness smoke test has passed.
 - Why it matters: The current PWA/web launch path now has a practical manual checklist covering environment variables, free generation, account/access refresh, selected-page plan generation, estimate/invoice PDFs, current Stripe Checkout, success entitlement refresh, server-backed approvals, approval-created invoice import, production log safety, and Supabase checkpoints.
-- Next step: Run the checklist against production or the production-equivalent launch environment; do not recreate the checklist.
+- Verification completed: The tested flow passed free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, current Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
 - Risk level: Low
 - Difficulty: Small
 - Suggested order: Completed

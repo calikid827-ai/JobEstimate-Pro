@@ -75,6 +75,12 @@ STRIPE_PRICE_ID=
 STRIPE_WEBHOOK_SECRET=
 ```
 
+Prepared for upcoming subscription checkout:
+
+```bash
+STRIPE_PRO_MONTHLY_PRICE_ID=
+```
+
 Optional origin allowlist for production generate requests:
 
 ```bash
@@ -85,6 +91,8 @@ Notes:
 
 - `NEXT_PUBLIC_SITE_URL` is used by checkout redirects and same-origin request protection.
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Do not expose it in client code.
+- Current live checkout still uses the one-time `STRIPE_PRICE_ID` with `mode: "payment"` until subscription billing code is implemented.
+- A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
 - Detailed server logs are development-only in the generate path; production logs should not include customer scope, plan, or pricing details.
 
 ## API Routes
