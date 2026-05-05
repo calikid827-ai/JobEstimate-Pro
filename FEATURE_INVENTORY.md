@@ -439,7 +439,7 @@ Known gaps:
 ## Technical Debt / Broken Areas
 
 - `app/app/page.tsx` is very large and mixes UI, business logic, PDF generation, persistence, and API orchestration.
-- Many components and routes use `any`, causing repo-wide lint failures.
+- Many components and routes use `any`, causing repo-wide lint failures. A safe lint triage pass reduced the count from 218 to 215 and confirmed `npx tsc --noEmit` passes, but broad lint cleanup remains deferred.
 - Full server-backed jobs/estimates/invoices are not implemented yet; only the approval snapshot/status/invoice sync workflow is server-backed.
 - Shared invoice creation logic is centralized through `buildInvoiceFromEstimate()` and used by `/app`, same-device approval fallback, and server approval invoice creation.
 - PDF HTML generation is large, duplicated, and brittle.

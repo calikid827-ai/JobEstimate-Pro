@@ -141,7 +141,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Public approval GET payload is minimized and customer-safe.
 - DONE: Approval status sync requires owner email plus owner sync token instead of email-only.
 - PARTIAL: Full repo-wide log audit is not guaranteed complete outside the recently inspected routes and app page.
-- PARTIAL: Lint may still report pre-existing project-wide issues such as `any`, unused helpers, and hook warnings.
+- DONE/PARTIAL: Safe lint triage pass completed. `npx tsc --noEmit` passes. `npm run lint` still fails due to deferred broad existing lint debt, including widespread `no-explicit-any` cleanup, hook dependency rewrites, image optimization warnings, unused symbols, and large component prop typing.
 - DONE: Supabase production schema and indexes have been manually verified against `SUPABASE_PRODUCTION_CHECKLIST.md` for the current launch-critical paths.
 - PARTIAL: No full authentication/workspace isolation yet.
 
@@ -180,7 +180,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
 - DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
-- PARTIAL: Run `npm run lint` and decide which lint failures are launch-blocking versus post-launch cleanup.
+- DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
 
 ## Can-Wait Until After Launch
 
@@ -210,21 +210,22 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 3. PARTIAL: Resolve any subscription or non-billing launch blockers found during final verification.
    - Keep fixes narrowly scoped to verified production-readiness failures.
 
-4. PARTIAL: Run `npm run lint` and triage launch-blocking issues.
-   - Separate real launch blockers from broader post-launch cleanup.
+4. PARTIAL: Resolve any remaining non-billing launch blockers found during focused verification.
+   - Keep fixes narrowly scoped to verified runtime, production-safety, or launch-readiness failures.
 
-5. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+5. PARTIAL: Narrow targeted lint cleanup batches only where they reduce real launch risk.
+   - Broad repo-wide lint cleanup remains deferred. Do not start sweeping `any` rewrites, hook dependency rewrites, image optimization conversions, unused-symbol cleanup, or large component prop typing unless a specific runtime risk is identified.
+
+6. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
    - Full server-backed persistence remains deferred; the completed localStorage helper pass did not change data shapes or add server-backed jobs/estimates/invoices.
 
-6. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+7. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
 
-7. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
+8. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
 
-8. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
+9. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
 
-9. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
-
-10. DEFERRED: Broader persistence refactors beyond the thin localStorage helper until after launch-critical workflows are stable.
+10. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
 
 ## Features We Should Not Rebuild
 

@@ -42,8 +42,8 @@ Difficulty levels:
 
 1. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
 2. Subscription/free-limit regression tests after final billing verification if still needed.
-3. Run `npm run lint` and triage launch-blocking issues.
-4. Resolve any remaining launch blockers found after production smoke testing.
+3. Resolve any remaining launch blockers found after production smoke testing or focused verification.
+4. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 
 Completed pre-launch task kept visible:
 
@@ -56,6 +56,7 @@ Completed pre-launch task kept visible:
 - DONE: Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
 - DONE/PARTIAL: Subscription billing implementation foundation is in place: checkout mode switch, monthly price env var, Supabase columns, 6-event webhook handling, subscription-aware entitlement response, Account & Access status copy, success/cancel copy, and focused entitlement tests are done; final payment/webhook entitlement verification remains pending.
 - DONE/PARTIAL: Thin localStorage persistence helper is in place. `app/app/lib/local-persistence.ts` centralizes typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard` email/company migration support; broader server-backed persistence remains future work.
+- DONE/PARTIAL: Safe lint triage pass completed. `npm run lint` moved from 218 problems to 215 after small safe fixes, but still fails due to broad existing lint debt. `npx tsc --noEmit` passes.
 
 ## 1. Critical Fixes
 
@@ -254,13 +255,25 @@ Completed pre-launch task kept visible:
 
 ### 2.3 Fix Repo-Wide Lint Hotspots Incrementally
 
+- Status: Partial. Safe triage completed; broad cleanup remains deferred unless a specific runtime or launch-safety risk is found.
 - Why it matters: Lint currently fails mostly from `any`, unused variables, and hook warnings. This makes CI less useful and hides real issues.
+- Current triage result:
+  - `npm run lint` was run and still fails due to deferred broad existing lint debt.
+  - Lint count moved from 218 problems to 215 problems after small safe fixes.
+  - `npx tsc --noEmit` passes.
+  - Deferred categories include broad `no-explicit-any` cleanup, hook dependency rewrites, image optimization warnings, unused symbols, and large component prop typing.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/app/components/*.tsx`
   - `app/api/generate/route.ts`
   - `app/api/webhook/route.ts`
   - `app/approve/[id]/page.tsx`
+- Completed safe fixes:
+  - Removed unused `Metadata` import from `app/layout.tsx`.
+  - Replaced duplicated invoice hydration `any` callbacks in `app/app/page.tsx` with `normalizeStoredInvoice(x: unknown)`.
+- Guidance:
+  - Keep future lint work narrow and risk-based.
+  - Do not perform broad `any` rewrites, hook dependency rewrites, image conversions, unused-symbol cleanup, or component prop typing sweeps in launch-critical passes unless they are tied to a verified runtime issue.
 - Risk level: Medium
 - Difficulty: Large
 - Suggested order: 12

@@ -238,7 +238,7 @@ The app includes a thin local persistence helper at `app/app/lib/local-persisten
 - Estimate and invoice PDFs are generated with browser print windows, not server-side PDF rendering.
 - Plan intelligence is strong but can still degrade on difficult PDFs or incomplete selected sheets.
 - Some advanced analysis panels are diagnostic and not fully customer-facing.
-- Lint may still report existing project-wide cleanup issues.
+- `npm run lint` still reports existing project-wide cleanup issues, mostly broad `any` typing, hook dependency warnings, image optimization warnings, unused symbols, and large component prop typing. `npx tsc --noEmit` currently passes.
 - There is no full account or billing management page yet.
 
 ## Development Guidance
