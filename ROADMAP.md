@@ -17,11 +17,15 @@ Difficulty levels:
 ## Pre-Launch Strategy Notes
 
 - JobEstimate Pro has no current paying users, so the billing model can still change safely before public launch.
+- Current launch-channel strategy is PWA/web app first. Apple App Store distribution is undecided and deferred until after product validation.
+- Do not build native iOS/App Store features, iOS wrapper behavior, Apple in-app purchase flows, or App Store packaging yet.
+- Focus first on finishing web/PWA core workflows, subscription readiness, mobile web usability, production Supabase/Stripe readiness, and production safety.
+- Revisit App Store distribution only after real user validation, pricing validation, support burden validation, OpenAI/plan-rendering/storage cost validation, and a clearer mobile acquisition strategy.
 - The current Stripe setup is a one-time payment flow using `mode: "payment"` and a configured `STRIPE_PRICE_ID`. Treat the current one-time $29 unlimited-access offer as temporary/pre-launch.
 - Recommended future direction: move to a monthly subscription before public launch, unless the final cost model proves one-time access is sustainable.
 - Avoid promising unlimited generations forever until OpenAI, plan-rendering, storage, support, and abuse costs are proven.
 - Finish the existing core workflows before adding broad new features: estimate generation, plan intelligence readback, approvals, invoices, PDFs, account/entitlement status, and billing model clarity.
-- Do not implement billing changes until the pricing plan is decided. First decide the subscription offer, free limit, trial/grace behavior, cancellation behavior, and entitlement shape.
+- Do not implement billing changes until the pricing plan is decided. First decide the web subscription offer, free limit, trial/grace behavior, cancellation behavior, and entitlement shape.
 
 ## Proposed Pre-Launch Pricing Model
 
@@ -32,7 +36,7 @@ Difficulty levels:
 - Use fair-use language instead of unlimited language, such as “includes generous fair-use access for normal contractor estimating workflows.”
 - Future Business tier can be added later after launch for teams, higher usage, server-backed storage, client portal, invoice payments, or priority support.
 - Exact generation limits, fair-use thresholds, plan names, and launch pricing can still change before public launch.
-- Billing implementation should follow this direction only after the pricing decision is final.
+- Billing implementation should follow this direction only after the pricing decision is final, and should stay focused on the web/PWA Stripe Checkout path for now.
 
 ## 1. Critical Fixes
 
@@ -111,12 +115,28 @@ Difficulty levels:
   - Entitlement records may need `subscription_status`, `current_period_end`, `cancel_at_period_end`, and `stripe_customer_id`.
   - Success/cancel pages may need subscription-aware copy.
   - Webhook should eventually handle subscription lifecycle events such as subscription created/updated/deleted, invoice paid, invoice payment failed, and checkout completion.
+  - Keep this pass focused on web/PWA Stripe Checkout and web entitlement flows. Do not add Apple in-app purchase or App Store subscription requirements yet.
   - Do not implement billing changes until the pricing plan is decided.
 - Risk level: High
 - Difficulty: Medium
 - Suggested order: 6
 
-### 1.7 Pre-Launch Feature Completion Pass
+### 1.7 PWA/Web Launch Channel Focus
+
+- Status: Current pre-launch path.
+- Why it matters: The product still needs web/PWA workflow completion, subscription readiness, mobile web usability, and production safety before adding native distribution complexity.
+- Direction:
+  - Treat PWA/web app launch as the primary pre-launch path.
+  - Defer Apple App Store, native iOS, and iOS wrapper work until after validation.
+  - Do not build App Store packaging, Apple in-app purchases, native iOS-only features, or wrapper-specific behavior yet.
+  - Revisit App Store distribution after real user validation, pricing validation, support/cost model validation, and clearer mobile acquisition needs.
+- Files likely affected:
+  - Documentation only until the launch-channel decision changes.
+- Risk level: Low
+- Difficulty: Small
+- Suggested order: 7
+
+### 1.8 Pre-Launch Feature Completion Pass
 
 - Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
 - Files likely affected:
@@ -136,11 +156,12 @@ Difficulty levels:
   - Invoice workflow
   - PDF polish
   - Account/entitlement status
-  - Billing model
+  - Web/PWA subscription billing model
+  - Mobile web usability
   - README/setup
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 7
+- Suggested order: 8
 
 ## 2. Stability Upgrades
 
@@ -155,7 +176,7 @@ Difficulty levels:
   - `app/app/lib/constants.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 8
+- Suggested order: 9
 
 ### 2.2 Reduce `app/app/page.tsx` Responsibility
 
@@ -166,7 +187,7 @@ Difficulty levels:
   - New helpers under `app/app/lib/`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 9
+- Suggested order: 10
 
 ### 2.3 Fix Repo-Wide Lint Hotspots Incrementally
 
@@ -179,7 +200,7 @@ Difficulty levels:
   - `app/approve/[id]/page.tsx`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 10
+- Suggested order: 11
 
 ### 2.4 Add Focused Tests for Invoice and Approval Helpers
 
@@ -190,7 +211,7 @@ Difficulty levels:
   - `app/app/lib/types.ts`
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 11
+- Suggested order: 12
 
 ### 2.5 Add Safer Error Boundaries Around Plan/PDF Operations
 
@@ -204,7 +225,7 @@ Difficulty levels:
   - `app/api/generate/lib/plans/*`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 12
+- Suggested order: 13
 
 ## 3. Product Polish
 
@@ -217,7 +238,7 @@ Difficulty levels:
   - `app/app/lib/plan-pricing-carry.ts`
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 13
+- Suggested order: 14
 
 ### 3.2 Simplify Advanced Analysis Panels
 
@@ -228,7 +249,7 @@ Difficulty levels:
   - Possible new `AdvancedAnalysisSection` component file.
 - Risk level: Low
 - Difficulty: Medium
-- Suggested order: 14
+- Suggested order: 15
 
 ### 3.3 Improve PDF Visual Hierarchy
 
@@ -238,7 +259,7 @@ Difficulty levels:
   - Future PDF helper files if extracted.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 15
+- Suggested order: 16
 
 ### 3.4 Add Account/Entitlement Status Surface
 
@@ -249,7 +270,7 @@ Difficulty levels:
   - `app/api/entitlement/route.ts`
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 16
+- Suggested order: 17
 
 ### 3.5 Product Copy Consistency Pass
 
@@ -263,7 +284,7 @@ Difficulty levels:
   - `README.md`
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: 17
+- Suggested order: 18
 
 ## 4. Server-Backed Features
 
@@ -278,7 +299,7 @@ Difficulty levels:
   - `app/app/lib/types.ts`
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 18
+- Suggested order: 19
 
 ### 4.2 Server-Backed Jobs
 
@@ -290,7 +311,7 @@ Difficulty levels:
   - `app/app/page.tsx`
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 19
+- Suggested order: 20
 
 ### 4.3 Shareable Approval Links
 
@@ -308,7 +329,7 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 20
+- Suggested order: 21
 
 ### 4.4 Server-Backed Invoices
 
@@ -321,7 +342,7 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 21
+- Suggested order: 22
 
 ### 4.5 Server-Backed Business Profile
 
@@ -332,7 +353,7 @@ Difficulty levels:
   - Supabase schema/migrations.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 22
+- Suggested order: 23
 
 ## 5. Premium Future Features
 
@@ -346,7 +367,7 @@ Difficulty levels:
   - Stripe/Supabase entitlement records.
 - Risk level: Medium
 - Difficulty: Medium
-- Suggested order: 23
+- Suggested order: 24
 
 ### 5.2 Server-Side PDF Generation
 
@@ -358,7 +379,7 @@ Difficulty levels:
   - Potential use of `pdfkit` or another renderer.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 24
+- Suggested order: 25
 
 ### 5.3 Better Plan Quantity Extraction
 
@@ -370,7 +391,7 @@ Difficulty levels:
   - Tests under `app/api/generate/lib/plans/`
 - Risk level: Medium
 - Difficulty: Large
-- Suggested order: 25
+- Suggested order: 26
 
 ### 5.4 Client Portal
 
@@ -381,7 +402,7 @@ Difficulty levels:
   - Auth/session layer.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 26
+- Suggested order: 27
 
 ### 5.5 Team/Multi-User Workspaces
 
@@ -393,7 +414,7 @@ Difficulty levels:
   - App navigation and permissions.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 27
+- Suggested order: 28
 
 ### 5.6 Payments on Invoices
 
@@ -406,4 +427,20 @@ Difficulty levels:
   - Approval workflow.
 - Risk level: High
 - Difficulty: Large
-- Suggested order: 28
+- Suggested order: 29
+
+### 5.7 Apple App Store / Native iOS Wrapper
+
+- Status: Deferred until after launch validation.
+- Why it matters: Native distribution adds App Store review, Apple platform policy, possible in-app purchase considerations, wrapper maintenance, and mobile-specific QA before the web product has validated retention, pricing, support load, and cost structure.
+- Direction:
+  - Do not build this before the PWA/web launch path is validated.
+  - Revisit only after real users validate the product workflow, launch pricing, support burden, OpenAI/plan-rendering/storage costs, and the need for App Store acquisition.
+  - Keep subscription planning web-first unless the launch-channel decision changes.
+- Files likely affected later:
+  - Native wrapper project if one is created.
+  - App Store metadata/screenshots/review materials.
+  - Billing/subscription architecture if Apple in-app purchase requirements become relevant.
+- Risk level: High
+- Difficulty: Large
+- Suggested order: 30

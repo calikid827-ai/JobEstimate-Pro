@@ -7,9 +7,18 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: JobEstimate Pro is a broad local-first contractor estimating app with estimate/change-order generation, editable pricing, plan/photo intelligence, PDFs, approvals, invoices, jobs, and local history.
 - DONE: Core generation still runs through `POST /api/generate` with OpenAI output, deterministic pricing engines, estimator orchestration, PriceGuard protections, and entitlement/free-limit checks.
 - DONE: Pricing authority, pricing protections, pricing owner logic, and totals are established and should not be rebuilt casually.
+- PARTIAL: Launch-channel strategy is PWA/web app first. Apple App Store/native iOS distribution is undecided and deferred until after real user, pricing, support, and cost-model validation.
 - PARTIAL: The contractor workspace is still mostly localStorage-backed. Estimates, jobs, invoices, budgets, actuals, company settings, and email live primarily in browser storage.
 - PARTIAL: Server persistence exists for approval snapshots, approval status, approval signatures, owner sync tokens, and approval-created invoice snapshots only.
 - PARTIAL: The app is feature-rich but still dense. Some advanced analysis surfaces are estimator/debug-oriented rather than fully customer-facing.
+
+## Launch Channel Strategy
+
+- CURRENT PATH: Launch as a PWA/web app first.
+- DEFERRED: Apple App Store launch, native iOS app work, and iOS wrapper work should wait until after product validation.
+- DO NOT BUILD YET: Native iOS/App Store features, App Store packaging, Apple in-app purchase flows, app review workarounds, or platform-specific wrapper behavior.
+- FOCUS FIRST: Finish web/PWA core workflows, subscription readiness for the web app, mobile web usability, production Supabase/Stripe readiness, approval/invoice/PDF stability, and production safety.
+- REVISIT LATER: Consider App Store distribution only after real user validation, pricing validation, support burden validation, OpenAI/plan-rendering/storage cost validation, and a clearer mobile acquisition strategy.
 
 ## Completed Major Upgrades
 
@@ -100,6 +109,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - PARTIAL: Billing is still email-based and does not use full accounts/auth.
 - PARTIAL: Checkout is still one-time payment mode using `STRIPE_PRICE_ID` and `mode: "payment"`.
 - PARTIAL: Product docs recommend moving to subscription before public launch.
+- PARTIAL: Subscription planning is web/PWA-first through Stripe Checkout and web entitlement flows. Do not design around Apple in-app purchases or App Store subscription requirements yet.
 - NOT STARTED: Subscription checkout mode.
 - NOT STARTED: Subscription lifecycle webhook handling.
 - NOT STARTED: Subscription-aware entitlement schema/status.
@@ -120,6 +130,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Remaining Must-Fix Before Launch
 
+- PARTIAL: Keep launch readiness scoped to the PWA/web app path unless the launch-channel decision changes.
 - PARTIAL: Decide and implement the final billing model before accepting public paid users.
 - PARTIAL: If launching with subscriptions, migrate Stripe checkout to recurring subscription mode and update entitlement/webhook handling.
 - PARTIAL: Verify production Supabase schema, RPCs, and uniqueness constraints for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
@@ -149,6 +160,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Can-Wait Until After Launch
 
+- DEFERRED: Apple App Store launch, native iOS app, and iOS wrapper.
 - DEFERRED: Full server-backed jobs.
 - DEFERRED: Full server-backed saved estimates.
 - DEFERRED: Full server-backed invoices.
