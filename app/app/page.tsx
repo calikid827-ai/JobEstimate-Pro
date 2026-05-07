@@ -101,12 +101,14 @@ import {
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
 import { checkScopeQuality } from "./lib/scope-quality-check"
+import { buildPriceGuardReview } from "./lib/priceguard-review"
 import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import InvoicesSection from "./components/InvoicesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
+import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
 import { detectChangeOrder } from "./lib/change-order-detector"
 import {
   getGenerateExceptionMessage,
@@ -2879,6 +2881,55 @@ const smartPricingReasons = useMemo(() => {
   minimumSafePrice,
   minimumSafeStatus,
   pricingMemory,
+])
+
+const priceGuardReview = useMemo(() => {
+  return buildPriceGuardReview({
+    hasResult: Boolean(result),
+    scopeText: scopeChange,
+    resultText: result?.text || "",
+    pricing,
+    schedule,
+    deposit: depositEnabled
+      ? {
+          enabled: true,
+          type: depositType,
+          value: Number(depositValue || 0),
+        }
+      : { enabled: false },
+    scopeQuality,
+    priceGuard,
+    priceGuardVerified,
+    pricingSource,
+    materialsList,
+    areaScopeBreakdown,
+    profitProtection,
+    missedScopeDetector,
+    profitLeakDetector,
+    estimateDefenseMode,
+    estimateRows,
+    estimateSections,
+  })
+}, [
+  result,
+  scopeChange,
+  pricing,
+  schedule,
+  depositEnabled,
+  depositType,
+  depositValue,
+  scopeQuality,
+  priceGuard,
+  priceGuardVerified,
+  pricingSource,
+  materialsList,
+  areaScopeBreakdown,
+  profitProtection,
+  missedScopeDetector,
+  profitLeakDetector,
+  estimateDefenseMode,
+  estimateRows,
+  estimateSections,
 ])
 
 function applySuggestedPrice() {
@@ -11753,6 +11804,10 @@ const accountAccessMessage = !normalizedEmail
     Generating professional document…
   </p>
 )}
+
+{!result && (
+  <PriceGuardReviewPanel review={null} hasResult={false} />
+)}
 </div>
 
 {result && (
@@ -11816,6 +11871,8 @@ const accountAccessMessage = !normalizedEmail
   estimateConfidence={estimateConfidence}
 />
 )}
+
+    <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
 
     <PlanAwareEstimatorReadbackCard
       planIntelligence={planIntelligence}
