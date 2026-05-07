@@ -40,11 +40,13 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
-2. Subscription/free-limit regression tests after final billing verification if still needed.
-3. Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
-4. Resolve any remaining launch blockers found after production smoke testing or focused verification.
-5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
+2. Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
+3. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
+4. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
+5. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
+6. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+7. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
 
 Completed pre-launch task kept visible:
 
@@ -52,6 +54,7 @@ Completed pre-launch task kept visible:
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented in `/app`. It computes UI-side review notes from existing estimate state, including score/level, missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, customer-ready price defense notes, contractor-only risk notes, and a pre-generation fallback state. It does not change pricing math, generation, PDFs, approvals, invoices, billing, API routes, or saved data shapes.
+- DONE: Saved Estimates and Invoices empty states/workflow guidance now keep those sections visible when filtered lists are empty and explain where records come from, including selected-job context when applicable.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
 - DONE: Full production-readiness smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, pre-subscription Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
 - DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
@@ -196,6 +199,7 @@ Completed pre-launch task kept visible:
 
 - Status note: Mobile core workflow polish is done. Style-only responsive improvements were applied to `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
 - Status note: First-version deterministic PriceGuard Review / Estimate Intelligence launch polish is done through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration.
+- Status note: Saved Estimates and Invoices empty states/workflow guidance are done for the current launch pass. Empty filtered lists no longer disappear; they explain the workflow and include active-job context where available.
 - Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
 - Files likely affected:
   - `app/app/page.tsx`
@@ -212,7 +216,8 @@ Completed pre-launch task kept visible:
   - Plan intelligence polish
   - Approval workflow
   - Invoice workflow
-  - Deterministic PriceGuard Review / Estimate Intelligence panel is complete for the first launch-safe version; future deeper PriceGuard improvements remain future work.
+  - Deterministic PriceGuard Review / Estimate Intelligence panel is complete for the first launch-safe version; future deeper PriceGuard improvements remain future work after focused QA.
+  - Saved estimate and invoice workflow clarity is complete for the current empty-state pass; future changes should be copy/style QA only unless a real runtime bug is found.
   - PDF polish
   - Account/entitlement status surface is complete; keep it stable.
   - Web/PWA subscription billing model
@@ -298,6 +303,7 @@ Completed pre-launch task kept visible:
 
 - Status note: Browser-derived selected-page PDFs now render their reduced pages as `1..N` for image/vision fallback while preserving original source page provenance. Remaining work here is recovery polish for genuinely failed indexing/rendering cases.
 - Status note: Plan Intelligence now reports evidence strength as Strong, Useful, or Review-only, including selected/indexed/skipped pages, text extraction, rendered image availability, hard quantity support, and confirmation-needed status. Estimate PDFs also include a compact customer-safe version of this plan evidence/readiness summary.
+- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next work is focused QA and copy polish for degraded plan/PDF cases, not a rebuild of upload or Plan Intelligence logic.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`
@@ -364,7 +370,7 @@ Completed pre-launch task kept visible:
 
 ### 3.5 Product Copy Consistency Pass
 
-- Status: Known payment page copy is current. Legacy `scopeguard_*` localStorage migration keys remain intentionally.
+- Status: Known payment page copy is subscription-oriented and current. Legacy `scopeguard_*` localStorage migration keys remain intentionally. The remaining docs risk is narrow: `PRE_LAUNCH_SMOKE_TEST.md` still has older one-time checkout language and should be updated in a docs-only follow-up.
 - Why it matters: Product-facing copy should consistently use JobEstimate Pro. Migration internals can keep legacy names when needed for data continuity.
 - Files likely affected:
   - `app/page.tsx`
@@ -375,6 +381,42 @@ Completed pre-launch task kept visible:
 - Risk level: Low
 - Difficulty: Small
 - Suggested order: 18
+
+### 3.6 Saved Estimate and Invoice Workflow Guidance
+
+- Status: Done for the current launch polish pass.
+- Why it matters: Users should understand where saved estimates and invoices come from, especially when an active job filter has no records yet.
+- Completed scope:
+  - Saved Estimates no longer disappears when the filtered history is empty.
+  - Invoices no longer disappears when the filtered invoice list is empty.
+  - Empty states explain that saved estimates appear after generation and invoices are created from Saved Estimates or Jobs.
+  - Selected-job context is shown when applicable.
+  - Existing buttons/actions remain intact when records exist.
+- Files affected:
+  - `app/app/components/SavedEstimatesSection.tsx`
+  - `app/app/components/InvoicesSection.tsx`
+  - `app/app/page.tsx`
+- Risk level: Low
+- Difficulty: Small
+- Suggested order: Completed
+
+### 3.7 PriceGuard Review / Estimate Intelligence QA
+
+- Status: First version complete; focused QA remains an active non-billing task.
+- Why it matters: PriceGuard Review is now a core product positioning surface. It should stay deterministic, contractor-friendly, mobile-safe, and clearly separated from customer-facing PDF output unless intentionally changed later.
+- Current first-version scope:
+  - UI-side deterministic helper in `app/app/lib/priceguard-review.ts`.
+  - Panel component in `app/app/components/PriceGuardReviewPanel.tsx`.
+  - `/app` result workflow integration with pre-generation fallback state.
+  - No pricing math, generation, Plan Intelligence, PDF, approval, invoice, billing, API route, localStorage key, or saved data-shape changes.
+- Future deeper work:
+  - Stronger missed-scope heuristics.
+  - More trade-specific risk notes.
+  - Better confidence wording.
+  - Customer-ready bid-defense export only if later product scope explicitly calls for it.
+- Risk level: Low
+- Difficulty: Small
+- Suggested order: Active
 
 ## 4. Server-Backed Features
 

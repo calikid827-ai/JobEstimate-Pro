@@ -1,12 +1,13 @@
 # Pre-Launch Smoke Test
 
-Use this checklist to verify the current PWA/web launch path end to end before changing billing or launching publicly. This is a manual smoke test, not a replacement for automated tests or the production Supabase verification checklist.
+Use this checklist to verify the current PWA/web app workflow end to end before launching publicly. This is a manual smoke test, not a replacement for automated tests, the production Supabase verification checklist, or the focused subscription verification checklist.
 
 Current scope:
 
-- In scope: current web/PWA app, free generation, current Stripe Checkout payment flow, entitlement refresh, plan upload/selected-page generation, estimate and invoice PDFs, server-backed approval links, cross-device approval, approval sync, approval-created invoice import, production log safety, and Supabase checkpoints.
-- Out of scope: Stripe subscription migration, subscription lifecycle webhooks, billing portal, invoice payments, full auth/workspaces, server-backed jobs/estimates/invoices, App Store/native iOS work.
-- Important: Stripe Checkout is currently one-time `mode: "payment"` with `STRIPE_PRICE_ID`. Keep subscription migration marked not part of this smoke test unless billing has already been changed.
+- In scope: current web/PWA app, free generation, subscription checkout foundation smoke, entitlement refresh behavior, plan upload/selected-page generation, estimate and invoice PDFs, server-backed approval links, cross-device approval, approval sync, approval-created invoice import, production log safety, and Supabase checkpoints.
+- Out of scope: final subscription payment/webhook entitlement verification, billing portal, invoice payments, full auth/workspaces, server-backed jobs/estimates/invoices, App Store/native iOS work.
+- Important: The subscription billing foundation is implemented. `/api/checkout` uses `STRIPE_PRO_MONTHLY_PRICE_ID` with `mode: "subscription"`, `/api/webhook` handles the required subscription lifecycle events, `/api/entitlement` returns subscription-aware fields, `/app` shows plan/status/period information, and `/success` and `/cancel` use subscription-oriented copy.
+- Important: Final subscription payment, webhook delivery, and entitlement activation verification is still pending until `SUBSCRIPTION_TEST_CHECKLIST.md` is completed. The prior completed app-side smoke test included the older pre-subscription Stripe checkout flow; this checklist now reflects the current subscription foundation without claiming final subscription verification has passed.
 
 ## Test Setup
 
@@ -26,7 +27,8 @@ Before starting, record:
 - Production URL:
 - Supabase project:
 - Stripe mode: test or live:
-- Stripe price ID:
+- Stripe recurring monthly price ID:
+- Final subscription verification status: pending/pass/fail:
 - Browser/device 1:
 - Browser/device 2:
 
@@ -41,7 +43,7 @@ Required:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_SITE_URL`
 - `STRIPE_SECRET_KEY`
-- `STRIPE_PRICE_ID`
+- `STRIPE_PRO_MONTHLY_PRICE_ID`
 - `STRIPE_WEBHOOK_SECRET`
 
 Optional:
@@ -53,7 +55,8 @@ Expected result:
 - `NEXT_PUBLIC_SITE_URL` is the production origin with no path suffix.
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only and is not exposed to client bundles or browser devtools.
 - Stripe webhook endpoint points to `POST /api/webhook`.
-- `STRIPE_PRICE_ID` matches the current one-time Checkout product unless billing has already been changed.
+- `STRIPE_PRO_MONTHLY_PRICE_ID` matches the current recurring monthly Pro price.
+- Stripe webhook endpoint is configured for the subscription events listed in `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - `ALLOWED_ORIGIN_HOSTS`, if set, allows the production app origin.
 
 If this fails:
@@ -201,9 +204,9 @@ If this fails:
 - If balance invoice creation fails, confirm the estimate has a deposit and remaining balance.
 - If PDF is blocked, allow pop-ups and retry.
 
-## 8. Stripe Checkout Test Flow
+## 8. Stripe Subscription Checkout Foundation Smoke
 
-This verifies the current one-time Checkout flow only.
+This verifies that the deployed app starts the current subscription Checkout path. It does not replace final subscription payment/webhook entitlement verification in `SUBSCRIPTION_TEST_CHECKLIST.md`.
 
 Steps:
 
@@ -211,45 +214,49 @@ Steps:
 2. Enter the owner email on `/app`.
 3. Exhaust the free limit or use a test state where `Upgrade for Pro Access` is visible.
 4. Click `Upgrade for Pro Access`.
-5. Complete Stripe Checkout with the same email.
-6. Confirm redirect to `/success`.
+5. Confirm Stripe Checkout opens for the same email.
+6. Inspect the Checkout session in Stripe Dashboard or Network logs.
+7. Use Stripe's cancel/back path to return to `/cancel`, unless this run is intentionally continuing into `SUBSCRIPTION_TEST_CHECKLIST.md`.
 
 Expected result:
 
 - `POST /api/checkout` creates a Checkout session.
-- Checkout uses the configured `STRIPE_PRICE_ID`.
-- Checkout mode is one-time payment unless billing has already been changed.
-- Success redirect reaches `/success`.
-- Stripe webhook receives `checkout.session.completed`.
+- Checkout uses the configured `STRIPE_PRO_MONTHLY_PRICE_ID`.
+- Checkout mode is `subscription`.
+- Checkout metadata/email matches the app email.
+- Cancel redirect reaches `/cancel` and uses subscription-oriented copy.
+- No one-time, lifetime, or unlimited-access language appears.
 
 If this fails:
 
-- Check `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and `NEXT_PUBLIC_SITE_URL`.
+- Check `STRIPE_SECRET_KEY`, `STRIPE_PRO_MONTHLY_PRICE_ID`, and `NEXT_PUBLIC_SITE_URL`.
 - Verify the Stripe webhook endpoint and `STRIPE_WEBHOOK_SECRET`.
 - In Stripe Dashboard, inspect the Checkout session and webhook delivery.
-- Do not start subscription migration as part of this smoke test.
+- Do not change billing behavior during this smoke-test pass; use `SUBSCRIPTION_TEST_CHECKLIST.md` for final subscription verification.
 
 ## 9. Success Entitlement Refresh
 
 Steps:
 
-1. On `/success`, wait for the entitlement confirmation message.
-2. Click `Return to JobEstimate Pro`.
-3. In `/app`, click `Refresh access`.
+1. Only run this section after intentionally completing subscription Checkout in test mode.
+2. On `/success`, wait for the entitlement confirmation or syncing message.
+3. Click `Return to JobEstimate Pro`.
+4. In `/app`, click `Refresh access`.
 
 Expected result:
 
 - `/success` posts the saved `jobestimatepro_email` to `/api/entitlement`.
-- Success page says Pro access is active after webhook processing.
-- `/app` Account & Access shows `Pro access`.
-- Free limit warning/upgrade prompt no longer blocks generation for that email.
+- If webhook processing has completed, `/success` and `/app` show Pro subscription access with subscription-aware plan/status/period information.
+- If webhook processing is still pending, `/success` uses subscription syncing guidance and `/app` can refresh entitlement again.
+- This section can confirm success-page refresh behavior, but final pass/fail for subscription payment, webhook delivery, and entitlement activation belongs in `SUBSCRIPTION_TEST_CHECKLIST.md`.
 
 If this fails:
 
 - Wait a few seconds and click `Refresh access` again.
-- Confirm the webhook inserted/updated `entitlements` with `active = true` for the lowercase email.
+- Confirm the webhook inserted/updated `entitlements` for the lowercase email with subscription-aware fields.
 - Verify webhook dedupe did not fail for `stripe_webhook_events`.
 - Confirm Checkout email matches the app email.
+- Complete `SUBSCRIPTION_TEST_CHECKLIST.md` before treating paid subscription launch as verified.
 
 ## 10. Approval Link Creation
 
@@ -360,8 +367,9 @@ Expected result:
 
 - Row exists after generation or checkout.
 - `usage_count` reflects free generation use.
-- `active = true` after successful paid Checkout webhook.
-- Webhook upsert did not reset `usage_count`.
+- If subscription Checkout was completed and verified through `SUBSCRIPTION_TEST_CHECKLIST.md`, subscription fields reflect the Stripe subscription and `active` follows the entitlement policy documented there.
+- If final subscription verification has not been completed, do not claim paid entitlement activation has passed from this smoke test alone.
+- Webhook upserts do not reset `usage_count`.
 
 Free-generation RPC:
 
@@ -389,7 +397,7 @@ limit 10;
 
 Expected result:
 
-- Recent `checkout.session.completed` event exists after Checkout.
+- Recent subscription events exist after final subscription verification, including `checkout.session.completed` and the relevant subscription/invoice events from `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - Duplicate webhook retries are safe because `event_id` is unique.
 
 Approval proposal:
@@ -496,8 +504,9 @@ Record final result:
 - Plan selected-page generation:
 - Estimate PDF:
 - Invoice creation/PDF:
-- Stripe Checkout:
-- Success entitlement refresh:
+- Stripe subscription checkout foundation:
+- Success entitlement refresh, if subscription checkout was intentionally completed:
+- Final subscription payment/webhook verification using `SUBSCRIPTION_TEST_CHECKLIST.md`:
 - Approval link creation:
 - Cross-browser approval:
 - Approval sync:
@@ -506,6 +515,6 @@ Record final result:
 
 Launch readiness rule:
 
-- Passing this smoke test means the current PWA/web launch path works for the tested happy path.
-- Any customer-data log exposure, broken production generation, failed paid entitlement activation, failed cross-device approval, duplicate approval-created invoices, or missing required Supabase constraints should block public launch.
-- Stripe subscription migration remains separate and should only start after the billing decision is final.
+- Passing this smoke test means the current PWA/web app workflow works for the tested happy path.
+- Public paid launch also requires passing `SUBSCRIPTION_TEST_CHECKLIST.md`; final subscription payment, webhook delivery, and entitlement activation verification is still pending until that focused checklist is completed.
+- Any customer-data log exposure, broken production generation, failed final subscription entitlement verification, failed cross-device approval, duplicate approval-created invoices, or missing required Supabase constraints should block public launch.

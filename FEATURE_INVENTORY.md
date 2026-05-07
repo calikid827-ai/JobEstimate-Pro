@@ -81,11 +81,11 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
-- Saved estimate history.
+- Saved estimate history with empty-state workflow guidance and selected-job context when filtered history is empty.
 - Jobs dashboard.
 - Job actuals tracking.
 - Contract summary by job.
-- Invoice creation and invoice list.
+- Invoice creation and invoice list with empty-state workflow guidance and selected-job context when filtered invoices are empty.
 - Invoice status changes.
 - Customer approval page with signature capture.
 - Server-backed shareable approval links:
@@ -116,7 +116,8 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Server-backed approval links are implemented, but they rely on Supabase approval snapshot tables rather than full server-backed job/estimate/invoice persistence.
 - Approval sync is hardened with an owner sync token, but it is not full authentication and does not replace user accounts/workspaces.
 - Same-device local approval invoice creation still exists as a fallback path.
-- Stripe success entitlement refresh has been fixed to POST the saved email, but there is still no full account/billing page.
+- Subscription billing foundation is implemented, including subscription checkout, subscription-aware entitlement response, Account & Access status, success/cancel copy, and focused entitlement tests. Final subscription payment/webhook entitlement verification is still pending.
+- There is still no billing portal or full auth-backed account/workspace system.
 - Plan intelligence readback is rich in the app UI and represented in generated estimate PDFs through a customer-safe Estimator Plan Review and compact plan evidence summary.
 - AI-generated scope prose can still be generic even when typed plan readback is stronger.
 - Jobs, estimates, invoices, budgets, and actuals remain local-first outside the server-backed approval snapshot workflow.
@@ -152,16 +153,19 @@ The product is already broad. The highest-risk areas are not missing core featur
 - `POST /api/checkout`
   - Creates a Stripe checkout session.
   - Uses customer email from the request.
+  - Uses the monthly Pro subscription price through `STRIPE_PRO_MONTHLY_PRICE_ID`.
+  - Uses Stripe Checkout subscription mode.
   - Requires Stripe price and site URL environment variables.
 
 - `POST /api/webhook`
   - Validates Stripe webhook signatures.
   - Dedupes events through Supabase.
-  - Activates entitlement on `checkout.session.completed`.
+  - Handles subscription lifecycle events for checkout completion, subscription created/updated/deleted, invoice paid, and invoice payment failed.
+  - Writes subscription status/period fields without resetting usage count.
 
 - `POST /api/entitlement`
   - Looks up entitlement status by email.
-  - Returns active entitlement state, usage count, and free limit.
+  - Returns active entitlement state, usage count, free limit, subscription-aware plan/status fields, and current-period information when available.
 
 - `POST /api/approvals`
   - Saves a frozen customer-safe approval proposal snapshot.
@@ -265,10 +269,10 @@ Main components:
   - Job list, active job, contract values, actuals, invoice pipeline actions, approval links.
 
 - `InvoicesSection`
-  - Invoice list, statuses, PDF download, delete/clear actions.
+  - Invoice list, statuses, PDF download, delete/clear actions, and empty-state workflow guidance.
 
 - `SavedEstimatesSection`
-  - Estimate history, load/delete, invoice workflow actions.
+  - Estimate history, load/delete, invoice workflow actions, and empty-state workflow guidance.
 
 - `PhotoIntelligenceCard`
   - Photo analysis and scope-assist readback.
@@ -429,24 +433,28 @@ Known weaknesses:
 
 Implemented:
 
-- Stripe checkout session creation.
+- Stripe subscription checkout session creation.
+- Monthly Pro price environment wiring through `STRIPE_PRO_MONTHLY_PRICE_ID`.
 - Stripe webhook verification.
 - Webhook event dedupe.
-- Supabase entitlement activation.
-- Entitlement lookup by email.
+- Supabase entitlement activation and subscription status/period updates.
+- Subscription-aware entitlement lookup by email.
 - Free limit of 3 generations.
 - Usage consumption through Supabase RPC.
 - Success page entitlement refresh using saved email.
 - Checkout cancellation page.
+- Account & Access panel in `/app` with email, plan, subscription status, current-period information, free usage, and manual entitlement refresh.
+- Focused entitlement tests for active, trialing, past-due, canceled, unpaid/incomplete, and legacy access rules.
 
 Known gaps:
 
 - No billing portal.
-- No account page.
-- No subscription management UI.
+- No full auth-backed account/workspace system.
+- No subscription management portal UI.
 - Entitlement is email-based, not user-auth based.
 - No robust webhook-delay recovery UI beyond entitlement refresh.
 - Success/cancel pages use current JobEstimate Pro payment flow copy.
+- Final subscription payment/webhook entitlement verification is still pending before public paid launch.
 
 ## Technical Debt / Broken Areas
 
@@ -454,10 +462,10 @@ Known gaps:
 - Many components and routes use `any`, causing repo-wide lint failures. A safe lint triage pass reduced the count from 218 to 215 and confirmed `npx tsc --noEmit` passes, but broad lint cleanup remains deferred.
 - Full server-backed jobs/estimates/invoices are not implemented yet; only the approval snapshot/status/invoice sync workflow is server-backed.
 - Shared invoice creation logic is centralized through `buildInvoiceFromEstimate()` and used by `/app`, same-device approval fallback, and server approval invoice creation.
-- PDF HTML generation is large, duplicated, and brittle.
+- PDF HTML generation is large, duplicated, and brittle because output still depends on browser print windows.
 - LocalStorage writes are partially centralized through `app/app/lib/local-persistence.ts` for safe page-level paths; some component and fallback-route persistence remains localStorage-first.
 - Advanced analysis UI is powerful but dense.
-- Plan intelligence is represented in PDFs through customer-safe plan review and compact evidence/readiness summary, though broader PDF visual hierarchy can still be improved.
+- Plan intelligence is represented in PDFs through customer-safe plan review and compact evidence/readiness summary. Estimate/invoice PDF visual hierarchy polish is complete for the current browser print-window launch pass; server-side PDFs remain future work unless browser output becomes a blocker.
 - Recently inspected generate-route and app debug/customer-detail logs are development-gated; a full repo-wide log audit is not guaranteed complete.
 - Several helper functions are unused or partially wired.
 - README describes the actual app, environment variables, Supabase requirements, Stripe setup, approval links, and plan upload/rendering behavior.
@@ -465,15 +473,15 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Server-backed saved estimates, jobs, and full invoice management.
-- Hardening/polish for the implemented shareable approval links.
-- PDF visual hierarchy polish for dense estimates and plan-assisted results.
-- Stripe/account status page with entitlement refresh and billing guidance.
-- Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, fixture/device counts.
-- Broader server-backed persistence layer for saved estimates, jobs, invoices, budgets, and actuals.
-- Account/entitlement status surface with current email, free usage, access state, and refresh action.
-- Production Supabase schema checklist for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
-- UI simplification for advanced analysis into customer-facing and estimator-facing modes.
+- Docs-only refresh of `PRE_LAUNCH_SMOKE_TEST.md` so the smoke checklist no longer describes the older one-time checkout flow.
+- Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
+- Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
+- Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
+- Small customer-facing estimate confidence and contractor workflow copy polish where manual QA finds confusion.
+- Narrow targeted lint cleanup only where it reduces a concrete launch/runtime risk.
+- Final subscription test-mode/live payment and webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
+- Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, and fixture/device counts after current launch-critical QA.
+- Broader server-backed persistence layer for saved estimates, jobs, invoices, budgets, and actuals after launch-critical local-first workflows and billing verification are stable.
 
 ## Features We Should Not Rebuild
 
@@ -487,8 +495,10 @@ These already exist and should be extended or hardened rather than rebuilt:
 - Estimate PDF generation.
 - Invoice PDF generation.
 - Saved estimate history.
+- Saved estimate empty states/workflow guidance.
 - Jobs dashboard foundation.
 - Invoice creation and invoice status management.
+- Invoice empty states/workflow guidance.
 - Customer approval/signature page.
 - Server-backed approval snapshot and approval-status sync flow.
 - Photo upload and photo intelligence.
@@ -503,8 +513,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Add an account/entitlement status surface in `/app`.
-2. Add focused invoice helper tests for full, deposit, balance, tax, missing-deposit, and approval-created invoice behavior.
-3. Create a production Supabase schema checklist for entitlement, webhook dedupe, approvals, owner sync tokens, and approval invoices.
-4. Improve mobile usability for the estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, and invoices.
-5. Polish estimate/invoice PDF visual hierarchy while keeping browser print-window output.
+1. Update `PRE_LAUNCH_SMOKE_TEST.md` to match the implemented subscription checkout foundation and pending final subscription verification.
+2. Run focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel and make only copy/style fixes if needed.
+3. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
+4. QA plan upload guidance and fallback messaging for selected pages, weak evidence, and degraded PDF/rendering cases.
+5. Polish customer-facing estimate confidence and job dashboard workflow guidance only where current copy creates confusion.
