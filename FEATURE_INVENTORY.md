@@ -70,6 +70,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Total
 - Deterministic PriceGuard Review / Estimate Intelligence panel:
   - UI-side review from existing estimate state
+  - Filters warnings against generated customer-facing estimate text to reduce over-warning when the generated scope already resolves original-scope concerns
   - Score/level
   - Missed-scope warnings
   - Labor/material confidence notes
@@ -213,6 +214,7 @@ Implemented pricing and guard modules include:
 - Cross-trade mobilization handling.
 - PriceGuard status/confidence.
 - PriceGuard applied rules, assumptions, and warnings.
+- PriceGuard Review warning filtering against generated customer-facing estimate text to reduce false positives for resolved prep, material, cleanup, protection, exclusion, approval, and work-process concerns.
 - Plan-aware live trade pricing influence.
 - Section rows and embedded burdens.
 - Estimate rows normalized from structured sections.
@@ -223,7 +225,7 @@ Implemented pricing and guard modules include:
 - Area scope breakdown.
 - Profit protection summary.
 - Scope X-ray/review insights.
-- UI-side deterministic PriceGuard Review / Estimate Intelligence panel.
+- UI-side deterministic PriceGuard Review / Estimate Intelligence panel with generated-text warning filtering.
 
 Pricing authority, protections, owner resolution, and totals are already heavily implemented and tested. These should not be rebuilt casually.
 
@@ -474,7 +476,7 @@ Known gaps:
 ## Recommended Next Features
 
 - Docs-only refresh of `PRE_LAUNCH_SMOKE_TEST.md` so the smoke checklist no longer describes the older one-time checkout flow.
-- Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
+- Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 - Small customer-facing estimate confidence and contractor workflow copy polish where manual QA finds confusion.
@@ -514,7 +516,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 ## Top 5 Safest Next Upgrades
 
 1. Update `PRE_LAUNCH_SMOKE_TEST.md` to match the implemented subscription checkout foundation and pending final subscription verification.
-2. Run focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel and make only copy/style fixes if needed.
-3. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
-4. QA plan upload guidance and fallback messaging for selected pages, weak evidence, and degraded PDF/rendering cases.
-5. Polish customer-facing estimate confidence and job dashboard workflow guidance only where current copy creates confusion.
+2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
+3. QA plan upload guidance and fallback messaging for selected pages, weak evidence, and degraded PDF/rendering cases.
+4. Polish customer-facing estimate confidence and job dashboard workflow guidance only where current copy creates confusion.
+5. Keep further PriceGuard Review improvements narrow and deterministic if new QA finds over-warning or unclear copy.

@@ -42,6 +42,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
 - DONE: Advanced analysis customer-facing mode now opens estimate results with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration. It is UI-side only and does not change pricing math, estimate generation, Plan Intelligence, PDFs, approvals, invoices, billing, API routes, localStorage keys, or saved estimate data shapes.
+- DONE: PriceGuard Review QA false-positive reduction pass is complete. The deterministic helper now filters scope-quality warnings against the combined original scope and generated customer-facing estimate text, reducing over-warning when the generated estimate already includes prep, materials, cleanup, protection, exclusions, approval, or work process language.
 - DONE: Saved Estimates and Invoices now show launch-safe empty states and workflow guidance instead of disappearing when the active filter has no records. The guidance preserves existing actions when records exist and adds selected-job context when applicable.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
@@ -182,6 +183,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is complete for launch polish. It gives contractors a UI-side review of profit leaks, missed scope, labor/material confidence, scope clarity, exclusions, customer-ready price defense notes, and contractor-only risk notes without changing pricing, generation, PDFs, approvals, invoices, billing, or saved data shapes. `npx tsc --noEmit` passed; `npm run lint` still fails from known broad lint debt.
+- DONE: PriceGuard Review QA polish reduced false positives for generated estimates that already resolve original-scope concerns. It now recognizes generated scope language for baseboard/trim/molding work, linear-foot quantities, prep/preparation, caulk/fill/prime, install/measure/cut/finish workflow, and site-visit-only schedule confidence. `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance are complete for the current launch pass. Empty filtered lists now explain where saved estimates and invoices come from, include selected-job context where available, and preserve existing buttons/actions when data exists.
 - DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
@@ -209,9 +211,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - The checklist still includes older one-time checkout/`STRIPE_PRICE_ID` language from the pre-subscription smoke test.
    - Update it to reflect the implemented subscription foundation and final pending subscription verification without changing billing code.
 
-2. PARTIAL: Focused non-billing QA pass for the deterministic PriceGuard Review panel.
-   - Manually verify empty state, generated-estimate state, mobile layout, contractor-only note separation, and that the panel remains excluded from browser print/PDF output.
-   - Keep fixes UI-only unless a real runtime bug is found.
+2. DONE: Focused non-billing QA polish for the deterministic PriceGuard Review panel.
+   - False-positive reduction for generated scope language is complete.
+   - `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 
 3. PARTIAL: Focused non-billing QA pass for Saved Estimates and Invoices workflow clarity.
    - Verify empty states, selected-job filtering context, mobile layout, and existing invoice/saved-estimate actions when records exist.

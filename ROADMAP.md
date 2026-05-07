@@ -41,12 +41,11 @@ Difficulty levels:
 ## Current Next Active Tasks
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
-2. Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
-3. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-4. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
-5. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
-6. Narrow targeted lint cleanup batches only where they reduce real launch risk.
-7. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
+2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
+3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
+4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
+5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
 
 Completed pre-launch task kept visible:
 
@@ -54,6 +53,7 @@ Completed pre-launch task kept visible:
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented in `/app`. It computes UI-side review notes from existing estimate state, including score/level, missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, customer-ready price defense notes, contractor-only risk notes, and a pre-generation fallback state. It does not change pricing math, generation, PDFs, approvals, invoices, billing, API routes, or saved data shapes.
+- DONE: PriceGuard Review QA false-positive reduction pass is complete. The helper now filters scope-quality warnings against generated customer-facing estimate text and better recognizes trim/baseboard work, linear-foot quantities, prep/workflow language, and site-visit-only schedule confidence.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance now keep those sections visible when filtered lists are empty and explain where records come from, including selected-job context when applicable.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
 - DONE: Full production-readiness smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, pre-subscription Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
@@ -216,7 +216,7 @@ Completed pre-launch task kept visible:
   - Plan intelligence polish
   - Approval workflow
   - Invoice workflow
-  - Deterministic PriceGuard Review / Estimate Intelligence panel is complete for the first launch-safe version; future deeper PriceGuard improvements remain future work after focused QA.
+  - Deterministic PriceGuard Review / Estimate Intelligence panel is complete for the first launch-safe version, including the focused false-positive reduction QA pass. Future deeper PriceGuard improvements remain future work.
   - Saved estimate and invoice workflow clarity is complete for the current empty-state pass; future changes should be copy/style QA only unless a real runtime bug is found.
   - PDF polish
   - Account/entitlement status surface is complete; keep it stable.
@@ -402,12 +402,14 @@ Completed pre-launch task kept visible:
 
 ### 3.7 PriceGuard Review / Estimate Intelligence QA
 
-- Status: First version complete; focused QA remains an active non-billing task.
+- Status: Done for the current focused QA polish pass.
 - Why it matters: PriceGuard Review is now a core product positioning surface. It should stay deterministic, contractor-friendly, mobile-safe, and clearly separated from customer-facing PDF output unless intentionally changed later.
 - Current first-version scope:
   - UI-side deterministic helper in `app/app/lib/priceguard-review.ts`.
   - Panel component in `app/app/components/PriceGuardReviewPanel.tsx`.
   - `/app` result workflow integration with pre-generation fallback state.
+  - Scope-quality warnings are filtered against generated customer-facing estimate text to reduce over-warning when the generated scope already covers prep, materials, cleanup, protection, exclusions, approval, or work process language.
+  - The helper recognizes baseboard/trim/molding scope, linear-foot quantity language, prep/preparation, caulk/fill/prime, install/measure/cut/finish workflow language, and site-visit-only schedule confidence.
   - No pricing math, generation, Plan Intelligence, PDF, approval, invoice, billing, API route, localStorage key, or saved data-shape changes.
 - Future deeper work:
   - Stronger missed-scope heuristics.
@@ -416,7 +418,7 @@ Completed pre-launch task kept visible:
   - Customer-ready bid-defense export only if later product scope explicitly calls for it.
 - Risk level: Low
 - Difficulty: Small
-- Suggested order: Active
+- Suggested order: Completed
 
 ## 4. Server-Backed Features
 
