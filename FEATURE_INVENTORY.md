@@ -68,6 +68,16 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Other/mobilization
   - Markup
   - Total
+- Deterministic PriceGuard Review / Estimate Intelligence panel:
+  - UI-side review from existing estimate state
+  - Score/level
+  - Missed-scope warnings
+  - Labor/material confidence notes
+  - Scope clarity warnings
+  - Suggested exclusions
+  - Customer-ready price defense notes
+  - Contractor-only risk notes
+  - Pre-generation fallback state
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
@@ -90,6 +100,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Estimate PDF generation.
 - Invoice PDF generation.
 - Advanced analysis panels:
+  - PriceGuard Review / Estimate Intelligence
   - Photo intelligence
   - Plan intelligence
   - Estimator section handoff
@@ -208,6 +219,7 @@ Implemented pricing and guard modules include:
 - Area scope breakdown.
 - Profit protection summary.
 - Scope X-ray/review insights.
+- UI-side deterministic PriceGuard Review / Estimate Intelligence panel.
 
 Pricing authority, protections, owner resolution, and totals are already heavily implemented and tested. These should not be rebuilt casually.
 

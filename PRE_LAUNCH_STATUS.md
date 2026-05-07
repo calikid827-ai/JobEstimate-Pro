@@ -1,12 +1,13 @@
 # JobEstimate Pro Pre-Launch Status
 
-This document captures the current pre-launch state of JobEstimate Pro as of the latest approval, Plan Intelligence, PDF, logging, and documentation passes.
+This document captures the current pre-launch state of JobEstimate Pro as of the latest approval, Plan Intelligence, PDF, PriceGuard Review, logging, and documentation passes.
 
 ## Current App Status
 
 - DONE: JobEstimate Pro is a broad local-first contractor estimating app with estimate/change-order generation, editable pricing, plan/photo intelligence, PDFs, approvals, invoices, jobs, and local history.
 - DONE: Core generation still runs through `POST /api/generate` with OpenAI output, deterministic pricing engines, estimator orchestration, PriceGuard protections, and entitlement/free-limit checks.
 - DONE: Pricing authority, pricing protections, pricing owner logic, and totals are established and should not be rebuilt casually.
+- DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented in `/app` using UI-side helper logic. It reviews existing estimate state for score/level, missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, customer-ready price defense notes, contractor-only risk notes, and a pre-generation fallback state.
 - PARTIAL: Launch-channel strategy is PWA/web app first. Apple App Store/native iOS distribution is undecided and deferred until after real user, pricing, support, and cost-model validation.
 - PARTIAL: The contractor workspace is still mostly localStorage-backed. Estimates, jobs, invoices, budgets, actuals, company settings, and email live primarily in browser storage.
 - PARTIAL: Server persistence exists for approval snapshots, approval status, approval signatures, owner sync tokens, and approval-created invoice snapshots only.
@@ -40,6 +41,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Mobile core workflow polish pass applied style-only responsive improvements in `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
 - DONE: Advanced analysis customer-facing mode now opens estimate results with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
+- DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration. It is UI-side only and does not change pricing math, estimate generation, Plan Intelligence, PDFs, approvals, invoices, billing, API routes, localStorage keys, or saved estimate data shapes.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
@@ -141,7 +143,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Public approval GET payload is minimized and customer-safe.
 - DONE: Approval status sync requires owner email plus owner sync token instead of email-only.
 - PARTIAL: Full repo-wide log audit is not guaranteed complete outside the recently inspected routes and app page.
-- DONE/PARTIAL: Safe lint triage pass completed. `npx tsc --noEmit` passes. `npm run lint` still fails due to deferred broad existing lint debt, including widespread `no-explicit-any` cleanup, hook dependency rewrites, image optimization warnings, unused symbols, and large component prop typing.
+- DONE/PARTIAL: Safe lint triage pass completed. `npx tsc --noEmit` passes, including after the deterministic PriceGuard Review panel integration. `npm run lint` still fails due to deferred broad existing lint debt, including widespread `no-explicit-any` cleanup, hook dependency rewrites, image optimization warnings, unused symbols, and large component prop typing.
 - DONE: Supabase production schema and indexes have been manually verified against `SUPABASE_PRODUCTION_CHECKLIST.md` for the current launch-critical paths.
 - PARTIAL: No full authentication/workspace isolation yet.
 
@@ -178,6 +180,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Mobile core workflow polish improved small-screen layout, wrapping, spacing, and tap targets for estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
+- DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is complete for launch polish. It gives contractors a UI-side review of profit leaks, missed scope, labor/material confidence, scope clarity, exclusions, customer-ready price defense notes, and contractor-only risk notes without changing pricing, generation, PDFs, approvals, invoices, billing, or saved data shapes. `npx tsc --noEmit` passed; `npm run lint` still fails from known broad lint debt.
 - DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
 - DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
@@ -200,38 +203,43 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PENDING: Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
-   - Complete a real subscription checkout/payment in the intended Stripe mode, confirm all required webhook deliveries, and verify the Supabase entitlement row plus `/success`, `/api/entitlement`, and `/app` Account & Access behavior.
+1. PARTIAL: Focused non-billing QA pass for the new deterministic PriceGuard Review panel.
+   - Manually verify empty state, generated-estimate state, mobile layout, contractor-only note separation, and that the panel remains excluded from browser print/PDF output.
+   - Keep fixes UI-only unless a real runtime bug is found.
 
-2. PARTIAL: Subscription/free-limit regression tests after final billing verification.
-   - Extend coverage if the manual subscription verification finds gaps beyond the focused entitlement access-rule tests.
-   - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh as needed.
+2. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
+   - Keep copy consistent with deterministic review scope.
+   - Do not imply new pricing math, new AI calls, guaranteed coverage, or customer-visible PDF changes.
 
-3. PARTIAL: Resolve any subscription or non-billing launch blockers found during final verification.
-   - Keep fixes narrowly scoped to verified production-readiness failures.
+3. PARTIAL: Narrow targeted lint cleanup batches only where they reduce real launch risk.
+   - Broad repo-wide lint cleanup remains deferred. Do not start sweeping `any` rewrites, hook dependency rewrites, image optimization conversions, unused-symbol cleanup, or large component prop typing unless a specific runtime risk is identified.
 
 4. PARTIAL: Resolve any remaining non-billing launch blockers found during focused verification.
    - Keep fixes narrowly scoped to verified runtime, production-safety, or launch-readiness failures.
 
-5. PARTIAL: Narrow targeted lint cleanup batches only where they reduce real launch risk.
-   - Broad repo-wide lint cleanup remains deferred. Do not start sweeping `any` rewrites, hook dependency rewrites, image optimization conversions, unused-symbol cleanup, or large component prop typing unless a specific runtime risk is identified.
+5. PENDING: Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
+   - Complete a real subscription checkout/payment in the intended Stripe mode, confirm all required webhook deliveries, and verify the Supabase entitlement row plus `/success`, `/api/entitlement`, and `/app` Account & Access behavior.
 
-6. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
+6. PARTIAL: Subscription/free-limit regression tests after final billing verification.
+   - Extend coverage if the manual subscription verification finds gaps beyond the focused entitlement access-rule tests.
+   - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh as needed.
+
+7. PARTIAL: Resolve any subscription launch blockers found during final verification.
+   - Keep fixes narrowly scoped to verified production-readiness failures.
+
+8. DEFERRED: Start server-backed jobs/estimates design only after billing and launch-critical local-first workflows are stable.
    - Full server-backed persistence remains deferred; the completed localStorage helper pass did not change data shapes or add server-backed jobs/estimates/invoices.
 
-7. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
+9. DEFERRED: App Store/iOS wrapper planning only after web/PWA validation.
 
-8. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
-
-9. DEFERRED: Full authentication, accounts, and workspaces until after launch validation.
-
-10. DEFERRED: Billing portal/account management until after core subscription checkout, webhook, and entitlement behavior is stable.
+10. DEFERRED: Server-side PDF generation unless browser print-window output becomes a launch blocker.
 
 ## Features We Should Not Rebuild
 
 - DONE: Main estimate generation endpoint.
 - DONE: Pricing authority and owner-resolution logic.
 - DONE: PriceGuard protections and final pricing safeguards.
+- DONE: First-version deterministic UI-side PriceGuard Review / Estimate Intelligence panel.
 - DONE: Deterministic trade pricing engines.
 - DONE: Editable pricing, tax, deposit, and total display.
 - DONE: Free-limit entitlement basics.

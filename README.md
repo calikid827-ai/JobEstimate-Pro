@@ -10,6 +10,7 @@ The app currently includes:
 - Stripe checkout success and cancel pages
 - AI-backed document generation through `/api/generate`
 - Deterministic PriceGuard pricing protections
+- Deterministic UI-side PriceGuard Review with estimate score/level, missed-scope warnings, labor/material confidence notes, suggested exclusions, customer-ready price defense notes, and contractor-only risk notes
 - Plan upload, selected-page staging, PDF splitting/rendering, and plan intelligence
 - Photo intelligence and scope review helpers
 - Browser-generated estimate and invoice PDFs

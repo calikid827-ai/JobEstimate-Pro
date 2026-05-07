@@ -42,14 +42,16 @@ Difficulty levels:
 
 1. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
 2. Subscription/free-limit regression tests after final billing verification if still needed.
-3. Resolve any remaining launch blockers found after production smoke testing or focused verification.
-4. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+3. Focused non-billing QA for the deterministic PriceGuard Review / Estimate Intelligence panel.
+4. Resolve any remaining launch blockers found after production smoke testing or focused verification.
+5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 
 Completed pre-launch task kept visible:
 
 - DONE: Mobile core workflow polish for estimate input, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish for browser-generated estimate and invoice PDFs.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
+- DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented in `/app`. It computes UI-side review notes from existing estimate state, including score/level, missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, customer-ready price defense notes, contractor-only risk notes, and a pre-generation fallback state. It does not change pricing math, generation, PDFs, approvals, invoices, billing, API routes, or saved data shapes.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
 - DONE: Full production-readiness smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, pre-subscription Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
 - DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
@@ -193,6 +195,7 @@ Completed pre-launch task kept visible:
 ### 1.9 Pre-Launch Feature Completion Pass
 
 - Status note: Mobile core workflow polish is done. Style-only responsive improvements were applied to `app/app/page.tsx`, `PlanUploadsSection`, `SavedEstimatesSection`, `JobsDashboardSection`, `InvoicesSection`, and `PricingSummarySection`.
+- Status note: First-version deterministic PriceGuard Review / Estimate Intelligence launch polish is done through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration.
 - Why it matters: The app is already broad. Before public launch, the safest product strategy is to finish and polish the major workflows that already exist instead of adding unrelated new features.
 - Files likely affected:
   - `app/app/page.tsx`
@@ -209,6 +212,7 @@ Completed pre-launch task kept visible:
   - Plan intelligence polish
   - Approval workflow
   - Invoice workflow
+  - Deterministic PriceGuard Review / Estimate Intelligence panel is complete for the first launch-safe version; future deeper PriceGuard improvements remain future work.
   - PDF polish
   - Account/entitlement status surface is complete; keep it stable.
   - Web/PWA subscription billing model
