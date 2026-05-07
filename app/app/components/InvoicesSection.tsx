@@ -4,6 +4,8 @@ import type React from "react"
 
 type Props = {
   filteredInvoices: any[]
+  activeJobSelected?: boolean
+  activeJobName?: string | null
   invoicesSectionRef: React.RefObject<HTMLDivElement | null>
   setInvoices: React.Dispatch<React.SetStateAction<any[]>>
   setStatus: (msg: string) => void
@@ -15,6 +17,8 @@ type Props = {
 
 export default function InvoicesSection({
   filteredInvoices,
+  activeJobSelected,
+  activeJobName,
   invoicesSectionRef,
   setInvoices,
   setStatus,
@@ -23,7 +27,7 @@ export default function InvoicesSection({
   updateInvoice,
   INVOICE_KEY,
 }: Props) {
-  if (filteredInvoices.length === 0) return null
+  const hasInvoices = filteredInvoices.length > 0
 
   return (
     <div
@@ -38,20 +42,46 @@ export default function InvoicesSection({
     >
       <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <h3 style={{ margin: 0 }}>Invoices</h3>
-        <button
-          type="button"
-          onClick={() => {
-            setInvoices([])
-            localStorage.setItem(INVOICE_KEY, JSON.stringify([]))
-            setStatus("All invoices cleared.")
-          }}
-          style={{ fontSize: 12 }}
-        >
-          Clear all
-        </button>
+        {hasInvoices && (
+          <button
+            type="button"
+            onClick={() => {
+              setInvoices([])
+              localStorage.setItem(INVOICE_KEY, JSON.stringify([]))
+              setStatus("All invoices cleared.")
+            }}
+            style={{ fontSize: 12 }}
+          >
+            Clear all
+          </button>
+        )}
       </div>
 
-      <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+      {!hasInvoices && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 12,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#333" }}>
+            No invoices yet
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
+            Invoices are created from Saved Estimates or Jobs after an estimate is ready.
+            {activeJobName
+              ? ` The selected job, ${activeJobName}, may not have any invoices yet.`
+              : activeJobSelected
+              ? " The selected job may not have any invoices yet."
+              : ""}
+          </div>
+        </div>
+      )}
+
+      {hasInvoices && <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
         {filteredInvoices.map((inv) => {
           const liveStatus = computeLiveInvoiceStatus(inv)
 
@@ -168,7 +198,7 @@ export default function InvoicesSection({
             </div>
           )
         })}
-      </div>
+      </div>}
     </div>
   )
 }

@@ -2,6 +2,8 @@
 
 type Props = {
   filteredHistory: any[]
+  activeJobSelected?: boolean
+  activeJobName?: string | null
   clearHistory: () => void
   syncServerApprovals: () => Promise<void> | void
   getJobPipelineStatus: (jobId: string) => any
@@ -42,6 +44,8 @@ function historyPrimaryActionLabel(historyPipeline: any) {
 
 export default function SavedEstimatesSection({
   filteredHistory,
+  activeJobSelected,
+  activeJobName,
   clearHistory,
   syncServerApprovals,
   getJobPipelineStatus,
@@ -56,7 +60,7 @@ export default function SavedEstimatesSection({
   deleteHistoryItem,
   setStatus,
 }: Props) {
-  if (filteredHistory.length === 0) return null
+  const hasHistory = filteredHistory.length > 0
 
   function runHistoryPrimaryAction(h: any, historyPipeline: any) {
     if (!historyPipeline?.primaryAction) return
@@ -108,21 +112,47 @@ export default function SavedEstimatesSection({
     >
       <div data-mobile-stack style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <h3 style={{ margin: 0 }}>Saved Estimates</h3>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <button type="button" onClick={() => void syncServerApprovals()} style={{ fontSize: 12 }}>
-            Sync approvals
-          </button>
-          <button type="button" onClick={clearHistory} style={{ fontSize: 12 }}>
-            Clear all
-          </button>
-        </div>
+        {hasHistory && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => void syncServerApprovals()} style={{ fontSize: 12 }}>
+              Sync approvals
+            </button>
+            <button type="button" onClick={clearHistory} style={{ fontSize: 12 }}>
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
 
-      <p style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: "#666" }}>
-        Click “Load” to restore an estimate and download the PDF again.
-      </p>
+      {hasHistory ? (
+        <p style={{ marginTop: 6, marginBottom: 10, fontSize: 12, color: "#666" }}>
+          Click “Load” to restore an estimate and download the PDF again.
+        </p>
+      ) : (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 12,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#333" }}>
+            No saved estimates yet
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
+            Saved estimates appear here after you generate an estimate or change order.
+            {activeJobName
+              ? ` The selected job, ${activeJobName}, may not have any saved estimates yet.`
+              : activeJobSelected
+              ? " The selected job may not have any saved estimates yet."
+              : ""}
+          </div>
+        </div>
+      )}
 
-      <div style={{ display: "grid", gap: 10 }}>
+      {hasHistory && <div style={{ display: "grid", gap: 10 }}>
         {filteredHistory.map((h) => {
           const historyPipeline = h.jobId ? getJobPipelineStatus(h.jobId) : null
           const historyLatestInv = h.jobId ? latestInvoiceForJob(h.jobId) : null
@@ -314,7 +344,7 @@ export default function SavedEstimatesSection({
             </div>
           )
         })}
-      </div>
+      </div>}
     </div>
   )
 }

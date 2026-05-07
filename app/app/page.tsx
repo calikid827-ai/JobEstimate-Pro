@@ -2454,6 +2454,12 @@ const filteredInvoices = useMemo(() => {
   return invoices.filter((inv) => inv.jobId === activeJobId)
 }, [invoices, activeJobId])
 
+const activeJobName = useMemo(() => {
+  if (!activeJobId) return null
+  const activeJob = jobs.find((job) => job.id === activeJobId)
+  return activeJob?.jobName || null
+}, [jobs, activeJobId])
+
 const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return null
@@ -12048,6 +12054,8 @@ const accountAccessMessage = !normalizedEmail
 
 <InvoicesSection
   filteredInvoices={filteredInvoices}
+  activeJobSelected={Boolean(activeJobId)}
+  activeJobName={activeJobName}
   invoicesSectionRef={invoicesSectionRef}
   setInvoices={setInvoices}
   setStatus={setStatus}
@@ -12059,6 +12067,8 @@ const accountAccessMessage = !normalizedEmail
 
 <SavedEstimatesSection
   filteredHistory={filteredHistory}
+  activeJobSelected={Boolean(activeJobId)}
+  activeJobName={activeJobName}
   clearHistory={clearHistory}
   syncServerApprovals={syncServerApprovals}
   getJobPipelineStatus={getJobPipelineStatus}
