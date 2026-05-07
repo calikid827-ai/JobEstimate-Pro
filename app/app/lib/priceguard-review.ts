@@ -75,6 +75,84 @@ function hasAny(text: string, words: string[]) {
   return words.some((word) => text.includes(word))
 }
 
+function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
+  const warningText = normalize(warning)
+
+  if (warningText.includes("job size")) {
+    return /\b\d+(\.\d+)?\b/.test(reviewedText) || hasAny(reviewedText, [
+      "linear feet",
+      "linear foot",
+      "lf",
+      "ln ft",
+      "sq ft",
+      "square feet",
+      "room",
+      "rooms",
+      "quantity",
+      "quantities",
+    ])
+  }
+
+  if (warningText.includes("surface")) {
+    return hasAny(reviewedText, [
+      "wall",
+      "walls",
+      "ceiling",
+      "ceilings",
+      "trim",
+      "baseboard",
+      "baseboards",
+      "moulding",
+      "molding",
+      "surface",
+      "surfaces",
+    ])
+  }
+
+  if (warningText.includes("prep")) {
+    return hasAny(reviewedText, [
+      "prep",
+      "preparation",
+      "prepare",
+      "patch",
+      "repair",
+      "sand",
+      "caulk",
+      "fill",
+      "prime",
+      "remove",
+      "demo",
+      "substrate",
+    ])
+  }
+
+  if (warningText.includes("work process")) {
+    return hasAny(reviewedText, [
+      "install",
+      "installation",
+      "measure",
+      "measuring",
+      "cut",
+      "cutting",
+      "fit",
+      "fasten",
+      "nail",
+      "caulk",
+      "paint",
+      "coat",
+      "finish",
+      "finishing",
+      "cleanup",
+    ])
+  }
+
+  if (warningText.includes("very short")) {
+    return reviewedText.length >= 80
+  }
+
+  return false
+}
+
 function addUnique(items: string[], value: string, max = 6) {
   const clean = cleanText(value)
   if (!clean) return
@@ -122,9 +200,13 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 14
   }
 
-  if ((args.scopeQuality?.score ?? 100) < 80) {
-    addMany(scopeClarityWarnings, args.scopeQuality?.warnings, 4)
-    score -= 8
+  const unresolvedScopeQualityWarnings = (args.scopeQuality?.warnings || []).filter(
+    (warning) => !resolvedScopeQualityWarning(warning, combinedText)
+  )
+
+  if (unresolvedScopeQualityWarnings.length > 0) {
+    addMany(scopeClarityWarnings, unresolvedScopeQualityWarnings, 4)
+    score -= Math.min(8, unresolvedScopeQualityWarnings.length * 3)
   }
 
   if (/\b(tbd|as needed|misc|various|etc|general repairs?|touch[- ]?ups?|fix up|make ready)\b/i.test(combinedText)) {
@@ -132,13 +214,13 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 8
   }
 
-  if (!hasAny(combinedText, ["prep", "patch", "repair", "sand", "demo", "remove", "scrape"])) {
+  if (!hasAny(combinedText, ["prep", "preparation", "prepare", "patch", "repair", "sand", "demo", "remove", "scrape", "caulk", "fill", "prime", "substrate"])) {
     addUnique(missedScopeWarnings, "Prep or demolition expectations are not clearly stated.")
     addUnique(suggestedExclusions, "Excludes hidden damage, substrate repairs, or prep beyond the written scope unless approved in writing.")
     score -= 8
   }
 
-  if (!hasAny(combinedText, ["material", "materials", "fixture", "paint", "tile", "flooring", "allowance", "owner supplied", "contractor supplied"])) {
+  if (!hasAny(combinedText, ["material", "materials", "consumable", "consumables", "fixture", "paint", "tile", "flooring", "baseboard", "trim", "moulding", "molding", "allowance", "owner supplied", "contractor supplied"])) {
     addUnique(missedScopeWarnings, "Material responsibility or allowance language is not clear.")
     addUnique(suggestedExclusions, "Excludes material upgrades, fixture changes, and finish selections not listed in this estimate.")
     score -= 8
@@ -183,10 +265,24 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     }
   }
 
-  if (!args.schedule || ((args.schedule.rationale?.length ?? 0) === 0 && !args.schedule.crewDays && !args.schedule.calendarDays)) {
+  const hasScheduleRationale = (args.schedule?.rationale?.length ?? 0) > 0
+  const hasCrewOrCalendarDuration = Boolean(args.schedule?.crewDays || args.schedule?.calendarDays)
+  const hasSiteVisits = Number(args.schedule?.visits || 0) > 0
+
+  if (!args.schedule || (!hasScheduleRationale && !hasCrewOrCalendarDuration && !hasSiteVisits)) {
     addUnique(scopeClarityWarnings, "Schedule assumptions are missing or thin. Add expected duration and timing assumptions.")
     addUnique(suggestedExclusions, "Excludes delays from material availability, client changes, inspections, or site access issues.")
     score -= 7
+  } else if (!hasCrewOrCalendarDuration && hasSiteVisits) {
+    addUnique(
+      laborMaterialConfidenceNotes,
+      "Schedule has a site-visit count but no crew-days or calendar duration. Confirm expected timing before sending."
+    )
+    addUnique(
+      customerPriceDefenseNotes,
+      "Schedule planning includes expected site visits; confirm the final calendar window with the customer before work starts."
+    )
+    score -= 3
   }
 
   if (!args.deposit?.enabled) {
@@ -257,6 +353,8 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
 
   if (args.schedule?.crewDays || args.schedule?.calendarDays) {
     addUnique(customerPriceDefenseNotes, "Schedule assumptions are included so the customer can understand timing and crew impact.")
+  } else if (hasSiteVisits) {
+    addUnique(customerPriceDefenseNotes, "Site visit assumptions are included to show expected coordination even though duration should be confirmed.")
   }
 
   addMany(customerPriceDefenseNotes, args.estimateDefenseMode?.homeownerFriendlyJustification.slice(0, 2), 5)
