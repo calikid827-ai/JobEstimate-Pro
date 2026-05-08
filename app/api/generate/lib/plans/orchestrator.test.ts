@@ -538,8 +538,16 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       summarizeSections({ ...browserResult, pageReadStatuses: [] })
     )
     assert.deepEqual(
+      summarizeSections(browserResult),
+      summarizeSections({ ...browserResult, extractedTables: [] })
+    )
+    assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, pageReadStatuses: [] })
+    )
+    assert.deepEqual(
+      summarizeAssemblies(browserResult),
+      summarizeAssemblies({ ...browserResult, extractedTables: [] })
     )
     assert.deepEqual(
       summarizeSections(browserResult),

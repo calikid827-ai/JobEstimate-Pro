@@ -202,6 +202,26 @@ type PlanPageReadStatusView = {
   warnings: string[]
 }
 
+type PlanExtractedTableView = {
+  tableType: "finish_schedule" | "fixture_schedule" | "door_schedule" | "window_schedule" | "legend" | "unknown"
+  columns: string[]
+  rows: Array<{
+    rowIndex: number
+    cells: string[]
+    rawText: string
+    confidence: number
+    warnings: string[]
+  }>
+  rawText: string
+  pageNumber: number
+  sourcePageNumber: number
+  sheetNumber: string | null
+  sheetTitle: string | null
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -218,6 +238,7 @@ type PlanIntelligence = {
     details: string[]
   }
   pageReadStatuses?: PlanPageReadStatusView[]
+  extractedTables?: PlanExtractedTableView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -832,6 +853,65 @@ const normalizePlanPageReadStatuses = (
     .filter((status): status is PlanPageReadStatusView => status !== null)
 
   return statuses.length > 0 ? statuses.slice(0, 120) : undefined
+}
+
+const normalizePlanExtractedTables = (
+  value: unknown
+): PlanExtractedTableView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const tableType = (raw: unknown): PlanExtractedTableView["tableType"] =>
+    raw === "finish_schedule" ||
+    raw === "fixture_schedule" ||
+    raw === "door_schedule" ||
+    raw === "window_schedule" ||
+    raw === "legend" ||
+    raw === "unknown"
+      ? raw
+      : "unknown"
+
+  const tables = value
+    .map((item: unknown): PlanExtractedTableView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record) return null
+
+      const pageNumber = Math.max(0, Math.floor(Number(record.pageNumber) || 0))
+      const sourcePageNumber = Math.max(0, Math.floor(Number(record.sourcePageNumber) || 0))
+      if (pageNumber <= 0 || sourcePageNumber <= 0) return null
+
+      const rows = Array.isArray(record.rows)
+        ? record.rows
+            .map((row: unknown) => {
+              const rowRecord = row && typeof row === "object" ? (row as Record<string, unknown>) : null
+              if (!rowRecord || typeof rowRecord.rawText !== "string") return null
+              return {
+                rowIndex: Math.max(0, Math.floor(Number(rowRecord.rowIndex) || 0)),
+                cells: normalizePlanStrings(rowRecord.cells).slice(0, 20),
+                rawText: rowRecord.rawText.trim(),
+                confidence: Math.max(0, Math.min(100, Number(rowRecord.confidence) || 0)),
+                warnings: normalizePlanStrings(rowRecord.warnings).slice(0, 8),
+              }
+            })
+            .filter((row): row is PlanExtractedTableView["rows"][number] => row !== null)
+        : []
+
+      return {
+        tableType: tableType(record.tableType),
+        columns: normalizePlanStrings(record.columns).slice(0, 20),
+        rows: rows.slice(0, 80),
+        rawText: typeof record.rawText === "string" ? record.rawText.trim().slice(0, 4000) : "",
+        pageNumber,
+        sourcePageNumber,
+        sheetNumber: typeof record.sheetNumber === "string" ? record.sheetNumber : null,
+        sheetTitle: typeof record.sheetTitle === "string" ? record.sheetTitle : null,
+        confidence: Math.max(0, Math.min(100, Number(record.confidence) || 0)),
+        extractionMethod: "deterministic",
+        warnings: normalizePlanStrings(record.warnings).slice(0, 12),
+      }
+    })
+    .filter((table): table is PlanExtractedTableView => table !== null)
+
+  return tables.length > 0 ? tables.slice(0, 40) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -3740,6 +3820,7 @@ setPlanIntelligence(
             : null,
         evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
         pageReadStatuses: normalizePlanPageReadStatuses(data.planIntelligence?.pageReadStatuses),
+        extractedTables: normalizePlanExtractedTables(data.planIntelligence?.extractedTables),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -11104,6 +11185,15 @@ function PlanAwareEstimatorReadbackCard({
     (status) => status.classificationStatus !== "classified"
   ).length
   const hasPageReadStatusSummary = selectedPageStatuses.length > 0
+  const extractedTables = planIntelligence?.extractedTables || []
+  const extractedScheduleRowsCount = extractedTables.reduce(
+    (sum, table) => sum + table.rows.length,
+    0
+  )
+  const lowConfidenceTablesCount = extractedTables.filter(
+    (table) => table.confidence < 60 || table.warnings.length > 0
+  ).length
+  const hasExtractedTableSummary = extractedTables.length > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11203,6 +11293,15 @@ function PlanAwareEstimatorReadbackCard({
               Pages needing review: {pagesNeedingReviewCount}
               {" - "}
               Weak/unknown sheet classification: {weakClassificationCount}
+            </div>
+          )}
+          {hasExtractedTableSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Tables detected: {extractedTables.length}
+              {" - "}
+              Schedule rows found: {extractedScheduleRowsCount}
+              {" - "}
+              Low-confidence tables needing review: {lowConfidenceTablesCount}
             </div>
           )}
         </div>

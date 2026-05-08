@@ -56,6 +56,38 @@ export type PlanPageReadStatus = {
   warnings: string[]
 }
 
+export type PlanExtractedTableType =
+  | "finish_schedule"
+  | "fixture_schedule"
+  | "door_schedule"
+  | "window_schedule"
+  | "legend"
+  | "unknown"
+
+export type PlanExtractedTableRow = {
+  rowIndex: number
+  cells: string[]
+  rawText: string
+  confidence: number
+  warnings: string[]
+}
+
+export type PlanExtractedTable = {
+  tableType: PlanExtractedTableType
+  columns: string[]
+  rows: PlanExtractedTableRow[]
+  rawText: string
+  uploadId: string
+  uploadName: string
+  pageNumber: number
+  sourcePageNumber: number
+  sheetNumber: string | null
+  sheetTitle: string | null
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 export type PlanSheetDiscipline =
   | "architectural"
   | "electrical"
@@ -444,6 +476,7 @@ export type PlanIntelligence = {
   selectedPagesCount?: number
   skippedPagesCount?: number
   pageReadStatuses?: PlanPageReadStatus[]
+  extractedTables?: PlanExtractedTable[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

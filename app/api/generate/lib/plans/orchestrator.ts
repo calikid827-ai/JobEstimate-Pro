@@ -3,6 +3,7 @@ import { splitPlanUploadsToPages } from "./pdfSplit"
 import { buildSheetIndex } from "./sheetIndex"
 import { analyzePlanSheet } from "./analyzeSheet"
 import { mergePlanAnalyses } from "./crossSheetMerge"
+import { extractPlanTablesFromPages } from "./tableExtraction"
 import type {
   PlanEvidenceStrength,
   PlanIntelligence,
@@ -364,6 +365,10 @@ export async function runPlanIntelligence(args: {
     indexedPages,
     sheetIndex: finalSheetIndex,
   })
+  const extractedTables = extractPlanTablesFromPages({
+    selectedPages,
+    sheetIndex: finalSheetIndex,
+  })
   const selectedPagesCount = selectedPages.length
   const skippedPagesCount = Math.max(0, indexedPages.length - selectedPagesCount)
 
@@ -375,6 +380,7 @@ export async function runPlanIntelligence(args: {
     selectedPagesCount,
     skippedPagesCount,
     pageReadStatuses,
+    extractedTables,
     evidenceStrength: buildEvidenceStrength({
       indexedPages,
       selectedPages,
