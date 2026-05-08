@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Plan Intelligence Phase 3 table/schedule extraction for selected/read pages.
+3. Plan Intelligence Phase 4 room/finish matrix detection for selected/read pages.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -64,6 +64,7 @@ Completed pre-launch task kept visible:
 - DONE/PARTIAL: Safe lint triage pass completed. `npm run lint` moved from 218 problems to 215 after small safe fixes, but still fails due to broad existing lint debt. `npx tsc --noEmit` passes.
 - DONE: Plan Intelligence Phase 1 observability/read status is complete. Per-page read statuses are estimator-only diagnostics, targeted plan tests passed, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 2 sheet classification diagnostics are complete. Structured estimator-only deterministic roles now cover floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets. Targeted plan tests and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 3 table/schedule extraction diagnostics are complete. Deterministic estimator-only extraction now covers finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules from selected/read pages. Focused table tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 
 ## 1. Critical Fixes
 
@@ -307,8 +308,9 @@ Completed pre-launch task kept visible:
 - Status note: Plan Intelligence now reports evidence strength as Strong, Useful, or Review-only, including selected/indexed/skipped pages, text extraction, rendered image availability, hard quantity support, and confirmation-needed status. Estimate PDFs also include a compact customer-safe version of this plan evidence/readiness summary.
 - Status note: Plan Intelligence Phase 1 observability/read status is complete. Per-page read statuses are estimator-only diagnostics for selected/skipped, indexed/read, text extracted/empty, image rendered/failed/not rendered, classification classified/weak/unknown, placeholder PDF rasterization, and original-PDF fallback limitations.
 - Status note: Plan Intelligence Phase 2 sheet classification diagnostics are complete. Structured estimator-only deterministic roles now cover floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets without changing pricing or handoff behavior.
-- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence implementation task is Phase 3 table/schedule extraction, not a rebuild of upload or Plan Intelligence logic.
-- Future Plan Intelligence phases remain room/finish matrix detection, repeated room package detection, trade-specific quantity candidates, and pricing handoff confidence rules.
+- Status note: Plan Intelligence Phase 3 table/schedule extraction diagnostics are complete. Deterministic estimator-only extraction covers finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules from selected/read pages, preserving raw row text, confidence, and warnings without changing pricing or handoff behavior.
+- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence implementation task is Phase 4 room/finish matrix detection, not a rebuild of upload or Plan Intelligence logic.
+- Future Plan Intelligence phases remain repeated room package detection, trade-specific quantity candidates, and pricing handoff confidence rules.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`

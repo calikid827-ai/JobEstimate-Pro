@@ -198,6 +198,7 @@ Plan upload support includes:
 - Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
 - Estimator-only per-page read status diagnostics for selected/read/degraded pages and weak/unknown sheet classification
 - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
+- Estimator-only table/schedule extraction diagnostics for finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules, preserving raw row text, confidence, and warnings
 - Plan evidence-strength readback with `Strong`, `Useful`, and `Review-only` labels.
   - Summarizes selected, indexed, and skipped pages.
   - Reports whether text was extracted and whether page images rendered.
@@ -209,7 +210,7 @@ Important operational notes:
 - Large PDFs should be narrowed with page selection before generation.
 - If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
-- Evidence-strength readback is readiness messaging, not a full measured takeoff. Hard quantity extraction is still heuristic.
+- Evidence-strength and table/schedule extraction readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.
 - Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.
 - Estimate PDFs also include a compact plan evidence summary showing evidence strength, selected pages reviewed, text extraction status, rendered image status, hard quantity status, and confirmation-needed status. This is plan evidence/readiness messaging, not a full measured takeoff.
 

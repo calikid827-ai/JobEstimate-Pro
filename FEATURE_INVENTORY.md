@@ -432,13 +432,18 @@ Implemented:
   - Deterministic roles for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets.
   - Optional classification object on sheet index entries while preserving existing sheet number, sheet title, discipline, and confidence fields.
   - Diagnostic-only behavior that does not drive pricing or quantity decisions.
+- Table/schedule extraction diagnostics:
+  - Deterministic estimator-only extraction from selected/read plan pages.
+  - Supported table types include finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules.
+  - Preserves raw row text, detected columns/rows where clear, confidence, and warnings for unclear tables.
+  - Estimator-facing Plan Review Summary counts for tables detected, schedule rows found, and low-confidence tables needing review.
+  - Diagnostic-only behavior that does not drive pricing or quantity decisions.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Schedule table extraction is limited.
-- Finish schedule parsing is limited.
+- Schedule and finish table extraction is diagnostic-only and still conservative.
 - Room matrix/repeated-room count extraction is limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
