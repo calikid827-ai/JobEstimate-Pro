@@ -82,6 +82,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence Phase 1 per-page read status is complete as estimator-only diagnostic data. It reports selected/skipped, indexed/read, text extracted/empty, image rendered/failed/not rendered, sheet classification classified/weak/unknown, placeholder PDF rasterization, and original-PDF fallback limitations.
 - DONE: The per-page read status pass is diagnostic only. It does not affect pricing, estimate generation behavior, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
 - DONE: Phase 1 verification passed targeted plan orchestrator tests and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 2 sheet classification diagnostics are complete as estimator-only, diagnostic-only data. Structured deterministic classifications now cover floor plans, finish schedules, fixture schedules, door schedules, window schedules, reflected ceiling plans/RCPs, elevations, demo plans, legends, and unknown sheets.
+- DONE: The Phase 2 classification pass preserves existing sheet index fields and legacy discipline behavior for downstream analysis/pricing paths. It does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Phase 2 verification passed fast sheet-heuristics tests, targeted plan orchestrator tests, and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
 - PARTIAL: Schedule table, finish schedule, room matrix, repeated-room count, SF/LF, fixture/device count extraction can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
@@ -191,6 +194,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
 - DONE: Plan Intelligence Phase 1 estimator-only per-page read status is complete. It adds selected/read/degraded/weak-classification visibility without changing pricing, generation, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Targeted plan tests and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 2 estimator-only sheet classification diagnostics are complete. Structured deterministic roles now classify floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets without changing pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Fast sheet-heuristics tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
 
 ## Can-Wait Until After Launch
@@ -224,8 +228,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - Keep fixes copy/style-only unless a real runtime bug is found.
 
 4. PARTIAL: Plan upload guidance and fallback-message QA.
-   - Phase 1 per-page read status is complete; the next Plan Intelligence implementation task is Phase 2 sheet classification improvements.
-   - Keep table/schedule extraction, room/finish matrix detection, repeated room packages, trade quantity candidates, and pricing handoff confidence rules as future phases.
+   - Phase 1 per-page read status and Phase 2 sheet classification diagnostics are complete.
+   - The next Plan Intelligence implementation task is Phase 3 table/schedule extraction.
+   - Keep room/finish matrix detection, repeated room packages, trade quantity candidates, and pricing handoff confidence rules as future phases.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
    - Keep copy consistent with deterministic review scope.

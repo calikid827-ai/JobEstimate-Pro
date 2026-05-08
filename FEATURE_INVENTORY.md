@@ -62,6 +62,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Selected-page upload staging
   - Upload-mode visibility
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
+  - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
 - Optional measurement rows with calculated sqft.
 - Editable pricing:
   - Labor
@@ -427,12 +428,15 @@ Implemented:
   - Sheet classification classified/weak/unknown visibility.
   - Placeholder PDF rasterization and original-PDF fallback limitation warnings.
   - Estimator Plan Review Summary counts for selected pages read, pages needing review, and weak/unknown sheet classification.
+- Structured estimator-only sheet classification diagnostics:
+  - Deterministic roles for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets.
+  - Optional classification object on sheet index entries while preserving existing sheet number, sheet title, discipline, and confidence fields.
+  - Diagnostic-only behavior that does not drive pricing or quantity decisions.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Sheet classification is still heuristic and remains the next Plan Intelligence implementation target.
 - Schedule table extraction is limited.
 - Finish schedule parsing is limited.
 - Room matrix/repeated-room count extraction is limited.
