@@ -88,8 +88,11 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence Phase 3 table/schedule extraction diagnostics are complete as estimator-only, diagnostic-only data. The deterministic pass extracts conservative table/schedule diagnostics from selected/read plan pages for finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules.
 - DONE: The Phase 3 table extraction pass preserves raw row text, detected columns/rows where clear, confidence, and warnings for unclear/unknown tables. It does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
 - DONE: Phase 3 verification passed focused table extraction tests, targeted plan orchestrator tests, and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete as estimator-only, diagnostic-only data. The deterministic pass builds from extracted finish schedule tables only and detects conservative room finish rows with room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings.
+- DONE: The Phase 4 room/finish matrix pass does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Phase 4 verification passed fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
-- PARTIAL: Room matrix, repeated-room count, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
+- PARTIAL: Repeated-room count, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
 - DEFERRED: Major measured-takeoff upgrades should wait until the current launch-critical stability and billing work is settled.
 
@@ -199,6 +202,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence Phase 1 estimator-only per-page read status is complete. It adds selected/read/degraded/weak-classification visibility without changing pricing, generation, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Targeted plan tests and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 2 estimator-only sheet classification diagnostics are complete. Structured deterministic roles now classify floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets without changing pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Fast sheet-heuristics tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 3 estimator-only table/schedule extraction diagnostics are complete. Deterministic selected/read page diagnostics now cover finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules while preserving raw row text, confidence, and warnings. The pass does not change pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Focused table tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 4 estimator-only room/finish matrix diagnostics are complete. Deterministic diagnostics now build from extracted finish schedule tables only and preserve room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings. The pass does not change pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
 
 ## Can-Wait Until After Launch
@@ -232,9 +236,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - Keep fixes copy/style-only unless a real runtime bug is found.
 
 4. PARTIAL: Plan upload guidance and fallback-message QA.
-   - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, and Phase 3 table/schedule extraction diagnostics are complete.
-   - The next Plan Intelligence implementation task is Phase 4 room/finish matrix detection.
-   - Keep repeated room packages, trade quantity candidates, and pricing handoff confidence rules as future phases.
+   - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, Phase 3 table/schedule extraction diagnostics, and Phase 4 room/finish matrix diagnostics are complete.
+   - The next Plan Intelligence implementation task is Phase 5 repeated room package detection.
+   - Keep trade quantity candidates and pricing handoff confidence rules as future phases.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
    - Keep copy consistent with deterministic review scope.

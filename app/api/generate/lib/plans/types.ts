@@ -88,6 +88,39 @@ export type PlanExtractedTable = {
   warnings: string[]
 }
 
+export type PlanRoomFinishMatrixRow = {
+  rowIndex: number
+  roomName: string | null
+  roomNumber: string | null
+  roomType: string | null
+  finishes: {
+    wallFinish?: string | null
+    baseFinish?: string | null
+    ceilingFinish?: string | null
+    floorFinish?: string | null
+  }
+  notes?: string | null
+  rawRowText: string
+  confidence: number
+  warnings: string[]
+}
+
+export type PlanRoomFinishMatrix = {
+  tableType: "finish_schedule"
+  sourceTableIndex: number
+  rows: PlanRoomFinishMatrixRow[]
+  rawText: string
+  uploadId: string
+  uploadName: string
+  pageNumber: number
+  sourcePageNumber: number
+  sheetNumber: string | null
+  sheetTitle: string | null
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 export type PlanSheetDiscipline =
   | "architectural"
   | "electrical"
@@ -477,6 +510,7 @@ export type PlanIntelligence = {
   skippedPagesCount?: number
   pageReadStatuses?: PlanPageReadStatus[]
   extractedTables?: PlanExtractedTable[]
+  roomFinishMatrices?: PlanRoomFinishMatrix[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

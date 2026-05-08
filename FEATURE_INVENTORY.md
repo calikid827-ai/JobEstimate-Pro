@@ -438,13 +438,18 @@ Implemented:
   - Preserves raw row text, detected columns/rows where clear, confidence, and warnings for unclear tables.
   - Estimator-facing Plan Review Summary counts for tables detected, schedule rows found, and low-confidence tables needing review.
   - Diagnostic-only behavior that does not drive pricing or quantity decisions.
+- Room/finish matrix diagnostics:
+  - Deterministic estimator-only extraction from extracted finish schedule tables only.
+  - Captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings.
+  - Estimator-facing Plan Review Summary counts for room finish rows found and low-confidence finish rows needing review.
+  - Diagnostic-only behavior that does not drive pricing or quantity decisions.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Schedule and finish table extraction is diagnostic-only and still conservative.
-- Room matrix/repeated-room count extraction is limited.
+- Schedule, finish table, and room/finish matrix extraction is diagnostic-only and still conservative.
+- Repeated-room count extraction is limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
 - AI-generated prose may still be less specific than typed readback.

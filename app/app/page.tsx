@@ -222,6 +222,35 @@ type PlanExtractedTableView = {
   warnings: string[]
 }
 
+type PlanRoomFinishMatrixView = {
+  tableType: "finish_schedule"
+  sourceTableIndex: number
+  rows: Array<{
+    rowIndex: number
+    roomName: string | null
+    roomNumber: string | null
+    roomType: string | null
+    finishes: {
+      wallFinish?: string | null
+      baseFinish?: string | null
+      ceilingFinish?: string | null
+      floorFinish?: string | null
+    }
+    notes?: string | null
+    rawRowText: string
+    confidence: number
+    warnings: string[]
+  }>
+  rawText: string
+  pageNumber: number
+  sourcePageNumber: number
+  sheetNumber: string | null
+  sheetTitle: string | null
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -239,6 +268,7 @@ type PlanIntelligence = {
   }
   pageReadStatuses?: PlanPageReadStatusView[]
   extractedTables?: PlanExtractedTableView[]
+  roomFinishMatrices?: PlanRoomFinishMatrixView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -912,6 +942,69 @@ const normalizePlanExtractedTables = (
     .filter((table): table is PlanExtractedTableView => table !== null)
 
   return tables.length > 0 ? tables.slice(0, 40) : undefined
+}
+
+const normalizePlanRoomFinishMatrices = (
+  value: unknown
+): PlanRoomFinishMatrixView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const matrices = value
+    .map((item: unknown): PlanRoomFinishMatrixView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record) return null
+
+      const pageNumber = Math.max(0, Math.floor(Number(record.pageNumber) || 0))
+      const sourcePageNumber = Math.max(0, Math.floor(Number(record.sourcePageNumber) || 0))
+      if (pageNumber <= 0 || sourcePageNumber <= 0) return null
+
+      const rows = Array.isArray(record.rows)
+        ? record.rows
+            .map((row: unknown): PlanRoomFinishMatrixView["rows"][number] | null => {
+              const rowRecord = row && typeof row === "object" ? (row as Record<string, unknown>) : null
+              if (!rowRecord || typeof rowRecord.rawRowText !== "string") return null
+              const finishRecord =
+                rowRecord.finishes && typeof rowRecord.finishes === "object"
+                  ? (rowRecord.finishes as Record<string, unknown>)
+                  : {}
+              return {
+                rowIndex: Math.max(0, Math.floor(Number(rowRecord.rowIndex) || 0)),
+                roomName: typeof rowRecord.roomName === "string" ? rowRecord.roomName.trim() : null,
+                roomNumber: typeof rowRecord.roomNumber === "string" ? rowRecord.roomNumber.trim() : null,
+                roomType: typeof rowRecord.roomType === "string" ? rowRecord.roomType.trim() : null,
+                finishes: {
+                  wallFinish: typeof finishRecord.wallFinish === "string" ? finishRecord.wallFinish.trim() : null,
+                  baseFinish: typeof finishRecord.baseFinish === "string" ? finishRecord.baseFinish.trim() : null,
+                  ceilingFinish:
+                    typeof finishRecord.ceilingFinish === "string" ? finishRecord.ceilingFinish.trim() : null,
+                  floorFinish: typeof finishRecord.floorFinish === "string" ? finishRecord.floorFinish.trim() : null,
+                },
+                notes: typeof rowRecord.notes === "string" ? rowRecord.notes.trim() : null,
+                rawRowText: rowRecord.rawRowText.trim(),
+                confidence: Math.max(0, Math.min(100, Number(rowRecord.confidence) || 0)),
+                warnings: normalizePlanStrings(rowRecord.warnings).slice(0, 8),
+              }
+            })
+            .filter((row): row is PlanRoomFinishMatrixView["rows"][number] => row !== null)
+        : []
+
+      return {
+        tableType: "finish_schedule",
+        sourceTableIndex: Math.max(0, Math.floor(Number(record.sourceTableIndex) || 0)),
+        rows: rows.slice(0, 120),
+        rawText: typeof record.rawText === "string" ? record.rawText.trim().slice(0, 4000) : "",
+        pageNumber,
+        sourcePageNumber,
+        sheetNumber: typeof record.sheetNumber === "string" ? record.sheetNumber : null,
+        sheetTitle: typeof record.sheetTitle === "string" ? record.sheetTitle : null,
+        confidence: Math.max(0, Math.min(100, Number(record.confidence) || 0)),
+        extractionMethod: "deterministic",
+        warnings: normalizePlanStrings(record.warnings).slice(0, 12),
+      }
+    })
+    .filter((matrix): matrix is PlanRoomFinishMatrixView => matrix !== null)
+
+  return matrices.length > 0 ? matrices.slice(0, 40) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -3821,6 +3914,7 @@ setPlanIntelligence(
         evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
         pageReadStatuses: normalizePlanPageReadStatuses(data.planIntelligence?.pageReadStatuses),
         extractedTables: normalizePlanExtractedTables(data.planIntelligence?.extractedTables),
+        roomFinishMatrices: normalizePlanRoomFinishMatrices(data.planIntelligence?.roomFinishMatrices),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -11194,6 +11288,18 @@ function PlanAwareEstimatorReadbackCard({
     (table) => table.confidence < 60 || table.warnings.length > 0
   ).length
   const hasExtractedTableSummary = extractedTables.length > 0
+  const roomFinishMatrices = planIntelligence?.roomFinishMatrices || []
+  const roomFinishRowsCount = roomFinishMatrices.reduce(
+    (sum, matrix) => sum + matrix.rows.length,
+    0
+  )
+  const lowConfidenceRoomFinishRowsCount = roomFinishMatrices.reduce(
+    (sum, matrix) =>
+      sum +
+      matrix.rows.filter((row) => row.confidence < 60 || row.warnings.length > 0).length,
+    0
+  )
+  const hasRoomFinishMatrixSummary = roomFinishRowsCount > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11302,6 +11408,13 @@ function PlanAwareEstimatorReadbackCard({
               Schedule rows found: {extractedScheduleRowsCount}
               {" - "}
               Low-confidence tables needing review: {lowConfidenceTablesCount}
+            </div>
+          )}
+          {hasRoomFinishMatrixSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Room finish rows found: {roomFinishRowsCount}
+              {" - "}
+              Low-confidence finish rows needing review: {lowConfidenceRoomFinishRowsCount}
             </div>
           )}
         </div>

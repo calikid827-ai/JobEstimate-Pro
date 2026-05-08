@@ -4,6 +4,7 @@ import { buildSheetIndex } from "./sheetIndex"
 import { analyzePlanSheet } from "./analyzeSheet"
 import { mergePlanAnalyses } from "./crossSheetMerge"
 import { extractPlanTablesFromPages } from "./tableExtraction"
+import { extractRoomFinishMatricesFromTables } from "./roomFinishMatrix"
 import type {
   PlanEvidenceStrength,
   PlanIntelligence,
@@ -369,6 +370,7 @@ export async function runPlanIntelligence(args: {
     selectedPages,
     sheetIndex: finalSheetIndex,
   })
+  const roomFinishMatrices = extractRoomFinishMatricesFromTables(extractedTables)
   const selectedPagesCount = selectedPages.length
   const skippedPagesCount = Math.max(0, indexedPages.length - selectedPagesCount)
 
@@ -381,6 +383,7 @@ export async function runPlanIntelligence(args: {
     skippedPagesCount,
     pageReadStatuses,
     extractedTables,
+    roomFinishMatrices,
     evidenceStrength: buildEvidenceStrength({
       indexedPages,
       selectedPages,
