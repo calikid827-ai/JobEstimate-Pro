@@ -16,6 +16,15 @@ function makeImageDataUrl(label: string): string {
   return `data:image/png;base64,${Buffer.from(label, "utf8").toString("base64")}`
 }
 
+function makeInvalidPdfDataUrl(pageCount: number): string {
+  const body = Array.from({ length: pageCount }, (_, index) => {
+    const objectNumber = index + 1
+    return `${objectNumber} 0 obj\n<< /Type /Page /Contents ${objectNumber + 100} 0 R >>\nendobj`
+  }).join("\n")
+
+  return `data:application/pdf;base64,${Buffer.from(`%PDF-1.4\n${body}\n%%EOF`, "utf8").toString("base64")}`
+}
+
 async function makePdfDataUrl(pages: string[]): Promise<string> {
   const doc = new PDFDocument({ autoFirstPage: false, margin: 36 })
   const chunks: Buffer[] = []
@@ -72,6 +81,10 @@ test("selected-sheet analysis only uses user-selected pages", async () => {
   assert.equal(result.evidenceStrength?.renderedPagesCount, 1)
   assert.equal(result.evidenceStrength?.hardQuantityCount, 0)
   assert.equal(result.evidenceStrength?.confirmationNeeded, true)
+  assert.equal(result.pageReadStatuses?.length, 2)
+  assert.equal(result.pageReadStatuses?.filter((status) => status.selected).length, 1)
+  assert.equal(result.pageReadStatuses?.find((status) => status.selected)?.imageStatus, "rendered")
+  assert.equal(result.pageReadStatuses?.find((status) => !status.selected)?.textStatus, "unknown")
   assert.equal(result.sheetIndex.length, 1)
   assert.equal(result.analyses.length, 1)
   assert(result.detectedTrades.includes("painting"))
@@ -203,6 +216,17 @@ test("selected rendered pdf pages contribute real plan findings and smarter shee
         sheet.discipline !== "unknown"
     )
   )
+  assert.equal(result.pageReadStatuses?.length, 4)
+  assert(result.pageReadStatuses?.every((status) => status.selected))
+  assert(result.pageReadStatuses?.every((status) => status.textStatus === "extracted"))
+  assert(result.pageReadStatuses?.every((status) => status.imageStatus === "rendered"))
+  assert(
+    result.pageReadStatuses?.some(
+      (status) =>
+        status.sheetNumber === "A6-1" &&
+        status.classificationStatus === "classified"
+    )
+  )
   assert(
     result.analyses.some((analysis) =>
       analysis.schedules.some((item) => item.scheduleType === "fixture")
@@ -211,6 +235,45 @@ test("selected rendered pdf pages contribute real plan findings and smarter shee
   assert(
     result.analyses.some((analysis) =>
       analysis.tradeFindings.some((finding) => finding.trade === "plumbing")
+    )
+  )
+})
+
+test("selected placeholder pdf pages produce estimator-only degraded read statuses", async () => {
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        name: "broken-selected-pages.pdf",
+        dataUrl: makeInvalidPdfDataUrl(2),
+        note: "Broken selected PDF pages",
+        selectedSourcePages: [1, 2],
+        selectedPageUploadMode: "original-fallback",
+        selectedPageUploadNote: "Browser selected-page reduction failed.",
+      },
+    ],
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  assert(result)
+  assert.equal(result.selectedPagesCount, 2)
+  assert.equal(result.pageReadStatuses?.length, 2)
+  assert(result.pageReadStatuses?.every((status) => status.selected))
+  assert(result.pageReadStatuses?.every((status) => status.textStatus === "empty"))
+  assert(result.pageReadStatuses?.every((status) => status.imageStatus === "failed"))
+  assert(
+    result.pageReadStatuses?.every((status) =>
+      status.failureReasons.some((reason) => /placeholder|blank|render/i.test(reason))
+    )
+  )
+  assert(
+    result.pageReadStatuses?.every((status) =>
+      status.warnings.some((warning) => /Original PDF fallback/i.test(warning))
+    )
+  )
+  assert(
+    result.evidenceStrength?.details.some((detail) =>
+      /selected pages? had text or rendered image support/i.test(detail)
     )
   )
 })
@@ -374,6 +437,15 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       }))
 
     assert(browserResult && serverResult && fallbackResult)
+    assert.deepEqual(
+      browserResult.pageReadStatuses?.map((status) => status.sourcePageNumber),
+      [3, 7]
+    )
+    assert(
+      fallbackResult.pageReadStatuses?.every((status) =>
+        status.warnings.some((warning) => /Original PDF fallback/i.test(warning))
+      )
+    )
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(serverResult))
     assert.deepEqual(summarizePackages(browserResult), summarizePackages(fallbackResult))
     assert.deepEqual(browserResult.planReadback?.headline, serverResult.planReadback?.headline)
@@ -430,6 +502,14 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
     assert.deepEqual(summarizeSections(browserResult), summarizeSections(fallbackResult))
     assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(serverResult))
     assert.deepEqual(summarizeAssemblies(browserResult), summarizeAssemblies(fallbackResult))
+    assert.deepEqual(
+      summarizeSections(browserResult),
+      summarizeSections({ ...browserResult, pageReadStatuses: [] })
+    )
+    assert.deepEqual(
+      summarizeAssemblies(browserResult),
+      summarizeAssemblies({ ...browserResult, pageReadStatuses: [] })
+    )
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

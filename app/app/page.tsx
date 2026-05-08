@@ -185,6 +185,23 @@ type JobPlan = {
   }>
 }
 
+type PlanPageReadStatusView = {
+  uploadId?: string
+  uploadName?: string
+  pageNumber: number
+  sourcePageNumber?: number
+  selected: boolean
+  indexed: boolean
+  textStatus: "extracted" | "empty" | "failed" | "unknown"
+  imageStatus: "rendered" | "not_rendered" | "failed" | "unknown"
+  classificationStatus: "classified" | "weak" | "unknown"
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  failureReasons: string[]
+  warnings: string[]
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -200,6 +217,7 @@ type PlanIntelligence = {
     summary: string
     details: string[]
   }
+  pageReadStatuses?: PlanPageReadStatusView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -762,8 +780,58 @@ const normalizePlanEvidenceStrength = (
     hardQuantityCount: Math.max(0, Math.floor(Number(record.hardQuantityCount) || 0)),
     confirmationNeeded: record.confirmationNeeded === true,
     summary: typeof record.summary === "string" ? record.summary.trim() : "",
-    details: normalizePlanStrings(record.details).slice(0, 6),
+    details: normalizePlanStrings(record.details).slice(0, 9),
   }
+}
+
+const normalizePlanPageReadStatuses = (
+  value: unknown
+): PlanPageReadStatusView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const textStatus = (raw: unknown): PlanPageReadStatusView["textStatus"] =>
+    raw === "extracted" || raw === "empty" || raw === "failed" || raw === "unknown"
+      ? raw
+      : "unknown"
+  const imageStatus = (raw: unknown): PlanPageReadStatusView["imageStatus"] =>
+    raw === "rendered" || raw === "not_rendered" || raw === "failed" || raw === "unknown"
+      ? raw
+      : "unknown"
+  const classificationStatus = (
+    raw: unknown
+  ): PlanPageReadStatusView["classificationStatus"] =>
+    raw === "classified" || raw === "weak" || raw === "unknown" ? raw : "unknown"
+
+  const statuses = value
+    .map((item: unknown): PlanPageReadStatusView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record) return null
+
+      const pageNumber = Math.max(0, Math.floor(Number(record.pageNumber) || 0))
+      if (pageNumber <= 0) return null
+
+      const sourcePageNumber = Math.max(0, Math.floor(Number(record.sourcePageNumber) || 0))
+
+      return {
+        uploadId: typeof record.uploadId === "string" ? record.uploadId : undefined,
+        uploadName: typeof record.uploadName === "string" ? record.uploadName : undefined,
+        pageNumber,
+        sourcePageNumber: sourcePageNumber > 0 ? sourcePageNumber : undefined,
+        selected: record.selected === true,
+        indexed: record.indexed !== false,
+        textStatus: textStatus(record.textStatus),
+        imageStatus: imageStatus(record.imageStatus),
+        classificationStatus: classificationStatus(record.classificationStatus),
+        sheetNumber: typeof record.sheetNumber === "string" ? record.sheetNumber : null,
+        sheetTitle: typeof record.sheetTitle === "string" ? record.sheetTitle : null,
+        discipline: typeof record.discipline === "string" ? record.discipline : null,
+        failureReasons: normalizePlanStrings(record.failureReasons),
+        warnings: normalizePlanStrings(record.warnings),
+      }
+    })
+    .filter((status): status is PlanPageReadStatusView => status !== null)
+
+  return statuses.length > 0 ? statuses.slice(0, 120) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -3671,6 +3739,7 @@ setPlanIntelligence(
             ? data.planIntelligence.summary.trim()
             : null,
         evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
+        pageReadStatuses: normalizePlanPageReadStatuses(data.planIntelligence?.pageReadStatuses),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -4563,6 +4632,7 @@ const estItem: EstimateHistoryItem = {
               ? data.planIntelligence.summary.trim()
               : null,
           evidenceStrength: normalizePlanEvidenceStrength(data.planIntelligence?.evidenceStrength),
+          pageReadStatuses: normalizePlanPageReadStatuses(data.planIntelligence?.pageReadStatuses),
           estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
           detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
           detectedTrades: normalizePlanStrings(data.planIntelligence?.detectedTrades),
@@ -5085,6 +5155,7 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
               ? x.planIntelligence.summary.trim()
               : null,
           evidenceStrength: normalizePlanEvidenceStrength(x.planIntelligence?.evidenceStrength),
+          pageReadStatuses: normalizePlanPageReadStatuses(x.planIntelligence?.pageReadStatuses),
           estimatorPackages: normalizePlanPackages(x.planIntelligence?.estimatorPackages),
           detectedRooms: normalizeDefenseLists(x.planIntelligence?.detectedRooms),
           detectedTrades: normalizeDefenseLists(x.planIntelligence?.detectedTrades),
@@ -11016,6 +11087,23 @@ function PlanAwareEstimatorReadbackCard({
   const notCarriedCount = pricingCarryReadback.filter((item) => item.status === "not_carried_yet").length
   const confirmationCount = pricingCarryReadback.filter((item) => item.status === "confirmation_needed").length
   const evidenceStrength = planIntelligence?.evidenceStrength ?? null
+  const selectedPageStatuses = (planIntelligence?.pageReadStatuses || []).filter(
+    (status) => status.selected
+  )
+  const selectedPagesReadCount = selectedPageStatuses.filter(
+    (status) => status.textStatus === "extracted" || status.imageStatus === "rendered"
+  ).length
+  const pagesNeedingReviewCount = selectedPageStatuses.filter(
+    (status) =>
+      status.failureReasons.length > 0 ||
+      status.warnings.length > 0 ||
+      (status.textStatus !== "extracted" && status.imageStatus !== "rendered") ||
+      status.classificationStatus !== "classified"
+  ).length
+  const weakClassificationCount = selectedPageStatuses.filter(
+    (status) => status.classificationStatus !== "classified"
+  ).length
+  const hasPageReadStatusSummary = selectedPageStatuses.length > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11108,6 +11196,15 @@ function PlanAwareEstimatorReadbackCard({
             {" - "}
             {evidenceStrength.hardQuantityCount > 0 ? "Hard quantities found" : "Measured quantities still need confirmation"}
           </div>
+          {hasPageReadStatusSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Selected pages read: {selectedPagesReadCount} / {selectedPageStatuses.length}
+              {" - "}
+              Pages needing review: {pagesNeedingReviewCount}
+              {" - "}
+              Weak/unknown sheet classification: {weakClassificationCount}
+            </div>
+          )}
         </div>
       )}
 

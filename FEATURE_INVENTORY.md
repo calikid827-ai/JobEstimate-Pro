@@ -61,6 +61,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Page selection/deselection
   - Selected-page upload staging
   - Upload-mode visibility
+  - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
 - Optional measurement rows with calculated sqft.
 - Editable pricing:
   - Labor
@@ -419,11 +420,19 @@ Implemented:
 - Pricing-carry readback.
 - Final estimator plan and pricing story in app UI.
 - Page/source provenance through readback.
+- Per-page Plan Intelligence read status diagnostics:
+  - Selected/skipped and indexed/read visibility.
+  - Text extracted/empty status.
+  - Image rendered/failed/not-rendered status.
+  - Sheet classification classified/weak/unknown visibility.
+  - Placeholder PDF rasterization and original-PDF fallback limitation warnings.
+  - Estimator Plan Review Summary counts for selected pages read, pages needing review, and weak/unknown sheet classification.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
+- Sheet classification is still heuristic and remains the next Plan Intelligence implementation target.
 - Schedule table extraction is limited.
 - Finish schedule parsing is limited.
 - Room matrix/repeated-room count extraction is limited.

@@ -35,6 +35,25 @@ export type PlanPageImage = {
   renderedFromPdf?: boolean
   renderedImageAvailable?: boolean
   extractedText?: string | null
+  selectedPageUploadMode?: PlanUpload["selectedPageUploadMode"]
+  selectedPageUploadNote?: string | null
+}
+
+export type PlanPageReadStatus = {
+  uploadId?: string
+  uploadName?: string
+  pageNumber: number
+  sourcePageNumber?: number
+  selected: boolean
+  indexed: boolean
+  textStatus: "extracted" | "empty" | "failed" | "unknown"
+  imageStatus: "rendered" | "not_rendered" | "failed" | "unknown"
+  classificationStatus: "classified" | "weak" | "unknown"
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  failureReasons: string[]
+  warnings: string[]
 }
 
 export type PlanSheetDiscipline =
@@ -402,6 +421,7 @@ export type PlanIntelligence = {
   indexedPagesCount?: number
   selectedPagesCount?: number
   skippedPagesCount?: number
+  pageReadStatuses?: PlanPageReadStatus[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

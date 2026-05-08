@@ -43,6 +43,8 @@ export async function splitPlanUploadsToPages(
           renderedFromPdf: page.renderedFromPdf,
           renderedImageAvailable: page.renderedImageAvailable,
           extractedText: page.extractedText,
+          selectedPageUploadMode: upload.selectedPageUploadMode,
+          selectedPageUploadNote: upload.selectedPageUploadNote,
         })
         nextPageNumber += 1
         indexedPages += 1
@@ -74,6 +76,8 @@ export async function splitPlanUploadsToPages(
       renderedFromPdf: false,
       renderedImageAvailable: true,
       extractedText: null,
+      selectedPageUploadMode: upload.selectedPageUploadMode,
+      selectedPageUploadNote: upload.selectedPageUploadNote,
     })
     nextPageNumber += 1
     indexedPages += 1

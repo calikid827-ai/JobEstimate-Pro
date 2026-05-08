@@ -196,6 +196,7 @@ Plan upload support includes:
 - PDF splitting and page rendering for plan intelligence
 - Browser-derived selected-page PDFs render their reduced pages as `1..N` for image/vision fallback, while original source page numbers are preserved in plan provenance.
 - Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
+- Estimator-only per-page read status diagnostics for selected/read/degraded pages and weak/unknown sheet classification
 - Plan evidence-strength readback with `Strong`, `Useful`, and `Review-only` labels.
   - Summarizes selected, indexed, and skipped pages.
   - Reports whether text was extracted and whether page images rendered.

@@ -265,6 +265,23 @@ export type PhotoScopeAssist = {
   suggestedAdditions: string[]
 } | null
 
+export type PlanPageReadStatusSummary = {
+  uploadId?: string
+  uploadName?: string
+  pageNumber: number
+  sourcePageNumber?: number
+  selected: boolean
+  indexed: boolean
+  textStatus: "extracted" | "empty" | "failed" | "unknown"
+  imageStatus: "rendered" | "not_rendered" | "failed" | "unknown"
+  classificationStatus: "classified" | "weak" | "unknown"
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  failureReasons: string[]
+  warnings: string[]
+}
+
 export type PlanIntelligenceSummary = {
   summary?: string | null
   evidenceStrength?: {
@@ -280,6 +297,7 @@ export type PlanIntelligenceSummary = {
     summary: string
     details: string[]
   }
+  pageReadStatuses?: PlanPageReadStatusSummary[]
   estimatorPackages?: Array<{
     key: string
     title: string

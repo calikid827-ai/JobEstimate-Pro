@@ -79,6 +79,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence includes PDF splitting, page rendering, sheet indexing, sheet classification heuristics, per-sheet analysis, vision fallback, cross-sheet merge, and typed readbacks.
 - DONE: Plan readbacks include sheet narration, room/area quantity readback, trade-by-trade readback, grouped scope readback, scope-gap prompts, estimator packages, section skeleton handoff, trade assemblies, pricing-carry readback, and final estimator story surfaces.
 - DONE: Evidence strength reports `Strong`, `Useful`, or `Review-only`, including selected/indexed/skipped pages, text extraction status, rendered image status, hard quantity status, and confirmation-needed status.
+- DONE: Plan Intelligence Phase 1 per-page read status is complete as estimator-only diagnostic data. It reports selected/skipped, indexed/read, text extracted/empty, image rendered/failed/not rendered, sheet classification classified/weak/unknown, placeholder PDF rasterization, and original-PDF fallback limitations.
+- DONE: The per-page read status pass is diagnostic only. It does not affect pricing, estimate generation behavior, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Phase 1 verification passed targeted plan orchestrator tests and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
 - PARTIAL: Schedule table, finish schedule, room matrix, repeated-room count, SF/LF, fixture/device count extraction can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
@@ -187,6 +190,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Saved Estimates and Invoices empty states/workflow guidance are complete for the current launch pass. Empty filtered lists now explain where saved estimates and invoices come from, include selected-job context where available, and preserve existing buttons/actions when data exists.
 - DONE: Centralize localStorage access with a thin persistence helper for the current small pass. `app/app/lib/local-persistence.ts` now provides typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard_email` / `scopeguard_company` migration support. Existing localStorage keys and data shapes were preserved.
 - DONE: Roadmap/feature inventory stale statements about completed README, branding, logging, invoice helper, approval tests, and PDF plan readback work have been reconciled.
+- DONE: Plan Intelligence Phase 1 estimator-only per-page read status is complete. It adds selected/read/degraded/weak-classification visibility without changing pricing, generation, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Targeted plan tests and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
 
 ## Can-Wait Until After Launch
@@ -220,8 +224,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - Keep fixes copy/style-only unless a real runtime bug is found.
 
 4. PARTIAL: Plan upload guidance and fallback-message QA.
-   - Verify selected-page counts, upload mode labels, fallback messaging, and weak-plan evidence wording are understandable to contractors.
-   - Keep changes to copy and small UI polish only.
+   - Phase 1 per-page read status is complete; the next Plan Intelligence implementation task is Phase 2 sheet classification improvements.
+   - Keep table/schedule extraction, room/finish matrix detection, repeated room packages, trade quantity candidates, and pricing handoff confidence rules as future phases.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
    - Keep copy consistent with deterministic review scope.
