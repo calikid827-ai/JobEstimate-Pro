@@ -67,6 +67,27 @@ export type PlanSheetDiscipline =
   | "general"
   | "unknown"
 
+export type PlanSheetRole =
+  | "floor_plan"
+  | "finish_schedule"
+  | "fixture_schedule"
+  | "door_schedule"
+  | "window_schedule"
+  | "reflected_ceiling_plan"
+  | "elevation"
+  | "demo_plan"
+  | "legend"
+  | "unknown"
+
+export type PlanSheetClassification = {
+  sheetRole: PlanSheetRole
+  discipline: PlanSheetDiscipline
+  confidence: number
+  method: "deterministic"
+  signals: string[]
+  warnings: string[]
+}
+
 export type PlanSheetIndexEntry = {
   uploadId: string
   uploadName: string
@@ -81,6 +102,7 @@ export type PlanSheetIndexEntry = {
   selectedForAnalysis: boolean
   renderedFromPdf?: boolean
   renderedImageAvailable?: boolean
+  classification?: PlanSheetClassification
 }
 
 export type PlanEvidenceRef = {

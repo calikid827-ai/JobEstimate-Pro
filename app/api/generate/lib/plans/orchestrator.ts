@@ -70,6 +70,24 @@ function getPlanPageClassificationStatus(
 ): PlanPageReadStatus["classificationStatus"] {
   if (!sheet) return "unknown"
 
+  if (sheet.classification) {
+    if (
+      sheet.classification.sheetRole !== "unknown" &&
+      sheet.classification.discipline !== "unknown" &&
+      sheet.classification.confidence >= 60
+    ) {
+      return "classified"
+    }
+
+    if (
+      sheet.classification.sheetRole !== "unknown" ||
+      sheet.classification.discipline !== "unknown" ||
+      sheet.classification.confidence > 0
+    ) {
+      return "weak"
+    }
+  }
+
   const hasSheetIdentity =
     Boolean(sheet.sheetNumber && sheet.sheetNumber.trim()) ||
     Boolean(sheet.sheetTitle && sheet.sheetTitle.trim())
@@ -122,6 +140,10 @@ function buildPlanPageReadStatuses(args: {
       warnings.push("Sheet classification is weak and needs estimator review.")
     } else if (classificationStatus === "unknown") {
       warnings.push("Sheet classification is unknown and needs estimator review.")
+    }
+
+    if (sheet?.classification?.warnings.length) {
+      warnings.push(...sheet.classification.warnings)
     }
 
     if (selected && page.selectedPageUploadMode === "original-fallback") {

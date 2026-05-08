@@ -27,6 +27,7 @@ export async function buildSheetIndex(
       selectedForAnalysis: page.selectedForAnalysis,
       renderedFromPdf: page.renderedFromPdf,
       renderedImageAvailable: page.renderedImageAvailable,
+      classification: inferred.classification,
     }
   })
 }

@@ -213,7 +213,30 @@ test("selected rendered pdf pages contribute real plan findings and smarter shee
         sheet.sheetNumber === "A6-1" &&
         sheet.renderedFromPdf === true &&
         sheet.renderedImageAvailable === true &&
-        sheet.discipline !== "unknown"
+        sheet.discipline !== "unknown" &&
+        sheet.classification?.sheetRole === "reflected_ceiling_plan" &&
+        sheet.classification.confidence >= 60
+    )
+  )
+  assert(
+    result.sheetIndex.some(
+      (sheet) =>
+        sheet.sheetNumber === "A8-2" &&
+        sheet.classification?.sheetRole === "finish_schedule"
+    )
+  )
+  assert(
+    result.sheetIndex.some(
+      (sheet) =>
+        sheet.sheetNumber === "P2-0" &&
+        sheet.classification?.sheetRole === "fixture_schedule"
+    )
+  )
+  assert(
+    result.sheetIndex.some(
+      (sheet) =>
+        sheet.sheetNumber === "A9-1" &&
+        sheet.classification?.sheetRole === "elevation"
     )
   )
   assert.equal(result.pageReadStatuses?.length, 4)
@@ -435,6 +458,14 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
         sourcePages:
           assembly.primaryCandidate?.evidence.map((ref) => ref.sourcePageNumber) || [],
       }))
+    const stripStructuredClassification = (result: NonNullable<typeof browserResult>) => ({
+      ...result,
+      sheetIndex: result.sheetIndex.map((sheet) => {
+        const rest = { ...sheet }
+        delete rest.classification
+        return rest
+      }),
+    })
 
     assert(browserResult && serverResult && fallbackResult)
     assert.deepEqual(
@@ -509,6 +540,14 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
     assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, pageReadStatuses: [] })
+    )
+    assert.deepEqual(
+      summarizeSections(browserResult),
+      summarizeSections(stripStructuredClassification(browserResult))
+    )
+    assert.deepEqual(
+      summarizeAssemblies(browserResult),
+      summarizeAssemblies(stripStructuredClassification(browserResult))
     )
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
