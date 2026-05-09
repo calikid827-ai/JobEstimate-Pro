@@ -46,6 +46,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Saved Estimates and Invoices now show launch-safe empty states and workflow guidance instead of disappearing when the active filter has no records. The guidance preserves existing actions when records exist and adds selected-job context when applicable.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
 - DONE: UI-only large-plan selected-page range controls.
+- DONE: UI/helper-only large-plan selected-page readiness guidance.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
 - DONE: Estimate PDF includes customer-safe Estimator Plan Review and compact plan evidence summary.
@@ -79,6 +80,10 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Large-plan selected-page range controls are complete as a UI/helper-only pass. PDF uploads now have From / To / Select range controls while preserving existing Clear and Select all controls, selected-page staging, and current analysis behavior.
 - DONE: The range-control pass improves large PDF usability without changing upload/staging architecture, Generate payloads, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
 - DONE: Range-control verification passed focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check`.
+- DONE: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. PDF uploads now summarize selected page count, total page count, selection ratio, estimated selected upload size, all-pages-selected large PDFs, no-page selections, many selected pages, high estimated selected upload size, and whether the selection may be too broad for reliable/cost-controlled analysis.
+- DONE: The readiness guide gives contractor-friendly sheet guidance before Generate: avoid selecting every page unless needed, start with floor plans, finish schedules, elevations, door/window schedules, and fixture schedules, add demo/RCP sheets only when they affect the trade, and reinforces that selected pages control what Plan Intelligence reads.
+- DONE: The readiness-guidance pass does not change Generate payload shape, upload/staging behavior, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Readiness-guidance verification passed focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check`.
 - DONE: Browser-derived selected-page PDFs now render derived pages `1..N` for image/vision fallback while preserving original source page numbers in provenance.
 - DONE: Plan Intelligence includes PDF splitting, page rendering, sheet indexing, sheet classification heuristics, per-sheet analysis, vision fallback, cross-sheet merge, and typed readbacks.
 - DONE: Plan readbacks include sheet narration, room/area quantity readback, trade-by-trade readback, grouped scope readback, scope-gap prompts, estimator packages, section skeleton handoff, trade assemblies, pricing-carry readback, and final estimator story surfaces.

@@ -191,6 +191,7 @@ Plan upload support includes:
 - PDF, PNG, JPG, JPEG, and WEBP intake
 - Local PDF page indexing for page selection
 - Range-based PDF page selection with From / To / Select range controls
+- Large-plan selected-page readiness guidance for all-pages-selected, no-page selections, many selected pages, high selected upload size, and suggested sheet types
 - Selected-page staging and chunked upload
 - Browser-side selected-page PDF export when possible
 - Server-side selected-page extraction fallback
@@ -214,6 +215,7 @@ Important operational notes:
 
 - Large PDFs should be narrowed with page selection before generation.
 - Use range selection to quickly narrow large PDFs to the sheets that should be reviewed.
+- The upload UI shows readiness guidance for large plan selections and recommends starting with floor plans, finish schedules, elevations, door/window schedules, fixture schedules, and trade-relevant RCP/demo sheets.
 - If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
 - Evidence-strength, table/schedule extraction, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.

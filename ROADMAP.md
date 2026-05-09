@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Plan Intelligence selected-page guidance/readiness copy polish or original-fallback/rasterization efficiency audit.
+3. Audit Plan Intelligence original-fallback scalability so unselected pages are not unnecessarily rasterized/indexed where `selectedSourcePages` are available.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -70,6 +70,7 @@ Completed pre-launch task kept visible:
 - DONE: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic estimator-only candidates build from `roomFinishMatrices`, `extractedTables`, and `repeatedRoomPackages`; preserve source provenance, confidence, assumptions, and warnings; and keep every candidate `eligibleForPricing: false`. Targeted plan tests passed 28/28 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as `blocked`, `review_only`, or `future_candidate`, and preserve required evidence, present evidence, blockers, warnings, and source provenance. Targeted plan tests passed 34/34 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls, retain Clear and Select all, show selected-page count and estimated selected upload size more clearly, and warn when a large PDF has all pages selected. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
+- DONE: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. PDF uploads now summarize selected page count, total page count, selection ratio, estimated selected upload size, all-pages-selected large PDFs, no-page selections, many selected pages, high selected upload size, and whether the selected set may be too broad for reliable/cost-controlled analysis. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
 
 ## 1. Critical Fixes
 

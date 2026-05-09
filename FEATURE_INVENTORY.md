@@ -60,6 +60,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Local PDF page indexing
   - Page selection/deselection
   - Range-based PDF page selection with From / To / Select range controls
+  - Large-plan selected-page readiness guidance with warnings for all-pages-selected, no-page selections, many selected pages, high selected upload size, and suggested sheet types
   - Selected-page upload staging
   - Upload-mode visibility
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
