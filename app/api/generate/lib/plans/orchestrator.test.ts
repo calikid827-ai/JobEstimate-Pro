@@ -554,6 +554,10 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       summarizeSections({ ...browserResult, tradeQuantityCandidates: [] })
     )
     assert.deepEqual(
+      summarizeSections(browserResult),
+      summarizeSections({ ...browserResult, tradeQuantityCandidateGates: [] })
+    )
+    assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, pageReadStatuses: [] })
     )
@@ -572,6 +576,10 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
     assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, tradeQuantityCandidates: [] })
+    )
+    assert.deepEqual(
+      summarizeAssemblies(browserResult),
+      summarizeAssemblies({ ...browserResult, tradeQuantityCandidateGates: [] })
     )
     assert.deepEqual(
       summarizeSections(browserResult),

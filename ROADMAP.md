@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Plan Intelligence Phase 7 pricing handoff confidence/provenance rules for plan-derived diagnostics.
+3. Plan Intelligence large-plan-set intake / selected-page upload scalability planning.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -68,6 +68,7 @@ Completed pre-launch task kept visible:
 - DONE: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete. Deterministic estimator-only extraction builds from extracted finish schedule tables only and captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings. Fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated room families plus finish signatures and repeated finish combinations across generic room rows, preserves source provenance, confidence, and warnings, and keeps repeat counts diagnostic-only. Focused tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic estimator-only candidates build from `roomFinishMatrices`, `extractedTables`, and `repeatedRoomPackages`; preserve source provenance, confidence, assumptions, and warnings; and keep every candidate `eligibleForPricing: false`. Targeted plan tests passed 28/28 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as `blocked`, `review_only`, or `future_candidate`, and preserve required evidence, present evidence, blockers, warnings, and source provenance. Targeted plan tests passed 34/34 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 
 ## 1. Critical Fixes
 
@@ -315,8 +316,9 @@ Completed pre-launch task kept visible:
 - Status note: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete. Deterministic estimator-only extraction builds from extracted finish schedule tables only and captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings without changing pricing or handoff behavior.
 - Status note: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature, detects repeated finish combinations across generic room rows, and preserves source matrix/table/page/sheet row provenance, confidence, and warnings without changing pricing or handoff behavior.
 - Status note: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic review-only candidates now cover painting/wallcovering/flooring/base/ceiling finish rows, door/window/fixture schedule counts, and repeated room package counts from existing diagnostics, preserve provenance/confidence/assumptions/warnings, and remain ineligible for pricing.
-- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence implementation task is Phase 7 pricing handoff confidence/provenance rules, not a rebuild of upload or Plan Intelligence logic.
-- Future Plan Intelligence work should define Phase 7 gates first. Do not allow plan-derived candidates to affect pricing until those confidence/provenance gates are explicitly reviewed and proven; direct pricing influence from candidates remains future work.
+- Status note: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as blocked/review-only/future-candidate, and preserve required evidence, present evidence, blockers, warnings, and source provenance.
+- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence task is large-plan-set intake / selected-page upload scalability planning, not a rebuild of upload or Plan Intelligence logic.
+- Future Plan Intelligence work should keep actual pricing handoff activation deferred until manual QA and stronger confidence/provenance gates are proven; direct pricing influence from plan-derived candidates remains future work.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`

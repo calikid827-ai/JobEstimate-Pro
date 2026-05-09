@@ -455,13 +455,20 @@ Implemented:
   - Preserves source provenance, confidence, assumptions, and warnings.
   - Estimator-facing Plan Review Summary counts for trade quantity candidates found, candidates needing measurement, and pricing-eligible candidates.
   - Diagnostic-only behavior; candidates are not pricing-eligible and are not measured takeoff support.
+- Trade quantity candidate gate diagnostics:
+  - Deterministic estimator-only review of `tradeQuantityCandidates` only.
+  - Classifies each candidate as `blocked`, `review_only`, or `future_candidate`.
+  - Keeps `pricingEligibleNow` false for every gate; `future_candidate` is diagnostic future-readiness only.
+  - Preserves required evidence, present evidence, blockers, warnings, and source provenance.
+  - Estimator-facing Plan Review Summary counts for candidate gates reviewed, future candidates after review, blocked/review-only candidates, and pricing-eligible now.
+  - Diagnostic-only behavior that does not drive pricing or quantity decisions.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Schedule, finish table, room/finish matrix, repeated room package, and trade quantity candidate extraction is diagnostic-only and still conservative.
-- Pricing handoff confidence/provenance gates, SF/LF, and measured fixture/device counts remain limited.
+- Schedule, finish table, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate diagnostics are diagnostic-only and still conservative.
+- Actual pricing handoff activation, SF/LF, and measured fixture/device counts remain limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
 - AI-generated prose may still be less specific than typed readback.

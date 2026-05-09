@@ -299,6 +299,19 @@ type PlanTradeQuantityCandidateView = {
   eligibleForPricing: false
 }
 
+type PlanTradeQuantityCandidateGateView = {
+  candidateKey: string
+  gateStatus: "blocked" | "review_only" | "future_candidate"
+  pricingEligibleNow: false
+  futureEligible: boolean
+  confidence: number
+  requiredEvidence: string[]
+  presentEvidence: string[]
+  blockers: string[]
+  warnings: string[]
+  sourceRefs: PlanTradeQuantityCandidateView["sourceRefs"]
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -319,6 +332,7 @@ type PlanIntelligence = {
   roomFinishMatrices?: PlanRoomFinishMatrixView[]
   repeatedRoomPackages?: PlanRepeatedRoomPackageView[]
   tradeQuantityCandidates?: PlanTradeQuantityCandidateView[]
+  tradeQuantityCandidateGates?: PlanTradeQuantityCandidateGateView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -1221,6 +1235,74 @@ const normalizePlanTradeQuantityCandidates = (
     .filter((candidate): candidate is PlanTradeQuantityCandidateView => candidate !== null)
 
   return candidates.length > 0 ? candidates.slice(0, 80) : undefined
+}
+
+const normalizePlanTradeQuantityCandidateGates = (
+  value: unknown
+): PlanTradeQuantityCandidateGateView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const gateStatus = (raw: unknown): PlanTradeQuantityCandidateGateView["gateStatus"] =>
+    raw === "blocked" || raw === "review_only" || raw === "future_candidate"
+      ? raw
+      : "blocked"
+
+  const gates = value
+    .map((item: unknown): PlanTradeQuantityCandidateGateView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record || typeof record.candidateKey !== "string") return null
+
+      const sourceRefs = Array.isArray(record.sourceRefs)
+        ? record.sourceRefs
+            .map((ref: unknown): PlanTradeQuantityCandidateGateView["sourceRefs"][number] | null => {
+              const refRecord = ref && typeof ref === "object" ? (ref as Record<string, unknown>) : null
+              if (!refRecord) return null
+
+              return {
+                pageNumber:
+                  Number.isFinite(Number(refRecord.pageNumber)) && Number(refRecord.pageNumber) > 0
+                    ? Math.floor(Number(refRecord.pageNumber))
+                    : undefined,
+                sourcePageNumber:
+                  Number.isFinite(Number(refRecord.sourcePageNumber)) &&
+                  Number(refRecord.sourcePageNumber) > 0
+                    ? Math.floor(Number(refRecord.sourcePageNumber))
+                    : undefined,
+                sheetNumber: typeof refRecord.sheetNumber === "string" ? refRecord.sheetNumber.trim() : null,
+                sheetTitle: typeof refRecord.sheetTitle === "string" ? refRecord.sheetTitle.trim() : null,
+                rowIndex:
+                  Number.isFinite(Number(refRecord.rowIndex)) && Number(refRecord.rowIndex) > 0
+                    ? Math.floor(Number(refRecord.rowIndex))
+                    : undefined,
+                sourceTableIndex:
+                  Number.isFinite(Number(refRecord.sourceTableIndex)) && Number(refRecord.sourceTableIndex) >= 0
+                    ? Math.floor(Number(refRecord.sourceTableIndex))
+                    : undefined,
+                sourceMatrixIndex:
+                  Number.isFinite(Number(refRecord.sourceMatrixIndex)) && Number(refRecord.sourceMatrixIndex) >= 0
+                    ? Math.floor(Number(refRecord.sourceMatrixIndex))
+                    : undefined,
+              }
+            })
+            .filter((ref): ref is PlanTradeQuantityCandidateGateView["sourceRefs"][number] => ref !== null)
+        : []
+
+      return {
+        candidateKey: record.candidateKey.trim(),
+        gateStatus: gateStatus(record.gateStatus),
+        pricingEligibleNow: false,
+        futureEligible: record.futureEligible === true,
+        confidence: Math.max(0, Math.min(100, Number(record.confidence) || 0)),
+        requiredEvidence: normalizePlanStrings(record.requiredEvidence).slice(0, 12),
+        presentEvidence: normalizePlanStrings(record.presentEvidence).slice(0, 12),
+        blockers: normalizePlanStrings(record.blockers).slice(0, 12),
+        warnings: normalizePlanStrings(record.warnings).slice(0, 12),
+        sourceRefs: sourceRefs.slice(0, 160),
+      }
+    })
+    .filter((gate): gate is PlanTradeQuantityCandidateGateView => gate !== null)
+
+  return gates.length > 0 ? gates.slice(0, 80) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -4134,6 +4216,9 @@ setPlanIntelligence(
         repeatedRoomPackages: normalizePlanRepeatedRoomPackages(data.planIntelligence?.repeatedRoomPackages),
         tradeQuantityCandidates: normalizePlanTradeQuantityCandidates(
           data.planIntelligence?.tradeQuantityCandidates
+        ),
+        tradeQuantityCandidateGates: normalizePlanTradeQuantityCandidateGates(
+          data.planIntelligence?.tradeQuantityCandidateGates
         ),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
@@ -11539,6 +11624,17 @@ function PlanAwareEstimatorReadbackCard({
     (candidate) => candidate.eligibleForPricing
   ).length
   const hasTradeQuantityCandidateSummary = tradeQuantityCandidates.length > 0
+  const tradeQuantityCandidateGates = planIntelligence?.tradeQuantityCandidateGates || []
+  const futureCandidateGateCount = tradeQuantityCandidateGates.filter(
+    (gate) => gate.gateStatus === "future_candidate"
+  ).length
+  const blockedOrReviewOnlyGateCount = tradeQuantityCandidateGates.filter(
+    (gate) => gate.gateStatus === "blocked" || gate.gateStatus === "review_only"
+  ).length
+  const pricingEligibleNowGateCount = tradeQuantityCandidateGates.filter(
+    (gate) => gate.pricingEligibleNow
+  ).length
+  const hasTradeQuantityCandidateGateSummary = tradeQuantityCandidateGates.length > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11672,6 +11768,17 @@ function PlanAwareEstimatorReadbackCard({
               Candidates needing measurement: {candidatesNeedingMeasurementCount}
               {" - "}
               Pricing-eligible candidates: {pricingEligibleCandidateCount}
+            </div>
+          )}
+          {hasTradeQuantityCandidateGateSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Candidate gates reviewed: {tradeQuantityCandidateGates.length}
+              {" - "}
+              Future candidates after review: {futureCandidateGateCount}
+              {" - "}
+              Blocked/review-only candidates: {blockedOrReviewOnlyGateCount}
+              {" - "}
+              Pricing-eligible now: {pricingEligibleNowGateCount}
             </div>
           )}
         </div>

@@ -7,6 +7,7 @@ import { extractPlanTablesFromPages } from "./tableExtraction"
 import { extractRoomFinishMatricesFromTables } from "./roomFinishMatrix"
 import { detectRepeatedRoomPackagesFromMatrices } from "./repeatedRoomPackages"
 import { buildTradeQuantityCandidates } from "./tradeQuantityCandidates"
+import { buildTradeQuantityCandidateGates } from "./tradeQuantityCandidateGates"
 import type {
   PlanEvidenceStrength,
   PlanIntelligence,
@@ -381,6 +382,9 @@ export async function runPlanIntelligence(args: {
     sheetIndex: finalSheetIndex,
     pageReadStatuses,
   })
+  const tradeQuantityCandidateGates = buildTradeQuantityCandidateGates(
+    tradeQuantityCandidates
+  )
   const selectedPagesCount = selectedPages.length
   const skippedPagesCount = Math.max(0, indexedPages.length - selectedPagesCount)
 
@@ -396,6 +400,7 @@ export async function runPlanIntelligence(args: {
     roomFinishMatrices,
     repeatedRoomPackages,
     tradeQuantityCandidates,
+    tradeQuantityCandidateGates,
     evidenceStrength: buildEvidenceStrength({
       indexedPages,
       selectedPages,

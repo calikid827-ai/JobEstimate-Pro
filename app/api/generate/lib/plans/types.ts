@@ -197,6 +197,19 @@ export type PlanTradeQuantityCandidate = {
   eligibleForPricing: false
 }
 
+export type PlanTradeQuantityCandidateGate = {
+  candidateKey: string
+  gateStatus: "blocked" | "review_only" | "future_candidate"
+  pricingEligibleNow: false
+  futureEligible: boolean
+  confidence: number
+  requiredEvidence: string[]
+  presentEvidence: string[]
+  blockers: string[]
+  warnings: string[]
+  sourceRefs: PlanTradeQuantityCandidate["sourceRefs"]
+}
+
 export type PlanSheetDiscipline =
   | "architectural"
   | "electrical"
@@ -589,6 +602,7 @@ export type PlanIntelligence = {
   roomFinishMatrices?: PlanRoomFinishMatrix[]
   repeatedRoomPackages?: PlanRepeatedRoomPackage[]
   tradeQuantityCandidates?: PlanTradeQuantityCandidate[]
+  tradeQuantityCandidateGates?: PlanTradeQuantityCandidateGate[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff
