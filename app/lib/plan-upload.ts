@@ -29,6 +29,13 @@ export type LocalPlanPageSelection = {
   selected: boolean
 }
 
+export type LocalPlanPageRangeValidation = {
+  ok: boolean
+  fromPage: number | null
+  toPage: number | null
+  message: string | null
+}
+
 export type PlanSelectedPageUploadMode =
   | "original"
   | "browser-derived-selected-pages"
@@ -337,6 +344,86 @@ export function buildLocalPlanPageSelection(args: {
     sourcePageNumber: index + 1,
     label: args.sourceKind === "pdf" ? `Page ${index + 1}` : "Image 1",
     selected: defaultSelected,
+  }))
+}
+
+export function validateLocalPlanPageRange(args: {
+  from: string | number | null | undefined
+  to: string | number | null | undefined
+  totalPages: number
+}): LocalPlanPageRangeValidation {
+  const totalPages = Math.max(1, Math.floor(Number(args.totalPages) || 0))
+  const parsePage = (value: string | number | null | undefined): number | null => {
+    if (typeof value === "string" && value.trim() === "") return null
+    const page = Number(value)
+    return Number.isInteger(page) ? page : null
+  }
+  const fromPage = parsePage(args.from)
+  const toPage = parsePage(args.to)
+
+  if (fromPage === null || toPage === null) {
+    return {
+      ok: false,
+      fromPage: null,
+      toPage: null,
+      message: "Enter a valid page range.",
+    }
+  }
+
+  if (fromPage < 1 || toPage < 1) {
+    return {
+      ok: false,
+      fromPage,
+      toPage,
+      message: "Page range must start at page 1 or higher.",
+    }
+  }
+
+  if (fromPage > toPage) {
+    return {
+      ok: false,
+      fromPage,
+      toPage,
+      message: "Start page must be before end page.",
+    }
+  }
+
+  if (toPage > totalPages) {
+    return {
+      ok: false,
+      fromPage,
+      toPage,
+      message: `Page range must end at page ${totalPages} or lower.`,
+    }
+  }
+
+  return {
+    ok: true,
+    fromPage,
+    toPage,
+    message: null,
+  }
+}
+
+export function applyLocalPlanPageRangeSelection(
+  pages: LocalPlanPageSelection[],
+  range: { from: string | number | null | undefined; to: string | number | null | undefined }
+): LocalPlanPageSelection[] {
+  const validation = validateLocalPlanPageRange({
+    from: range.from,
+    to: range.to,
+    totalPages: pages.length,
+  })
+
+  if (!validation.ok || validation.fromPage === null || validation.toPage === null) {
+    return pages.map((page) => ({ ...page }))
+  }
+
+  return pages.map((page) => ({
+    ...page,
+    selected:
+      page.sourcePageNumber >= validation.fromPage! &&
+      page.sourcePageNumber <= validation.toPage!,
   }))
 }
 

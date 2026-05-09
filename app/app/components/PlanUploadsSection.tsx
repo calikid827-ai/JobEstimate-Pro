@@ -1,10 +1,14 @@
 "use client"
 
+import { useState } from "react"
+
 import {
+  applyLocalPlanPageRangeSelection,
   buildSelectedPageUploadDebugSummary,
   estimateSelectedPdfBytes,
   formatPlanUploadBytes,
   resolvePlanUploadDisplayMode,
+  validateLocalPlanPageRange,
 } from "../../lib/plan-upload"
 
 type JobPlan = {
@@ -76,6 +80,9 @@ export default function PlanUploadsSection({
   maxJobPlans,
 }: Props) {
   const plansAtLimit = jobPlans.length >= maxJobPlans
+  const [pageRangeDrafts, setPageRangeDrafts] = useState<
+    Record<string, { from: string; to: string }>
+  >({})
 
   return (
     <div
@@ -126,6 +133,19 @@ export default function PlanUploadsSection({
           {jobPlans.map((plan, index) => (
             (() => {
               const selectedPages = plan.pages.filter((page) => page.selected).length
+              const rangeDraft = pageRangeDrafts[plan.id] ?? { from: "", to: "" }
+              const hasRangeDraft = rangeDraft.from.trim() !== "" || rangeDraft.to.trim() !== ""
+              const rangeValidation = hasRangeDraft
+                ? validateLocalPlanPageRange({
+                    from: rangeDraft.from,
+                    to: rangeDraft.to,
+                    totalPages: plan.sourcePageCount,
+                  })
+                : { ok: false, fromPage: null, toPage: null, message: null }
+              const allPdfPagesSelected =
+                plan.sourceKind === "pdf" &&
+                plan.sourcePageCount >= 30 &&
+                selectedPages === plan.sourcePageCount
               const displayMode = resolvePlanUploadDisplayMode({
                 mode: plan.selectedPageUploadMode,
                 sourceKind: plan.sourceKind,
@@ -193,6 +213,9 @@ export default function PlanUploadsSection({
                         Selected pages for review: {selectedPages} of {plan.sourcePageCount}
                       </div>
                       <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                        Estimated selected upload: {formatPlanUploadBytes(displayStagedBytes)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
                         {plan.stagedUploadId ? "Last plan processing method" : "Plan processing"}:{" "}
                         {getCustomerPlanProcessingLabel(displayMode)}
                       </div>
@@ -222,6 +245,24 @@ export default function PlanUploadsSection({
                       {plan.selectedPageUploadNote && (
                         <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
                           {plan.selectedPageUploadNote}
+                        </div>
+                      )}
+                      {allPdfPagesSelected && (
+                        <div
+                          style={{
+                            fontSize: 12,
+                            color: "#92400e",
+                            marginTop: 6,
+                            padding: 8,
+                            borderRadius: 8,
+                            border: "1px solid #fed7aa",
+                            background: "#fff7ed",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          Large plan set selected in full. Narrow to relevant floor plans, finish
+                          schedules, elevations, and fixture/door/window schedules before Generate
+                          when possible.
                         </div>
                       )}
                     </>
@@ -333,6 +374,130 @@ export default function PlanUploadsSection({
                   <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
                     Analysis only uses the selected pages from this plan set. Generate stages the selected plan set after page selection, and when possible the staged artifact is reduced to selected PDF pages before deeper sheet reading and pricing.
                   </div>
+
+                  {plan.sourceKind === "pdf" && (
+                    <div
+                      data-mobile-toolbar
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(80px, 1fr) minmax(80px, 1fr) auto",
+                        gap: 8,
+                        alignItems: "end",
+                        marginTop: 10,
+                      }}
+                    >
+                      <label
+                        style={{
+                          display: "grid",
+                          gap: 4,
+                          fontSize: 11,
+                          color: "#4b5563",
+                          fontWeight: 700,
+                        }}
+                      >
+                        From
+                        <input
+                          aria-label={`${plan.name} range start page`}
+                          type="number"
+                          min={1}
+                          max={plan.sourcePageCount}
+                          inputMode="numeric"
+                          value={rangeDraft.from}
+                          onChange={(e) =>
+                            setPageRangeDrafts((prev) => ({
+                              ...prev,
+                              [plan.id]: {
+                                from: e.target.value,
+                                to: prev[plan.id]?.to ?? "",
+                              },
+                            }))
+                          }
+                          placeholder="1"
+                          style={{
+                            width: "100%",
+                            padding: "7px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #d1d5db",
+                            fontSize: 12,
+                          }}
+                        />
+                      </label>
+
+                      <label
+                        style={{
+                          display: "grid",
+                          gap: 4,
+                          fontSize: 11,
+                          color: "#4b5563",
+                          fontWeight: 700,
+                        }}
+                      >
+                        To
+                        <input
+                          aria-label={`${plan.name} range end page`}
+                          type="number"
+                          min={1}
+                          max={plan.sourcePageCount}
+                          inputMode="numeric"
+                          value={rangeDraft.to}
+                          onChange={(e) =>
+                            setPageRangeDrafts((prev) => ({
+                              ...prev,
+                              [plan.id]: {
+                                from: prev[plan.id]?.from ?? "",
+                                to: e.target.value,
+                              },
+                            }))
+                          }
+                          placeholder={String(plan.sourcePageCount)}
+                          style={{
+                            width: "100%",
+                            padding: "7px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #d1d5db",
+                            fontSize: 12,
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        disabled={!rangeValidation.ok}
+                        onClick={() => {
+                          updateJobPlan(plan.id, {
+                            pages: applyLocalPlanPageRangeSelection(plan.pages, {
+                              from: rangeDraft.from,
+                              to: rangeDraft.to,
+                            }),
+                          })
+                        }}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #bfdbfe",
+                          background: rangeValidation.ok ? "#eff6ff" : "#f3f4f6",
+                          color: rangeValidation.ok ? "#1d4ed8" : "#6b7280",
+                          cursor: rangeValidation.ok ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Select range
+                      </button>
+
+                      {rangeValidation.message && (
+                        <div
+                          style={{
+                            gridColumn: "1 / -1",
+                            fontSize: 12,
+                            color: "#92400e",
+                          }}
+                        >
+                          {rangeValidation.message}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div
                     style={{

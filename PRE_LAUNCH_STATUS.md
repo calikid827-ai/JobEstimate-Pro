@@ -45,6 +45,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: PriceGuard Review QA false-positive reduction pass is complete. The deterministic helper now filters scope-quality warnings against the combined original scope and generated customer-facing estimate text, reducing over-warning when the generated estimate already includes prep, materials, cleanup, protection, exclusions, approval, or work process language.
 - DONE: Saved Estimates and Invoices now show launch-safe empty states and workflow guidance instead of disappearing when the active filter has no records. The guidance preserves existing actions when records exist and adds selected-job context when applicable.
 - DONE: Plan selected-page upload, staging, and fallback messaging.
+- DONE: UI-only large-plan selected-page range controls.
 - DONE: Browser-derived selected-page PDF rasterization renders derived pages `1..N` while preserving original source page provenance.
 - DONE: Plan evidence strength readback with `Strong`, `Useful`, and `Review-only`.
 - DONE: Estimate PDF includes customer-safe Estimator Plan Review and compact plan evidence summary.
@@ -75,6 +76,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan upload supports PDF/images, local PDF page count detection, page selection/deselection, selected-page upload staging, and chunked upload.
 - DONE: Browser-side selected-page PDF export is used when possible.
 - DONE: Server-side selected-page extraction fallback and original-PDF fallback are present.
+- DONE: Large-plan selected-page range controls are complete as a UI/helper-only pass. PDF uploads now have From / To / Select range controls while preserving existing Clear and Select all controls, selected-page staging, and current analysis behavior.
+- DONE: The range-control pass improves large PDF usability without changing upload/staging architecture, Generate payloads, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Range-control verification passed focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check`.
 - DONE: Browser-derived selected-page PDFs now render derived pages `1..N` for image/vision fallback while preserving original source page numbers in provenance.
 - DONE: Plan Intelligence includes PDF splitting, page rendering, sheet indexing, sheet classification heuristics, per-sheet analysis, vision fallback, cross-sheet merge, and typed readbacks.
 - DONE: Plan readbacks include sheet narration, room/area quantity readback, trade-by-trade readback, grouped scope readback, scope-gap prompts, estimator packages, section skeleton handoff, trade assemblies, pricing-carry readback, and final estimator story surfaces.
@@ -254,7 +258,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 4. PARTIAL: Plan upload guidance and fallback-message QA.
    - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, Phase 3 table/schedule extraction diagnostics, Phase 4 room/finish matrix diagnostics, Phase 5 repeated room package diagnostics, Phase 6 trade-specific quantity candidate diagnostics, and Phase 7 confidence/provenance gate diagnostics are complete.
-   - The next Plan Intelligence task is large-plan-set intake / selected-page upload scalability planning.
+   - UI-only large-plan selected-page range controls are complete. This added deterministic range helpers and PDF From / To / Select range controls without changing upload/staging architecture or analysis behavior.
+   - The next safest large-plan task is selected-page guidance/readiness copy polish or an original-fallback/rasterization efficiency audit.
    - Actual pricing handoff activation remains future work only after manual QA and stronger confidence/provenance gates are proven; do not allow plan-derived candidates to affect pricing yet.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.

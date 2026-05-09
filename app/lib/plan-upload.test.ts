@@ -3,6 +3,7 @@ import { createRequire } from "node:module"
 import test from "node:test"
 
 import {
+  applyLocalPlanPageRangeSelection,
   buildLocalPlanPageSelection,
   buildSelectedPageUploadModeNote,
   buildSelectedPageUploadDebugSummary,
@@ -27,6 +28,7 @@ import {
   PLAN_SELECTION_INDEXING_STATUS,
   readPlanUploadStageErrorMessage,
   resolvePlanUploadDisplayMode,
+  validateLocalPlanPageRange,
   validateDerivedPlanBytes,
 } from "./plan-upload"
 
@@ -134,6 +136,67 @@ test("local file pick indexes pdf page count and builds the page-selection list"
     [1, 2, 3]
   )
   assert.equal(pages.every((page) => page.selected), true)
+})
+
+test("page range validation accepts bounded numeric ranges", () => {
+  assert.deepEqual(validateLocalPlanPageRange({ from: "2", to: "4", totalPages: 8 }), {
+    ok: true,
+    fromPage: 2,
+    toPage: 4,
+    message: null,
+  })
+})
+
+test("page range validation rejects invalid or out-of-bounds ranges", () => {
+  assert.match(
+    String(validateLocalPlanPageRange({ from: "5", to: "2", totalPages: 8 }).message || ""),
+    /Start page/
+  )
+  assert.match(
+    String(validateLocalPlanPageRange({ from: "2", to: "9", totalPages: 8 }).message || ""),
+    /page 8/
+  )
+  assert.match(
+    String(validateLocalPlanPageRange({ from: "", to: "3", totalPages: 8 }).message || ""),
+    /valid page range/
+  )
+})
+
+test("page range selection replaces selected pages with the requested range", () => {
+  const pages = buildLocalPlanPageSelection({
+    sourceKind: "pdf",
+    totalPages: 6,
+    name: "hotel-set.pdf",
+    note: "",
+  })
+
+  const ranged = applyLocalPlanPageRangeSelection(pages, { from: "2", to: "4" })
+
+  assert.deepEqual(
+    ranged.map((page) => page.selected),
+    [false, true, true, true, false, false]
+  )
+  assert.equal(pages.every((page) => page.selected), true)
+})
+
+test("invalid page range selection leaves page selections unchanged", () => {
+  const pages = buildLocalPlanPageSelection({
+    sourceKind: "pdf",
+    totalPages: 4,
+    name: "hotel-set.pdf",
+    note: "",
+  }).map((page) => ({
+    ...page,
+    selected: page.sourcePageNumber === 1 || page.sourcePageNumber === 3,
+  }))
+
+  const ranged = applyLocalPlanPageRangeSelection(pages, { from: "4", to: "2" })
+
+  assert.deepEqual(
+    ranged.map((page) => page.selected),
+    [true, false, true, false]
+  )
+  assert.notEqual(ranged[0], pages[0])
 })
 
 test("oversized but locally indexable pdf can still reach page-selection", async () => {

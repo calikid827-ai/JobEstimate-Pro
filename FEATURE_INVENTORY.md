@@ -59,6 +59,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - PDF/image support
   - Local PDF page indexing
   - Page selection/deselection
+  - Range-based PDF page selection with From / To / Select range controls
   - Selected-page upload staging
   - Upload-mode visibility
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
@@ -388,6 +389,9 @@ Implemented:
 - Local PDF source page count detection.
 - Page-selection list creation.
 - Page deselection before generate.
+- Range-based PDF page selection with deterministic validation and From / To / Select range controls.
+- Selected-page count and estimated selected upload size visibility.
+- Large-PDF warning when all pages are selected.
 - Selected-page export in browser.
 - Selected-page size estimation.
 - Chunked staged upload path.

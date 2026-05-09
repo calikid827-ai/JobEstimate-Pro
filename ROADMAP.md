@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Plan Intelligence large-plan-set intake / selected-page upload scalability planning.
+3. Plan Intelligence selected-page guidance/readiness copy polish or original-fallback/rasterization efficiency audit.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -69,6 +69,7 @@ Completed pre-launch task kept visible:
 - DONE: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated room families plus finish signatures and repeated finish combinations across generic room rows, preserves source provenance, confidence, and warnings, and keeps repeat counts diagnostic-only. Focused tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic estimator-only candidates build from `roomFinishMatrices`, `extractedTables`, and `repeatedRoomPackages`; preserve source provenance, confidence, assumptions, and warnings; and keep every candidate `eligibleForPricing: false`. Targeted plan tests passed 28/28 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as `blocked`, `review_only`, or `future_candidate`, and preserve required evidence, present evidence, blockers, warnings, and source provenance. Targeted plan tests passed 34/34 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls, retain Clear and Select all, show selected-page count and estimated selected upload size more clearly, and warn when a large PDF has all pages selected. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
 
 ## 1. Critical Fixes
 
@@ -317,7 +318,8 @@ Completed pre-launch task kept visible:
 - Status note: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature, detects repeated finish combinations across generic room rows, and preserves source matrix/table/page/sheet row provenance, confidence, and warnings without changing pricing or handoff behavior.
 - Status note: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic review-only candidates now cover painting/wallcovering/flooring/base/ceiling finish rows, door/window/fixture schedule counts, and repeated room package counts from existing diagnostics, preserve provenance/confidence/assumptions/warnings, and remain ineligible for pricing.
 - Status note: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as blocked/review-only/future-candidate, and preserve required evidence, present evidence, blockers, warnings, and source provenance.
-- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence task is large-plan-set intake / selected-page upload scalability planning, not a rebuild of upload or Plan Intelligence logic.
+- Status note: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls while preserving existing selected-page staging, Generate payloads, and analysis behavior.
+- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next large-plan task is selected-page guidance/readiness copy polish or an original-fallback/rasterization efficiency audit, not a rebuild of upload or Plan Intelligence logic.
 - Future Plan Intelligence work should keep actual pricing handoff activation deferred until manual QA and stronger confidence/provenance gates are proven; direct pricing influence from plan-derived candidates remains future work.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
