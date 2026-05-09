@@ -276,6 +276,29 @@ type PlanRepeatedRoomPackageView = {
   warnings: string[]
 }
 
+type PlanTradeQuantityCandidateView = {
+  candidateKey: string
+  trade: "painting" | "drywall" | "flooring" | "tile" | "plumbing" | "electrical" | "carpentry" | "general"
+  category: string
+  quantity: number | null
+  unit: "rooms" | "rows" | "items" | "doors" | "windows" | "fixtures" | "areas" | "lf" | "sf" | "unknown"
+  quantityStatus: "candidate" | "count_only" | "needs_measurement" | "unsupported"
+  confidence: number
+  sourceType: "finish_matrix" | "schedule_table" | "repeated_room_package" | "sheet_classification"
+  sourceRefs: Array<{
+    pageNumber?: number
+    sourcePageNumber?: number
+    sheetNumber?: string | null
+    sheetTitle?: string | null
+    rowIndex?: number
+    sourceTableIndex?: number
+    sourceMatrixIndex?: number
+  }>
+  assumptions: string[]
+  warnings: string[]
+  eligibleForPricing: false
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -295,6 +318,7 @@ type PlanIntelligence = {
   extractedTables?: PlanExtractedTableView[]
   roomFinishMatrices?: PlanRoomFinishMatrixView[]
   repeatedRoomPackages?: PlanRepeatedRoomPackageView[]
+  tradeQuantityCandidates?: PlanTradeQuantityCandidateView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -1089,6 +1113,114 @@ const normalizePlanRepeatedRoomPackages = (
     .filter((pkg): pkg is PlanRepeatedRoomPackageView => pkg !== null)
 
   return packages.length > 0 ? packages.slice(0, 40) : undefined
+}
+
+const normalizePlanTradeQuantityCandidates = (
+  value: unknown
+): PlanTradeQuantityCandidateView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const trade = (raw: unknown): PlanTradeQuantityCandidateView["trade"] =>
+    raw === "painting" ||
+    raw === "drywall" ||
+    raw === "flooring" ||
+    raw === "tile" ||
+    raw === "plumbing" ||
+    raw === "electrical" ||
+    raw === "carpentry" ||
+    raw === "general"
+      ? raw
+      : "general"
+  const unit = (raw: unknown): PlanTradeQuantityCandidateView["unit"] =>
+    raw === "rooms" ||
+    raw === "rows" ||
+    raw === "items" ||
+    raw === "doors" ||
+    raw === "windows" ||
+    raw === "fixtures" ||
+    raw === "areas" ||
+    raw === "lf" ||
+    raw === "sf" ||
+    raw === "unknown"
+      ? raw
+      : "unknown"
+  const quantityStatus = (raw: unknown): PlanTradeQuantityCandidateView["quantityStatus"] =>
+    raw === "candidate" ||
+    raw === "count_only" ||
+    raw === "needs_measurement" ||
+    raw === "unsupported"
+      ? raw
+      : "unsupported"
+  const sourceType = (raw: unknown): PlanTradeQuantityCandidateView["sourceType"] =>
+    raw === "finish_matrix" ||
+    raw === "schedule_table" ||
+    raw === "repeated_room_package" ||
+    raw === "sheet_classification"
+      ? raw
+      : "sheet_classification"
+
+  const candidates = value
+    .map((item: unknown): PlanTradeQuantityCandidateView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record || typeof record.candidateKey !== "string") return null
+
+      const sourceRefs = Array.isArray(record.sourceRefs)
+        ? record.sourceRefs
+            .map((ref: unknown): PlanTradeQuantityCandidateView["sourceRefs"][number] | null => {
+              const refRecord = ref && typeof ref === "object" ? (ref as Record<string, unknown>) : null
+              if (!refRecord) return null
+
+              return {
+                pageNumber:
+                  Number.isFinite(Number(refRecord.pageNumber)) && Number(refRecord.pageNumber) > 0
+                    ? Math.floor(Number(refRecord.pageNumber))
+                    : undefined,
+                sourcePageNumber:
+                  Number.isFinite(Number(refRecord.sourcePageNumber)) &&
+                  Number(refRecord.sourcePageNumber) > 0
+                    ? Math.floor(Number(refRecord.sourcePageNumber))
+                    : undefined,
+                sheetNumber: typeof refRecord.sheetNumber === "string" ? refRecord.sheetNumber.trim() : null,
+                sheetTitle: typeof refRecord.sheetTitle === "string" ? refRecord.sheetTitle.trim() : null,
+                rowIndex:
+                  Number.isFinite(Number(refRecord.rowIndex)) && Number(refRecord.rowIndex) > 0
+                    ? Math.floor(Number(refRecord.rowIndex))
+                    : undefined,
+                sourceTableIndex:
+                  Number.isFinite(Number(refRecord.sourceTableIndex)) && Number(refRecord.sourceTableIndex) >= 0
+                    ? Math.floor(Number(refRecord.sourceTableIndex))
+                    : undefined,
+                sourceMatrixIndex:
+                  Number.isFinite(Number(refRecord.sourceMatrixIndex)) && Number(refRecord.sourceMatrixIndex) >= 0
+                    ? Math.floor(Number(refRecord.sourceMatrixIndex))
+                    : undefined,
+              }
+            })
+            .filter((ref): ref is PlanTradeQuantityCandidateView["sourceRefs"][number] => ref !== null)
+        : []
+      const quantity =
+        typeof record.quantity === "number" && Number.isFinite(record.quantity)
+          ? record.quantity
+          : null
+
+      return {
+        candidateKey: record.candidateKey.trim(),
+        trade: trade(record.trade),
+        category: typeof record.category === "string" ? record.category.trim() : "quantity candidate",
+        quantity,
+        unit: unit(record.unit),
+        quantityStatus: quantityStatus(record.quantityStatus),
+        confidence: Math.max(0, Math.min(100, Number(record.confidence) || 0)),
+        sourceType: sourceType(record.sourceType),
+        sourceRefs: sourceRefs.slice(0, 160),
+        assumptions: normalizePlanStrings(record.assumptions).slice(0, 12),
+        warnings: normalizePlanStrings(record.warnings).slice(0, 12),
+        eligibleForPricing: false,
+      }
+    })
+    .filter((candidate): candidate is PlanTradeQuantityCandidateView => candidate !== null)
+
+  return candidates.length > 0 ? candidates.slice(0, 80) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -4000,6 +4132,9 @@ setPlanIntelligence(
         extractedTables: normalizePlanExtractedTables(data.planIntelligence?.extractedTables),
         roomFinishMatrices: normalizePlanRoomFinishMatrices(data.planIntelligence?.roomFinishMatrices),
         repeatedRoomPackages: normalizePlanRepeatedRoomPackages(data.planIntelligence?.repeatedRoomPackages),
+        tradeQuantityCandidates: normalizePlanTradeQuantityCandidates(
+          data.planIntelligence?.tradeQuantityCandidates
+        ),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -11394,6 +11529,16 @@ function PlanAwareEstimatorReadbackCard({
     (pkg) => pkg.confidence < 60
   ).length
   const hasRepeatedRoomPackageSummary = repeatedRoomPackages.length > 0
+  const tradeQuantityCandidates = planIntelligence?.tradeQuantityCandidates || []
+  const candidatesNeedingMeasurementCount = tradeQuantityCandidates.filter(
+    (candidate) =>
+      candidate.quantityStatus === "needs_measurement" ||
+      candidate.quantityStatus === "unsupported"
+  ).length
+  const pricingEligibleCandidateCount = tradeQuantityCandidates.filter(
+    (candidate) => candidate.eligibleForPricing
+  ).length
+  const hasTradeQuantityCandidateSummary = tradeQuantityCandidates.length > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11518,6 +11663,15 @@ function PlanAwareEstimatorReadbackCard({
               Rooms represented in packages: {repeatedPackageRoomCount}
               {" - "}
               Low-confidence packages needing review: {lowConfidenceRepeatedPackageCount}
+            </div>
+          )}
+          {hasTradeQuantityCandidateSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Trade quantity candidates found: {tradeQuantityCandidates.length}
+              {" - "}
+              Candidates needing measurement: {candidatesNeedingMeasurementCount}
+              {" - "}
+              Pricing-eligible candidates: {pricingEligibleCandidateCount}
             </div>
           )}
         </div>

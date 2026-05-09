@@ -6,6 +6,7 @@ import { mergePlanAnalyses } from "./crossSheetMerge"
 import { extractPlanTablesFromPages } from "./tableExtraction"
 import { extractRoomFinishMatricesFromTables } from "./roomFinishMatrix"
 import { detectRepeatedRoomPackagesFromMatrices } from "./repeatedRoomPackages"
+import { buildTradeQuantityCandidates } from "./tradeQuantityCandidates"
 import type {
   PlanEvidenceStrength,
   PlanIntelligence,
@@ -373,6 +374,13 @@ export async function runPlanIntelligence(args: {
   })
   const roomFinishMatrices = extractRoomFinishMatricesFromTables(extractedTables)
   const repeatedRoomPackages = detectRepeatedRoomPackagesFromMatrices(roomFinishMatrices)
+  const tradeQuantityCandidates = buildTradeQuantityCandidates({
+    extractedTables,
+    roomFinishMatrices,
+    repeatedRoomPackages,
+    sheetIndex: finalSheetIndex,
+    pageReadStatuses,
+  })
   const selectedPagesCount = selectedPages.length
   const skippedPagesCount = Math.max(0, indexedPages.length - selectedPagesCount)
 
@@ -387,6 +395,7 @@ export async function runPlanIntelligence(args: {
     extractedTables,
     roomFinishMatrices,
     repeatedRoomPackages,
+    tradeQuantityCandidates,
     evidenceStrength: buildEvidenceStrength({
       indexedPages,
       selectedPages,

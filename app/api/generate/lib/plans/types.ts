@@ -148,6 +148,55 @@ export type PlanRepeatedRoomPackage = {
   warnings: string[]
 }
 
+export type PlanTradeQuantityCandidateTrade =
+  | "painting"
+  | "drywall"
+  | "flooring"
+  | "tile"
+  | "plumbing"
+  | "electrical"
+  | "carpentry"
+  | "general"
+
+export type PlanTradeQuantityCandidateUnit =
+  | "rooms"
+  | "rows"
+  | "items"
+  | "doors"
+  | "windows"
+  | "fixtures"
+  | "areas"
+  | "lf"
+  | "sf"
+  | "unknown"
+
+export type PlanTradeQuantityCandidate = {
+  candidateKey: string
+  trade: PlanTradeQuantityCandidateTrade
+  category: string
+  quantity: number | null
+  unit: PlanTradeQuantityCandidateUnit
+  quantityStatus: "candidate" | "count_only" | "needs_measurement" | "unsupported"
+  confidence: number
+  sourceType:
+    | "finish_matrix"
+    | "schedule_table"
+    | "repeated_room_package"
+    | "sheet_classification"
+  sourceRefs: Array<{
+    pageNumber?: number
+    sourcePageNumber?: number
+    sheetNumber?: string | null
+    sheetTitle?: string | null
+    rowIndex?: number
+    sourceTableIndex?: number
+    sourceMatrixIndex?: number
+  }>
+  assumptions: string[]
+  warnings: string[]
+  eligibleForPricing: false
+}
+
 export type PlanSheetDiscipline =
   | "architectural"
   | "electrical"
@@ -539,6 +588,7 @@ export type PlanIntelligence = {
   extractedTables?: PlanExtractedTable[]
   roomFinishMatrices?: PlanRoomFinishMatrix[]
   repeatedRoomPackages?: PlanRepeatedRoomPackage[]
+  tradeQuantityCandidates?: PlanTradeQuantityCandidate[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

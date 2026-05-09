@@ -449,13 +449,19 @@ Implemented:
   - Preserves source matrix/table/page/sheet row provenance, confidence, and warnings.
   - Estimator-facing Plan Review Summary counts for repeated room packages found, rooms represented in packages, and low-confidence packages needing review.
   - Diagnostic-only behavior; repeat counts are not measured quantity support and do not drive pricing or quantity decisions.
+- Trade-specific quantity candidate diagnostics:
+  - Deterministic estimator-only candidate generation from `roomFinishMatrices`, `extractedTables`, and `repeatedRoomPackages`.
+  - Supported candidate types include painting finish rows, painted room finish candidates, wallcovering finish rows, wall finish candidates, flooring finish rows, floor finish candidates, baseboard/base finish candidates, ceiling finish candidates, door schedule count candidates, window schedule count candidates, fixture schedule count candidates, and repeated room package count candidates.
+  - Preserves source provenance, confidence, assumptions, and warnings.
+  - Estimator-facing Plan Review Summary counts for trade quantity candidates found, candidates needing measurement, and pricing-eligible candidates.
+  - Diagnostic-only behavior; candidates are not pricing-eligible and are not measured takeoff support.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Schedule, finish table, room/finish matrix, and repeated room package extraction is diagnostic-only and still conservative.
-- Trade-specific quantity candidates, SF/LF, and fixture/device counts remain limited.
+- Schedule, finish table, room/finish matrix, repeated room package, and trade quantity candidate extraction is diagnostic-only and still conservative.
+- Pricing handoff confidence/provenance gates, SF/LF, and measured fixture/device counts remain limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
 - AI-generated prose may still be less specific than typed readback.
