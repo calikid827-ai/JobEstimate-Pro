@@ -4,6 +4,7 @@ import { useState } from "react"
 
 import {
   applyLocalPlanPageRangeSelection,
+  buildSelectedPageReadinessSummary,
   buildSelectedPageUploadDebugSummary,
   estimateSelectedPdfBytes,
   formatPlanUploadBytes,
@@ -142,10 +143,15 @@ export default function PlanUploadsSection({
                     totalPages: plan.sourcePageCount,
                   })
                 : { ok: false, fromPage: null, toPage: null, message: null }
-              const allPdfPagesSelected =
-                plan.sourceKind === "pdf" &&
-                plan.sourcePageCount >= 30 &&
-                selectedPages === plan.sourcePageCount
+              const selectionReadiness =
+                plan.sourceKind === "pdf"
+                  ? buildSelectedPageReadinessSummary({
+                      sourceKind: plan.sourceKind,
+                      originalBytes: plan.originalBytes,
+                      totalPages: plan.sourcePageCount,
+                      selectedPages,
+                    })
+                  : null
               const displayMode = resolvePlanUploadDisplayMode({
                 mode: plan.selectedPageUploadMode,
                 sourceKind: plan.sourceKind,
@@ -247,22 +253,47 @@ export default function PlanUploadsSection({
                           {plan.selectedPageUploadNote}
                         </div>
                       )}
-                      {allPdfPagesSelected && (
+                      {selectionReadiness?.shouldShowGuide && (
                         <div
                           style={{
                             fontSize: 12,
-                            color: "#92400e",
+                            color: selectionReadiness.noPagesSelected ? "#991b1b" : "#374151",
                             marginTop: 6,
                             padding: 8,
                             borderRadius: 8,
-                            border: "1px solid #fed7aa",
-                            background: "#fff7ed",
+                            border: selectionReadiness.noPagesSelected
+                              ? "1px solid #fecaca"
+                              : "1px solid #bfdbfe",
+                            background: selectionReadiness.noPagesSelected
+                              ? "#fef2f2"
+                              : "#eff6ff",
                             lineHeight: 1.4,
                           }}
                         >
-                          Large plan set selected in full. Narrow to relevant floor plans, finish
-                          schedules, elevations, and fixture/door/window schedules before Generate
-                          when possible.
+                          <div style={{ fontWeight: 800, color: "#111827", marginBottom: 4 }}>
+                            Plan selection readiness
+                          </div>
+                          <div>
+                            {selectionReadiness.summary} Estimated selected upload:{" "}
+                            {formatPlanUploadBytes(
+                              selectionReadiness.estimatedSelectedUploadBytes
+                            )}
+                            .
+                          </div>
+                          {selectionReadiness.mayBeTooManyForReliableAnalysis && (
+                            <div style={{ marginTop: 4, color: "#92400e", fontWeight: 700 }}>
+                              This may be too many pages for reliable, cost-controlled plan
+                              analysis.
+                            </div>
+                          )}
+                          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+                            {selectionReadiness.guidance.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                          <div style={{ marginTop: 6 }}>
+                            Suggested sheets: {selectionReadiness.suggestedPageTypes.join(", ")}.
+                          </div>
                         </div>
                       )}
                     </>

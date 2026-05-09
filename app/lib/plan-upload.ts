@@ -36,6 +36,22 @@ export type LocalPlanPageRangeValidation = {
   message: string | null
 }
 
+export type PlanSelectedPageReadinessSummary = {
+  selectedPageCount: number
+  totalPageCount: number
+  selectionRatio: number
+  estimatedSelectedUploadBytes: number
+  allPagesSelectedOnLargePdf: boolean
+  noPagesSelected: boolean
+  manyPagesSelected: boolean
+  highEstimatedSelectedUploadSize: boolean
+  mayBeTooManyForReliableAnalysis: boolean
+  shouldShowGuide: boolean
+  summary: string
+  suggestedPageTypes: string[]
+  guidance: string[]
+}
+
 export type PlanSelectedPageUploadMode =
   | "original"
   | "browser-derived-selected-pages"
@@ -425,6 +441,94 @@ export function applyLocalPlanPageRangeSelection(
       page.sourcePageNumber >= validation.fromPage! &&
       page.sourcePageNumber <= validation.toPage!,
   }))
+}
+
+export function buildSelectedPageReadinessSummary(args: {
+  sourceKind: PlanSourceKind
+  originalBytes: number
+  totalPages: number
+  selectedPages: number
+}): PlanSelectedPageReadinessSummary {
+  const selectedPageCount = Math.max(0, Math.floor(Number(args.selectedPages) || 0))
+  const totalPageCount = Math.max(1, Math.floor(Number(args.totalPages) || 0))
+  const selectionRatio = Math.min(1, selectedPageCount / totalPageCount)
+  const estimatedSelectedUploadBytes =
+    args.sourceKind === "pdf"
+      ? estimateSelectedPdfBytes({
+          originalBytes: args.originalBytes,
+          selectedPages: selectedPageCount,
+          totalPages: totalPageCount,
+        })
+      : Math.max(0, Math.floor(Number(args.originalBytes) || 0))
+  const isPdf = args.sourceKind === "pdf"
+  const largePdf = isPdf && totalPageCount >= 30
+  const noPagesSelected = selectedPageCount === 0
+  const allPagesSelectedOnLargePdf = largePdf && selectedPageCount >= totalPageCount
+  const manyPagesSelected = isPdf && selectedPageCount >= 20
+  const highEstimatedSelectedUploadSize =
+    isPdf && estimatedSelectedUploadBytes >= 20 * 1024 * 1024
+  const mayBeTooManyForReliableAnalysis =
+    isPdf &&
+    selectedPageCount > 0 &&
+    (selectedPageCount >= 40 ||
+      allPagesSelectedOnLargePdf ||
+      (largePdf && selectionRatio >= 0.75) ||
+      highEstimatedSelectedUploadSize)
+  const shouldShowGuide =
+    isPdf &&
+    (largePdf ||
+      manyPagesSelected ||
+      allPagesSelectedOnLargePdf ||
+      highEstimatedSelectedUploadSize ||
+      noPagesSelected)
+  const suggestedPageTypes = [
+    "floor plans",
+    "finish schedules",
+    "elevations",
+    "door/window schedules",
+    "fixture schedules",
+    "RCP/ceiling plans",
+    "demo sheets if relevant",
+  ]
+  const guidance: string[] = []
+
+  if (allPagesSelectedOnLargePdf) {
+    guidance.push("For large plan sets, do not select every page unless needed.")
+  }
+
+  if (noPagesSelected) {
+    guidance.push("Select at least one relevant sheet before Generate.")
+  }
+
+  if (manyPagesSelected || highEstimatedSelectedUploadSize) {
+    guidance.push("Narrowing the selected pages can keep analysis faster and more reliable.")
+  }
+
+  guidance.push("Start with floor plans + finish schedules + elevations + door/window/fixture schedules.")
+  guidance.push("Add demo/RCP sheets only if they affect the trade.")
+  guidance.push("Selected pages control what Plan Intelligence reads.")
+
+  const summary = noPagesSelected
+    ? `No pages selected from ${totalPageCount} PDF page${totalPageCount === 1 ? "" : "s"}.`
+    : allPagesSelectedOnLargePdf
+      ? `All ${totalPageCount} pages are selected from this large PDF.`
+      : `${selectedPageCount} of ${totalPageCount} PDF page${totalPageCount === 1 ? "" : "s"} selected.`
+
+  return {
+    selectedPageCount,
+    totalPageCount,
+    selectionRatio,
+    estimatedSelectedUploadBytes,
+    allPagesSelectedOnLargePdf,
+    noPagesSelected,
+    manyPagesSelected,
+    highEstimatedSelectedUploadSize,
+    mayBeTooManyForReliableAnalysis,
+    shouldShowGuide,
+    summary,
+    suggestedPageTypes,
+    guidance,
+  }
 }
 
 export function getPlanSelectionIntakeIssue(args: {

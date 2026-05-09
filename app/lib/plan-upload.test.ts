@@ -5,6 +5,7 @@ import test from "node:test"
 import {
   applyLocalPlanPageRangeSelection,
   buildLocalPlanPageSelection,
+  buildSelectedPageReadinessSummary,
   buildSelectedPageUploadModeNote,
   buildSelectedPageUploadDebugSummary,
   buildSelectedPageUploadFallbackMessage,
@@ -197,6 +198,68 @@ test("invalid page range selection leaves page selections unchanged", () => {
     [true, false, true, false]
   )
   assert.notEqual(ranged[0], pages[0])
+})
+
+test("selected-page readiness flags large pdfs with every page selected", () => {
+  const summary = buildSelectedPageReadinessSummary({
+    sourceKind: "pdf",
+    originalBytes: 18 * 1024 * 1024,
+    totalPages: 40,
+    selectedPages: 40,
+  })
+
+  assert.equal(summary.selectedPageCount, 40)
+  assert.equal(summary.totalPageCount, 40)
+  assert.equal(summary.selectionRatio, 1)
+  assert.equal(summary.allPagesSelectedOnLargePdf, true)
+  assert.equal(summary.mayBeTooManyForReliableAnalysis, true)
+  assert.equal(summary.shouldShowGuide, true)
+  assert.match(summary.guidance.join(" "), /do not select every page unless needed/i)
+  assert(summary.suggestedPageTypes.includes("finish schedules"))
+})
+
+test("selected-page readiness guides empty pdf selections without changing preflight rules", () => {
+  const summary = buildSelectedPageReadinessSummary({
+    sourceKind: "pdf",
+    originalBytes: 8 * 1024 * 1024,
+    totalPages: 12,
+    selectedPages: 0,
+  })
+
+  assert.equal(summary.noPagesSelected, true)
+  assert.equal(summary.estimatedSelectedUploadBytes, 0)
+  assert.equal(summary.shouldShowGuide, true)
+  assert.match(summary.summary, /No pages selected/i)
+  assert.match(summary.guidance.join(" "), /Select at least one relevant sheet before Generate/i)
+})
+
+test("selected-page readiness flags high selected upload estimates", () => {
+  const summary = buildSelectedPageReadinessSummary({
+    sourceKind: "pdf",
+    originalBytes: 40 * 1024 * 1024,
+    totalPages: 60,
+    selectedPages: 30,
+  })
+
+  assert.equal(summary.manyPagesSelected, true)
+  assert.equal(summary.highEstimatedSelectedUploadSize, true)
+  assert.equal(summary.mayBeTooManyForReliableAnalysis, true)
+  assert.equal(summary.shouldShowGuide, true)
+  assert(summary.estimatedSelectedUploadBytes >= 20 * 1024 * 1024)
+  assert.match(summary.guidance.join(" "), /faster and more reliable/i)
+})
+
+test("selected-page readiness stays quiet for small focused pdf selections", () => {
+  const summary = buildSelectedPageReadinessSummary({
+    sourceKind: "pdf",
+    originalBytes: 6 * 1024 * 1024,
+    totalPages: 12,
+    selectedPages: 4,
+  })
+
+  assert.equal(summary.shouldShowGuide, false)
+  assert.equal(summary.mayBeTooManyForReliableAnalysis, false)
+  assert.equal(summary.allPagesSelectedOnLargePdf, false)
 })
 
 test("oversized but locally indexable pdf can still reach page-selection", async () => {
