@@ -121,6 +121,33 @@ export type PlanRoomFinishMatrix = {
   warnings: string[]
 }
 
+export type PlanRepeatedRoomPackageSourceRow = {
+  sourceMatrixIndex: number
+  sourceTableIndex: number
+  rowIndex: number
+  roomName: string | null
+  roomNumber: string | null
+  rawRowText: string
+  pageNumber: number
+  sourcePageNumber: number
+  sheetNumber: string | null
+  sheetTitle: string | null
+  confidence: number
+}
+
+export type PlanRepeatedRoomPackage = {
+  packageKey: string
+  roomType: string | null
+  roomNames: string[]
+  roomNumbers: string[]
+  repeatCount: number
+  finishSignature: string
+  sourceRows: PlanRepeatedRoomPackageSourceRow[]
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 export type PlanSheetDiscipline =
   | "architectural"
   | "electrical"
@@ -511,6 +538,7 @@ export type PlanIntelligence = {
   pageReadStatuses?: PlanPageReadStatus[]
   extractedTables?: PlanExtractedTable[]
   roomFinishMatrices?: PlanRoomFinishMatrix[]
+  repeatedRoomPackages?: PlanRepeatedRoomPackage[]
   sheetIndex: PlanSheetIndexEntry[]
   analyses: PlanSheetAnalysis[]
   takeoff: PlanTakeoff

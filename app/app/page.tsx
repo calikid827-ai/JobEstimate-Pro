@@ -251,6 +251,31 @@ type PlanRoomFinishMatrixView = {
   warnings: string[]
 }
 
+type PlanRepeatedRoomPackageView = {
+  packageKey: string
+  roomType: string | null
+  roomNames: string[]
+  roomNumbers: string[]
+  repeatCount: number
+  finishSignature: string
+  sourceRows: Array<{
+    sourceMatrixIndex: number
+    sourceTableIndex: number
+    rowIndex: number
+    roomName: string | null
+    roomNumber: string | null
+    rawRowText: string
+    pageNumber: number
+    sourcePageNumber: number
+    sheetNumber: string | null
+    sheetTitle: string | null
+    confidence: number
+  }>
+  confidence: number
+  extractionMethod: "deterministic"
+  warnings: string[]
+}
+
 type PlanIntelligence = {
   summary?: string | null
   evidenceStrength?: {
@@ -269,6 +294,7 @@ type PlanIntelligence = {
   pageReadStatuses?: PlanPageReadStatusView[]
   extractedTables?: PlanExtractedTableView[]
   roomFinishMatrices?: PlanRoomFinishMatrixView[]
+  repeatedRoomPackages?: PlanRepeatedRoomPackageView[]
   planReadback?: {
     headline: string
     estimatorFlowReadback: Array<{
@@ -1005,6 +1031,64 @@ const normalizePlanRoomFinishMatrices = (
     .filter((matrix): matrix is PlanRoomFinishMatrixView => matrix !== null)
 
   return matrices.length > 0 ? matrices.slice(0, 40) : undefined
+}
+
+const normalizePlanRepeatedRoomPackages = (
+  value: unknown
+): PlanRepeatedRoomPackageView[] | undefined => {
+  if (!Array.isArray(value)) return undefined
+
+  const packages = value
+    .map((item: unknown): PlanRepeatedRoomPackageView | null => {
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null
+      if (!record || typeof record.packageKey !== "string") return null
+
+      const sourceRows = Array.isArray(record.sourceRows)
+        ? record.sourceRows
+            .map((row: unknown): PlanRepeatedRoomPackageView["sourceRows"][number] | null => {
+              const rowRecord = row && typeof row === "object" ? (row as Record<string, unknown>) : null
+              if (!rowRecord || typeof rowRecord.rawRowText !== "string") return null
+
+              const pageNumber = Math.max(0, Math.floor(Number(rowRecord.pageNumber) || 0))
+              const sourcePageNumber = Math.max(0, Math.floor(Number(rowRecord.sourcePageNumber) || 0))
+              if (pageNumber <= 0 || sourcePageNumber <= 0) return null
+
+              return {
+                sourceMatrixIndex: Math.max(0, Math.floor(Number(rowRecord.sourceMatrixIndex) || 0)),
+                sourceTableIndex: Math.max(0, Math.floor(Number(rowRecord.sourceTableIndex) || 0)),
+                rowIndex: Math.max(0, Math.floor(Number(rowRecord.rowIndex) || 0)),
+                roomName: typeof rowRecord.roomName === "string" ? rowRecord.roomName.trim() : null,
+                roomNumber: typeof rowRecord.roomNumber === "string" ? rowRecord.roomNumber.trim() : null,
+                rawRowText: rowRecord.rawRowText.trim(),
+                pageNumber,
+                sourcePageNumber,
+                sheetNumber: typeof rowRecord.sheetNumber === "string" ? rowRecord.sheetNumber : null,
+                sheetTitle: typeof rowRecord.sheetTitle === "string" ? rowRecord.sheetTitle : null,
+                confidence: Math.max(0, Math.min(100, Number(rowRecord.confidence) || 0)),
+              }
+            })
+            .filter((row): row is PlanRepeatedRoomPackageView["sourceRows"][number] => row !== null)
+        : []
+
+      const repeatCount = Math.max(0, Math.floor(Number(record.repeatCount) || sourceRows.length))
+      if (repeatCount < 2 || sourceRows.length < 2) return null
+
+      return {
+        packageKey: record.packageKey.trim(),
+        roomType: typeof record.roomType === "string" ? record.roomType.trim() : null,
+        roomNames: normalizePlanStrings(record.roomNames).slice(0, 80),
+        roomNumbers: normalizePlanStrings(record.roomNumbers).slice(0, 120),
+        repeatCount,
+        finishSignature: typeof record.finishSignature === "string" ? record.finishSignature.trim() : "",
+        sourceRows: sourceRows.slice(0, 120),
+        confidence: Math.max(0, Math.min(100, Number(record.confidence) || 0)),
+        extractionMethod: "deterministic",
+        warnings: normalizePlanStrings(record.warnings).slice(0, 12),
+      }
+    })
+    .filter((pkg): pkg is PlanRepeatedRoomPackageView => pkg !== null)
+
+  return packages.length > 0 ? packages.slice(0, 40) : undefined
 }
 
 const normalizePlanPackages = (value: unknown): PlanEstimatorPackageView[] =>
@@ -3915,6 +3999,7 @@ setPlanIntelligence(
         pageReadStatuses: normalizePlanPageReadStatuses(data.planIntelligence?.pageReadStatuses),
         extractedTables: normalizePlanExtractedTables(data.planIntelligence?.extractedTables),
         roomFinishMatrices: normalizePlanRoomFinishMatrices(data.planIntelligence?.roomFinishMatrices),
+        repeatedRoomPackages: normalizePlanRepeatedRoomPackages(data.planIntelligence?.repeatedRoomPackages),
         estimatorPackages: normalizePlanPackages(data.planIntelligence?.estimatorPackages),
         planReadback: normalizePlanReadback(data.planIntelligence?.planReadback),
         detectedRooms: normalizePlanStrings(data.planIntelligence?.detectedRooms),
@@ -11300,6 +11385,15 @@ function PlanAwareEstimatorReadbackCard({
     0
   )
   const hasRoomFinishMatrixSummary = roomFinishRowsCount > 0
+  const repeatedRoomPackages = planIntelligence?.repeatedRoomPackages || []
+  const repeatedPackageRoomCount = repeatedRoomPackages.reduce(
+    (sum, pkg) => sum + pkg.repeatCount,
+    0
+  )
+  const lowConfidenceRepeatedPackageCount = repeatedRoomPackages.filter(
+    (pkg) => pkg.confidence < 60
+  ).length
+  const hasRepeatedRoomPackageSummary = repeatedRoomPackages.length > 0
 
   if (
     estimatorStory.length === 0 &&
@@ -11415,6 +11509,15 @@ function PlanAwareEstimatorReadbackCard({
               Room finish rows found: {roomFinishRowsCount}
               {" - "}
               Low-confidence finish rows needing review: {lowConfidenceRoomFinishRowsCount}
+            </div>
+          )}
+          {hasRepeatedRoomPackageSummary && (
+            <div style={{ marginTop: 4, color: "#4b5563" }}>
+              Repeated room packages found: {repeatedRoomPackages.length}
+              {" - "}
+              Rooms represented in packages: {repeatedPackageRoomCount}
+              {" - "}
+              Low-confidence packages needing review: {lowConfidenceRepeatedPackageCount}
             </div>
           )}
         </div>

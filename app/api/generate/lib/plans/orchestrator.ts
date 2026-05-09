@@ -5,6 +5,7 @@ import { analyzePlanSheet } from "./analyzeSheet"
 import { mergePlanAnalyses } from "./crossSheetMerge"
 import { extractPlanTablesFromPages } from "./tableExtraction"
 import { extractRoomFinishMatricesFromTables } from "./roomFinishMatrix"
+import { detectRepeatedRoomPackagesFromMatrices } from "./repeatedRoomPackages"
 import type {
   PlanEvidenceStrength,
   PlanIntelligence,
@@ -371,6 +372,7 @@ export async function runPlanIntelligence(args: {
     sheetIndex: finalSheetIndex,
   })
   const roomFinishMatrices = extractRoomFinishMatricesFromTables(extractedTables)
+  const repeatedRoomPackages = detectRepeatedRoomPackagesFromMatrices(roomFinishMatrices)
   const selectedPagesCount = selectedPages.length
   const skippedPagesCount = Math.max(0, indexedPages.length - selectedPagesCount)
 
@@ -384,6 +386,7 @@ export async function runPlanIntelligence(args: {
     pageReadStatuses,
     extractedTables,
     roomFinishMatrices,
+    repeatedRoomPackages,
     evidenceStrength: buildEvidenceStrength({
       indexedPages,
       selectedPages,

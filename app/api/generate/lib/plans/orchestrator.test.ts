@@ -546,6 +546,10 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
       summarizeSections({ ...browserResult, roomFinishMatrices: [] })
     )
     assert.deepEqual(
+      summarizeSections(browserResult),
+      summarizeSections({ ...browserResult, repeatedRoomPackages: [] })
+    )
+    assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, pageReadStatuses: [] })
     )
@@ -556,6 +560,10 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
     assert.deepEqual(
       summarizeAssemblies(browserResult),
       summarizeAssemblies({ ...browserResult, roomFinishMatrices: [] })
+    )
+    assert.deepEqual(
+      summarizeAssemblies(browserResult),
+      summarizeAssemblies({ ...browserResult, repeatedRoomPackages: [] })
     )
     assert.deepEqual(
       summarizeSections(browserResult),
