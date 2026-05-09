@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Plan Intelligence Phase 5 repeated room package detection for selected/read pages.
+3. Plan Intelligence Phase 6 trade-specific quantity candidates for selected/read pages.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -66,6 +66,7 @@ Completed pre-launch task kept visible:
 - DONE: Plan Intelligence Phase 2 sheet classification diagnostics are complete. Structured estimator-only deterministic roles now cover floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets. Targeted plan tests and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 3 table/schedule extraction diagnostics are complete. Deterministic estimator-only extraction now covers finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules from selected/read pages. Focused table tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete. Deterministic estimator-only extraction builds from extracted finish schedule tables only and captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings. Fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated room families plus finish signatures and repeated finish combinations across generic room rows, preserves source provenance, confidence, and warnings, and keeps repeat counts diagnostic-only. Focused tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 
 ## 1. Critical Fixes
 
@@ -311,8 +312,9 @@ Completed pre-launch task kept visible:
 - Status note: Plan Intelligence Phase 2 sheet classification diagnostics are complete. Structured estimator-only deterministic roles now cover floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets without changing pricing or handoff behavior.
 - Status note: Plan Intelligence Phase 3 table/schedule extraction diagnostics are complete. Deterministic estimator-only extraction covers finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules from selected/read pages, preserving raw row text, confidence, and warnings without changing pricing or handoff behavior.
 - Status note: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete. Deterministic estimator-only extraction builds from extracted finish schedule tables only and captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings without changing pricing or handoff behavior.
-- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence implementation task is Phase 5 repeated room package detection, not a rebuild of upload or Plan Intelligence logic.
-- Future Plan Intelligence phases remain trade-specific quantity candidates and pricing handoff confidence rules.
+- Status note: Plan Intelligence Phase 5 repeated room package diagnostics are complete. Deterministic estimator-only extraction builds from `roomFinishMatrices` only, detects repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature, detects repeated finish combinations across generic room rows, and preserves source matrix/table/page/sheet row provenance, confidence, and warnings without changing pricing or handoff behavior.
+- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next Plan Intelligence implementation task is Phase 6 trade-specific quantity candidates, not a rebuild of upload or Plan Intelligence logic.
+- Future Plan Intelligence work keeps pricing handoff confidence rules as a later phase. Phase 6 trade-specific quantity candidates must remain estimator-only/diagnostic-only unless confidence/provenance gates are explicitly added later.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
   - `app/lib/plan-upload.ts`

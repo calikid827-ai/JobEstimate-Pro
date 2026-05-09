@@ -91,8 +91,12 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence Phase 4 room/finish matrix diagnostics are complete as estimator-only, diagnostic-only data. The deterministic pass builds from extracted finish schedule tables only and detects conservative room finish rows with room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings.
 - DONE: The Phase 4 room/finish matrix pass does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
 - DONE: Phase 4 verification passed fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 5 repeated room package diagnostics are complete as estimator-only, diagnostic-only data. The deterministic pass builds from `roomFinishMatrices` only and detects repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature.
+- DONE: The Phase 5 pass also detects repeated finish combinations across generic room rows, preserves source matrix/table/page/sheet row provenance, confidence, and warnings, and treats repeat counts as diagnostic only rather than measured quantity support.
+- DONE: The Phase 5 repeated room package pass does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
+- DONE: Phase 5 verification passed focused repeated-room package tests, targeted orchestrator tests, and `npx tsc --noEmit`. `npm run lint` still fails due to known broad lint debt.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
-- PARTIAL: Repeated-room count, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
+- PARTIAL: Trade-specific quantity candidates, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
 - DEFERRED: Major measured-takeoff upgrades should wait until the current launch-critical stability and billing work is settled.
 
@@ -203,6 +207,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Plan Intelligence Phase 2 estimator-only sheet classification diagnostics are complete. Structured deterministic roles now classify floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets without changing pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Fast sheet-heuristics tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 3 estimator-only table/schedule extraction diagnostics are complete. Deterministic selected/read page diagnostics now cover finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules while preserving raw row text, confidence, and warnings. The pass does not change pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Focused table tests, targeted plan tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Plan Intelligence Phase 4 estimator-only room/finish matrix diagnostics are complete. Deterministic diagnostics now build from extracted finish schedule tables only and preserve room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings. The pass does not change pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Fast plan tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
+- DONE: Plan Intelligence Phase 5 estimator-only repeated room package diagnostics are complete. Deterministic diagnostics now build from `roomFinishMatrices` only, detect repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature, detect repeated finish combinations across generic room rows, and preserve source matrix/table/page/sheet row provenance, confidence, and warnings. Repeat counts are diagnostic only, not measured quantity support. The pass does not change pricing, generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes. Focused repeated-room package tests, targeted orchestrator tests, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE/PARTIAL: Safe lint triage pass completed. Small safe fixes removed an unused `Metadata` import and centralized duplicated invoice hydration typing with `normalizeStoredInvoice(x: unknown)`. `npm run lint` still fails because broad existing lint debt is deferred; `npx tsc --noEmit` passes.
 
 ## Can-Wait Until After Launch
@@ -236,9 +241,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - Keep fixes copy/style-only unless a real runtime bug is found.
 
 4. PARTIAL: Plan upload guidance and fallback-message QA.
-   - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, Phase 3 table/schedule extraction diagnostics, and Phase 4 room/finish matrix diagnostics are complete.
-   - The next Plan Intelligence implementation task is Phase 5 repeated room package detection.
-   - Keep trade quantity candidates and pricing handoff confidence rules as future phases.
+   - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, Phase 3 table/schedule extraction diagnostics, Phase 4 room/finish matrix diagnostics, and Phase 5 repeated room package diagnostics are complete.
+   - The next Plan Intelligence implementation task is Phase 6 trade-specific quantity candidates.
+   - Keep Phase 6 estimator-only/diagnostic-only unless confidence/provenance gates are explicitly added later; keep pricing handoff confidence rules as a future phase.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
    - Keep copy consistent with deterministic review scope.

@@ -200,6 +200,7 @@ Plan upload support includes:
 - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
 - Estimator-only table/schedule extraction diagnostics for finish schedules, fixture schedules, door schedules, window schedules, legends, and unknown/generic schedules, preserving raw row text, confidence, and warnings
 - Estimator-only room/finish matrix diagnostics from extracted finish schedules, preserving room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings
+- Estimator-only repeated room package diagnostics from room/finish matrices, preserving repeated room families, finish signatures, source provenance, confidence, and warnings
 - Plan evidence-strength readback with `Strong`, `Useful`, and `Review-only` labels.
   - Summarizes selected, indexed, and skipped pages.
   - Reports whether text was extracted and whether page images rendered.
@@ -211,7 +212,7 @@ Important operational notes:
 - Large PDFs should be narrowed with page selection before generation.
 - If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
-- Evidence-strength, table/schedule extraction, and room/finish matrix readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.
+- Evidence-strength, table/schedule extraction, room/finish matrix, and repeated room package readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.
 - Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.
 - Estimate PDFs also include a compact plan evidence summary showing evidence strength, selected pages reviewed, text extraction status, rendered image status, hard quantity status, and confirmation-needed status. This is plan evidence/readiness messaging, not a full measured takeoff.
 

@@ -443,13 +443,19 @@ Implemented:
   - Captures room name/number, room type, wall/base/ceiling/floor finishes, notes, raw row text, confidence, and warnings.
   - Estimator-facing Plan Review Summary counts for room finish rows found and low-confidence finish rows needing review.
   - Diagnostic-only behavior that does not drive pricing or quantity decisions.
+- Repeated room package diagnostics:
+  - Deterministic estimator-only extraction from room/finish matrix diagnostics only.
+  - Detects repeated guest rooms, bathrooms, corridors/units/rooms by room family plus finish signature, plus repeated finish combinations across generic room rows.
+  - Preserves source matrix/table/page/sheet row provenance, confidence, and warnings.
+  - Estimator-facing Plan Review Summary counts for repeated room packages found, rooms represented in packages, and low-confidence packages needing review.
+  - Diagnostic-only behavior; repeat counts are not measured quantity support and do not drive pricing or quantity decisions.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
-- Schedule, finish table, and room/finish matrix extraction is diagnostic-only and still conservative.
-- Repeated-room count extraction is limited.
+- Schedule, finish table, room/finish matrix, and repeated room package extraction is diagnostic-only and still conservative.
+- Trade-specific quantity candidates, SF/LF, and fixture/device counts remain limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
 - AI-generated prose may still be less specific than typed readback.
