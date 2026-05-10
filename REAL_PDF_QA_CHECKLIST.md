@@ -1,8 +1,12 @@
-# Real PDF QA Checklist — Test Entry 1
+# Real PDF QA Checklist — Marina Dunes ADA Units
 
 Use this checklist to test actual contractor plan sets consistently before adding more Plan Intelligence logic. The goal is to verify upload usability, selected-page behavior, fallback clarity, estimator diagnostics, and contractor trust without changing pricing behavior.
 
 Do not treat Plan Intelligence quantity candidates as measured takeoff support. Do not promote plan-derived candidates into pricing from this QA pass.
+
+---
+
+# Test Entry 1 — Marina Dunes ADA Units, 8 Selected Pages
 
 ## 1. Test Plan Set Info
 
@@ -11,6 +15,7 @@ Do not treat Plan Intelligence quantity candidates as measured takeoff support. 
 - Trade being tested: General Renovation
 - Total PDF pages: 38
 - Selected pages: 8 of 38
+- Selected page numbers tested: Not fully recorded in this first run
 - Device/browser: MacBook / localhost:3000 / browser dev test
 - Desktop or mobile: Desktop
 - PDF quality notes:
@@ -148,10 +153,10 @@ Not tested in this run. Desktop layout was usable, but the amount of diagnostic 
 
 | Issue | Severity | Screenshot/reference | Suggested fix | Code area likely involved | Fix now or later |
 | --- | --- | --- | --- | --- | --- |
-| Plan evidence count may confuse selected pages processed with useful/readable plan evidence. | Medium | Test screenshots showing Plan Review Summary with selected pages reviewed and plan evidence. | Separate “selected pages processed” from “pages with useful evidence.” | Plan Review Summary / evidence-strength readback UI. | Soon |
-| Plan Review Summary shows noisy raw extracted plan text, including long all-caps strings and path-like text. | Medium | Test screenshots showing Plan Review Summary text from Marina Dunes PDF. | Clean or suppress raw extracted PDF/path text and prioritize readable sheet names, sheet types, and short scope evidence summaries. | Plan Intelligence summary/readback copy or PlanAwareEstimatorReadbackCard display. | Soon |
-| Weak/unknown sheet classification count is visible but not easy to act on. | Low/Medium | Test screenshots showing “Weak/unknown sheet classification.” | Add optional drill-down or clearer copy showing which selected pages need review. | Plan Review Summary / estimator diagnostics UI. | Later |
-| Browser-derived selected-page reduction worked, but server-derived and original fallback paths were not tested in this run. | Low | Upload section screenshots showing browser-derived path. | Run separate QA with a file/device path that triggers server-derived or original fallback. | QA process / upload staging path. | Later |
+| Plan evidence count may confuse selected pages processed with useful/readable plan evidence. | Medium | Test 1 screenshots showing Plan Review Summary with selected pages reviewed and plan evidence. | Separate “selected pages processed” from “pages with useful evidence.” | Plan Review Summary / evidence-strength readback UI. | Soon |
+| Plan Review Summary shows noisy raw extracted plan text, including long all-caps strings and path-like text. | Medium | Test 1 screenshots showing Plan Review Summary text from Marina Dunes PDF. | Clean or suppress raw extracted PDF/path text and prioritize readable sheet names, sheet types, and short scope evidence summaries. | Plan Intelligence summary/readback copy or PlanAwareEstimatorReadbackCard display. | Soon |
+| Weak/unknown sheet classification count is visible but not easy to act on. | Low/Medium | Test 1 screenshots showing “Weak/unknown sheet classification.” | Add optional drill-down or clearer copy showing which selected pages need review. | Plan Review Summary / estimator diagnostics UI. | Later |
+| Browser-derived selected-page reduction worked, but server-derived and original fallback paths were not tested in this run. | Low | Test 1 upload section screenshots showing browser-derived path. | Run separate QA with a file/device path that triggers server-derived or original fallback. | QA process / upload staging path. | Later |
 
 ## 10. Final QA Decision
 
@@ -171,3 +176,243 @@ The main improvement needed is UI/readback clarity. Plan Review Summary should s
 Recommended next action:
 
 Run one more QA test using the same 38-page ADA plan set but select a different focused page range, then do a UI-only Plan Review Summary cleanup pass if the same noisy raw-text issue appears again.
+
+---
+
+# Test Entry 2 — Marina Dunes ADA Units, Focused 5-Page Selection
+
+## 1. Test Plan Set Info
+
+- Project name: Marina Dunes ADA Units
+- PDF/file name: `260302_Marina Dunes_ADA Units_CD-Arch-MEP.pdf`
+- Trade being tested: General Renovation
+- Total PDF pages: 38
+- Selected pages: 5 of 38
+- Selected page numbers tested: 1, 9, 12, 13, 22
+- Device/browser: MacBook / localhost:3000 / browser dev test
+- Desktop or mobile: Desktop
+- PDF quality notes:
+  - Real contractor PDF plan set.
+  - Large plan set, 46.7 MB original PDF.
+  - Selected-page browser reduction worked and reduced upload from 46.7 MB to about 4.6 MB.
+  - Selected sheets were intentionally narrowed to a small focused group to test whether Plan Review Summary becomes cleaner.
+- Tester: Dylan
+- Date: 5/9/2026
+
+## 2. Upload / Page Selection QA
+
+Check each item:
+
+- [x] Page count detected correctly.
+- [x] Range selection works.
+- [x] Selected pages are clear.
+- [x] Selected-page count is visible.
+- [x] Estimated selected upload size is visible.
+- [x] Large-plan readiness guidance appears when appropriate.
+- [x] Warning does not feel too aggressive.
+- [x] User understands selected pages control what Plan Intelligence reads.
+
+Notes:
+
+Upload/page selection worked well. The app detected 38 total pages and allowed narrowing the plan set to 5 selected pages. The selected-page count was visible, and the app showed selected-page browser reduction from 46.7 MB to about 4.6 MB. The readiness box was helpful and clearly explained that selected pages control what Plan Intelligence reads.
+
+## 3. Selected-Page / Fallback QA
+
+Test whichever paths are practical for this PDF/device combination.
+
+- [x] Browser-derived selected-page path works when available.
+- [ ] Server-derived selected-page path works when browser reduction is unavailable or too large.
+- [ ] Original fallback path works when selected-page derivation fails.
+- [ ] Source page numbers are preserved in readback.
+- [ ] Unselected pages are not treated as read/analyzed.
+- [x] Fallback messaging is understandable.
+- [x] Generate continues when fallback is expected.
+
+Observed upload path:
+
+- Browser-derived selected pages: yes
+- Server-derived selected pages: not tested
+- Original fallback: not tested
+
+Notes:
+
+Browser-derived selected-page reduction worked. The app showed selected pages prepared in browser and reduced the first upload from 46.7 MB to about 4.6 MB.
+
+However, there may be a mismatch after Generate: upload/page selection showed 5 selected pages, but Plan Review Summary later displayed “1 selected sheet/page reviewed.” This may mean either only 1 page produced useful evidence, or the UI is confusing selected pages processed with useful/readable evidence. This needs review because the contractor expects the app to explain what happened to all 5 selected pages.
+
+## 4. Plan Review Summary QA
+
+Check whether the estimator-facing summary is clear and compact.
+
+- [ ] Pages read section is clear.
+- [x] Extracted plan data section is clear.
+- [ ] Review-only quantity signals section is clear.
+- [ ] `Pricing-eligible now: 0` is visible when candidate gates are present.
+- [x] Review-only language is understandable.
+- [ ] Diagnostic counts are not too noisy.
+- [x] Nothing implies plan candidates changed pricing.
+- [x] Nothing implies measured takeoff support when measurements are not present.
+
+Notes:
+
+The Plan Review Summary is improved because it groups plan evidence, pages read, and extracted plan data. The app clearly says plan evidence is review-only and measured quantities still need confirmation.
+
+The main issue is that the page count/readback feels inconsistent. The user selected 5 pages, but Plan Review Summary showed “1 selected sheet/page reviewed.” This could make a contractor question whether the app actually reviewed all selected pages.
+
+The summary is still somewhat noisy because it includes long all-caps plan text and repeated source text. It is better than the 8-page test, but still needs UI cleanup.
+
+## 5. Plan Intelligence Diagnostics QA
+
+For each diagnostic type, mark one status and add notes.
+
+| Diagnostic | Useful | Noisy | Missing | Confusing | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Page read statuses | [x] | [ ] | [ ] | [x] | Useful, but confusing because upload showed 5 selected pages while Plan Review Summary showed 1 selected sheet/page reviewed. |
+| Sheet classifications | [x] | [x] | [ ] | [x] | Sheet support was detected, but source text is still long and not easy to interpret quickly. |
+| Tables/schedules | [x] | [x] | [ ] | [ ] | Tables and schedule rows appeared useful, but low-confidence tables still need review. |
+| Room/finish matrices | [ ] | [ ] | [x] | [ ] | Not clearly visible in this test. |
+| Repeated room packages | [ ] | [ ] | [x] | [ ] | Not clearly visible in this test. |
+| Trade quantity candidates | [ ] | [ ] | [x] | [ ] | Not clearly visible in this test, which is acceptable because candidates should stay review-only. |
+| Candidate gates | [x] | [ ] | [ ] | [x] | Safety behavior looks preserved, but the confirmation count may be too high/noisy for a focused 5-page selection. |
+
+Most useful diagnostic:
+
+The selected-page browser reduction and review-only plan evidence messaging were the most useful. The app clearly reduced the upload from 46.7 MB to about 4.6 MB and did not appear to let plan candidates control pricing.
+
+Most confusing diagnostic:
+
+The most confusing diagnostic is the page read/evidence count. The upload UI showed 5 selected pages, but Plan Review Summary showed “1 selected sheet/page reviewed.” The app should separate selected pages processed from pages with useful evidence found.
+
+## 6. Real Contractor Trust Questions
+
+Answer from the contractor's point of view.
+
+- Would a contractor understand what the app read? unsure
+- Would a contractor know what still needs review? yes
+- Would a contractor trust the estimate more after seeing this? yes/unsure
+- Does anything look like it is pretending to be a measured takeoff? no
+- Does anything make it seem pricing changed from plan candidates? no
+
+Trust notes:
+
+A contractor would understand that selected plan pages were uploaded and that the plan evidence is review-only. However, the mismatch between 5 selected pages and “1 selected sheet/page reviewed” could reduce trust. The contractor may wonder whether the app ignored 4 selected pages or only found useful evidence on 1 page.
+
+The pricing and safety messaging still look good. The app does not appear to claim measured takeoff support, and it does not appear to let plan candidates directly control pricing.
+
+## 7. Mobile Usability QA
+
+Complete this section when testing on a phone or small tablet.
+
+- [ ] Page ranges can be selected easily.
+- [ ] Checkboxes are usable.
+- [ ] Selected-page count is visible enough.
+- [ ] Estimated selected upload size is visible enough.
+- [ ] Plan selection readiness guidance is readable.
+- [ ] Plan Review Summary is readable on mobile.
+- [ ] Warnings are not too long or too cramped.
+- [ ] Buttons and inputs do not overlap.
+- [ ] Text does not overflow containers.
+
+Mobile notes:
+
+Not tested in this run. Desktop layout was usable, but Plan Review Summary and diagnostic text may still be heavy on mobile.
+
+## 8. Pass / Needs Work / Fail Rating
+
+| Major Area | Pass | Needs Work | Fail | Notes | Screenshots Taken? |
+| --- | --- | --- | --- | --- | --- |
+| Upload/page selection | [x] | [ ] | [ ] | Selected-page upload worked and 46.7 MB PDF was reduced to about 4.6 MB. | yes |
+| Selected-page/fallback behavior | [x] | [ ] | [ ] | Browser-derived selected-page path worked. Server-derived/original fallback not tested in this run. | yes |
+| Source page provenance | [ ] | [x] | [ ] | Needs review because 5 selected pages became “1 selected sheet/page reviewed” in Plan Review Summary. | yes |
+| Plan Review Summary clarity | [ ] | [x] | [ ] | Grouping is better, but page/evidence counts are confusing and raw text is still noisy. | yes |
+| Diagnostic usefulness | [ ] | [x] | [ ] | Useful direction, but evidence/read counts need clearer labels. | yes |
+| Review-only/pricing clarity | [x] | [ ] | [ ] | App clearly says plan evidence is review-only and measured quantities still need confirmation. | yes |
+| Mobile usability | [ ] | [x] | [ ] | Not tested on phone; desktop is usable, but long diagnostics may be heavy on mobile. | no |
+| Overall contractor trust | [ ] | [x] | [ ] | Strong direction, but count mismatch and noisy summary text need cleanup. | yes |
+
+## 9. Issues Found
+
+| Issue | Severity | Screenshot/reference | Suggested fix | Code area likely involved | Fix now or later |
+| --- | --- | --- | --- | --- | --- |
+| Plan Review Summary may confuse selected pages processed with useful/readable evidence. Upload showed 5 selected pages, but summary showed “1 selected sheet/page reviewed.” | High | Test 2 screenshots showing 5 selected pages in upload UI and 1 selected sheet/page reviewed in Plan Review Summary. | Separate “selected pages processed,” “selected pages read,” and “pages with useful evidence.” Make it clear whether 1 means useful evidence page or actual processed page. | Plan Review Summary / evidence-strength readback UI / Plan Intelligence summary counts. | Soon |
+| Plan Review Summary still shows noisy raw extracted plan text, including long all-caps strings and repeated source wording. | Medium | Test 2 screenshots showing Plan Review Summary text from Marina Dunes ADA PDF. | Clean or suppress raw extracted PDF text and prioritize readable sheet names, sheet types, and short evidence summaries. | Plan Intelligence summary/readback copy or PlanAwareEstimatorReadbackCard display. | Soon |
+| Confirmation count may feel too high or too broad for a focused selected-page test. | Medium | Test 2 screenshot showing Needs Confirmation count after selecting only 5 pages. | Group confirmation items by reason and suppress repetitive confirmations when they come from the same root issue. | Candidate gates / Plan Review Summary / estimator diagnostics UI. | Later |
+| Browser-derived selected-page reduction worked, but server-derived and original fallback paths were not tested in this run. | Low | Test 2 upload section screenshots showing browser-derived path. | Run separate QA with a file/device path that triggers server-derived or original fallback. | QA process / upload staging path. | Later |
+
+## 10. Final QA Decision
+
+- Good enough for launch testing? yes
+- Needs UI copy polish? yes
+- Needs real logic fix? maybe
+- Needs upload/fallback fix? no
+- Needs Plan Intelligence extraction improvement? not yet
+- Do not promote plan candidates into pricing yet: yes
+
+Final decision notes:
+
+This test passes for selected-page upload and browser-derived selected-page reduction. The app successfully handled a real 38-page, 46.7 MB contractor PDF by reducing it to 5 selected pages and about 4.6 MB before upload.
+
+The main issue is Plan Review Summary clarity. The user selected 5 pages, but the readback showed “1 selected sheet/page reviewed.” This needs to be clarified before adding more Plan Intelligence logic because contractors need to understand what the app actually read.
+
+Plan evidence stayed review-only, measured quantities still required confirmation, and pricing did not appear to be driven directly by plan candidates.
+
+Recommended next action:
+
+Do a UI/readback audit focused on Plan Review Summary counts and wording. The next implementation should separate selected pages processed from pages with useful evidence, reduce noisy raw extracted plan text, and make review-only plan evidence easier for contractors to trust.
+
+---
+
+# Overall QA Finding After Test Entry 1 and Test Entry 2
+
+## Summary
+
+Both real-PDF QA tests passed the most important upload and safety checks:
+
+- The app detected the 38-page PDF.
+- Selected-page browser reduction worked.
+- The app reduced large uploads before Generate:
+  - Test Entry 1: 46.7 MB to about 7.0 MB with 8 selected pages.
+  - Test Entry 2: 46.7 MB to about 4.6 MB with 5 selected pages.
+- The selected-page readiness guidance was helpful and not too aggressive.
+- Plan evidence stayed review-only.
+- Measured quantities still required confirmation.
+- Pricing did not appear to be directly driven by plan candidates.
+
+The main issue is not upload/staging or pricing. The main issue is Plan Review Summary/readback clarity.
+
+## Main Issues To Fix Soon
+
+| Issue | Severity | Why it matters | Recommended fix |
+| --- | --- | --- | --- |
+| Selected page counts and useful evidence counts may be confusing. | High | Contractors need to know whether the app processed all selected pages, only read some pages, or only found useful evidence on some pages. | Separate “selected pages processed,” “selected pages read,” and “pages with useful evidence.” |
+| Plan Review Summary shows noisy extracted PDF text. | Medium | Long all-caps strings, repeated source text, and path-like text reduce trust. | Clean/suppress raw extracted text and show clearer sheet names, sheet types, and short evidence summaries. |
+| Weak/unknown sheet classification is visible but not actionable. | Low/Medium | Contractors can see a count but may not know which sheets need attention. | Add clearer copy or optional drill-down for selected pages needing review. |
+| Confirmation counts can feel broad or repetitive. | Medium | High confirmation counts may feel noisy even when safety behavior is correct. | Group confirmation items by reason and reduce duplicates from the same root issue. |
+| Server-derived and original fallback paths were not tested. | Low | Browser-derived path worked, but fallback behavior still needs real QA. | Run a separate QA case designed to trigger server-derived or original fallback. |
+
+## Final Decision
+
+- Real-PDF upload/page selection: pass.
+- Browser-derived selected-page reduction: pass.
+- Review-only/pricing safety: pass.
+- Plan Review Summary clarity: needs work.
+- Mobile usability: not tested.
+- Server-derived/original fallback: not tested.
+- Do not promote plan candidates into pricing yet: yes.
+
+## Recommended Next Single Implementation Task
+
+Do a UI-only Plan Review Summary/readback clarity pass.
+
+Goal:
+
+Make Plan Review Summary easier for contractors to trust without changing Plan Intelligence logic, pricing, estimate generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, upload/staging architecture, or Generate payload shape.
+
+Focus:
+
+1. Separate selected pages processed from pages with useful evidence.
+2. Rename ambiguous labels so “selected sheet/page reviewed” does not imply unselected pages were skipped or selected pages were ignored.
+3. Reduce noisy raw extracted PDF text in the visible summary.
+4. Prioritize readable sheet names, sheet types, source page numbers, and short evidence summaries.
+5. Keep review-only language clear.
+6. Keep plan candidates out of pricing.
