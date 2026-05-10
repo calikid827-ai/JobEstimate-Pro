@@ -68,6 +68,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
 - Plan Review Summary groups estimator diagnostics into Pages read, Extracted plan data, and Review-only quantity signals, with review-only quantity candidates/gates labeled as not measured takeoff support or pricing inputs
 - Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+- Plan Review Summary includes “Plan-to-price details” for nested plan-to-price support, while the top-level broad diagnostics section remains “Estimator Diagnostics.”
 - Plan-aware pre-generate scope warning keeps the original missing-scope warning when no plans are uploaded, and switches to confirmation-focused copy when plans are uploaded
 - Optional measurement rows with calculated sqft.
 - Editable pricing:
