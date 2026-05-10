@@ -52,7 +52,7 @@ function makeImageDataUrl(): string {
   return `data:image/png;base64,${Buffer.from("image", "utf8").toString("base64")}`
 }
 
-test("multi-page pdf plan set is accepted and split into indexed pages", async () => {
+test("selected original pdf pages are the only pages split and indexed", async () => {
   const pdfDataUrl = await makeRenderedPdfDataUrl([
     "A1.0 Finish Plan Guest Room Paint Walls and Ceilings",
     "RCP 1 Reflected Ceiling Plan Lighting Fixtures",
@@ -73,31 +73,30 @@ test("multi-page pdf plan set is accepted and split into indexed pages", async (
   assert.deepEqual(uploads[0].selectedSourcePages, [2, 4])
 
   const pages = await splitPlanUploadsToPages(uploads)
-  assert.equal(pages.length, 4)
+  assert.equal(pages.length, 2)
   assert.deepEqual(
     pages.map((page) => page.sourcePageNumber),
-    [1, 2, 3, 4]
+    [2, 4]
   )
   assert.deepEqual(
     pages.map((page) => page.selectedForAnalysis),
-    [false, true, false, true]
+    [true, true]
   )
   assert.equal(pages[0].renderedFromPdf, true)
-  assert.equal(pages[0].renderedImageAvailable, false)
-  assert.equal(pages[1].renderedImageAvailable, true)
-  assert.match(pages[1].imageDataUrl, /^data:image\/png;base64,/)
-  assert.match(String(pages[1].extractedText || ""), /Reflected Ceiling Plan/i)
+  assert.equal(pages[0].renderedImageAvailable, true)
+  assert.match(pages[0].imageDataUrl, /^data:image\/png;base64,/)
+  assert.match(String(pages[0].extractedText || ""), /Reflected Ceiling Plan/i)
 
   const sheetIndex = await buildSheetIndex(pages)
-  assert.equal(sheetIndex.length, 4)
-  assert.equal(sheetIndex[1].uploadId, "plan_upload_1")
-  assert.equal(sheetIndex[1].pageNumber, 2)
-  assert.equal(sheetIndex[1].sourcePageNumber, 2)
-  assert.equal(sheetIndex[1].pageLabel, "Page 2")
-  assert.equal(sheetIndex[1].selectedForAnalysis, true)
-  assert.equal(sheetIndex[1].renderedFromPdf, true)
-  assert.equal(sheetIndex[1].renderedImageAvailable, true)
-  assert.notEqual(sheetIndex[1].discipline, "unknown")
+  assert.equal(sheetIndex.length, 2)
+  assert.equal(sheetIndex[0].uploadId, "plan_upload_1")
+  assert.equal(sheetIndex[0].pageNumber, 1)
+  assert.equal(sheetIndex[0].sourcePageNumber, 2)
+  assert.equal(sheetIndex[0].pageLabel, "Page 2")
+  assert.equal(sheetIndex[0].selectedForAnalysis, true)
+  assert.equal(sheetIndex[0].renderedFromPdf, true)
+  assert.equal(sheetIndex[0].renderedImageAvailable, true)
+  assert.notEqual(sheetIndex[0].discipline, "unknown")
 })
 
 test("mixed pdf and image uploads preserve page ordering and source attribution", async () => {
@@ -123,7 +122,7 @@ test("mixed pdf and image uploads preserve page ordering and source attribution"
   ])
 
   const pages = await splitPlanUploadsToPages(uploads)
-  assert.equal(pages.length, 4)
+  assert.equal(pages.length, 3)
 
   assert.deepEqual(
     pages.map((page) => ({
@@ -142,26 +141,19 @@ test("mixed pdf and image uploads preserve page ordering and source attribution"
       {
         uploadId: "plan_upload_1",
         pageNumber: 2,
-        sourcePageNumber: 2,
-        sourceKind: "pdf",
-      },
-      {
-        uploadId: "plan_upload_1",
-        pageNumber: 3,
         sourcePageNumber: 3,
         sourceKind: "pdf",
       },
       {
         uploadId: "plan_upload_2",
-        pageNumber: 4,
+        pageNumber: 3,
         sourcePageNumber: 1,
         sourceKind: "image",
       },
     ]
   )
   assert.equal(pages[0].renderedImageAvailable, true)
-  assert.equal(pages[1].renderedImageAvailable, false)
-  assert.equal(pages[2].renderedImageAvailable, true)
+  assert.equal(pages[1].renderedImageAvailable, true)
 })
 
 test("plan ingest no longer enforces the older 10-upload cap", () => {
@@ -188,7 +180,7 @@ test("indexed-only fallback still works when page rendering input is not a real 
   ])
 
   const pages = await splitPlanUploadsToPages(uploads)
-  assert.equal(pages.length, 3)
+  assert.equal(pages.length, 2)
   assert.equal(pages[0].renderedFromPdf, false)
   assert.equal(pages[0].renderedImageAvailable, false)
 })
@@ -226,18 +218,73 @@ test("multipart-temp pdf transport preserves selectedSourcePages and downstream 
     assert.deepEqual(uploads[0].selectedSourcePages, [2, 3])
 
     const pages = await splitPlanUploadsToPages(uploads)
-    assert.equal(pages.length, 3)
+    assert.equal(pages.length, 2)
     assert.deepEqual(
       pages.map((page) => page.selectedForAnalysis),
-      [false, true, true]
+      [true, true]
     )
     assert.deepEqual(
       pages.map((page) => page.uploadId),
-      ["multipart_plan_1", "multipart_plan_1", "multipart_plan_1"]
+      ["multipart_plan_1", "multipart_plan_1"]
     )
-    assert.equal(pages[1].sourcePageNumber, 2)
-    assert.equal(pages[2].sourcePageNumber, 3)
-    assert.equal(pages[1].renderedImageAvailable, true)
+    assert.equal(pages[0].sourcePageNumber, 2)
+    assert.equal(pages[1].sourcePageNumber, 3)
+    assert.equal(pages[0].renderedImageAvailable, true)
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test("original fallback selected pages preserve sparse source page provenance", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-original-fallback-sparse-test-"))
+
+  try {
+    const pdfPath = path.join(tempRoot, "full-plan-set.pdf")
+    await writeFile(
+      pdfPath,
+      await makeRenderedPdfBuffer([
+        "Cover sheet general notes",
+        "Life safety code plan",
+        "A1.0 Floor Plan guest rooms",
+        "A2.0 Enlarged plan",
+        "A3.0 Details",
+        "A4.0 Legends",
+        "A8.1 Finish Schedule paint wallcovering flooring",
+        "A9.1 Interior Elevations tile wet areas",
+      ])
+    )
+
+    const uploads = sanitizePlanUploads([
+      {
+        uploadId: "original_fallback_sparse",
+        name: "full-plan-set.pdf",
+        note: "Original fallback selected pages",
+        transport: "multipart-temp",
+        mimeType: "application/pdf",
+        tempFilePath: pdfPath,
+        bytes: 12_000_000,
+        selectedSourcePages: [3, 7],
+        selectedPageUploadMode: "original-fallback",
+      },
+    ])
+
+    const pages = await splitPlanUploadsToPages(uploads)
+    assert.deepEqual(
+      pages.map((page) => page.sourcePageNumber),
+      [3, 7]
+    )
+    assert.deepEqual(
+      pages.map((page) => page.pageNumber),
+      [1, 2]
+    )
+    assert(pages.every((page) => page.selectedForAnalysis))
+
+    const sheetIndex = await buildSheetIndex(pages)
+    assert.equal(sheetIndex.length, 2)
+    assert.deepEqual(
+      sheetIndex.map((sheet) => sheet.sourcePageNumber),
+      [3, 7]
+    )
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

@@ -42,7 +42,7 @@ Difficulty levels:
 
 1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Audit Plan Intelligence original-fallback scalability so unselected pages are not unnecessarily rasterized/indexed where `selectedSourcePages` are available.
+3. Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
 4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
 6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
@@ -71,6 +71,7 @@ Completed pre-launch task kept visible:
 - DONE: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as `blocked`, `review_only`, or `future_candidate`, and preserve required evidence, present evidence, blockers, warnings, and source provenance. Targeted plan tests passed 34/34 and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls, retain Clear and Select all, show selected-page count and estimated selected upload size more clearly, and warn when a large PDF has all pages selected. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
 - DONE: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. PDF uploads now summarize selected page count, total page count, selection ratio, estimated selected upload size, all-pages-selected large PDFs, no-page selections, many selected pages, high selected upload size, and whether the selected set may be too broad for reliable/cost-controlled analysis. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
+- DONE: Original-fallback selected-page scalability improvement is complete. Original/fallback PDFs with `selectedSourcePages` now limit fallback rasterization, text extraction, indexing, and sheet classification to selected original pages while preserving source page provenance. Browser/server-derived selected PDFs with `sourcePageNumberMap` still behave as derived pages `1..N` mapped back to original pages. Generate now safely continues with original fallback if the second selected-page derivation attempt fails. Targeted plan tests passed 24/24, `npx tsc --noEmit` passed, and `git diff --check` passed; `npm run lint` still fails due to known broad lint debt.
 
 ## 1. Critical Fixes
 
@@ -320,7 +321,8 @@ Completed pre-launch task kept visible:
 - Status note: Plan Intelligence Phase 6 trade-specific quantity candidate diagnostics are complete. Deterministic review-only candidates now cover painting/wallcovering/flooring/base/ceiling finish rows, door/window/fixture schedule counts, and repeated room package counts from existing diagnostics, preserve provenance/confidence/assumptions/warnings, and remain ineligible for pricing.
 - Status note: Plan Intelligence Phase 7 confidence/provenance gate diagnostics are complete. Deterministic estimator-only gates review `tradeQuantityCandidates` only, keep every gate `pricingEligibleNow: false`, classify candidates as blocked/review-only/future-candidate, and preserve required evidence, present evidence, blockers, warnings, and source provenance.
 - Status note: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls while preserving existing selected-page staging, Generate payloads, and analysis behavior.
-- Status note: Plan upload selected-page staging and fallback messaging exist. The safest next large-plan task is selected-page guidance/readiness copy polish or an original-fallback/rasterization efficiency audit, not a rebuild of upload or Plan Intelligence logic.
+- Status note: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. Original-fallback selected-page scalability is also complete: fallback PDFs with `selectedSourcePages` now avoid processing unselected pages while preserving source page provenance.
+- Status note: The next safest large-plan work is real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics. Deeper upload/staging architecture changes should remain future work unless QA proves the current architecture cannot support launch.
 - Future Plan Intelligence work should keep actual pricing handoff activation deferred until manual QA and stronger confidence/provenance gates are proven; direct pricing influence from plan-derived candidates remains future work.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:

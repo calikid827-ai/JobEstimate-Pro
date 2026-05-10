@@ -42,15 +42,36 @@ function getRenderPageSelection(upload: PlanUpload): number[] | null {
   return upload.selectedSourcePages
 }
 
+function getPlaceholderPageNumbers(args: {
+  totalPages: number
+  renderPageSelection: number[] | null
+}): number[] {
+  if (Array.isArray(args.renderPageSelection) && args.renderPageSelection.length > 0) {
+    return Array.from(
+      new Set(
+        args.renderPageSelection.filter(
+          (pageNumber) =>
+            Number.isInteger(pageNumber) &&
+            pageNumber > 0 &&
+            pageNumber <= args.totalPages
+        )
+      )
+    ).sort((a, b) => a - b)
+  }
+
+  return Array.from({ length: args.totalPages }, (_, index) => index + 1)
+}
+
 export async function rasterizePdfToPages(
   upload: PlanUpload
 ): Promise<RasterizedPdfPage[]> {
   const bytes = await readPlanUploadBuffer(upload)
   const countedPages = countPdfPagesFromBytes(bytes)
   const totalPages = clampPlanSourcePageCount(countedPages)
+  const renderPageSelection = getRenderPageSelection(upload)
   const pages: RasterizedPdfPage[] = []
 
-  for (let sourcePageNumber = 1; sourcePageNumber <= totalPages; sourcePageNumber += 1) {
+  for (const sourcePageNumber of getPlaceholderPageNumbers({ totalPages, renderPageSelection })) {
     pages.push({
       sourcePageNumber,
       imageDataUrl: "",
@@ -65,7 +86,6 @@ export async function rasterizePdfToPages(
   const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-plan-render-"))
   const pdfPath = path.join(tempRoot, "upload.pdf")
   const outputDir = path.join(tempRoot, "pages")
-  const renderPageSelection = getRenderPageSelection(upload)
   const selectedPagesCsv = Array.isArray(renderPageSelection)
     ? renderPageSelection.join(",")
     : ""

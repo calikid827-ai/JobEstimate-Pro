@@ -195,6 +195,7 @@ Plan upload support includes:
 - Selected-page staging and chunked upload
 - Browser-side selected-page PDF export when possible
 - Server-side selected-page extraction fallback
+- Original-PDF fallback limits rendering/indexing to selected source pages when `selectedSourcePages` are available, preserving original source page provenance
 - PDF splitting and page rendering for plan intelligence
 - Browser-derived selected-page PDFs render their reduced pages as `1..N` for image/vision fallback, while original source page numbers are preserved in plan provenance.
 - Sheet classification, cross-sheet merge, plan readback, quantity support, grouped scope readback, scope gaps, and pricing-carry readback
@@ -217,6 +218,7 @@ Important operational notes:
 - Use range selection to quickly narrow large PDFs to the sheets that should be reviewed.
 - The upload UI shows readiness guidance for large plan selections and recommends starting with floor plans, finish schedules, elevations, door/window schedules, fixture schedules, and trade-relevant RCP/demo sheets.
 - If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
+- If a later selected-page derivation attempt fails, Generate continues with the original staged PDF and selected source pages instead of failing the whole request.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
 - Evidence-strength, table/schedule extraction, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.
 - Estimate PDFs include a customer-safe estimator plan review when plans are present, even if hard measured quantities are not confirmed.

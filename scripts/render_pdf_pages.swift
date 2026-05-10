@@ -104,17 +104,25 @@ guard let document = PDFDocument(url: pdfURL) else {
     exit(1)
 }
 
-var pages: [PageRecord] = []
-pages.reserveCapacity(document.pageCount)
+let allPageNumbers = document.pageCount > 0 ? Array(1...document.pageCount) : []
+let pageNumbersToRender: [Int] =
+    selectedPages == nil
+    ? allPageNumbers
+    : selectedPages!
+        .filter { $0 > 0 && $0 <= document.pageCount }
+        .sorted()
 
-for index in 0..<document.pageCount {
+var pages: [PageRecord] = []
+pages.reserveCapacity(pageNumbersToRender.count)
+
+for pageNumber in pageNumbersToRender {
+    let index = pageNumber - 1
     guard let page = document.page(at: index) else { continue }
-    let pageNumber = index + 1
     let record = try renderPage(
         page: page,
         sourcePageNumber: pageNumber,
         outputDir: outputDir,
-        shouldRenderImage: selectedPages?.contains(pageNumber) ?? true
+        shouldRenderImage: true
     )
     pages.append(record)
 }

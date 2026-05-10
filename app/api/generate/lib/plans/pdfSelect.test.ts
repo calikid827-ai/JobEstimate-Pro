@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
 
-import { deriveSelectedPdfUpload } from "./pdfSelect"
+import { deriveSelectedPdfUpload, deriveSelectedPdfUploadOrNull } from "./pdfSelect"
 import type { PlanUpload } from "./types"
 import { countPdfPagesFromBytes } from "../../../../lib/plan-upload"
 
@@ -77,6 +77,48 @@ test("selected pages export into a smaller derived pdf artifact with original pa
       2
     )
     assert.equal((await readFile(derived.outputPdfPath)).byteLength, derived.outputBytes)
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
+})
+
+test("selected-page derivation wrapper returns null instead of failing generate fallback paths", async () => {
+  const tempRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-pdf-select-test-"))
+
+  try {
+    const originalPdfPath = path.join(tempRoot, "indexed-only.pdf")
+    const derivedPdfPath = path.join(tempRoot, "selected.pdf")
+    await writeFile(
+      originalPdfPath,
+      Buffer.from(
+        [
+          "%PDF-1.4",
+          "<< /Type /Page /PageNum 1 >>",
+          "<< /Type /Page /PageNum 2 >>",
+          "<< /Type /Page /PageNum 3 >>",
+          "%%EOF",
+        ].join("\n"),
+        "utf8"
+      )
+    )
+
+    const upload: PlanUpload = {
+      uploadId: "plan_upload_fallback",
+      name: "indexed-only.pdf",
+      note: "Invalid PDF fixture",
+      mimeType: "application/pdf",
+      transport: "multipart-temp",
+      tempFilePath: originalPdfPath,
+      bytes: (await readFile(originalPdfPath)).byteLength,
+      selectedSourcePages: [1, 2],
+    }
+
+    const derived = await deriveSelectedPdfUploadOrNull({
+      upload,
+      outputPdfPath: derivedPdfPath,
+    })
+
+    assert.equal(derived, null)
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }

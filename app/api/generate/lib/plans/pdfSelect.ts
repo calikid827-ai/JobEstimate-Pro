@@ -76,3 +76,14 @@ export async function deriveSelectedPdfUpload(args: {
     sourcePageNumberMap,
   }
 }
+
+export async function deriveSelectedPdfUploadOrNull(args: {
+  upload: PlanUpload
+  outputPdfPath: string
+}): Promise<SelectedPdfExportResult | null> {
+  try {
+    return await deriveSelectedPdfUpload(args)
+  } catch {
+    return null
+  }
+}

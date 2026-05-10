@@ -115,9 +115,9 @@ test("unselected pdf pages do not contribute plan findings", async () => {
 
   assert(result)
   assert.equal(result.pagesCount, 2)
-  assert.equal(result.indexedPagesCount, 5)
+  assert.equal(result.indexedPagesCount, 2)
   assert.equal(result.selectedPagesCount, 2)
-  assert.equal(result.skippedPagesCount, 3)
+  assert.equal(result.skippedPagesCount, 0)
   assert.equal(result.evidenceStrength?.selectedPagesCount, 2)
   assert.equal(result.evidenceStrength?.textPagesCount, 2)
   assert.equal(result.evidenceStrength?.renderedPagesCount, 2)
@@ -166,10 +166,10 @@ test("mixed upload selection preserves estimator compatibility with selected ind
   })
 
   assert(result)
-  assert.equal(result.indexedPagesCount, 5)
+  assert.equal(result.indexedPagesCount, 4)
   assert.equal(result.selectedPagesCount, 3)
   assert.equal(result.pagesCount, 3)
-  assert.equal(result.skippedPagesCount, 2)
+  assert.equal(result.skippedPagesCount, 1)
   assert.equal(result.analyses.length, 3)
   assert.equal(result.analyses[0].uploadName, "guest-room-finish-plan.png")
   assert.deepEqual(
@@ -365,10 +365,10 @@ test("temp-file-backed large pdf transport feeds the same split/render/analyze s
     })
 
     assert(result)
-    assert.equal(result.indexedPagesCount, 4)
+    assert.equal(result.indexedPagesCount, 3)
     assert.equal(result.selectedPagesCount, 3)
     assert.equal(result.pagesCount, 3)
-    assert.equal(result.skippedPagesCount, 1)
+    assert.equal(result.skippedPagesCount, 0)
     assert(result.detectedTrades.includes("painting"))
     assert(result.detectedTrades.includes("plumbing"))
     assert.deepEqual(

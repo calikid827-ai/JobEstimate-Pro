@@ -62,6 +62,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Range-based PDF page selection with From / To / Select range controls
   - Large-plan selected-page readiness guidance with warnings for all-pages-selected, no-page selections, many selected pages, high selected upload size, and suggested sheet types
   - Selected-page upload staging
+  - Original-fallback selected-page scalability: `selectedSourcePages` limits fallback rasterization/indexing/classification to selected original pages while preserving source page provenance
   - Upload-mode visibility
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
   - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets

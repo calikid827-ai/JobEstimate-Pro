@@ -63,7 +63,7 @@ import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
 } from "./lib/estimator/orchestrator"
-import { deriveSelectedPdfUpload } from "./lib/plans/pdfSelect"
+import { deriveSelectedPdfUploadOrNull } from "./lib/plans/pdfSelect"
 import { runPlanIntelligence } from "./lib/plans/orchestrator"
 import {
   cleanupStagedPlanUpload,
@@ -338,7 +338,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
           const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
           tempUploadRoots.push(derivedRoot)
           const outputPdfPath = path.join(derivedRoot, "selected-pages.pdf")
-          const derived = await deriveSelectedPdfUpload({
+          const derived = await deriveSelectedPdfUploadOrNull({
             upload: {
               uploadId:
                 typeof plan?.uploadId === "string" && plan.uploadId.trim()
@@ -464,7 +464,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
         const derivedRoot = await mkdtemp(path.join(tmpdir(), "scopeguard-derived-plan-"))
         tempUploadRoots.push(derivedRoot)
         const outputPdfPath = path.join(derivedRoot, "selected-pages.pdf")
-        const derived = await deriveSelectedPdfUpload({
+        const derived = await deriveSelectedPdfUploadOrNull({
           upload: {
             uploadId:
               typeof plan?.uploadId === "string" && plan.uploadId.trim()
