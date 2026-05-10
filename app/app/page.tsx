@@ -1402,6 +1402,59 @@ const ROOM_TAG_SUGGESTIONS = [
   "Exterior",
 ] as const
 
+const ELECTRICAL_SCOPE_MENTION_PATTERN =
+  /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in|electrical\s+coordination|electrical\s+trade)\b/i
+
+function mentionsElectricalWork(value: string): boolean {
+  return ELECTRICAL_SCOPE_MENTION_PATTERN.test(String(value || ""))
+}
+
+function supportsElectricalTrade(value: string): boolean {
+  return /\b(electrical|electrician)\b/i.test(String(value || ""))
+}
+
+function mentionsStrongElectricalSupport(value: string): boolean {
+  return ELECTRICAL_SCOPE_MENTION_PATTERN.test(String(value || ""))
+}
+
+function buildCustomerScopeTradeDriftWarning(args: {
+  selectedTrade: UiTrade
+  writtenScope: string
+  resultText: string
+  estimateSections: EstimateStructuredSection[] | null
+  scopeXRay: ScopeXRay
+  planIntelligence: PlanIntelligence
+}): string | null {
+  if (!mentionsElectricalWork(args.resultText)) return null
+
+  const selectedTradeSupportsElectrical = args.selectedTrade === "electrical"
+  const writtenScopeSupportsElectrical = mentionsStrongElectricalSupport(args.writtenScope)
+  const pricedSectionsSupportElectrical = (args.estimateSections || []).some((section) =>
+    supportsElectricalTrade(section.trade)
+  )
+  const scopeXRaySupportsElectrical = (args.scopeXRay?.detectedScope.splitScopes || []).some(
+    (item) => mentionsStrongElectricalSupport(item.scope)
+  )
+  const planReadbackSupportsElectrical =
+    args.planIntelligence?.planReadback?.tradeScopeReadback?.some(
+      (item) =>
+        supportsElectricalTrade(item.trade) &&
+        (item.supportLevel === "direct" || item.supportLevel === "reinforced")
+    ) || false
+
+  if (
+    selectedTradeSupportsElectrical ||
+    writtenScopeSupportsElectrical ||
+    pricedSectionsSupportElectrical ||
+    scopeXRaySupportsElectrical ||
+    planReadbackSupportsElectrical
+  ) {
+    return null
+  }
+
+  return "Customer-Facing Scope mentions electrical work, but electrical is not strongly supported by the selected trade, written scope, priced sections, or plan readback. Review this wording before sending."
+}
+
 export default function Home() {
 const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
@@ -3470,6 +3523,17 @@ const priceGuardReview = useMemo(() => {
   estimateRows,
   estimateSections,
 ])
+
+const customerScopeTradeDriftWarning = useMemo(() => {
+  return buildCustomerScopeTradeDriftWarning({
+    selectedTrade: trade,
+    writtenScope: scopeChange,
+    resultText: result?.text || "",
+    estimateSections,
+    scopeXRay,
+    planIntelligence,
+  })
+}, [trade, scopeChange, result?.text, estimateSections, scopeXRay, planIntelligence])
 
 function applySuggestedPrice() {
   const targetPrice = Number(smartSuggestedPrice || 0)
@@ -12867,6 +12931,24 @@ const accountAccessMessage = !normalizedEmail
       >
         Customer-Facing Scope
       </div>
+
+      {customerScopeTradeDriftWarning && (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: 10,
+            border: "1px solid #fdba74",
+            borderRadius: 8,
+            background: "#fff7ed",
+            color: "#92400e",
+            fontSize: 12,
+            fontWeight: 800,
+            lineHeight: 1.45,
+          }}
+        >
+          {customerScopeTradeDriftWarning}
+        </div>
+      )}
 
       <div
         style={{
