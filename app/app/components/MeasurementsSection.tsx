@@ -4,6 +4,7 @@ import type React from "react"
 
 type Props = {
   scopeQuality: any
+  hasPlans: boolean
   measureEnabled: boolean
   setMeasureEnabled: (value: boolean) => void
   measureRows: any[]
@@ -14,6 +15,7 @@ type Props = {
 
 export default function MeasurementsSection({
   scopeQuality,
+  hasPlans,
   measureEnabled,
   setMeasureEnabled,
   measureRows,
@@ -25,11 +27,20 @@ export default function MeasurementsSection({
     <>
       {scopeQuality.score < 70 && (
         <div className="mt-3 rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm">
-          <div className="font-semibold">⚠ Scope may be incomplete</div>
+          <div className="font-semibold">
+            {hasPlans ? "Scope details still need confirmation" : "⚠ Scope may be incomplete"}
+          </div>
+
+          {hasPlans && (
+            <p className="mt-1">
+              Plans are uploaded, but a short written scope helps PriceGuard verify the estimate
+              against the selected sheets.
+            </p>
+          )}
 
           <ul className="mt-1 list-disc pl-5">
             {scopeQuality.warnings.map((w: string, i: number) => (
-              <li key={i}>{w}</li>
+              <li key={i}>{hasPlans ? `Confirm: ${w}` : w}</li>
             ))}
           </ul>
         </div>

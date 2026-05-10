@@ -86,6 +86,7 @@ type Props = {
   maxJobPlans: number
 
   scopeQuality: any
+  hasPlans: boolean
   measureEnabled: boolean
   setMeasureEnabled: (value: boolean) => void
   measureRows: any[]
@@ -124,6 +125,7 @@ export default function EstimateBuilderSection({
   ROOM_TAG_SUGGESTIONS,
 
   scopeQuality,
+  hasPlans,
   measureEnabled,
   setMeasureEnabled,
   measureRows,
@@ -292,6 +294,7 @@ export default function EstimateBuilderSection({
 
       <MeasurementsSection
         scopeQuality={scopeQuality}
+        hasPlans={hasPlans}
         measureEnabled={measureEnabled}
         setMeasureEnabled={setMeasureEnabled}
         measureRows={measureRows}

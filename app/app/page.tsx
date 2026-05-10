@@ -11728,57 +11728,99 @@ function PlanAwareEstimatorReadbackCard({
             {evidenceStrength.hardQuantityCount > 0 ? "Hard quantities found" : "Measured quantities still need confirmation"}
           </div>
           {hasPageReadStatusSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Selected pages read: {selectedPagesReadCount} / {selectedPageStatuses.length}
-              {" - "}
-              Pages needing review: {pagesNeedingReviewCount}
-              {" - "}
-              Weak/unknown sheet classification: {weakClassificationCount}
+            <div
+              style={{
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid #e5e7eb",
+                color: "#4b5563",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#111827" }}>Pages read</div>
+              <div style={{ marginTop: 3 }}>
+                Selected pages read: {selectedPagesReadCount} / {selectedPageStatuses.length}
+                {" - "}
+                Pages needing review: {pagesNeedingReviewCount}
+                {" - "}
+                Weak/unknown sheet classification: {weakClassificationCount}
+              </div>
             </div>
           )}
-          {hasExtractedTableSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Tables detected: {extractedTables.length}
-              {" - "}
-              Schedule rows found: {extractedScheduleRowsCount}
-              {" - "}
-              Low-confidence tables needing review: {lowConfidenceTablesCount}
+          {(hasExtractedTableSummary ||
+            hasRoomFinishMatrixSummary ||
+            hasRepeatedRoomPackageSummary) && (
+            <div
+              style={{
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid #e5e7eb",
+                color: "#4b5563",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#111827" }}>Extracted plan data</div>
+              {hasExtractedTableSummary && (
+                <div style={{ marginTop: 3 }}>
+                  Tables detected: {extractedTables.length}
+                  {" - "}
+                  Schedule rows found: {extractedScheduleRowsCount}
+                  {" - "}
+                  Low-confidence tables needing review: {lowConfidenceTablesCount}
+                </div>
+              )}
+              {hasRoomFinishMatrixSummary && (
+                <div style={{ marginTop: 3 }}>
+                  Room finish rows found: {roomFinishRowsCount}
+                  {" - "}
+                  Low-confidence finish rows needing review: {lowConfidenceRoomFinishRowsCount}
+                </div>
+              )}
+              {hasRepeatedRoomPackageSummary && (
+                <div style={{ marginTop: 3 }}>
+                  Repeated room packages found: {repeatedRoomPackages.length}
+                  {" - "}
+                  Rooms represented in packages: {repeatedPackageRoomCount}
+                  {" - "}
+                  Low-confidence packages needing review: {lowConfidenceRepeatedPackageCount}
+                </div>
+              )}
             </div>
           )}
-          {hasRoomFinishMatrixSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Room finish rows found: {roomFinishRowsCount}
-              {" - "}
-              Low-confidence finish rows needing review: {lowConfidenceRoomFinishRowsCount}
-            </div>
-          )}
-          {hasRepeatedRoomPackageSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Repeated room packages found: {repeatedRoomPackages.length}
-              {" - "}
-              Rooms represented in packages: {repeatedPackageRoomCount}
-              {" - "}
-              Low-confidence packages needing review: {lowConfidenceRepeatedPackageCount}
-            </div>
-          )}
-          {hasTradeQuantityCandidateSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Trade quantity candidates found: {tradeQuantityCandidates.length}
-              {" - "}
-              Candidates needing measurement: {candidatesNeedingMeasurementCount}
-              {" - "}
-              Pricing-eligible candidates: {pricingEligibleCandidateCount}
-            </div>
-          )}
-          {hasTradeQuantityCandidateGateSummary && (
-            <div style={{ marginTop: 4, color: "#4b5563" }}>
-              Candidate gates reviewed: {tradeQuantityCandidateGates.length}
-              {" - "}
-              Future candidates after review: {futureCandidateGateCount}
-              {" - "}
-              Blocked/review-only candidates: {blockedOrReviewOnlyGateCount}
-              {" - "}
-              Pricing-eligible now: {pricingEligibleNowGateCount}
+          {(hasTradeQuantityCandidateSummary || hasTradeQuantityCandidateGateSummary) && (
+            <div
+              style={{
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid #e5e7eb",
+                color: "#4b5563",
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#111827" }}>
+                Review-only quantity signals
+              </div>
+              <div style={{ marginTop: 3, color: "#92400e" }}>
+                These are estimator diagnostics only, not measured takeoff support and not
+                pricing inputs.
+              </div>
+              {hasTradeQuantityCandidateSummary && (
+                <div style={{ marginTop: 3 }}>
+                  Trade quantity candidates found: {tradeQuantityCandidates.length}
+                  {" - "}
+                  Candidates needing measurement: {candidatesNeedingMeasurementCount}
+                  {" - "}
+                  Pricing-eligible candidates: {pricingEligibleCandidateCount}
+                </div>
+              )}
+              {hasTradeQuantityCandidateGateSummary && (
+                <div style={{ marginTop: 3 }}>
+                  Candidate gates reviewed: {tradeQuantityCandidateGates.length}
+                  {" - "}
+                  Future candidates after review: {futureCandidateGateCount}
+                  {" - "}
+                  Blocked/review-only candidates: {blockedOrReviewOnlyGateCount}
+                  {" - "}
+                  Pricing-eligible now: {pricingEligibleNowGateCount}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -12461,6 +12503,7 @@ const accountAccessMessage = !normalizedEmail
   maxJobPhotos={MAX_JOB_PHOTOS}
   maxJobPlans={MAX_JOB_PLANS}
   scopeQuality={scopeQuality}
+  hasPlans={jobPlans.length > 0}
   measureEnabled={measureEnabled}
   setMeasureEnabled={setMeasureEnabled}
   measureRows={measureRows}
