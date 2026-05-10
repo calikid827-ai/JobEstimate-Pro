@@ -725,3 +725,54 @@ The next issue is not the Plan Review Summary drilldown anymore. The next pre-la
 ## Recommended next action
 
 Stop polishing the Pages needing review drilldown for now. Move to a UI/QA pass focused on customer-facing scope accuracy and unsupported trade drift.
+
+# Test Entry 6 — Marina Dunes ADA Units, Unsupported Electrical Drift Warning Retest
+
+## Result
+
+Pass with follow-up UI cleanup.
+
+## What was tested
+
+- Selected pages: 1, 9, 12, 13, 22
+- Trade type: General Renovation
+- Generated estimate after the unsupported electrical drift warning fix
+- Reviewed Customer-Facing Scope, Plan Review Summary, pricing safety language, and Estimator Diagnostics
+
+## Findings
+
+The unsupported electrical drift warning now appears correctly above the Customer-Facing Scope when the generated customer-facing text mentions electrical work that is not strongly supported by the selected trade, written scope, priced sections, or plan readback.
+
+The warning appeared while Customer-Facing Scope included electrical-related language. This confirms the UI-only warning is now catching unsupported electrical drift instead of being suppressed by weak scopeXRay labels such as generic fixture counts.
+
+The retest confirms:
+
+- The warning appears near Customer-Facing Scope.
+- The warning is estimator-only.
+- Customer-Facing Scope text is not modified.
+- Generate is not blocked.
+- Pricing does not appear to change.
+- Plan-derived candidates remain review-only and are not pricing inputs.
+- Plan Review Summary still explains weak/review-only selected-page evidence.
+- PriceGuard and pricing safety language remain intact.
+
+## Remaining issue found
+
+There appear to be two Estimator Diagnostics dropdown areas in the result UI. This is not a pricing or generation issue, but it may confuse users because the diagnostics experience feels duplicated or overly long.
+
+## Issue Found
+
+| Issue | Severity | Screenshot/reference | Suggested fix | Code area likely involved | Fix now or later |
+| --- | --- | --- | --- | --- | --- |
+| Two Estimator Diagnostics dropdown areas may confuse users or make the result page feel repetitive. | Low/Medium | Marina Dunes Test Entry 6 screenshots showing duplicate diagnostics dropdowns. | Audit result-page diagnostics layout and consider renaming, merging, or clarifying the two diagnostics sections. | app/app/page.tsx result display / estimator diagnostics UI. | Later |
+| Customer-Facing Scope can still contain unsupported electrical wording, but the estimator-only warning now catches it before sending. | Medium | Customer-Facing Scope screenshot with warning visible. | Keep UI-only warning for now. Consider future customer-facing text guard only after more QA. | Customer-Facing Scope display / future generation guard. | Later |
+
+## Final decision
+
+This UI-only unsupported electrical drift warning passes.
+
+The warning now protects contractor trust by flagging unsupported electrical language before the estimate is sent, without changing pricing, generation behavior, Plan Intelligence logic, upload/staging behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+
+Recommended next action:
+
+Record this test as passed. Do not keep polishing unsupported electrical drift unless more real tests show missed warnings. Move to the next pre-launch QA item, likely result-page diagnostics layout clarity or PDF/customer output review.
