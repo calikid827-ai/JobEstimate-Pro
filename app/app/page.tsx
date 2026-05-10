@@ -12229,7 +12229,7 @@ function PlanAwareEstimatorReadbackCard({
               color: "#374151",
             }}
           >
-            Estimator diagnostics
+            Plan-to-price details
           </summary>
 
           <div style={{ fontSize: 12, color: "#4b5563", lineHeight: 1.5, marginTop: 6 }}>
