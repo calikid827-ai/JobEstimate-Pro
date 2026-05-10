@@ -623,3 +623,41 @@ Do one more UI-only readback polish pass focused on count consistency and explan
 3. Align “Plan evidence status: Useful” with “Pages with useful evidence: 0,” or rename the status so it does not sound contradictory.
 4. Continue suppressing noisy all-caps source text in compact summaries.
 5. Keep this UI-only. Do not change Plan Intelligence logic, pricing, generation, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, upload/staging architecture, or Generate payload shape.
+
+# Test Entry 4 — Marina Dunes ADA Units, Pages Needing Review Drilldown Retest
+
+## Result
+
+Pass.
+
+## What was tested
+
+- Selected pages: 1, 9, 12, 13, 22
+- Generated estimate after the “Pages needing review” UI polish
+- Reviewed Plan Review Summary and pricing safety language
+
+## Findings
+
+The new “Pages needing review” drilldown appears correctly under the Pages read section. It explains why plan evidence may be weak or review-only by showing the selected page reference, text status, image status, classification status, and contractor-friendly reasons.
+
+The retest confirms:
+
+- Upload UI consistently shows 5 of 38 selected pages.
+- Plan Review Summary shows selected pages processed/read/useful evidence separately.
+- Pages needing review is visible and useful.
+- The weak classification is explained clearly.
+- Review-only language remains intact.
+- Plan-derived candidates are still not pricing inputs.
+- Pricing does not appear to be changed directly by plan candidates.
+
+## Remaining polish
+
+The compact summary still shows some all-caps extracted plan text near the top of the Plan Review Summary. This is not launch-blocking, but it could be cleaned later by improving visible summary copy.
+
+## Final decision
+
+This UI-only polish passes. The Plan Review Summary now explains weak/review-only plan evidence better and is safer for contractor trust.
+
+Recommended next action:
+
+Stop polishing this specific readback loop for now. Move to the next pre-launch QA item unless more real PDFs show the same raw-text issue repeatedly.
