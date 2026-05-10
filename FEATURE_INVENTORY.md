@@ -67,6 +67,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
   - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
 - Plan Review Summary groups estimator diagnostics into Pages read, Extracted plan data, and Review-only quantity signals, with review-only quantity candidates/gates labeled as not measured takeoff support or pricing inputs
+- Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - Plan-aware pre-generate scope warning keeps the original missing-scope warning when no plans are uploaded, and switches to confirmation-focused copy when plans are uploaded
 - Optional measurement rows with calculated sqft.
 - Editable pricing:
@@ -436,6 +437,7 @@ Implemented:
   - Sheet classification classified/weak/unknown visibility.
   - Placeholder PDF rasterization and original-PDF fallback limitation warnings.
   - Estimator Plan Review Summary counts for selected pages read, pages needing review, and weak/unknown sheet classification.
+  - Compact Pages Needing Review drilldown for selected pages with failed rendering, missing text/image support, warnings, failure reasons, or weak/unknown classification.
 - Structured estimator-only sheet classification diagnostics:
   - Deterministic roles for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets.
   - Optional classification object on sheet index entries while preserving existing sheet number, sheet title, discipline, and confidence fields.

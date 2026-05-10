@@ -42,6 +42,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
 - DONE: Advanced analysis customer-facing mode now opens estimate results with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
 - DONE: Estimator-facing Plan Review Summary clarity pass grouped Plan Intelligence diagnostics into Pages read, Extracted plan data, and Review-only quantity signals.
+- DONE: Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+- NEXT: Customer-facing scope accuracy / unsupported trade drift. The iPhone Marina Dunes retest found that Customer-Facing Scope may introduce unsupported trade language such as “electrical tasks” during a General Renovation plan-assisted estimate. Add a UI/QA safety pass to flag or prevent unsupported trade drift before customer-facing output is sent.
 - DONE: Plan-aware pre-generate scope warning clarity pass softens scope-quality copy when plans are uploaded while keeping the existing missing-scope warning behavior when no plans are uploaded.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration. It is UI-side only and does not change pricing math, estimate generation, Plan Intelligence, PDFs, approvals, invoices, billing, API routes, localStorage keys, or saved estimate data shapes.
 - DONE: PriceGuard Review QA false-positive reduction pass is complete. The deterministic helper now filters scope-quality warnings against the combined original scope and generated customer-facing estimate text, reducing over-warning when the generated estimate already includes prep, materials, cleanup, protection, exclusions, approval, or work process language.
@@ -123,11 +125,14 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: The Phase 7 confidence/provenance gate pass does not affect pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, or saved data shapes.
 - DONE: `liveTradePricingInfluence.ts` was not modified, and tests confirmed live trade pricing influence behavior is unchanged. Phase 7 verification passed targeted plan tests 34/34 and `npx tsc --noEmit`; `npm run lint` still fails due to known broad lint debt.
 - DONE: Estimator-facing Plan Review Summary clarity is complete as a UI-only pass. Existing Phase 1-7 diagnostic counts are now grouped into Pages read, Extracted plan data, and Review-only quantity signals; quantity candidates/gates are labeled as estimator diagnostics only, not measured takeoff support, and not pricing inputs, while `Pricing-eligible now: 0` remains visible through the existing gate count.
+- DONE: Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+- DONE: Desktop and iPhone/mobile Marina Dunes retests passed for the Pages Needing Review drilldown. Review-only/pricing safety language remained intact, plan-derived candidates stayed out of pricing inputs, and pricing did not appear to be changed directly by plan candidates.
 - DONE: Plan-aware pre-generate scope warning clarity is complete as a UI-only pass. When no plans are uploaded, the existing “Scope may be incomplete” behavior remains. When plans are uploaded, the heading changes to “Scope details still need confirmation,” copy explains that a short written scope helps PriceGuard verify the estimate against selected sheets, and the existing missing-scope bullets remain as confirmation items.
 - DONE: The UI clarity pass does not change Plan Intelligence logic, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. Verification passed `npx tsc --noEmit`, `git diff --check`, and manual visual QA.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
 - PARTIAL: Actual pricing handoff activation, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
+- NEXT: Customer-facing scope accuracy / unsupported trade drift. The iPhone Marina Dunes retest found that Customer-Facing Scope may introduce unsupported trade language such as “electrical tasks” during a General Renovation plan-assisted estimate. Add a UI/QA safety pass to flag or prevent unsupported trade drift before customer-facing output is sent.
 - DEFERRED: Major measured-takeoff upgrades should wait until the current launch-critical stability and billing work is settled.
 
 ## Invoice Workflow Status
@@ -198,6 +203,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 ## Remaining Must-Fix Before Launch
 
 - PARTIAL: Keep launch readiness scoped to the PWA/web app path unless the launch-channel decision changes.
+- NEXT: Customer-facing scope accuracy / unsupported trade drift. The iPhone Marina Dunes retest found that Customer-Facing Scope may introduce unsupported trade language such as “electrical tasks” during a General Renovation plan-assisted estimate. Add a UI/QA safety pass to flag or prevent unsupported trade drift before customer-facing output is sent.
 - PARTIAL: Verify the final subscription billing path before accepting public paid users.
 - DONE: Subscription checkout, webhook lifecycle handling, entitlement response, Account & Access status display, success/cancel copy, and focused entitlement tests are implemented.
 - DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, post-env-var redeploy, and 6-event webhook configuration are complete.
@@ -230,6 +236,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
 - DONE: Estimator-facing UI clarity pass grouped the Plan Review Summary into Pages read, Extracted plan data, and Review-only quantity signals, and made plan-aware pre-generate scope warnings less alarming when plans are uploaded. This was UI-only and did not change Plan Intelligence logic, pricing, generation, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. `npx tsc --noEmit`, `git diff --check`, and manual visual QA passed.
+- DONE: Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is complete for launch polish. It gives contractors a UI-side review of profit leaks, missed scope, labor/material confidence, scope clarity, exclusions, customer-ready price defense notes, and contractor-only risk notes without changing pricing, generation, PDFs, approvals, invoices, billing, or saved data shapes. `npx tsc --noEmit` passed; `npm run lint` still fails from known broad lint debt.
 - DONE: PriceGuard Review QA polish reduced false positives for generated estimates that already resolve original-scope concerns. It now recognizes generated scope language for baseboard/trim/molding work, linear-foot quantities, prep/preparation, caulk/fill/prime, install/measure/cut/finish workflow, and site-visit-only schedule confidence. `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance are complete for the current launch pass. Empty filtered lists now explain where saved estimates and invoices come from, include selected-job context where available, and preserve existing buttons/actions when data exists.
@@ -262,9 +269,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
+1. NEXT: Customer-facing scope accuracy / unsupported trade drift. The iPhone Marina Dunes retest found that Customer-Facing Scope may introduce unsupported trade language such as “electrical tasks” during a General Renovation plan-assisted estimate. Add a UI/QA safety pass to flag or prevent unsupported trade drift before customer-facing output is sent.
    - `PRE_LAUNCH_SMOKE_TEST.md` already reflects the implemented subscription foundation and pending final subscription verification.
-   - Use real contractor PDFs to verify selected-page guidance, fallback messaging, degraded read statuses, diagnostic noise, and mobile page selection before adding more Plan Intelligence logic.
+   - Keep this focused on customer-facing scope accuracy and review safety. Do not change pricing.
 
 2. DONE: Focused non-billing QA polish for the deterministic PriceGuard Review panel.
    - False-positive reduction for generated scope language is complete.
@@ -274,11 +281,11 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
    - Verify empty states, selected-job filtering context, mobile layout, and existing invoice/saved-estimate actions when records exist.
    - Keep fixes copy/style-only unless a real runtime bug is found.
 
-4. PARTIAL: Plan upload guidance and fallback-message QA.
+4. DONE/PARTIAL: Plan upload guidance, fallback-message QA, and Plan Review Summary readback clarity.
    - Phase 1 per-page read status, Phase 2 sheet classification diagnostics, Phase 3 table/schedule extraction diagnostics, Phase 4 room/finish matrix diagnostics, Phase 5 repeated room package diagnostics, Phase 6 trade-specific quantity candidate diagnostics, and Phase 7 confidence/provenance gate diagnostics are complete.
    - UI-only large-plan selected-page range controls are complete. This added deterministic range helpers and PDF From / To / Select range controls without changing upload/staging architecture or analysis behavior.
    - UI/helper-only selected-page readiness guidance and original-fallback selected-page scalability are complete; fallback now limits rasterization/indexing/classification to selected source pages when available.
-   - The next safest large-plan task is real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
+   - Plan Review Summary now includes a compact Pages Needing Review drilldown, and desktop plus iPhone/mobile Marina Dunes retests passed.
    - Actual pricing handoff activation remains future work only after manual QA and stronger confidence/provenance gates are proven; do not allow plan-derived candidates to affect pricing yet.
 
 5. PARTIAL: Tighten contractor-facing launch copy around PriceGuard Review / Estimate Intelligence only where it clarifies existing behavior.
