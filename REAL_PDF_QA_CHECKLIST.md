@@ -661,3 +661,67 @@ This UI-only polish passes. The Plan Review Summary now explains weak/review-onl
 Recommended next action:
 
 Stop polishing this specific readback loop for now. Move to the next pre-launch QA item unless more real PDFs show the same raw-text issue repeatedly.
+
+# Test Entry 5 — Marina Dunes ADA Units, iPhone/Mobile Plan Readback Retest
+
+## Result
+
+Pass with one follow-up issue.
+
+## What was tested
+
+- Device: iPhone/mobile PDF review
+- Selected pages: 1, 9, 12, 13, 22
+- Generated estimate after the “Pages needing review” UI polish
+- Reviewed Plan Review Summary, Pages needing review drilldown, and pricing safety language
+
+## Findings
+
+The mobile/iPhone retest confirms the “Pages needing review” drilldown is working. The Plan Review Summary now explains why the selected plan evidence is weak or review-only.
+
+The UI clearly showed:
+
+- Selected pages processed: 1
+- Selected pages read: 0
+- Pages with useful evidence: 0
+- Pages needing review: 1
+- Weak/unknown sheet classification: 1
+
+The Pages needing review box correctly showed:
+
+- Source/page reference
+- Text status: empty
+- Image status: failed
+- Classification status: weak
+- Reasons:
+  - Selected PDF page did not render as image support.
+  - PDF rasterization returned a placeholder or blank page.
+
+This is much better for contractor trust because it explains why the plan evidence did not become strong usable evidence.
+
+Review-only/pricing safety language remained intact:
+
+- Plan evidence is review-only.
+- Measured quantities still require estimator confirmation.
+- Plan-derived candidates are not pricing inputs.
+- Pricing does not appear to be directly changed by plan candidates.
+
+## Remaining issue found
+
+The Customer-Facing Scope included “demolition and electrical tasks,” even though the selected trade was General Renovation and the Plan Review Summary mostly described painting/review support. This could confuse a contractor or customer because the generated customer-facing scope may drift into the wrong trade language.
+
+## Issue Found
+
+| Issue | Severity | Screenshot/reference | Suggested fix | Code area likely involved | Fix now or later |
+| --- | --- | --- | --- | --- | --- |
+| Customer-Facing Scope may introduce wrong trade language, such as “electrical tasks,” during General Renovation plan-assisted estimate. | Medium/High | iPhone/mobile retest PDF showing Customer-Facing Scope says “demolition and electrical tasks.” | Add a safety check or UI review warning when generated customer-facing scope introduces a trade not selected or not strongly supported by plan/readback evidence. | Customer-facing scope generation / Estimate Review Notes / scope review UI. | Soon |
+
+## Final decision
+
+The Pages needing review UI polish passes.
+
+The next issue is not the Plan Review Summary drilldown anymore. The next pre-launch QA concern is customer-facing scope accuracy, especially preventing unsupported trade drift in the generated customer-facing scope.
+
+## Recommended next action
+
+Stop polishing the Pages needing review drilldown for now. Move to a UI/QA pass focused on customer-facing scope accuracy and unsupported trade drift.
