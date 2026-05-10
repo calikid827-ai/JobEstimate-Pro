@@ -40,12 +40,11 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording so the smoke checklist matches the implemented subscription foundation and pending final verification.
+1. Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
-4. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
-5. Narrow targeted lint cleanup batches only where they reduce real launch risk.
-6. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
+3. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
+4. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+5. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
 
 Completed pre-launch task kept visible:
 
@@ -56,7 +55,7 @@ Completed pre-launch task kept visible:
 - DONE: PriceGuard Review QA false-positive reduction pass is complete. The helper now filters scope-quality warnings against generated customer-facing estimate text and better recognizes trim/baseboard work, linear-foot quantities, prep/workflow language, and site-visit-only schedule confidence.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance now keep those sections visible when filtered lists are empty and explain where records come from, including selected-job context when applicable.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
-- DONE: Full production-readiness smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, pre-subscription Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
+- DONE: Full app-side PWA/web smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, the earlier checkout/success entitlement refresh path, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import. Current subscription billing still requires final payment, webhook delivery, and entitlement activation verification through `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
 - DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
 - DONE: Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
 - DONE/PARTIAL: Subscription billing implementation foundation is in place: checkout mode switch, monthly price env var, Supabase columns, 6-event webhook handling, subscription-aware entitlement response, Account & Access status copy, success/cancel copy, and focused entitlement tests are done; final payment/webhook entitlement verification remains pending.
@@ -72,7 +71,7 @@ Completed pre-launch task kept visible:
 - DONE: Large-plan selected-page selection UX is complete as a UI/helper-only pass. PDF uploads now support From / To / Select range controls, retain Clear and Select all, show selected-page count and estimated selected upload size more clearly, and warn when a large PDF has all pages selected. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
 - DONE: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. PDF uploads now summarize selected page count, total page count, selection ratio, estimated selected upload size, all-pages-selected large PDFs, no-page selections, many selected pages, high selected upload size, and whether the selected set may be too broad for reliable/cost-controlled analysis. Focused `plan-upload.test.ts`, `npx tsc --noEmit`, and `git diff --check` passed.
 - DONE: Original-fallback selected-page scalability improvement is complete. Original/fallback PDFs with `selectedSourcePages` now limit fallback rasterization, text extraction, indexing, and sheet classification to selected original pages while preserving source page provenance. Browser/server-derived selected PDFs with `sourcePageNumberMap` still behave as derived pages `1..N` mapped back to original pages. Generate now safely continues with original fallback if the second selected-page derivation attempt fails. Targeted plan tests passed 24/24, `npx tsc --noEmit` passed, and `git diff --check` passed; `npm run lint` still fails due to known broad lint debt.
-- DONE: Plan Review Summary clarity and plan-aware pre-generate scope warning are complete as a UI-only pass. Plan diagnostics are grouped into Pages read, Extracted plan data, and Review-only quantity signals; quantity candidates/gates are clearly not measured takeoff support or pricing inputs; and the scope warning softens to “Scope details still need confirmation” when plans are uploaded. `npx tsc --noEmit`, `git diff --check`, and visual tests passed.
+- DONE: Plan Review Summary clarity and plan-aware pre-generate scope warning are complete as a UI-only pass. Plan diagnostics are grouped into Pages read, Extracted plan data, and Review-only quantity signals; quantity candidates/gates are clearly not measured takeoff support or pricing inputs; and the scope warning softens to “Scope details still need confirmation” when plans are uploaded. `npx tsc --noEmit`, `git diff --check`, and manual visual QA passed.
 
 ## 1. Critical Fixes
 
@@ -186,7 +185,7 @@ Completed pre-launch task kept visible:
 
 - Status: Done. `PRE_LAUNCH_SMOKE_TEST.md` exists, and the full app-side production-readiness smoke test has passed.
 - Why it matters: The PWA/web launch path has a practical manual checklist covering environment variables, free generation, account/access refresh, selected-page plan generation, estimate/invoice PDFs, Stripe Checkout, success entitlement refresh, server-backed approvals, approval-created invoice import, production log safety, and Supabase checkpoints.
-- Verification completed: The tested pre-subscription flow passed free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
+- Verification completed: The tested app-side flow passed free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, the earlier checkout/success entitlement refresh path, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import. Current subscription billing still requires final payment, webhook delivery, and entitlement activation verification through `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - Risk level: Low
 - Difficulty: Small
 - Suggested order: Completed
@@ -391,7 +390,7 @@ Completed pre-launch task kept visible:
 
 ### 3.5 Product Copy Consistency Pass
 
-- Status: Known payment page copy is subscription-oriented and current. Legacy `scopeguard_*` localStorage migration keys remain intentionally. The remaining docs risk is narrow: `PRE_LAUNCH_SMOKE_TEST.md` still has older one-time checkout language and should be updated in a docs-only follow-up.
+- Status: Known payment page copy is subscription-oriented and current. Legacy `scopeguard_*` localStorage migration keys remain intentionally. `PRE_LAUNCH_SMOKE_TEST.md` now reflects the subscription checkout foundation and separates foundation smoke coverage from pending final subscription verification.
 - Why it matters: Product-facing copy should consistently use JobEstimate Pro. Migration internals can keep legacy names when needed for data continuity.
 - Files likely affected:
   - `app/page.tsx`

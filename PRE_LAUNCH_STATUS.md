@@ -56,7 +56,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Production debug/customer-detail logging is gated in the generate path and client app debug paths inspected in the latest pass.
 - DONE: Product README, feature inventory, roadmap, subscription architecture, and server-backed approval plan documents exist.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and documents the current PWA/web production-readiness smoke test path.
-- DONE: Full production-readiness smoke test passed for the current PWA/web launch path, including free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, Stripe checkout/success entitlement refresh, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import.
+- DONE: Full app-side PWA/web smoke test passed for the tested workflow, including free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, the earlier checkout/success entitlement refresh path, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import. Current subscription billing still requires final payment, webhook delivery, and entitlement activation verification through `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
 - DONE: Manual production Supabase verification queries passed for the launch-critical entitlement, free-generation, Stripe webhook dedupe, approval, owner sync token, and approval-created invoice paths.
 
 ## Approval Workflow Status
@@ -124,7 +124,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: `liveTradePricingInfluence.ts` was not modified, and tests confirmed live trade pricing influence behavior is unchanged. Phase 7 verification passed targeted plan tests 34/34 and `npx tsc --noEmit`; `npm run lint` still fails due to known broad lint debt.
 - DONE: Estimator-facing Plan Review Summary clarity is complete as a UI-only pass. Existing Phase 1-7 diagnostic counts are now grouped into Pages read, Extracted plan data, and Review-only quantity signals; quantity candidates/gates are labeled as estimator diagnostics only, not measured takeoff support, and not pricing inputs, while `Pricing-eligible now: 0` remains visible through the existing gate count.
 - DONE: Plan-aware pre-generate scope warning clarity is complete as a UI-only pass. When no plans are uploaded, the existing “Scope may be incomplete” behavior remains. When plans are uploaded, the heading changes to “Scope details still need confirmation,” copy explains that a short written scope helps PriceGuard verify the estimate against selected sheets, and the existing missing-scope bullets remain as confirmation items.
-- DONE: The UI clarity pass does not change Plan Intelligence logic, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. Verification passed `npx tsc --noEmit`, `git diff --check`, and visual tests.
+- DONE: The UI clarity pass does not change Plan Intelligence logic, pricing, estimate generation behavior, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. Verification passed `npx tsc --noEmit`, `git diff --check`, and manual visual QA.
 - PARTIAL: Hard quantity extraction is still heuristic, not a full measured takeoff.
 - PARTIAL: Actual pricing handoff activation, SF/LF, fixture/device count extraction, and measured schedule quantities can still be improved.
 - PARTIAL: Difficult PDFs or incomplete selected sheets can degrade to indexed/text/filename-level support.
@@ -203,7 +203,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, post-env-var redeploy, and 6-event webhook configuration are complete.
 - DONE: Production Supabase schema, RPCs, and uniqueness constraints were manually verified for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
 - PENDING: Complete final subscription payment/webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
-- DONE: Full production-readiness smoke test passed:
+- DONE: Full app-side PWA/web smoke test passed:
   - Free generation.
   - Account/access refresh.
   - Stripe checkout.
@@ -216,9 +216,10 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
   - Sync approval status.
   - Confirm one approval-created invoice imports.
   - Supabase verification queries.
+- NOTE: This completed app-side smoke test does not mean current subscription payment, webhook delivery, and entitlement activation are fully verified. Public paid launch still requires completing `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` exists and lists required production tables, RPCs, indexes, constraints, RLS/service-role assumptions, manual queries, and smoke tests.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and lists the manual smoke-test steps, expected results, failure handling, log-safety checks, and Supabase checkpoints.
-- DONE/PARTIAL: Roadmap and feature inventory have been refreshed after the latest PriceGuard Review and workflow-clarity audit. Remaining stale documentation risk is narrow: `PRE_LAUNCH_SMOKE_TEST.md` still contains older one-time checkout language and should be reconciled with the subscription foundation in a docs-only follow-up.
+- DONE/PARTIAL: Roadmap and feature inventory have been refreshed after the latest PriceGuard Review and workflow-clarity audit. `PRE_LAUNCH_SMOKE_TEST.md` has been reconciled with the subscription checkout foundation and now separates subscription Checkout foundation smoke coverage from the still-pending final subscription payment, webhook delivery, and entitlement activation verification in `SUBSCRIPTION_TEST_CHECKLIST.md`.
 
 ## Should-Improve Before Launch
 
@@ -228,7 +229,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Mobile core workflow polish improved small-screen layout, wrapping, spacing, and tap targets for estimate form, plan upload/page selection, pricing summary, saved estimates, approval sync, jobs, and invoices.
 - DONE: Estimate/invoice PDF visual hierarchy polish improved customer-facing readability while preserving existing print-window content and workflow behavior.
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics while preserving existing advanced panels and data.
-- DONE: Estimator-facing UI clarity pass grouped the Plan Review Summary into Pages read, Extracted plan data, and Review-only quantity signals, and made plan-aware pre-generate scope warnings less alarming when plans are uploaded. This was UI-only and did not change Plan Intelligence logic, pricing, generation, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. `npx tsc --noEmit`, `git diff --check`, and visual tests passed.
+- DONE: Estimator-facing UI clarity pass grouped the Plan Review Summary into Pages read, Extracted plan data, and Review-only quantity signals, and made plan-aware pre-generate scope warnings less alarming when plans are uploaded. This was UI-only and did not change Plan Intelligence logic, pricing, generation, Plan Intelligence pricing influence, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, or Generate payload shape. `npx tsc --noEmit`, `git diff --check`, and manual visual QA passed.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is complete for launch polish. It gives contractors a UI-side review of profit leaks, missed scope, labor/material confidence, scope clarity, exclusions, customer-ready price defense notes, and contractor-only risk notes without changing pricing, generation, PDFs, approvals, invoices, billing, or saved data shapes. `npx tsc --noEmit` passed; `npm run lint` still fails from known broad lint debt.
 - DONE: PriceGuard Review QA polish reduced false positives for generated estimates that already resolve original-scope concerns. It now recognizes generated scope language for baseboard/trim/molding work, linear-foot quantities, prep/preparation, caulk/fill/prime, install/measure/cut/finish workflow, and site-visit-only schedule confidence. `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance are complete for the current launch pass. Empty filtered lists now explain where saved estimates and invoices come from, include selected-job context where available, and preserve existing buttons/actions when data exists.
@@ -261,9 +262,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. PARTIAL: Docs-only reconciliation of `PRE_LAUNCH_SMOKE_TEST.md` subscription wording.
-   - The checklist still includes older one-time checkout/`STRIPE_PRICE_ID` language from the pre-subscription smoke test.
-   - Update it to reflect the implemented subscription foundation and final pending subscription verification without changing billing code.
+1. PARTIAL: Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
+   - `PRE_LAUNCH_SMOKE_TEST.md` already reflects the implemented subscription foundation and pending final subscription verification.
+   - Use real contractor PDFs to verify selected-page guidance, fallback messaging, degraded read statuses, diagnostic noise, and mobile page selection before adding more Plan Intelligence logic.
 
 2. DONE: Focused non-billing QA polish for the deterministic PriceGuard Review panel.
    - False-positive reduction for generated scope language is complete.

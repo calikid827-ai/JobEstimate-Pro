@@ -525,13 +525,12 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Docs-only refresh of `PRE_LAUNCH_SMOKE_TEST.md` so the smoke checklist no longer describes the older one-time checkout flow.
+- Final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 - Small customer-facing estimate confidence and contractor workflow copy polish where manual QA finds confusion.
 - Narrow targeted lint cleanup only where it reduces a concrete launch/runtime risk.
-- Final subscription test-mode/live payment and webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, and fixture/device counts after current launch-critical QA.
 - Broader server-backed persistence layer for saved estimates, jobs, invoices, budgets, and actuals after launch-critical local-first workflows and billing verification are stable.
 
@@ -565,8 +564,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Update `PRE_LAUNCH_SMOKE_TEST.md` to match the implemented subscription checkout foundation and pending final subscription verification.
-2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
-3. QA plan upload guidance and fallback messaging for selected pages, weak evidence, and degraded PDF/rendering cases.
+1. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
+2. Complete final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
+3. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 4. Polish customer-facing estimate confidence and job dashboard workflow guidance only where current copy creates confusion.
 5. Keep further PriceGuard Review improvements narrow and deterministic if new QA finds over-warning or unclear copy.

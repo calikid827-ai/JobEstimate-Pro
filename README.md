@@ -57,6 +57,15 @@ Estimator-focused tests:
 npm run test:estimator
 ```
 
+Targeted test examples:
+
+```bash
+npx tsc --noEmit
+node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/lib/plan-upload.test.ts
+node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/plans/orchestrator.test.ts app/api/generate/lib/plans/pdfSplit.test.ts app/api/generate/lib/plans/pdfSelect.test.ts
+node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/entitlement/entitlement.test.ts app/api/approvals/approvalWorkflow.test.ts app/app/lib/invoices.test.ts
+```
+
 ## Environment Variables
 
 Required for generation and entitlement checks:
