@@ -416,3 +416,210 @@ Focus:
 4. Prioritize readable sheet names, sheet types, source page numbers, and short evidence summaries.
 5. Keep review-only language clear.
 6. Keep plan candidates out of pricing.
+
+---
+
+# Test Entry 3 — Marina Dunes ADA Units, Plan Review Summary UI Retest After Readback Clarity Pass
+
+## 1. Test Plan Set Info
+
+- Project name: Marina Dunes ADA Units
+- PDF/file name: `260302_Marina Dunes_ADA Units_CD-Arch-MEP.pdf`
+- Trade being tested: General Renovation
+- Total PDF pages: 38
+- Selected pages: 6 of 38 shown in upload UI
+- Selected page numbers tested: 1, 9, 12, 13, 22, plus one additional selected page not fully confirmed from screenshot
+- Device/browser: MacBook / localhost:3000 / browser dev test
+- Desktop or mobile: Desktop
+- PDF quality notes:
+  - Real contractor PDF plan set.
+  - Large plan set, 46.7 MB original PDF.
+  - Selected-page browser reduction worked and reduced upload from 46.7 MB to about 4.6 MB.
+  - This was a retest after the UI-only Plan Review Summary/readback clarity pass.
+- Tester: Dylan
+- Date: 5/9/2026
+
+## 2. Upload / Page Selection QA
+
+Check each item:
+
+- [x] Page count detected correctly.
+- [x] Range/page selection works.
+- [x] Selected pages are visible.
+- [x] Selected-page count is visible.
+- [x] Estimated selected upload size is visible.
+- [x] Large-plan readiness guidance appears when appropriate.
+- [x] Warning does not feel too aggressive.
+- [x] User understands selected pages control what Plan Intelligence reads.
+- [ ] Selected-page metadata is fully consistent across the upload card.
+
+Notes:
+
+The upload/page selection flow still works. The app detected 38 total pages and allowed selecting a smaller group of pages for review. The upload UI showed 6 of 38 PDF pages selected and reduced the first upload from 46.7 MB to about 4.6 MB. The large-plan readiness box remains helpful and not too aggressive.
+
+However, the upload card appears to show inconsistent selected-page metadata. It says 6 of 38 pages were selected for plan review, but another line says “Original source pages: 38. Selected pages: 5.” This may be stale selected-page metadata or a display mismatch after changing selections.
+
+## 3. Selected-Page / Fallback QA
+
+Test whichever paths are practical for this PDF/device combination.
+
+- [x] Browser-derived selected-page path works when available.
+- [ ] Server-derived selected-page path works when browser reduction is unavailable or too large.
+- [ ] Original fallback path works when selected-page derivation fails.
+- [ ] Source page numbers are preserved clearly in readback.
+- [ ] Unselected pages are not treated as read/analyzed.
+- [x] Fallback/readiness messaging is understandable.
+- [x] Generate continues when fallback is expected.
+
+Observed upload path:
+
+- Browser-derived selected pages: yes
+- Server-derived selected pages: not tested
+- Original fallback: not tested
+
+Notes:
+
+Browser-derived selected-page reduction worked. The app showed selected pages prepared in browser and reduced the upload from 46.7 MB to about 4.6 MB.
+
+The main remaining issue is the selected-page readback after Generate. The upload UI showed 6 selected pages, but the Plan Review Summary later showed only 1 selected page processed and 1 selected page read. This is clearer than before because the labels are separated, but it still does not explain what happened to the other selected pages.
+
+## 4. Plan Review Summary QA
+
+Check whether the estimator-facing summary is clear and compact.
+
+- [ ] Pages read section is fully clear.
+- [x] Extracted plan data section is clear.
+- [x] Review-only quantity language is clear.
+- [ ] `Pricing-eligible now: 0` is visible when candidate gates are present.
+- [x] Review-only language is understandable.
+- [ ] Diagnostic counts are not too noisy.
+- [x] Nothing implies plan candidates changed pricing.
+- [x] Nothing implies measured takeoff support when measurements are not present.
+
+Notes:
+
+The UI-only readback clarity pass improved the Plan Review Summary. It now separates:
+
+- Selected pages processed
+- Selected pages read
+- Pages with useful evidence
+
+This is better than the old “selected sheet/page reviewed” language.
+
+However, the result is still confusing because the app showed 6 selected pages in upload, then displayed:
+
+- Selected pages processed: 1
+- Selected pages read: 1
+- Pages with useful evidence: 0
+
+A contractor may still wonder whether the app ignored 5 selected pages, failed to process them, or only found readable evidence on 1 page. The labels are improved, but the count explanation still needs work.
+
+The raw extracted text is somewhat cleaner because it is shortened with ellipses, but the visible summary still includes all-caps source text and repeated “source page 1” references.
+
+## 5. Plan Intelligence Diagnostics QA
+
+For each diagnostic type, mark one status and add notes.
+
+| Diagnostic | Useful | Noisy | Missing | Confusing | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Page read statuses | [x] | [ ] | [ ] | [x] | Improved labels, but confusing because upload showed 6 selected pages while summary showed 1 processed/read page. |
+| Sheet classifications | [x] | [x] | [ ] | [x] | Source reference is visible, but the sheet label still appears as long all-caps extracted text. |
+| Tables/schedules | [x] | [x] | [ ] | [ ] | Tables detected and schedule rows found, but low-confidence tables remain. |
+| Room/finish matrices | [ ] | [ ] | [x] | [ ] | Not clearly visible in this retest. |
+| Repeated room packages | [ ] | [ ] | [x] | [ ] | Not clearly visible in this retest. |
+| Trade quantity candidates | [ ] | [ ] | [x] | [ ] | Not clearly visible, which is acceptable because candidates should stay review-only. |
+| Candidate gates | [x] | [x] | [ ] | [ ] | Safety behavior works, but Needs Confirmation count still feels high/noisy. |
+
+Most useful diagnostic:
+
+The improved count labels are the most useful change. The summary now explicitly says selected pages processed, selected pages read, and pages with useful evidence instead of using the ambiguous “selected sheet/page reviewed” wording.
+
+Most confusing diagnostic:
+
+The most confusing part is still the count mismatch. The upload UI showed 6 selected pages, but the Plan Review Summary showed only 1 selected page processed/read. The app should explain whether the other selected pages were skipped, failed, unreadable, duplicate, or simply did not produce useful evidence.
+
+## 6. Real Contractor Trust Questions
+
+Answer from the contractor's point of view.
+
+- Would a contractor understand what the app read? unsure
+- Would a contractor know what still needs review? yes
+- Would a contractor trust the estimate more after seeing this? unsure
+- Does anything look like it is pretending to be a measured takeoff? no
+- Does anything make it seem pricing changed from plan candidates? no
+
+Trust notes:
+
+The app is safer and clearer than before because it explicitly says plan evidence is review-only, measured quantities still require confirmation, and plan-derived candidates are not pricing inputs.
+
+However, contractor trust is still limited by the selected-page count mismatch. A contractor would likely ask: “I selected 6 pages, so why did it only process/read 1?” The readback needs one more pass to explain selected pages that were unreadable, skipped, duplicate, unsupported, or not useful.
+
+Pricing safety still looks good. The estimate does not appear to be driven directly by plan candidates.
+
+## 7. Mobile Usability QA
+
+Complete this section when testing on a phone or small tablet.
+
+- [ ] Page ranges can be selected easily.
+- [ ] Checkboxes are usable.
+- [ ] Selected-page count is visible enough.
+- [ ] Estimated selected upload size is visible enough.
+- [ ] Plan selection readiness guidance is readable.
+- [ ] Plan Review Summary is readable on mobile.
+- [ ] Warnings are not too long or too cramped.
+- [ ] Buttons and inputs do not overlap.
+- [ ] Text does not overflow containers.
+
+Mobile notes:
+
+Not tested in this run. Desktop layout was usable, but the Plan Review Summary still contains enough diagnostic text that mobile usability should be tested separately.
+
+## 8. Pass / Needs Work / Fail Rating
+
+| Major Area | Pass | Needs Work | Fail | Notes | Screenshots Taken? |
+| --- | --- | --- | --- | --- | --- |
+| Upload/page selection | [x] | [ ] | [ ] | Selected-page upload worked and reduced the plan from 46.7 MB to about 4.6 MB. | yes |
+| Selected-page/fallback behavior | [x] | [ ] | [ ] | Browser-derived selected-page path worked. Server-derived/original fallback not tested. | yes |
+| Source page provenance | [ ] | [x] | [ ] | Source page 1 is visible, but selected-page count/readback still needs clearer explanation. | yes |
+| Plan Review Summary clarity | [ ] | [x] | [ ] | Improved labels, but count mismatch remains confusing. | yes |
+| Diagnostic usefulness | [ ] | [x] | [ ] | More useful than before, but still needs explanation for processed/read/useful-evidence differences. | yes |
+| Review-only/pricing clarity | [x] | [ ] | [ ] | App clearly says plan evidence is review-only and not a pricing input. | yes |
+| Mobile usability | [ ] | [x] | [ ] | Not tested on phone. | no |
+| Overall contractor trust | [ ] | [x] | [ ] | Improved, but still not polished enough because selected-page readback is confusing. | yes |
+
+## 9. Issues Found
+
+| Issue | Severity | Screenshot/reference | Suggested fix | Code area likely involved | Fix now or later |
+| --- | --- | --- | --- | --- | --- |
+| Upload UI selected-page count and metadata appear inconsistent. Upload showed 6 of 38 selected pages, while another line said selected pages: 5. | High | Test Entry 3 upload screenshots. | Make all upload-card selected-page count labels use the current selected-page state consistently. Avoid stale selected-page metadata after changing selections. | PlanUploadsSection / selected-page upload card display / staged upload metadata display. | Soon |
+| Plan Review Summary still does not explain why 6 selected pages became 1 processed/read page. | High | Test Entry 3 Plan Review Summary screenshots. | Add a short explanation line when selected pages processed/read is lower than selected pages chosen. Example: “Some selected pages may not have produced readable evidence or were not classified strongly enough for compact summary.” | Plan Review Summary / evidence-strength readback UI. | Soon |
+| “Pages with useful evidence: 0” conflicts with “Plan evidence status: Useful.” | High | Test Entry 3 Plan Review Summary screenshots. | Align the evidence-status label with useful-evidence count, or clarify that “Useful” means general plan readback exists, not pricing-ready useful evidence. | Evidence-strength label display / Plan Review Summary UI. | Soon |
+| Source text is shorter than before but still appears as long all-caps extracted text. | Medium | Test Entry 3 Plan Review Summary screenshots. | Continue cleaning compact summary source text. Prefer sheet number, sheet title, sheet type, and source page number over all-caps extracted strings. | PlanAwareEstimatorReadbackCard / cleanPlanReadbackText / sheet label formatting. | Soon |
+| Confirmation count remains high/noisy for a focused selected-page test. | Medium | Test Entry 3 screenshots showing Needs Confirmation 14. | Group confirmation items by root issue and reduce repeated items. | Candidate gates / estimator diagnostics UI. | Later |
+
+## 10. Final QA Decision
+
+- Good enough for launch testing? yes
+- Needs UI copy polish? yes
+- Needs real logic fix? maybe
+- Needs upload/fallback fix? maybe
+- Needs Plan Intelligence extraction improvement? not yet
+- Do not promote plan candidates into pricing yet: yes
+
+Final decision notes:
+
+This retest confirms that the UI-only Plan Review Summary clarity pass improved the wording. The app now separates selected pages processed, selected pages read, and pages with useful evidence. That is a step forward.
+
+However, the retest still found important clarity problems. The upload UI showed 6 selected pages, but the Plan Review Summary showed only 1 selected page processed/read. The UI also showed “Pages with useful evidence: 0” while the evidence status still said “Useful.” That combination is confusing and should be fixed before adding more Plan Intelligence logic.
+
+Upload reduction, review-only language, pricing safety, and PriceGuard behavior still look good. The issue is mainly readback/count clarity, not pricing or estimate generation.
+
+Recommended next action:
+
+Do one more UI-only readback polish pass focused on count consistency and explanation. Specifically:
+
+1. Make upload-card selected-page counts consistent.
+2. Explain why selected pages processed/read may be lower than selected pages chosen.
+3. Align “Plan evidence status: Useful” with “Pages with useful evidence: 0,” or rename the status so it does not sound contradictory.
+4. Continue suppressing noisy all-caps source text in compact summaries.
+5. Keep this UI-only. Do not change Plan Intelligence logic, pricing, generation, PDFs, billing, approvals, invoices, localStorage keys, saved data shapes, upload/staging architecture, or Generate payload shape.

@@ -10790,6 +10790,87 @@ function EstimateStructureConsumptionCard({
   )
 }
 
+function cleanPlanReadbackText(value: string, maxLength = 180): string {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/[•·]/g, " - ")
+    .trim()
+
+  if (!normalized) return ""
+
+  const lower = normalized.toLowerCase()
+  const looksLikeFilePath =
+    lower.includes(".pdf") ||
+    lower.includes(".dwg") ||
+    lower.includes(".rvt") ||
+    /(^|[\s"'])\/(users|var|tmp|private|volumes)\//i.test(normalized) ||
+    /[a-z]:\\/i.test(normalized)
+  if (looksLikeFilePath) return ""
+
+  const letters = normalized.match(/[a-z]/gi) || []
+  const upperLetters = normalized.match(/[A-Z]/g) || []
+  const upperRatio = letters.length > 0 ? upperLetters.length / letters.length : 0
+  const hasManySeparators = (normalized.match(/[|_]{2,}| {3,}/g) || []).length > 1
+  const looksLikeRawPlanExtract =
+    normalized.length > 90 &&
+    upperRatio > 0.68 &&
+    /[A-Z]{3,}\s+[A-Z]{3,}/.test(normalized)
+  if (normalized.length > 150 && (upperRatio > 0.72 || hasManySeparators)) {
+    return ""
+  }
+  if (looksLikeRawPlanExtract || (normalized.length > 90 && hasManySeparators)) {
+    return ""
+  }
+
+  if (normalized.length <= maxLength) return normalized
+
+  const clipped = normalized.slice(0, maxLength).replace(/\s+\S*$/, "").trim()
+  return clipped ? `${clipped}...` : ""
+}
+
+function formatPlanSheetLabel(ref: {
+  pageNumber?: number
+  sourcePageNumber?: number
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  classificationStatus?: string | null
+}): string {
+  const sheetNumber = cleanPlanReadbackText(ref.sheetNumber || "", 48)
+  const sheetTitle = cleanPlanReadbackText(ref.sheetTitle || "", 72)
+  const discipline =
+    ref.discipline && ref.discipline !== "unknown"
+      ? ref.discipline.replace(/_/g, " ")
+      : ""
+  const identity =
+    sheetNumber && sheetTitle
+      ? `${sheetNumber} - ${sheetTitle}`
+      : sheetNumber || sheetTitle || `Page ${ref.pageNumber || ref.sourcePageNumber || "?"}`
+  const status =
+    ref.classificationStatus && ref.classificationStatus !== "classified"
+      ? `, ${ref.classificationStatus.replace(/_/g, " ")} classification`
+      : ""
+
+  return `${identity}${discipline ? ` (${discipline}${status})` : status ? ` (${status.slice(2)})` : ""}`
+}
+
+function formatPlanSourceReference(ref: {
+  pageNumber?: number
+  sourcePageNumber?: number
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  classificationStatus?: string | null
+}): string {
+  const sourcePage = ref.sourcePageNumber || ref.pageNumber
+  const label = formatPlanSheetLabel(ref)
+  const fallbackLabel = `Page ${ref.pageNumber || ref.sourcePageNumber || "?"}`
+
+  if (!sourcePage) return label
+  if (!label || label === fallbackLabel) return `Source page ${sourcePage}`
+  return `${label} / source page ${sourcePage}`
+}
+
 function PlanIntelligenceCard({
   planIntelligence,
 }: {
@@ -10901,9 +10982,10 @@ function PlanIntelligenceCard({
     ? planIntelligence.estimatorPackages.slice(0, 6)
     : []
   const planReadback = planIntelligence.planReadback
+  const compactPlanSummary = cleanPlanReadbackText(planIntelligence.summary || "", 220)
 
   const hasAnything =
-    !!planIntelligence.summary ||
+    !!compactPlanSummary ||
     !!planReadback?.headline ||
     detectedRooms.length > 0 ||
     detectedTrades.length > 0 ||
@@ -11052,7 +11134,7 @@ function PlanIntelligenceCard({
               )}
               {pkg.evidence.length > 0 && (
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                  Sources: {Array.from(new Set(pkg.evidence.map((ref) => `${ref.sheetNumber || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`))).slice(0, 3).join("; ")}
+                  Sources: {Array.from(new Set(pkg.evidence.map((ref) => formatPlanSourceReference(ref)))).slice(0, 3).join("; ")}
                 </div>
               )}
             </div>
@@ -11067,7 +11149,7 @@ function PlanIntelligenceCard({
       ? Array.from(
           new Set(
             evidence.map((ref) =>
-              `${ref.sheetNumber || ref.sheetTitle || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`
+              formatPlanSourceReference(ref)
             )
           )
         )
@@ -11084,7 +11166,13 @@ function PlanIntelligenceCard({
     items: Array<{ text: string; evidence: PlanEstimatorPackageView["evidence"] }>
     tone?: "neutral" | "warning" | "info"
   }) => {
-    if (items.length === 0) return null
+    const displayItems = items
+      .map((item) => ({
+        ...item,
+        text: cleanPlanReadbackText(item.text),
+      }))
+      .filter((item) => item.text)
+    if (displayItems.length === 0) return null
     const styles =
       tone === "warning"
         ? { bg: "#fff7ed", border: "#fdba74" }
@@ -11098,7 +11186,7 @@ function PlanIntelligenceCard({
           {title}
         </div>
         <div style={{ display: "grid", gap: 8 }}>
-          {items.slice(0, 6).map((item, index) => (
+          {displayItems.slice(0, 6).map((item, index) => (
             <div
               key={`${title}-${index}`}
               style={{
@@ -11145,7 +11233,7 @@ function PlanIntelligenceCard({
           Plan Readback
         </div>
         <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
-          {readback.headline}
+          {cleanPlanReadbackText(readback.headline, 220) || "Selected plan pages were reviewed for estimator support."}
         </div>
 
         {readback.estimatorFlowReadback.length > 0 && (
@@ -11154,7 +11242,10 @@ function PlanIntelligenceCard({
               Estimator Review Flow
             </div>
             <div style={{ display: "grid", gap: 8 }}>
-              {readback.estimatorFlowReadback.slice(0, 7).map((step, index) => (
+              {readback.estimatorFlowReadback.slice(0, 7).map((step, index) => {
+                const narration = cleanPlanReadbackText(step.narration)
+                if (!narration) return null
+                return (
                 <div
                   key={`estimator-flow-${step.stepKey}`}
                   style={{
@@ -11170,14 +11261,14 @@ function PlanIntelligenceCard({
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {index + 1}. {step.title} - {step.supportLevel} support
                   </div>
-                  <div style={{ marginTop: 3 }}>{step.narration}</div>
+                  <div style={{ marginTop: 3 }}>{narration}</div>
                   {sourceText(step.evidence) && (
                     <div style={{ marginTop: 4, color: "#6b7280" }}>
                       Sources: {sourceText(step.evidence)}
                     </div>
                   )}
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -11188,7 +11279,10 @@ function PlanIntelligenceCard({
               Selected Sheet Narration
             </div>
             <div style={{ display: "grid", gap: 8 }}>
-              {readback.sheetNarration.slice(0, 6).map((sheet, index) => (
+              {readback.sheetNarration.slice(0, 6).map((sheet, index) => {
+                const narration = cleanPlanReadbackText(sheet.narration)
+                if (!narration) return null
+                return (
                 <div
                   key={`sheet-readback-${index}`}
                   style={{
@@ -11200,12 +11294,12 @@ function PlanIntelligenceCard({
                     lineHeight: 1.5,
                   }}
                 >
-                  <div>{sheet.narration}</div>
+                  <div>{narration}</div>
                   <div style={{ marginTop: 4, color: "#6b7280" }}>
-                    Source page {sheet.sourcePageNumber} • {sheet.supportLevel} support
+                    {formatPlanSourceReference(sheet)} • {sheet.supportLevel} support
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}
@@ -11250,7 +11344,9 @@ function PlanIntelligenceCard({
                     <div style={{ fontWeight: 800, color: "#111827" }}>
                       {gap.title} - {gap.status.replace(/_/g, " ")}
                     </div>
-                    <div style={{ marginTop: 3 }}>{gap.narration}</div>
+                    <div style={{ marginTop: 3 }}>
+                      {cleanPlanReadbackText(gap.narration) || "Estimator confirmation is needed for this plan item."}
+                    </div>
                     <div style={{ marginTop: 5, color: isRisk ? "#92400e" : "#1d4ed8" }}>
                       Confirm: {gap.confirmationPrompt}
                     </div>
@@ -11295,7 +11391,9 @@ function PlanIntelligenceCard({
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {group.title} • {group.role} • {group.supportLevel} support
                   </div>
-                  <div style={{ marginTop: 3 }}>{group.narration}</div>
+                  <div style={{ marginTop: 3 }}>
+                    {cleanPlanReadbackText(group.narration) || "Selected sheets provide grouped scope support for estimator review."}
+                  </div>
                   {group.trades.length > 0 && (
                     <div style={{ marginTop: 4, color: "#4b5563" }}>
                       Trades: {group.trades.slice(0, 5).join(", ")}
@@ -11309,7 +11407,7 @@ function PlanIntelligenceCard({
                   {[...group.directSupport.slice(0, 3), ...group.reinforcedSupport.slice(0, 2)].length > 0 && (
                     <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                       {[...group.directSupport.slice(0, 3), ...group.reinforcedSupport.slice(0, 2)].map((item, index) => (
-                        <li key={`grouped-scope-line-${group.groupKey}-${index}`}>{item}</li>
+                        <li key={`grouped-scope-line-${group.groupKey}-${index}`}>{cleanPlanReadbackText(item, 140)}</li>
                       ))}
                     </ul>
                   )}
@@ -11349,11 +11447,13 @@ function PlanIntelligenceCard({
                   }}
                 >
                   <div style={{ fontWeight: 800, color: "#111827" }}>{area.areaGroup}</div>
-                  <div style={{ marginTop: 3 }}>{area.narration}</div>
+                  <div style={{ marginTop: 3 }}>
+                    {cleanPlanReadbackText(area.narration) || "Selected sheets provide area support for estimator review."}
+                  </div>
                   {area.quantityNarration.length > 0 && (
                     <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                       {area.quantityNarration.slice(0, 4).map((item, index) => (
-                        <li key={`area-quantity-line-${area.areaGroup}-${index}`}>{item}</li>
+                        <li key={`area-quantity-line-${area.areaGroup}-${index}`}>{cleanPlanReadbackText(item, 140)}</li>
                       ))}
                     </ul>
                   )}
@@ -11393,7 +11493,9 @@ function PlanIntelligenceCard({
                   <div style={{ fontWeight: 800, color: "#111827" }}>
                     {trade.trade} • {trade.role} • {trade.supportLevel} support
                   </div>
-                  <div style={{ marginTop: 3 }}>{trade.narration}</div>
+                  <div style={{ marginTop: 3 }}>
+                    {cleanPlanReadbackText(trade.narration) || "Selected sheets provide trade support for estimator review."}
+                  </div>
                   {trade.areaGroups.length > 0 && (
                     <div style={{ marginTop: 4, color: "#4b5563" }}>
                       Areas: {trade.areaGroups.slice(0, 4).join(", ")}
@@ -11407,7 +11509,7 @@ function PlanIntelligenceCard({
                   {[...trade.quantityNarration.slice(0, 3), ...trade.supportNarration.slice(0, 2)].length > 0 && (
                     <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                       {[...trade.quantityNarration.slice(0, 3), ...trade.supportNarration.slice(0, 2)].map((item, index) => (
-                        <li key={`trade-scope-line-${trade.trade}-${index}`}>{item}</li>
+                        <li key={`trade-scope-line-${trade.trade}-${index}`}>{cleanPlanReadbackText(item, 140)}</li>
                       ))}
                     </ul>
                   )}
@@ -11430,22 +11532,30 @@ function PlanIntelligenceCard({
         {readback.tradeNarration.length > 0 && (
           <SectionList
             title="Trade Readback"
-            items={readback.tradeNarration.map((item) => `${item.trade}: ${item.narration}`)}
+            items={readback.tradeNarration
+              .map((item) => `${item.trade}: ${cleanPlanReadbackText(item.narration, 160)}`)
+              .filter((item) => item.trim().length > 0)}
             tone="neutral"
           />
         )}
 
         {readback.areaNarration.length > 0 && (
-          <SectionList title="Area Readback" items={readback.areaNarration} tone="info" />
+          <SectionList
+            title="Area Readback"
+            items={readback.areaNarration
+              .map((item) => cleanPlanReadbackText(item, 160))
+              .filter(Boolean)}
+            tone="info"
+          />
         )}
 
         {readback.packageReadback.length > 0 && (
           <ReadbackList
             title="Package Readback"
             items={readback.packageReadback.map((pkg) => ({
-              text: pkg.narration,
+              text: cleanPlanReadbackText(pkg.narration, 160),
               evidence: pkg.evidence,
-            }))}
+            })).filter((pkg) => pkg.text)}
             tone="neutral"
           />
         )}
@@ -11482,7 +11592,7 @@ function PlanIntelligenceCard({
         </div>
       </div>
 
-      {planIntelligence.summary && (
+      {compactPlanSummary && (
         <div
           style={{
             marginTop: 14,
@@ -11495,7 +11605,7 @@ function PlanIntelligenceCard({
             fontSize: 13,
           }}
         >
-          {planIntelligence.summary}
+          {compactPlanSummary}
         </div>
       )}
 
@@ -11540,9 +11650,11 @@ function PlanIntelligenceCard({
 function PlanAwareEstimatorReadbackCard({
   planIntelligence,
   estimateSections,
+  selectedPagesChosenCount,
 }: {
   planIntelligence: PlanIntelligence
   estimateSections: EstimateStructuredSection[] | null
+  selectedPagesChosenCount?: number
 }) {
   const readback = planIntelligence?.planReadback
   if (!readback) return null
@@ -11570,9 +11682,24 @@ function PlanAwareEstimatorReadbackCard({
   const selectedPageStatuses = (planIntelligence?.pageReadStatuses || []).filter(
     (status) => status.selected
   )
-  const selectedPagesReadCount = selectedPageStatuses.filter(
+  const selectedPagesProcessedCount =
+    selectedPageStatuses.length || evidenceStrength?.selectedPagesCount || 0
+  const selectedPagesReadStatusCount = selectedPageStatuses.filter(
     (status) => status.textStatus === "extracted" || status.imageStatus === "rendered"
   ).length
+  const selectedPagesReadCount =
+    selectedPageStatuses.length > 0
+      ? selectedPagesReadStatusCount
+      : Math.max(evidenceStrength?.textPagesCount || 0, evidenceStrength?.renderedPagesCount || 0)
+  const pagesWithUsefulEvidenceCount =
+    selectedPageStatuses.length > 0
+      ? selectedPageStatuses.filter(
+          (status) =>
+            (status.textStatus === "extracted" || status.imageStatus === "rendered") &&
+            status.classificationStatus === "classified" &&
+            status.failureReasons.length === 0
+        ).length
+      : Math.max(evidenceStrength?.textPagesCount || 0, evidenceStrength?.renderedPagesCount || 0)
   const pagesNeedingReviewCount = selectedPageStatuses.filter(
     (status) =>
       status.failureReasons.length > 0 ||
@@ -11584,6 +11711,23 @@ function PlanAwareEstimatorReadbackCard({
     (status) => status.classificationStatus !== "classified"
   ).length
   const hasPageReadStatusSummary = selectedPageStatuses.length > 0
+  const currentSelectedPagesCount =
+    typeof selectedPagesChosenCount === "number" && selectedPagesChosenCount > 0
+      ? selectedPagesChosenCount
+      : null
+  const hasSelectedPageCountGap =
+    currentSelectedPagesCount != null &&
+    (currentSelectedPagesCount > selectedPagesProcessedCount ||
+      currentSelectedPagesCount > selectedPagesReadCount ||
+      currentSelectedPagesCount > pagesWithUsefulEvidenceCount)
+  const readableSheetRefs = selectedPageStatuses
+    .map((status) => {
+      return formatPlanSourceReference(status)
+    })
+    .filter(Boolean)
+  const selectedSheetReferenceText = Array.from(new Set(readableSheetRefs))
+    .slice(0, 5)
+    .join("; ")
   const extractedTables = planIntelligence?.extractedTables || []
   const extractedScheduleRowsCount = extractedTables.reduce(
     (sum, table) => sum + table.rows.length,
@@ -11653,7 +11797,7 @@ function PlanAwareEstimatorReadbackCard({
       ? Array.from(
           new Set(
             evidence.map((ref) =>
-              `${ref.sheetNumber || ref.sheetTitle || `Page ${ref.pageNumber}`} / source page ${ref.sourcePageNumber}`
+              formatPlanSourceReference(ref)
             )
           )
         )
@@ -11698,7 +11842,7 @@ function PlanAwareEstimatorReadbackCard({
         Plan Review Summary
       </div>
       <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
-        {readback.headline}
+        {cleanPlanReadbackText(readback.headline, 220) || "Selected plan pages were reviewed for estimator support."}
       </div>
 
       {evidenceStrength && (
@@ -11715,18 +11859,45 @@ function PlanAwareEstimatorReadbackCard({
           }}
         >
           <div style={{ fontWeight: 900, color: evidenceTone.color }}>
-            Plan evidence: {evidenceStrength.label}
+            Plan readback status: {evidenceStrength.label}
           </div>
-          <div style={{ marginTop: 3 }}>{evidenceStrength.summary}</div>
+          <div style={{ marginTop: 3 }}>
+            {cleanPlanReadbackText(evidenceStrength.summary, 180) ||
+              "Plan evidence is available for estimator review."}
+          </div>
+          <div style={{ marginTop: 3, color: "#4b5563" }}>
+            This status describes overall plan readback availability. The useful-evidence
+            page count below only counts selected pages with readable, classified compact
+            evidence.
+          </div>
           <div style={{ marginTop: 4, color: "#4b5563" }}>
-            {evidenceStrength.selectedPagesCount} selected sheet/page{evidenceStrength.selectedPagesCount === 1 ? "" : "s"} reviewed
+            Selected pages processed: {selectedPagesProcessedCount}
             {" - "}
-            {evidenceStrength.textPagesCount > 0 ? "Text extracted" : "Text not confirmed"}
+            Selected pages read: {selectedPagesReadCount}
             {" - "}
-            {evidenceStrength.renderedPagesCount > 0 ? "Images rendered" : "Images not confirmed"}
+            Pages with useful evidence: {pagesWithUsefulEvidenceCount}
             {" - "}
             {evidenceStrength.hardQuantityCount > 0 ? "Hard quantities found" : "Measured quantities still need confirmation"}
           </div>
+          <div style={{ marginTop: 4, color: "#92400e" }}>
+            Plan evidence is review-only. Measured quantities still require estimator confirmation,
+            and plan-derived candidates are not pricing inputs.
+          </div>
+          {hasSelectedPageCountGap && currentSelectedPagesCount != null && (
+            <div style={{ marginTop: 4, color: "#92400e" }}>
+              Current upload selection shows {currentSelectedPagesCount} selected page(s). This
+              summary reflects {selectedPagesProcessedCount} processed page(s), {selectedPagesReadCount}
+              {" "}read page(s), and {pagesWithUsefulEvidenceCount} page(s) with compact useful
+              evidence from the latest readback. Some selected pages may not render, extract text,
+              classify cleanly, or produce compact evidence; re-run Generate after changing the
+              selected pages.
+            </div>
+          )}
+          {selectedSheetReferenceText && (
+            <div style={{ marginTop: 4, color: "#6b7280" }}>
+              Selected sheet references: {selectedSheetReferenceText}
+            </div>
+          )}
           {hasPageReadStatusSummary && (
             <div
               style={{
@@ -11738,7 +11909,11 @@ function PlanAwareEstimatorReadbackCard({
             >
               <div style={{ fontWeight: 900, color: "#111827" }}>Pages read</div>
               <div style={{ marginTop: 3 }}>
-                Selected pages read: {selectedPagesReadCount} / {selectedPageStatuses.length}
+                Selected pages processed: {selectedPagesProcessedCount}
+                {" - "}
+                Selected pages read: {selectedPagesReadCount}
+                {" - "}
+                Pages with useful evidence: {pagesWithUsefulEvidenceCount}
                 {" - "}
                 Pages needing review: {pagesNeedingReviewCount}
                 {" - "}
@@ -11836,6 +12011,10 @@ function PlanAwareEstimatorReadbackCard({
         >
           {estimatorStory.map((section, index) => {
             const tone = supportTone(section.supportLabel)
+            const summary = cleanPlanReadbackText(section.summary, 180)
+            const bullets = section.bullets
+              .map((item) => cleanPlanReadbackText(item, 140))
+              .filter(Boolean)
             return (
               <div
                 key={`result-story-${section.key}`}
@@ -11853,10 +12032,12 @@ function PlanAwareEstimatorReadbackCard({
                   {index + 1}. {section.title}
                   <span style={{ color: tone.color }}> - {supportLabel(section.supportLabel)} support</span>
                 </div>
-                <div style={{ marginTop: 3 }}>{section.summary}</div>
-                {section.bullets.length > 0 && (
+                <div style={{ marginTop: 3 }}>
+                  {summary || "Selected sheets provide estimator review support for this item."}
+                </div>
+                {bullets.length > 0 && (
                   <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                    {section.bullets.slice(0, 5).map((item, bulletIndex) => (
+                    {bullets.slice(0, 5).map((item, bulletIndex) => (
                       <li key={`result-story-${section.key}-bullet-${bulletIndex}`}>{item}</li>
                     ))}
                   </ul>
@@ -12593,6 +12774,10 @@ const accountAccessMessage = !normalizedEmail
     <PlanAwareEstimatorReadbackCard
       planIntelligence={planIntelligence}
       estimateSections={estimateSections}
+      selectedPagesChosenCount={jobPlans.reduce(
+        (sum, plan) => sum + countSelectedPlanPages(plan),
+        0
+      )}
     />
 
     <div

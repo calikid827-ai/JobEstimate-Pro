@@ -241,10 +241,7 @@ export default function PlanUploadsSection({
                           mode: displayMode,
                           originalBytes: plan.originalBytes,
                           stagedBytes: displayStagedBytes,
-                          analyzedPages:
-                            typeof plan.stagedSourcePageCount === "number"
-                              ? plan.stagedSourcePageCount
-                              : selectedPages,
+                          analyzedPages: selectedPages,
                           originalSourcePageCount: plan.sourcePageCount,
                         })}
                       </div>
