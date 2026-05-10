@@ -40,7 +40,7 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics.
+1. Real-PDF QA, mobile usability, and estimator UI clarity for Plan Intelligence diagnostics using `REAL_PDF_QA_CHECKLIST.md`.
 2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 3. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
 4. Narrow targeted lint cleanup batches only where they reduce real launch risk.
