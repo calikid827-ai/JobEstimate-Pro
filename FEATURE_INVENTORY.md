@@ -66,6 +66,8 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Upload-mode visibility
   - Estimator-only per-page read status for selected/read/degraded/weak-classification visibility
   - Estimator-only structured sheet classification diagnostics for floor plan, finish schedule, fixture schedule, door schedule, window schedule, RCP, elevation, demo plan, legend, and unknown sheets
+- Plan Review Summary groups estimator diagnostics into Pages read, Extracted plan data, and Review-only quantity signals, with review-only quantity candidates/gates labeled as not measured takeoff support or pricing inputs
+- Plan-aware pre-generate scope warning keeps the original missing-scope warning when no plans are uploaded, and switches to confirmation-focused copy when plans are uploaded
 - Optional measurement rows with calculated sqft.
 - Editable pricing:
   - Labor
