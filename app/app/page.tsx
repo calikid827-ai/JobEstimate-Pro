@@ -11707,6 +11707,23 @@ function PlanAwareEstimatorReadbackCard({
       (status.textStatus !== "extracted" && status.imageStatus !== "rendered") ||
       status.classificationStatus !== "classified"
   ).length
+  const pagesNeedingReview = selectedPageStatuses
+    .filter(
+      (status) =>
+        status.failureReasons.length > 0 ||
+        status.warnings.length > 0 ||
+        (status.textStatus !== "extracted" && status.imageStatus !== "rendered") ||
+        status.classificationStatus !== "classified"
+    )
+    .slice(0, 3)
+    .map((status) => ({
+      status,
+      reference: formatPlanSourceReference(status),
+      reasons: [...status.failureReasons, ...status.warnings]
+        .map((item) => cleanPlanReadbackText(item, 120))
+        .filter(Boolean)
+        .slice(0, 2),
+    }))
   const weakClassificationCount = selectedPageStatuses.filter(
     (status) => status.classificationStatus !== "classified"
   ).length
@@ -11919,6 +11936,57 @@ function PlanAwareEstimatorReadbackCard({
                 {" - "}
                 Weak/unknown sheet classification: {weakClassificationCount}
               </div>
+              {pagesNeedingReview.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: 8,
+                    border: "1px solid #fed7aa",
+                    borderRadius: 8,
+                    background: "#fff7ed",
+                    color: "#374151",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#92400e" }}>
+                    Pages needing review
+                  </div>
+                  <div style={{ marginTop: 3 }}>
+                    These selected pages help explain why plan evidence may be weak or
+                    review-only. They are not measured takeoff support or pricing inputs.
+                  </div>
+                  <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                    {pagesNeedingReview.map(({ status, reference, reasons }, index) => (
+                      <div
+                        key={`page-review-${status.pageNumber}-${status.sourcePageNumber || index}`}
+                        style={{
+                          paddingTop: index === 0 ? 0 : 6,
+                          borderTop: index === 0 ? "0" : "1px solid #fed7aa",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, color: "#111827" }}>
+                          {reference}
+                        </div>
+                        <div style={{ marginTop: 2, color: "#4b5563" }}>
+                          Text: {statusLabel(status.textStatus)}
+                          {" - "}
+                          Image: {statusLabel(status.imageStatus)}
+                          {" - "}
+                          Classification: {statusLabel(status.classificationStatus)}
+                        </div>
+                        {reasons.length > 0 && (
+                          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                            {reasons.map((reason, reasonIndex) => (
+                              <li key={`page-review-${status.pageNumber}-reason-${reasonIndex}`}>
+                                {reason}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {(hasExtractedTableSummary ||
