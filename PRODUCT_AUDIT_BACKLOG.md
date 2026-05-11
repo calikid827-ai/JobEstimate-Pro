@@ -52,11 +52,16 @@ Principles:
 - Why it matters: Unsupported customer-visible scope language can create trust and liability issues even when pricing is protected.
 - Risk level: Medium
 - Priority: P0
-- Recommended fix approach: Extend the existing estimator-only unsupported drift warning pattern to plumbing, electrical, flooring, drywall, painting, and tile/general renovation with conservative support checks.
-- Exact files/components likely involved: `app/app/page.tsx`; possible small client helper extraction if the local logic grows.
+- Recommended fix approach: Extend the existing estimator-only unsupported drift warning pattern to plumbing, electrical, flooring, drywall, painting, bathroom/tile, demolition, carpentry, and wallcovering with conservative support checks.
+- Exact files/components likely involved: `app/app/page.tsx`, `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`
 - What not to touch: Result text, Generate payload, pricing, generation behavior, PDFs, approval output.
-- Tests or manual QA needed: Manual generate cases where Customer-Facing Scope introduces unsupported trade words; UI check that warnings remain estimator-only.
-- Status: Not started
+- Tests or manual QA needed: Focused helper tests passed 20/20; manual QA retest documented in `REAL_PDF_QA_CHECKLIST.md`; UI check confirmed warnings remain estimator-only.
+- Status: Done
+
+Done note:
+
+- Commit `619cbf1` expanded unsupported customer scope drift detection beyond electrical.
+- The detector warns on unsupported Customer-Facing Scope trade drift without changing `result.text`, blocking Generate, changing pricing, changing generation behavior, altering PDFs/approvals, or changing saved data/payload shapes.
 
 #### Item: Typed scope normalization audit
 

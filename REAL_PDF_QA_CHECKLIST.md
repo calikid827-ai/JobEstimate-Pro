@@ -801,3 +801,63 @@ Results:
 
 DONE:
 Customer Output Readiness panel now gives the contractor a final estimator-only review checkpoint before PDF/download/customer-output actions.
+
+## Test Entry 8 — Multi-Trade Unsupported Customer-Scope Drift Detector Retest
+
+Status: PASS
+
+Commit:
+- 619cbf1 Expand unsupported customer scope drift detection
+
+Scope:
+- Multi-trade unsupported Customer-Facing Scope drift detector across electrical, plumbing, drywall, flooring, painting, bathroom/tile, demolition, carpentry, and wallcovering.
+- Focused unit tests passed 20/20.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+### Test 1 — Flooring Baseline / No Unsupported Drift
+
+Input:
+- Trade: Flooring
+- Scope: Install 650 sq ft LVP. Remove carpet. Include transitions and base shoe. Owner supplies flooring.
+
+Result:
+- PASS.
+- Customer-Facing Scope stayed within flooring/removal/base shoe/protection/coordination language.
+- No unsupported trade drift warning appeared, which is expected.
+- Customer Output Readiness did not include Unsupported trade wording.
+- Existing PriceGuard/readiness items still appeared for assumptions, exclusions, schedule, and send-readiness review.
+
+### Test 2 — General Renovation Plumbing Fixture Scope / Unsupported Drift Trigger
+
+Input:
+- Trade: General Renovation
+- Scope: Replace toilet, vanity faucet, and shower trim. Owner supplies fixtures. Wall/floor repair excluded.
+
+Result:
+- PASS.
+- Customer-Facing Scope introduced flooring and carpentry wording that was not strongly supported by the selected trade, typed scope, priced sections, or plan readback.
+- The app displayed the estimator-only unsupported trade warning above Customer-Facing Scope.
+- Customer Output Readiness repeated the warning under Unsupported trade wording.
+- PDF/approval output was not changed or blocked.
+
+Follow-up:
+- This confirms the warning works, but also shows the AI can still over-expand customer-facing proposal language.
+- Keep deterministic customer-facing scope guard / customer scope cleanup as a future backlog item. The current detector warns but does not rewrite `result.text`.
+
+### Test 3 — Supported Painting Scope / No Unsupported Drift
+
+Input:
+- Trade: Painting
+- Paint Scope: Walls only
+- Scope: Paint 3 bedrooms. Walls only. Minor nail-hole patching. Two coats. Contractor supplies paint.
+
+Result:
+- PASS.
+- Customer-Facing Scope stayed aligned with the typed painting scope and did not introduce unsupported trades.
+- No unsupported trade wording warning appeared above Customer-Facing Scope or in Customer Output Readiness.
+- The app correctly avoided a false positive when the selected trade and written scope supported the generated customer-facing wording.
+
+Notes:
+- PriceGuard still showed normal review items for measured square footage, approval language, schedule assumptions, and exclusions.
+- The multi-trade unsupported drift detector behaved correctly.
