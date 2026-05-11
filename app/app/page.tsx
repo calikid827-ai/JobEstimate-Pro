@@ -3158,7 +3158,7 @@ const explainChangesReport = useMemo(() => {
 }, [currentLoadedEstimate, history, jobs])
 
 const pricingMemory = getPricingMemory(history, trade, scopeChange)
-const scopeQuality = checkScopeQuality(scopeChange)
+const scopeQuality = checkScopeQuality(scopeChange, trade)
 
 const historicalPriceGuard =
   pricingMemory && pricing.total

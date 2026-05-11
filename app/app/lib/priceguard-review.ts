@@ -78,7 +78,15 @@ function hasAny(text: string, words: string[]) {
 function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
   const warningText = normalize(warning)
 
-  if (warningText.includes("job size")) {
+  if (
+    warningText.includes("job size") ||
+    warningText.includes("area") ||
+    warningText.includes("square footage") ||
+    warningText.includes("affected rooms") ||
+    warningText.includes("linear footage") ||
+    warningText.includes("plan pages") ||
+    warningText.includes("count")
+  ) {
     return /\b\d+(\.\d+)?\b/.test(reviewedText) || hasAny(reviewedText, [
       "linear feet",
       "linear foot",
@@ -90,6 +98,9 @@ function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
       "rooms",
       "quantity",
       "quantities",
+      "selected sheets",
+      "per plan",
+      "per plans",
     ])
   }
 
@@ -109,7 +120,14 @@ function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
     ])
   }
 
-  if (warningText.includes("prep")) {
+  if (
+    warningText.includes("prep") ||
+    warningText.includes("demolition") ||
+    warningText.includes("removal") ||
+    warningText.includes("substrate") ||
+    warningText.includes("wall condition") ||
+    warningText.includes("subfloor")
+  ) {
     return hasAny(reviewedText, [
       "prep",
       "preparation",
@@ -121,12 +139,23 @@ function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
       "fill",
       "prime",
       "remove",
+      "removal",
       "demo",
+      "demolition",
       "substrate",
+      "subfloor",
+      "leveling",
+      "wall condition",
     ])
   }
 
-  if (warningText.includes("work process")) {
+  if (
+    warningText.includes("work process") ||
+    warningText.includes("scope type") ||
+    warningText.includes("work limits") ||
+    warningText.includes("finish limits") ||
+    warningText.includes("trade")
+  ) {
     return hasAny(reviewedText, [
       "install",
       "installation",
@@ -143,6 +172,86 @@ function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
       "finish",
       "finishing",
       "cleanup",
+      "replace",
+      "rough-in",
+      "rough in",
+      "device",
+      "fixture",
+      "plumbing",
+      "electrical",
+      "flooring",
+      "tile",
+      "drywall",
+      "painting",
+    ])
+  }
+
+  if (
+    warningText.includes("material") ||
+    warningText.includes("supplied") ||
+    warningText.includes("allowance") ||
+    warningText.includes("selection")
+  ) {
+    return hasAny(reviewedText, [
+      "material",
+      "materials",
+      "allowance",
+      "selection",
+      "owner supplied",
+      "owner-supplied",
+      "by owner",
+      "contractor supplied",
+      "contractor-supplied",
+      "supplied by",
+      "provide",
+    ])
+  }
+
+  if (
+    warningText.includes("exclusion") ||
+    warningText.includes("excluded") ||
+    warningText.includes("permit") ||
+    warningText.includes("inspection")
+  ) {
+    return hasAny(reviewedText, [
+      "exclude",
+      "excludes",
+      "excluded",
+      "not included",
+      "allowance",
+      "permit",
+      "permits",
+      "inspection",
+      "inspections",
+      "hidden damage",
+      "work by others",
+    ])
+  }
+
+  if (warningText.includes("access")) {
+    return hasAny(reviewedText, [
+      "access",
+      "attic",
+      "crawl",
+      "open wall",
+      "open ceiling",
+      "patch",
+      "patching",
+      "repair",
+      "surface mount",
+      "ladder",
+      "scaffold",
+    ])
+  }
+
+  if (warningText.includes("pattern") || warningText.includes("repeat")) {
+    return hasAny(reviewedText, [
+      "pattern",
+      "repeat",
+      "match",
+      "waste",
+      "seams",
+      "material",
     ])
   }
 
