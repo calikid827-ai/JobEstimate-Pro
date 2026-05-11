@@ -10,11 +10,11 @@ Principles:
 
 ## Current Priority Order
 
-1. Reduce Plan Review Summary raw extracted text noise.
-2. Simplify result-page hierarchy so pricing, review-before-sending, and send actions dominate.
-3. Finish final subscription payment/webhook entitlement verification before public paid launch.
-4. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
-5. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+1. Simplify result-page hierarchy so pricing, review-before-sending, and send actions dominate.
+2. Finish final subscription payment/webhook entitlement verification before public paid launch.
+3. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
+4. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 
 ## Pre-Launch Must-Fix / Should-Fix Items
 
@@ -183,7 +183,14 @@ Done note:
 - Exact files/components likely involved: `app/app/page.tsx`, `app/app/lib/plan-pricing-carry.ts`
 - What not to touch: Plan extraction logic, pricing influence, candidates, gates, PDFs unless separately scoped.
 - Tests or manual QA needed: Marina Dunes selected-page QA; mobile visual check.
-- Status: Not started
+- Status: Done
+
+Done note:
+
+- Plan Review Summary raw-text cleanup is complete as a UI-only pass in `app/app/page.tsx`.
+- Marina Dunes retest passed: the main Plan Review Summary no longer showed the long all-caps `WORLDMARK / SHEET INDEX / PROJECT SCOPE / PROJECT INFO` extracted text, fallback headline copy appeared correctly, Pages Needing Review and evidence counts remained visible, review-only/not-pricing-input language remained visible, and deeper Plan-to-price details / Estimator Diagnostics stayed available.
+- `npx tsc --noEmit` and `git diff --check` passed.
+- Broader/deeper Plan Intelligence story wording polish can remain future/post-launch unless later real-PDF QA finds a launch-blocking trust issue.
 
 #### Item: Clarify selected pages processed vs useful evidence found
 

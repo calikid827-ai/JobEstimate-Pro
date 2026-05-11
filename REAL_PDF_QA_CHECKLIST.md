@@ -915,3 +915,37 @@ Result:
 Follow-up:
 - This still confirms the larger future issue: the AI can over-expand customer-facing language.
 - Keep deterministic customer-facing scope guard / customer scope cleanup open as a future backlog item. This cleanup warns and organizes review items but does not rewrite `result.text`.
+
+## Test Entry 10 — Marina Dunes Plan Review Summary Raw-Text Cleanup Retest
+
+Status: PASS
+
+Scope:
+- UI-only Plan Review Summary raw-text cleanup in `app/app/page.tsx`.
+- Suppresses long all-caps sheet/index/OCR text from the main Plan Review Summary.
+- Shows contractor-friendly fallback headline copy when the readable plan summary needs confirmation.
+- Normalizes repeated review-only wording in visible estimator story cards.
+
+Validation:
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was UI-only and did not change pricing, generation behavior, Plan Intelligence backend logic, upload/staging, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+
+Manual Marina Dunes retest result:
+- PASS.
+
+Observed results:
+- The main Plan Review Summary no longer shows the long all-caps `WORLDMARK / SHEET INDEX / PROJECT SCOPE / PROJECT INFO` extracted text.
+- The fallback headline appeared correctly: “Selected plan pages were reviewed, but the readable plan summary needs estimator confirmation.”
+- Pages Needing Review remained visible.
+- Selected/read/useful evidence counts remained visible.
+- Review-only / not pricing input language remained visible.
+- Extracted plan data remained visible.
+- Estimator story cards no longer showed the worst repeated wording such as “review only review-only support.”
+- Some deeper plan-story wording may still be slightly repetitive, but it is acceptable for this UI-only cleanup and can remain a future polish item if needed.
+- Plan-to-price details and Estimator Diagnostics remained available for deeper review.
+- Customer Output Readiness still appeared normally.
+- Pricing, schedule, job saving, PDF/download action, and approval flow were not changed or blocked.
+
+Follow-up:
+- Keep broader/deeper Plan Intelligence story wording polish as future/post-launch unless later real-PDF QA finds a launch-blocking trust issue.

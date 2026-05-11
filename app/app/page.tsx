@@ -11003,6 +11003,108 @@ function cleanPlanReadbackText(value: string, maxLength = 180): string {
   return clipped ? `${clipped}...` : ""
 }
 
+function normalizePlanSummaryDisplayText(value: string): string {
+  let text = String(value || "")
+    .replace(/\breview[\s-]*only\s+review\s+support\b/gi, "review-only support")
+    .replace(/\breview[\s-]*only\s+review[\s-]*only\s+support\b/gi, "review-only support")
+    .replace(/\breview[\s-]*only\s+review[\s-]*only\b/gi, "review-only")
+    .replace(/\breview[\s-]*only\s+support\b/gi, "review-only support")
+    .replace(/\breview\s+support\s+rather\s+than\s+direct\b/gi, "review-only support rather than direct support")
+    .replace(/\breview\s+support\b/gi, "review-only support")
+    .replace(/\breview\s+review\b/gi, "review")
+
+  for (let index = 0; index < 3; index += 1) {
+    text = text
+      .replace(/\breview[\s-]*only\s+review[\s-]*only\s+support\b/gi, "review-only support")
+      .replace(/\breview[\s-]*only\s+review\s+support\b/gi, "review-only support")
+      .replace(/\breview[\s-]*only\s+review[\s-]*only\b/gi, "review-only")
+      .replace(/\breview\s+review\b/gi, "review")
+  }
+
+  return text
+}
+
+function cleanPlanSummaryText(value: string, maxLength = 180): string {
+  const rawNormalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/[•·]/g, " - ")
+    .trim()
+  if (!rawNormalized) return ""
+
+  const rawLower = rawNormalized.toLowerCase()
+  const rawLetters = rawNormalized.match(/[a-z]/gi) || []
+  const rawUpperLetters = rawNormalized.match(/[A-Z]/g) || []
+  const rawUpperRatio =
+    rawLetters.length > 0 ? rawUpperLetters.length / rawLetters.length : 0
+  const indexPhraseHits = (
+    rawLower.match(
+      /\b(construction documents|sheet index|project scope|project info|accessibility upgrades|cover sheet|drawing index|general notes)\b/g
+    ) || []
+  ).length
+  const looksLikePlanCoverOrIndex =
+    rawNormalized.length > 80 &&
+    (indexPhraseHits >= 3 ||
+      (indexPhraseHits >= 2 &&
+        (rawUpperRatio > 0.5 || /\b[A-Z]{4,}\s+[A-Z]{4,}\b/.test(rawNormalized))))
+  const looksLikeLongAllCapsPlanHeading =
+    rawNormalized.length > 100 &&
+    rawUpperRatio > 0.62 &&
+    indexPhraseHits >= 1 &&
+    /\b[A-Z]{4,}\s+[A-Z]{4,}\b/.test(rawNormalized)
+
+  if (looksLikePlanCoverOrIndex || looksLikeLongAllCapsPlanHeading) return ""
+
+  const cleaned = normalizePlanSummaryDisplayText(cleanPlanReadbackText(rawNormalized, maxLength))
+  if (!cleaned) return ""
+
+  const normalized = cleaned.replace(/\s+/g, " ").trim()
+  if (!normalized) return ""
+
+  const lower = normalized.toLowerCase()
+  const looksLikeFilePath =
+    lower.includes(".pdf") ||
+    lower.includes(".dwg") ||
+    lower.includes(".rvt") ||
+    /(^|[\s"'])\/(users|var|tmp|private|volumes)\//i.test(normalized) ||
+    /[a-z]:\\/i.test(normalized)
+  if (looksLikeFilePath) return ""
+
+  const letters = normalized.match(/[a-z]/gi) || []
+  const upperLetters = normalized.match(/[A-Z]/g) || []
+  const upperRatio = letters.length > 0 ? upperLetters.length / letters.length : 0
+  const words = normalized.split(/\s+/).filter(Boolean)
+  const longUpperTokens = words.filter(
+    (word) => /^[A-Z0-9/&().#-]{4,}$/.test(word) && /[A-Z]/.test(word)
+  ).length
+  const separatorCount = (normalized.match(/[|_]{1,}| - | \/ |: /g) || []).length
+  const tableColumnTerms = (
+    normalized.match(
+      /\b(room|finish|schedule|wall|base|ceiling|floor|door|window|fixture|remarks|description|type|count|sheet|page)\b/gi
+    ) || []
+  ).length
+  const hasSentencePunctuation = /[.!?]/.test(normalized)
+  const hasLowercase = /[a-z]/.test(normalized)
+  const looksLikeColumnText =
+    normalized.length > 60 &&
+    (separatorCount >= 3 || tableColumnTerms >= 5) &&
+    (upperRatio > 0.55 || longUpperTokens >= 5)
+  const looksLikeAllCapsExtract =
+    normalized.length > 70 &&
+    upperRatio > 0.62 &&
+    longUpperTokens >= 4 &&
+    !hasLowercase
+  const lacksNaturalSentence =
+    normalized.length > 80 &&
+    !hasSentencePunctuation &&
+    (upperRatio > 0.58 || separatorCount >= 3 || longUpperTokens >= 6)
+
+  if (looksLikeColumnText || looksLikeAllCapsExtract || lacksNaturalSentence) {
+    return ""
+  }
+
+  return normalizePlanSummaryDisplayText(normalized)
+}
+
 function formatPlanSheetLabel(ref: {
   pageNumber?: number
   sourcePageNumber?: number
@@ -11043,6 +11145,41 @@ function formatPlanSourceReference(ref: {
 
   if (!sourcePage) return label
   if (!label || label === fallbackLabel) return `Source page ${sourcePage}`
+  return `${label} / source page ${sourcePage}`
+}
+
+function formatPlanSummarySourceReference(ref: {
+  pageNumber?: number
+  sourcePageNumber?: number
+  sheetNumber?: string | null
+  sheetTitle?: string | null
+  discipline?: string | null
+  classificationStatus?: string | null
+}): string {
+  const sourcePage = ref.sourcePageNumber || ref.pageNumber
+  const sheetNumber = cleanPlanSummaryText(ref.sheetNumber || "", 48)
+  const sheetTitle = cleanPlanSummaryText(ref.sheetTitle || "", 72)
+  const discipline =
+    ref.discipline && ref.discipline !== "unknown"
+      ? ref.discipline.replace(/_/g, " ")
+      : ""
+  const status =
+    ref.classificationStatus && ref.classificationStatus !== "classified"
+      ? `, ${ref.classificationStatus.replace(/_/g, " ")} classification`
+      : ""
+  const identity =
+    sheetNumber && sheetTitle
+      ? `${sheetNumber} - ${sheetTitle}`
+      : sheetNumber || sheetTitle || ""
+  const label =
+    identity && discipline
+      ? `${identity} (${discipline}${status})`
+      : identity && status
+        ? `${identity} (${status.slice(2)})`
+        : identity
+
+  if (!sourcePage) return label || `Page ${ref.pageNumber || "?"}`
+  if (!label) return `Source page ${sourcePage}`
   return `${label} / source page ${sourcePage}`
 }
 
@@ -11914,7 +12051,7 @@ function PlanAwareEstimatorReadbackCard({
       currentSelectedPagesCount > pagesWithUsefulEvidenceCount)
   const readableSheetRefs = selectedPageStatuses
     .map((status) => {
-      return formatPlanSourceReference(status)
+      return formatPlanSummarySourceReference(status)
     })
     .filter(Boolean)
   const selectedSheetReferenceText = Array.from(new Set(readableSheetRefs))
@@ -11998,6 +12135,8 @@ function PlanAwareEstimatorReadbackCard({
       : ""
   const statusLabel = (status: string) => status.replace(/_/g, " ")
   const supportLabel = (status: string) => status.replace(/_/g, " ")
+  const supportDisplayLabel = (status: string) =>
+    status === "review" ? "review-only" : supportLabel(status)
   const supportTone = (status: string) =>
     status === "direct"
       ? { border: "#bfdbfe", bg: "#fff", color: "#1d4ed8" }
@@ -12034,7 +12173,8 @@ function PlanAwareEstimatorReadbackCard({
         Plan Review Summary
       </div>
       <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.55, marginTop: 6 }}>
-        {cleanPlanReadbackText(readback.headline, 220) || "Selected plan pages were reviewed for estimator support."}
+        {cleanPlanSummaryText(readback.headline, 220) ||
+          "Selected plan pages were reviewed, but the readable plan summary needs estimator confirmation."}
       </div>
 
       {evidenceStrength && (
@@ -12054,8 +12194,8 @@ function PlanAwareEstimatorReadbackCard({
             Plan readback status: {evidenceStrength.label}
           </div>
           <div style={{ marginTop: 3 }}>
-            {cleanPlanReadbackText(evidenceStrength.summary, 180) ||
-              "Plan evidence is available for estimator review."}
+            {cleanPlanSummaryText(evidenceStrength.summary, 180) ||
+              "Plan evidence is available for estimator review, but the readable summary is limited."}
           </div>
           <div style={{ marginTop: 3, color: "#4b5563" }}>
             This status describes overall plan readback availability. The useful-evidence
@@ -12254,9 +12394,9 @@ function PlanAwareEstimatorReadbackCard({
         >
           {estimatorStory.map((section, index) => {
             const tone = supportTone(section.supportLabel)
-            const summary = cleanPlanReadbackText(section.summary, 180)
+            const summary = cleanPlanSummaryText(section.summary, 180)
             const bullets = section.bullets
-              .map((item) => cleanPlanReadbackText(item, 140))
+              .map((item) => cleanPlanSummaryText(item, 140))
               .filter(Boolean)
             return (
               <div
@@ -12273,10 +12413,10 @@ function PlanAwareEstimatorReadbackCard({
               >
                 <div style={{ fontWeight: 900, color: "#111827" }}>
                   {index + 1}. {section.title}
-                  <span style={{ color: tone.color }}> - {supportLabel(section.supportLabel)} support</span>
+                  <span style={{ color: tone.color }}> - {supportDisplayLabel(section.supportLabel)} support</span>
                 </div>
                 <div style={{ marginTop: 3 }}>
-                  {summary || "Selected sheets provide estimator review support for this item."}
+                  {summary || "Selected sheets provide review-only estimator support for this item."}
                 </div>
                 {bullets.length > 0 && (
                   <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
