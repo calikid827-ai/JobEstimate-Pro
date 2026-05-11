@@ -14,6 +14,8 @@ The app has:
 
 The product is already broad. The highest-risk areas are not missing core features, but production readiness, persistence, duplicated local logic, and final-output polish.
 
+`PRODUCT_AUDIT_BACKLOG.md` is the master improvement tracker for product intelligence, estimator accuracy, trust, and launch-readiness work identified by the full product audit.
+
 ## Existing Features
 
 - Landing page with app CTA and product positioning.

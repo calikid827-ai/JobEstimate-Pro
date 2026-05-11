@@ -1,6 +1,6 @@
 # JobEstimate Pro Roadmap
 
-This roadmap is based on `FEATURE_INVENTORY.md`. It prioritizes pre-launch production readiness first, then feature completion, stability, polish, server-backed workflows, and premium future capabilities.
+This roadmap is based on `FEATURE_INVENTORY.md`. It prioritizes pre-launch production readiness first, then feature completion, stability, polish, server-backed workflows, and premium future capabilities. `PRODUCT_AUDIT_BACKLOG.md` is the master tracker for product intelligence, estimator accuracy, trust, and launch-readiness improvements from the full product audit.
 
 Risk levels:
 
@@ -40,10 +40,10 @@ Difficulty levels:
 
 ## Current Next Active Tasks
 
-1. NEXT: Trade-aware scope quality review. Audit and adjust scope-quality warning language so General Renovation, Plumbing, Electrical, Bathroom/Tile, Flooring, Drywall, Painting, and Wallcovering estimates receive relevant missing-info warnings instead of overly painting-biased review notes. Keep this UI/review-language focused and do not change pricing or generation behavior.
-2. Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
-3. Job dashboard and customer-facing estimate confidence copy polish only where current workflows are confusing.
-4. Narrow targeted lint cleanup batches only where they reduce real launch risk.
+1. NEXT: Use `PRODUCT_AUDIT_BACKLOG.md` as the master improvement tracker and work the next launch-safe product intelligence task one focused pass at a time.
+2. Expand unsupported trade drift detection beyond electrical while keeping the warning estimator-only and without changing pricing, generation, PDFs, approvals, saved data, or Generate payload shape.
+3. Improve assumptions/exclusions visibility before PDF and approval actions without changing PDF or approval output until separately scoped.
+4. Reduce Plan Review Summary raw extracted text noise while keeping plan evidence review-only and not pricing-eligible.
 5. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
 
 Completed pre-launch task kept visible:
@@ -76,6 +76,7 @@ Completed pre-launch task kept visible:
 - DONE: Result-page diagnostics clarity polish is complete. The nested Plan Review Summary accordion was renamed from “Estimator diagnostics” to “Plan-to-price details,” while the top-level advanced drawer remains “Estimator Diagnostics.” This was UI-only and did not change pricing, generation behavior, Plan Intelligence logic, upload/staging behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Customer Output Readiness panel now gives contractors a compact estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Customer Output Readiness implementation (`40e8a99`) and retest documentation (`847c7b0`) were committed and pushed.
+- DONE: Trade-aware scope quality review is complete with focused scope-quality and PriceGuard propagation tests passing 12/12. It keeps the existing review-only output shape and does not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 
 ## 1. Critical Fixes
 
