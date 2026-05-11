@@ -91,6 +91,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Contractor-only risk notes
   - Pre-generation fallback state
 - Customer Output Readiness provides an estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing customer output or pricing.
+  - Details are deduped across readiness items, capped at 2 per item, and the panel remains capped at 6 items so it stays a compact pre-send checklist rather than duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.

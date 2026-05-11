@@ -861,3 +861,57 @@ Result:
 Notes:
 - PriceGuard still showed normal review items for measured square footage, approval language, schedule assumptions, and exclusions.
 - The multi-trade unsupported drift detector behaved correctly.
+
+## Test Entry 9 — Customer Output Readiness Dedupe/Grouping Cleanup Retest
+
+Status: PASS
+
+Scope:
+- Customer Output Readiness was cleaned up into a compact pre-send checklist.
+- Details are deduped across readiness items.
+- Details remain capped at 2 per item.
+- The panel remains capped at 6 items.
+- Unsupported trade wording remains visible when present.
+- Assumptions / exclusions are clearer as a pre-send boundary checkpoint.
+- More actionable items are prioritized before the generic customer-ready reminder.
+
+Validation:
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- The cleanup was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+- PDF/approval/customer output behavior was not changed or blocked.
+
+### Test 1 — Supported Painting Scope / Compact Readiness Cleanup
+
+Input:
+- Trade: Painting
+- Paint Scope: Walls only
+- Scope: Paint 3 bedrooms. Walls only. Minor nail-hole patching. Two coats. Contractor supplies paint.
+
+Result:
+- PASS.
+- Customer-Facing Scope stayed aligned with the typed painting scope.
+- No unsupported trade wording appeared.
+- Customer Output Readiness stayed compact after the cleanup.
+- The panel showed only relevant review categories such as Scope clarity, Assumptions / exclusions, Estimator risk notes, Schedule assumptions, and Customer-ready review.
+- The panel did not duplicate the full PriceGuard Review.
+- Pricing/PDF/approval behavior was unchanged.
+
+### Test 2 — General Renovation Plumbing Fixture Scope / Unsupported Drift Still Visible
+
+Input:
+- Trade: General Renovation
+- Scope: Replace toilet, vanity faucet, and shower trim. Owner supplies fixtures. Wall/floor repair excluded.
+
+Result:
+- PASS.
+- Customer-Facing Scope introduced flooring and carpentry wording that was not strongly supported by the selected trade, written scope, priced sections, or plan readback.
+- The unsupported trade wording warning appeared above Customer-Facing Scope.
+- Unsupported trade wording remained visible in Customer Output Readiness.
+- Customer Output Readiness stayed compact after the dedupe/grouping cleanup.
+- The panel did not duplicate the full PriceGuard Review.
+- PDF/approval output was not changed or blocked.
+
+Follow-up:
+- This still confirms the larger future issue: the AI can over-expand customer-facing language.
+- Keep deterministic customer-facing scope guard / customer scope cleanup open as a future backlog item. This cleanup warns and organizes review items but does not rewrite `result.text`.

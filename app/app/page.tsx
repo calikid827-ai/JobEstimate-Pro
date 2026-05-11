@@ -3493,14 +3493,37 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
   if (!result) return []
 
   const items: CustomerOutputReadinessItem[] = []
-  const cleanItems = (values: string[] | undefined, max = 2) =>
-    (values || [])
-      .map((value) => String(value || "").replace(/\s+/g, " ").trim())
-      .filter(Boolean)
-      .slice(0, max)
+  const seenDetailKeys = new Set<string>()
+  const detailKey = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  const cleanItems = (values: string[] | undefined, max = 2) => {
+    const cleaned: string[] = []
+
+    for (const rawValue of values || []) {
+      if (cleaned.length >= max) break
+
+      const value = String(rawValue || "").replace(/\s+/g, " ").trim()
+      const key = detailKey(value)
+      if (!value || !key || seenDetailKeys.has(key)) continue
+
+      seenDetailKeys.add(key)
+      cleaned.push(value)
+    }
+
+    return cleaned
+  }
+  const pushItem = (item: CustomerOutputReadinessItem) => {
+    if (items.length >= 6) return false
+    items.push(item)
+    return true
+  }
 
   if (customerScopeTradeDriftWarning) {
-    items.push({
+    pushItem({
       label: "Unsupported trade wording",
       message: customerScopeTradeDriftWarning,
     })
@@ -3525,7 +3548,7 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
       (evidence.textPagesCount === 0 && evidence.renderedPagesCount === 0))
 
   if (planEvidenceNeedsReview && evidence) {
-    items.push({
+    pushItem({
       label: "Plan evidence needs confirmation",
       message:
         "Plan readback is estimator review support only. Confirm quantities, scope limits, and selected-page evidence before sending customer-facing output.",
@@ -3555,7 +3578,7 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
       priceGuardReview.contractorRiskNotes.length > 0 ||
       priceGuardReview.level !== "strong"
     if (scopeDetails.length > 0) {
-      items.push({
+      pushItem({
         label: "Scope clarity",
         message: "PriceGuard found scope wording or missed-scope items to review before sending.",
         details: scopeDetails,
@@ -3572,28 +3595,20 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
       )
     )
     if (exclusionDetails.length > 0) {
-      items.push({
+      pushItem({
         label: "Assumptions / exclusions",
-        message: "Confirm these boundaries are reflected in the customer-facing scope or proposal notes.",
+        message:
+          "Confirm these customer-facing boundaries are reflected in the scope or proposal notes before sending.",
         details: exclusionDetails,
       })
     }
 
     const contractorRiskDetails = cleanItems(priceGuardReview.contractorRiskNotes)
     if (contractorRiskDetails.length > 0) {
-      items.push({
+      pushItem({
         label: "Estimator risk notes",
         message: "Review contractor-only risk notes before relying on this as send-ready output.",
         details: contractorRiskDetails,
-      })
-    }
-
-    if (priceGuardReview.level !== "strong") {
-      const customerReadyDetails = cleanItems(priceGuardReview.customerPriceDefenseNotes, 1)
-      items.push({
-        label: "Customer-ready review",
-        message: "PriceGuard does not consider this fully send-ready yet. Review scope, assumptions, exclusions, and pricing support first.",
-        details: customerReadyDetails,
       })
     }
   }
@@ -3605,10 +3620,20 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
     Number(schedule?.calendarDays?.max || 0) > 0
   const hasScheduleRationale = (schedule?.rationale || []).length > 0
   if (!schedule || !hasScheduleDuration || !hasScheduleRationale) {
-    items.push({
+    pushItem({
       label: "Schedule assumptions",
       message:
         "Schedule details are thin or need estimator confirmation before the customer relies on timing.",
+    })
+  }
+
+  if (priceGuardReview && priceGuardReview.level !== "strong") {
+    const customerReadyDetails = cleanItems(priceGuardReview.customerPriceDefenseNotes, 1)
+    pushItem({
+      label: "Customer-ready review",
+      message:
+        "PriceGuard does not consider this fully send-ready yet. Review scope, assumptions, exclusions, and pricing support first.",
+      details: customerReadyDetails,
     })
   }
 

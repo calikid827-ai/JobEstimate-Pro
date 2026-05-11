@@ -10,11 +10,11 @@ Principles:
 
 ## Current Priority Order
 
-1. Expand unsupported trade drift detection beyond electrical.
-2. Improve assumptions/exclusions visibility before PDF and approval actions.
-3. Reduce Plan Review Summary raw extracted text noise.
-4. Simplify result-page hierarchy so pricing, review-before-sending, and send actions dominate.
-5. Finish final subscription payment/webhook entitlement verification before public paid launch.
+1. Reduce Plan Review Summary raw extracted text noise.
+2. Simplify result-page hierarchy so pricing, review-before-sending, and send actions dominate.
+3. Finish final subscription payment/webhook entitlement verification before public paid launch.
+4. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
+5. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
 
 ## Pre-Launch Must-Fix / Should-Fix Items
 
@@ -147,11 +147,17 @@ Done note:
 - Why it matters: Assumptions and exclusions protect the contractor and reduce customer confusion.
 - Risk level: Medium
 - Priority: P0
-- Recommended fix approach: UI-only estimator checkpoint that highlights assumptions/exclusions already available in PriceGuard and estimate assumptions before PDF/approval actions.
-- Exact files/components likely involved: `app/app/page.tsx`, `app/app/lib/priceguard-review.ts`, `app/app/lib/estimate-utils.ts`
+- Recommended fix approach: UI-only estimator checkpoint that highlights assumptions/exclusions already available in PriceGuard before PDF/approval actions, with compact deduped details in Customer Output Readiness.
+- Exact files/components likely involved: `app/app/page.tsx`
 - What not to touch: PDF content, approval content, pricing, generation behavior, saved data shapes.
-- Tests or manual QA needed: Manual proposal-send flow with thin assumptions and exclusions; mobile check.
-- Status: Not started
+- Tests or manual QA needed: Manual proposal-send flow with thin assumptions and exclusions; supported painting scope; unsupported General Renovation drift case; TypeScript check.
+- Status: Done
+
+Done note:
+
+- Customer Output Readiness dedupe/grouping cleanup is complete. It keeps the panel as a compact pre-send checklist, dedupes details across readiness items, caps details at 2 per item, caps the panel at 6 items, keeps unsupported trade wording visible, and makes Assumptions / exclusions a clearer pre-send boundary checkpoint.
+- Manual QA was documented in `REAL_PDF_QA_CHECKLIST.md` Test Entry 9. `npx tsc --noEmit` and `git diff --check` passed.
+- The cleanup did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 
 ### 6. Plan Intelligence / Plan Review Support
 
