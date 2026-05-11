@@ -776,3 +776,28 @@ The warning now protects contractor trust by flagging unsupported electrical lan
 Recommended next action:
 
 Record this test as passed. Do not keep polishing unsupported electrical drift unless more real tests show missed warnings. Move to the next pre-launch QA item, likely result-page diagnostics layout clarity or PDF/customer output review.
+
+## Test Entry 7 — Customer Output Readiness Panel Retest
+
+Status: PASS
+
+Commit:
+- 40e8a99 Add customer output readiness panel
+
+Test:
+- Marina Dunes real-PDF General Renovation plan-assisted estimate.
+- Selected 5 of 38 PDF pages.
+- Generated estimate with plan readback, PriceGuard Review, Plan Review Summary, Customer-Facing Scope, pricing, schedule, and customer-output actions.
+
+Results:
+- Customer Output Readiness panel appeared before the Pricing/PDF customer-output area.
+- Panel successfully summarized estimator-only review items before sending/downloading.
+- Unsupported electrical wording was detected from Customer-Facing Scope.
+- Plan evidence reminder appeared and kept review-only / not-pricing-input language intact.
+- Scope clarity, assumptions/exclusions, estimator risk notes, and customer-ready review items appeared without changing pricing.
+- Pricing remained controlled by existing pricing path.
+- Plan-derived candidates remained review-only and were not pricing inputs.
+- PDF, approval output, pricing, generation behavior, Plan Intelligence backend logic, upload/staging behavior, localStorage keys, saved data shapes, and Generate payload shape were not changed.
+
+DONE:
+Customer Output Readiness panel now gives the contractor a final estimator-only review checkpoint before PDF/download/customer-output actions.
