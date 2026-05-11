@@ -613,6 +613,12 @@ type PlanReadbackView = NonNullable<PlanIntelligence> extends infer T
     : never
   : never
 
+type CustomerOutputReadinessItem = {
+  label: string
+  message: string
+  details?: string[]
+}
+
 const normalizePlanStrings = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
@@ -3534,6 +3540,138 @@ const customerScopeTradeDriftWarning = useMemo(() => {
     planIntelligence,
   })
 }, [trade, scopeChange, result?.text, estimateSections, scopeXRay, planIntelligence])
+
+const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() => {
+  if (!result) return []
+
+  const items: CustomerOutputReadinessItem[] = []
+  const cleanItems = (values: string[] | undefined, max = 2) =>
+    (values || [])
+      .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .slice(0, max)
+
+  if (customerScopeTradeDriftWarning) {
+    items.push({
+      label: "Unsupported trade wording",
+      message: customerScopeTradeDriftWarning,
+    })
+  }
+
+  const evidence = planIntelligence?.evidenceStrength
+  const selectedPageNeedsReview = (planIntelligence?.pageReadStatuses || []).some(
+    (status) =>
+      status.selected &&
+      (status.failureReasons.length > 0 ||
+        status.warnings.length > 0 ||
+        (status.textStatus !== "extracted" && status.imageStatus !== "rendered") ||
+        status.classificationStatus !== "classified")
+  )
+  const planEvidenceNeedsReview =
+    !!evidence &&
+    (evidence.level === "review_only" ||
+      evidence.confirmationNeeded ||
+      evidence.hardQuantityCount === 0 ||
+      selectedPageNeedsReview ||
+      evidence.indexedPagesCount < evidence.selectedPagesCount ||
+      (evidence.textPagesCount === 0 && evidence.renderedPagesCount === 0))
+
+  if (planEvidenceNeedsReview && evidence) {
+    items.push({
+      label: "Plan evidence needs confirmation",
+      message:
+        "Plan readback is estimator review support only. Confirm quantities, scope limits, and selected-page evidence before sending customer-facing output.",
+      details: cleanItems(
+        [
+          `Plan status: ${evidence.label}. ${evidence.summary || ""}`,
+          selectedPageNeedsReview
+            ? "Some selected pages did not read, render, classify, or extract cleanly."
+            : "",
+          evidence.hardQuantityCount === 0
+            ? "Measured quantities still need estimator confirmation."
+            : "",
+        ],
+        2
+      ),
+    })
+  }
+
+  if (priceGuardReview) {
+    const scopeDetails = cleanItems([
+      ...priceGuardReview.missedScopeWarnings,
+      ...priceGuardReview.scopeClarityWarnings,
+    ])
+    const hasPriceGuardReviewItems =
+      scopeDetails.length > 0 ||
+      priceGuardReview.laborMaterialConfidenceNotes.length > 0 ||
+      priceGuardReview.contractorRiskNotes.length > 0 ||
+      priceGuardReview.level !== "strong"
+    if (scopeDetails.length > 0) {
+      items.push({
+        label: "Scope clarity",
+        message: "PriceGuard found scope wording or missed-scope items to review before sending.",
+        details: scopeDetails,
+      })
+    }
+
+    const exclusionDetails = cleanItems(
+      priceGuardReview.suggestedExclusions.filter(
+        (item) =>
+          hasPriceGuardReviewItems ||
+          !/^excludes work not specifically described in the written scope\.?$/i.test(
+            String(item || "").trim()
+          )
+      )
+    )
+    if (exclusionDetails.length > 0) {
+      items.push({
+        label: "Assumptions / exclusions",
+        message: "Confirm these boundaries are reflected in the customer-facing scope or proposal notes.",
+        details: exclusionDetails,
+      })
+    }
+
+    const contractorRiskDetails = cleanItems(priceGuardReview.contractorRiskNotes)
+    if (contractorRiskDetails.length > 0) {
+      items.push({
+        label: "Estimator risk notes",
+        message: "Review contractor-only risk notes before relying on this as send-ready output.",
+        details: contractorRiskDetails,
+      })
+    }
+
+    if (priceGuardReview.level !== "strong") {
+      const customerReadyDetails = cleanItems(priceGuardReview.customerPriceDefenseNotes, 1)
+      items.push({
+        label: "Customer-ready review",
+        message: "PriceGuard does not consider this fully send-ready yet. Review scope, assumptions, exclusions, and pricing support first.",
+        details: customerReadyDetails,
+      })
+    }
+  }
+
+  const hasScheduleDuration =
+    Number(schedule?.crewDays || 0) > 0 ||
+    Number(schedule?.visits || 0) > 0 ||
+    Number(schedule?.calendarDays?.min || 0) > 0 ||
+    Number(schedule?.calendarDays?.max || 0) > 0
+  const hasScheduleRationale = (schedule?.rationale || []).length > 0
+  if (!schedule || !hasScheduleDuration || !hasScheduleRationale) {
+    items.push({
+      label: "Schedule assumptions",
+      message:
+        "Schedule details are thin or need estimator confirmation before the customer relies on timing.",
+    })
+  }
+
+  return items.slice(0, 6)
+}, [
+  result,
+  customerScopeTradeDriftWarning,
+  planIntelligence,
+  priceGuardReview,
+  schedule,
+])
 
 function applySuggestedPrice() {
   const targetPrice = Number(smartSuggestedPrice || 0)
@@ -12389,6 +12527,74 @@ const accountAccessMessage = !normalizedEmail
         : "Free generation access is active for this email."
       : "Refresh access to check the latest entitlement status.")
 
+function CustomerOutputReadinessPanel({
+  items,
+}: {
+  items: CustomerOutputReadinessItem[]
+}) {
+  if (!items.length) return null
+
+  return (
+    <section
+      data-no-print
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #fed7aa",
+        borderRadius: 12,
+        background: "#fff7ed",
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#92400e" }}>
+        Review before sending
+      </div>
+      <h3 style={{ margin: "3px 0 0", fontSize: 17, color: "#111827" }}>
+        Customer Output Readiness
+      </h3>
+      <p style={{ margin: "6px 0 0", fontSize: 13, color: "#4b5563", lineHeight: 1.5 }}>
+        Before sending or downloading, review these estimator-only items. They do not
+        change pricing automatically, but they may affect whether the customer-facing
+        scope, assumptions, exclusions, or schedule are ready to send.
+      </p>
+
+      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        {items.map((item, index) => (
+          <div
+            key={`customer-output-readiness-${item.label}-${index}`}
+            style={{
+              padding: 10,
+              border: "1px solid #fdba74",
+              borderRadius: 8,
+              background: "#fff",
+              minWidth: 0,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>
+              {item.label}
+            </div>
+            <div style={{ marginTop: 3, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
+              {item.message}
+            </div>
+            {item.details && item.details.length > 0 && (
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.45 }}>
+                {item.details.map((detail, detailIndex) => (
+                  <li
+                    key={`customer-output-readiness-${item.label}-${detailIndex}`}
+                    style={{ fontSize: 12, color: "#4b5563" }}
+                  >
+                    {detail}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
   // -------------------------
   // UI
   // -------------------------
@@ -13028,6 +13234,8 @@ const accountAccessMessage = !normalizedEmail
         </div>
       </div>
     )}
+
+    <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
 
     <PricingSummarySection
       pricing={pricing}
