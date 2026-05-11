@@ -88,6 +88,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Customer-ready price defense notes
   - Contractor-only risk notes
   - Pre-generation fallback state
+- Customer Output Readiness provides an estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing customer output or pricing.
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
