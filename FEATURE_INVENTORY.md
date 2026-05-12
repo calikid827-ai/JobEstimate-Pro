@@ -93,6 +93,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Pre-generation fallback state
 - Customer Output Readiness provides an estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing customer output or pricing.
   - Details are deduped across readiness items, capped at 2 per item, and the panel remains capped at 6 items so it stays a compact pre-send checklist rather than duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
+- Generated estimate result hierarchy now prioritizes the primary send workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. Unsupported trade drift warnings remain visible above Customer-Facing Scope when present. Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
@@ -296,7 +297,11 @@ Main components:
 Large in-page cards in `app/app/page.tsx`:
 
 - Estimate status card.
+- Customer-Facing Scope.
+- Customer Output Readiness.
+- Pricing summary / PDF actions.
 - Schedule block/editor.
+- Estimator review details, containing PriceGuard Review, Plan Review Summary, and line-item detail.
 - Review insights card.
 - Materials list card.
 - Area scope breakdown card.
@@ -535,6 +540,7 @@ Known gaps:
 ## Recommended Next Features
 
 - Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
+- Deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable; current warnings organize review items but do not rewrite `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
@@ -573,8 +579,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
-2. Complete final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
-3. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
-4. Polish customer-facing estimate confidence and job dashboard workflow guidance only where current copy creates confusion.
+1. Complete final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
+2. Add warning-only deterministic customer-facing scope guard / customer scope cleanup after the current readiness warnings remain stable.
+3. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
+4. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 5. Keep further PriceGuard Review improvements narrow and deterministic if new QA finds over-warning or unclear copy.

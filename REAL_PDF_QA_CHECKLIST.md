@@ -949,3 +949,63 @@ Observed results:
 
 Follow-up:
 - Keep broader/deeper Plan Intelligence story wording polish as future/post-launch unless later real-PDF QA finds a launch-blocking trust issue.
+
+## Test Entry 11 — Result-Page Hierarchy Cleanup Retest
+
+Status: PASS
+
+Scope:
+- UI-only generated-result hierarchy cleanup.
+- Reordered the result page into a primary senior-estimator workflow:
+  - Customer-Facing Scope.
+  - Customer Output Readiness.
+  - Pricing / Download Estimate PDF.
+  - Schedule / Estimated Completion / Schedule Editor.
+  - Collapsed `Estimator review details`.
+  - Collapsed `Estimator Diagnostics`.
+- Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available inside `Estimator review details`.
+- AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
+- Jobs, Invoices, and Saved Estimates placement was unchanged.
+
+Validation:
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+
+### Test 1 — Simple Painting Estimate
+
+Input:
+- Trade: Painting.
+- Paint Scope: Walls only.
+- Scope: Paint 3 bedrooms. Walls only. Minor nail-hole patching. Two coats. Contractor supplies paint.
+
+Result:
+- PASS.
+- Customer-Facing Scope appeared near the top.
+- Customer Output Readiness appeared before pricing when applicable.
+- Pricing / Download Estimate PDF was easier to find.
+- Schedule appeared close to pricing.
+- `Estimator review details` remained collapsed and available.
+- `Estimator Diagnostics` remained separately collapsed.
+
+### Test 2 — Marina Dunes / Plan-Assisted Estimate
+
+Input:
+- Marina Dunes ADA Units real contractor PDF plan-assisted estimate.
+- Selected plan pages were used for plan readback QA.
+
+Result:
+- PASS.
+- Customer-Facing Scope stayed near the top.
+- Customer Output Readiness appeared before pricing.
+- Pricing/PDF was easy to find.
+- Schedule was close to pricing.
+- `Estimator review details` expanded correctly.
+- Plan Review Summary remained available inside `Estimator review details`.
+- Pages Needing Review remained visible after expanding.
+- Review-only / not-pricing-input language remained available.
+- `Estimator Diagnostics` remained separately collapsed.
+
+Final decision:
+- Result-page hierarchy cleanup passes.
+- The generated estimate now gives contractors a faster primary send workflow while preserving the full estimator review and diagnostics stack for follow-up review.

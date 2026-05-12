@@ -10,10 +10,10 @@ Principles:
 
 ## Current Priority Order
 
-1. Simplify result-page hierarchy so pricing, review-before-sending, and send actions dominate.
-2. Finish final subscription payment/webhook entitlement verification before public paid launch.
-3. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
-4. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+1. Finish final subscription payment/webhook entitlement verification before public paid launch.
+2. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
+3. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+4. Add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
 5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 
 ## Pre-Launch Must-Fix / Should-Fix Items
@@ -258,7 +258,21 @@ Done note:
 - Exact files/components likely involved: `app/app/page.tsx`, `PricingSummarySection`, result display components.
 - What not to touch: PDFs, approvals, pricing, generation, saved data.
 - Tests or manual QA needed: Desktop and iPhone result-page QA; ensure no overlap or hidden send actions.
-- Status: Not started
+- Status: Done
+
+Done note:
+
+- The generated result page now follows a primary estimator workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule before deeper estimator detail.
+- Unsupported trade drift warnings remain visible above Customer-Facing Scope when present.
+- Customer Output Readiness remains visible before Pricing when review items exist.
+- PricingSummarySection remains prominent with editable pricing and Download Estimate PDF.
+- ScheduleBlock, Estimated Completion, and ScheduleEditor are closer to Pricing/PDF.
+- Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available inside a collapsed `Estimator review details` section.
+- AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
+- Jobs, Invoices, and Saved Estimates placement was unchanged.
+- Validation passed: `npx tsc --noEmit` and `git diff --check`.
+- Manual QA passed for a simple painting estimate and a Marina Dunes plan-assisted estimate.
+- This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 
 ### 11. Billing / Entitlement / Launch Readiness
 

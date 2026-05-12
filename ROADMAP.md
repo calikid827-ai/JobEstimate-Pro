@@ -41,9 +41,9 @@ Difficulty levels:
 ## Current Next Active Tasks
 
 1. NEXT: Use `PRODUCT_AUDIT_BACKLOG.md` as the master improvement tracker and work the next launch-safe product intelligence task one focused pass at a time.
-2. Simplify result-page hierarchy so pricing, Customer Output Readiness, and send actions dominate without removing protective diagnostics.
-3. Final Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
-4. Keep deterministic customer-facing scope guard / customer scope cleanup open for a later scoped pass; current UI warnings organize review items but do not rewrite `result.text`.
+2. Final Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
+3. Keep deterministic customer-facing scope guard / customer scope cleanup open for a later scoped pass; current UI warnings organize review items but do not rewrite `result.text`.
+4. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
 5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 
 Completed pre-launch task kept visible:
@@ -79,6 +79,7 @@ Completed pre-launch task kept visible:
 - DONE: Customer Output Readiness implementation (`40e8a99`) and retest documentation (`847c7b0`) were committed and pushed.
 - DONE: Customer Output Readiness dedupe/grouping cleanup is complete and tested. The panel now dedupes details across readiness items, caps details at 2 per item, stays capped at 6 items, keeps unsupported trade wording visible, and makes assumptions/exclusions a clearer pre-send boundary checkpoint without changing pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 - DONE: Trade-aware scope quality review is complete with focused scope-quality and PriceGuard propagation tests passing 12/12. It keeps the existing review-only output shape and does not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+- DONE: Result-page hierarchy cleanup is complete and tested. The generated result page now prioritizes Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule; full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`; AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`; Jobs, Invoices, and Saved Estimates placement is unchanged. `npx tsc --noEmit`, `git diff --check`, and manual QA for a simple painting estimate plus Marina Dunes plan-assisted estimate passed. This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 
 ## 1. Critical Fixes
 
@@ -332,7 +333,7 @@ Completed pre-launch task kept visible:
 - Status note: Large-plan selected-page readiness guidance is complete as a UI/helper-only pass. Original-fallback selected-page scalability is also complete: fallback PDFs with `selectedSourcePages` now avoid processing unselected pages while preserving source page provenance.
 - Status note: Plan Review Summary clarity, Pages Needing Review drilldown, and plan-aware pre-generate scope warning are complete as UI-only passes. Desktop and iPhone/mobile Marina Dunes retests passed for the drilldown and review-only pricing safety language. Deeper upload/staging architecture changes should remain future work unless QA proves the current architecture cannot support launch.
 - DONE: Customer Output Readiness panel now gives contractors a compact estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
-- NEXT: Trade-aware scope quality review. Audit and adjust scope-quality warning language so General Renovation, Plumbing, Electrical, Bathroom/Tile, Flooring, Drywall, Painting, and Wallcovering estimates receive relevant missing-info warnings instead of overly painting-biased review notes. Keep this UI/review-language focused and do not change pricing or generation behavior.
+- DONE: Trade-aware scope quality review is complete. General Renovation, Plumbing, Electrical, Bathroom/Tile, Flooring, Drywall, Painting, and Wallcovering estimates now receive more relevant review-only missing-info warnings without changing pricing or generation behavior.
 - Future Plan Intelligence work should keep actual pricing handoff activation deferred until manual QA and stronger confidence/provenance gates are proven; direct pricing influence from plan-derived candidates remains future work.
 - Why it matters: Plan upload and PDF rendering are complex and can fail due browser, platform, or PDF issues. User-facing recovery should stay explicit.
 - Files likely affected:
@@ -350,7 +351,7 @@ Completed pre-launch task kept visible:
 
 - Status: Done for the current launch polish pass.
 - Why it matters: Advanced diagnostics are useful, but users need a clean estimator-facing summary and a separate advanced/debug area.
-- Completed scope: Estimate results now open with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
+- Completed scope: Estimate results now open with a clean document summary card and prioritize Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
 - Files likely affected:
   - `app/app/page.tsx`
   - `app/app/components/PricingSummarySection.tsx`
