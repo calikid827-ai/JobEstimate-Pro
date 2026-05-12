@@ -13220,17 +13220,6 @@ function CustomerOutputReadinessPanel({
 />
 )}
 
-    <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
-
-    <PlanAwareEstimatorReadbackCard
-      planIntelligence={planIntelligence}
-      estimateSections={estimateSections}
-      selectedPagesChosenCount={jobPlans.reduce(
-        (sum, plan) => sum + countSelectedPlanPages(plan),
-        0
-      )}
-    />
-
     <div
       style={{
         marginBottom: 14,
@@ -13377,12 +13366,6 @@ function CustomerOutputReadinessPanel({
       downloadPDF={downloadPDF}
     />
 
-    <EstimateSectionsCard
-      estimateRows={estimateRows}
-      estimateEmbeddedBurdens={estimateEmbeddedBurdens}
-      estimateSections={estimateSections}
-    />
-
     {schedule && (
       <>
         <ScheduleBlock schedule={schedule} />
@@ -13421,6 +13404,48 @@ function CustomerOutputReadinessPanel({
         </details>
       </>
     )}
+
+    <details
+      data-no-print
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        background: "#fff",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+        }}
+      >
+        Estimator review details
+      </summary>
+      <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
+        Full estimator review, plan readback, and line-item detail for follow-up before sending.
+      </div>
+
+      <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
+
+      <PlanAwareEstimatorReadbackCard
+        planIntelligence={planIntelligence}
+        estimateSections={estimateSections}
+        selectedPagesChosenCount={jobPlans.reduce(
+          (sum, plan) => sum + countSelectedPlanPages(plan),
+          0
+        )}
+      />
+
+      <EstimateSectionsCard
+        estimateRows={estimateRows}
+        estimateEmbeddedBurdens={estimateEmbeddedBurdens}
+        estimateSections={estimateSections}
+      />
+    </details>
 
     {hasAdvancedAnalysis && (
       <AdvancedAnalysisSection
