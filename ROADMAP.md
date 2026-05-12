@@ -22,7 +22,7 @@ Difficulty levels:
 - Focus first on finishing web/PWA core workflows, subscription readiness, mobile web usability, production Supabase/Stripe readiness, and production safety.
 - Revisit App Store distribution only after real user validation, pricing validation, support burden validation, OpenAI/plan-rendering/storage cost validation, and a clearer mobile acquisition strategy.
 - The current Stripe checkout code now uses monthly subscription Checkout with `STRIPE_PRO_MONTHLY_PRICE_ID` and `mode: "subscription"`. Treat any old one-time $29 unlimited-access offer as temporary/pre-launch legacy only.
-- Current billing launch blocker: final Stripe subscription payment/webhook entitlement verification is still pending.
+- Current billing launch blocker: Preview/Test Mode subscription QA has passed, but final Production Live Mode Stripe subscription payment/webhook entitlement verification is still pending.
 - Avoid promising unlimited generations forever until OpenAI, plan-rendering, storage, support, and abuse costs are proven.
 - Finish the existing core workflows before adding broad new features: estimate generation, plan intelligence readback, approvals, invoices, PDFs, account/entitlement status, and billing model clarity.
 - Keep any further billing changes narrow until final subscription verification is complete. Pricing, free limit, trial/grace behavior, cancellation behavior, and fair-use thresholds can still be adjusted before public launch.
@@ -36,13 +36,13 @@ Difficulty levels:
 - Use fair-use language instead of unlimited language, such as “includes generous fair-use access for normal contractor estimating workflows.”
 - Future Business tier can be added later after launch for teams, higher usage, server-backed storage, client portal, invoice payments, or priority support.
 - Exact generation limits, fair-use thresholds, plan names, and launch pricing can still change before public launch.
-- Billing implementation now follows this direction through the web/PWA Stripe Checkout path. Final payment/webhook verification is still required before public paid launch.
+- Billing implementation now follows this direction through the web/PWA Stripe Checkout path. Preview/Test Mode payment/webhook/entitlement verification has passed; final Production Live Mode verification is still required before public paid launch.
 
 ## Current Next Active Tasks
 
 1. NEXT: Use `PRODUCT_AUDIT_BACKLOG.md` as the master improvement tracker and work the next launch-safe product intelligence task one focused pass at a time.
 2. Simplify result-page hierarchy so pricing, Customer Output Readiness, and send actions dominate without removing protective diagnostics.
-3. Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
+3. Final Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains pending before accepting public paid users.
 4. Keep deterministic customer-facing scope guard / customer scope cleanup open for a later scoped pass; current UI warnings organize review items but do not rewrite `result.text`.
 5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 
@@ -58,7 +58,7 @@ Completed pre-launch task kept visible:
 - DONE: Full app-side PWA/web smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, the earlier checkout/success entitlement refresh path, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import. Current subscription billing still requires final payment, webhook delivery, and entitlement activation verification through `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
 - DONE: Production Supabase verification using `SUPABASE_PRODUCTION_CHECKLIST.md` passed for the current launch-critical schema, RPC, constraint, and duplicate-protection paths.
 - DONE: Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, and the app was redeployed after the env var was added.
-- DONE/PARTIAL: Subscription billing implementation foundation is in place: checkout mode switch, monthly price env var, Supabase columns, 6-event webhook handling, subscription-aware entitlement response, Account & Access status copy, success/cancel copy, and focused entitlement tests are done; final payment/webhook entitlement verification remains pending.
+- DONE/PARTIAL: Subscription billing implementation foundation is in place: checkout mode switch, monthly price env var, Supabase columns, 6-event webhook handling, subscription-aware entitlement response, Account & Access status copy, success/cancel copy, and focused entitlement tests are done. Preview/Test Mode subscription QA passed in Vercel Preview with Stripe sandbox checkout, webhook resend `200 OK`, and `/app` Pro access active. Final Production Live Mode payment/webhook entitlement verification remains pending before public paid launch.
 - DONE/PARTIAL: Thin localStorage persistence helper is in place. `app/app/lib/local-persistence.ts` centralizes typed key groups, safe get/set/remove helpers, JSON read/write helpers, and legacy `scopeguard` email/company migration support; broader server-backed persistence remains future work.
 - DONE/PARTIAL: Safe lint triage pass completed. `npm run lint` moved from 218 problems to 215 after small safe fixes, but still fails due to broad existing lint debt. `npx tsc --noEmit` passes.
 - DONE: Plan Intelligence Phase 1 observability/read status is complete. Per-page read statuses are estimator-only diagnostics, targeted plan tests passed, and `npx tsc --noEmit` passed; `npm run lint` still fails due to known broad lint debt.
@@ -164,7 +164,8 @@ Completed pre-launch task kept visible:
   - `/app` Account & Access shows plan/status/period information.
   - `/success` and `/cancel` use subscription-oriented copy.
   - Focused entitlement tests cover subscription access rules and legacy compatibility.
-  - Final live/test subscription payment and webhook entitlement verification is still pending because payment has not been completed yet.
+  - Preview/Test Mode subscription payment and webhook entitlement verification passed in Vercel Preview with Stripe sandbox checkout, webhook resend `200 OK`, and `/app` Pro access active.
+  - Final Production Live Mode subscription payment and webhook entitlement verification remains pending before public paid launch.
   - Keep this pass focused on web/PWA Stripe Checkout and web entitlement flows. Do not add Apple in-app purchase or App Store subscription requirements yet.
 - Risk level: High
 - Difficulty: Medium

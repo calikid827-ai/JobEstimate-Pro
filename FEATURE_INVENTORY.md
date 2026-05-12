@@ -131,7 +131,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Server-backed approval links are implemented, but they rely on Supabase approval snapshot tables rather than full server-backed job/estimate/invoice persistence.
 - Approval sync is hardened with an owner sync token, but it is not full authentication and does not replace user accounts/workspaces.
 - Same-device local approval invoice creation still exists as a fallback path.
-- Subscription billing foundation is implemented, including subscription checkout, subscription-aware entitlement response, Account & Access status, success/cancel copy, and focused entitlement tests. Final subscription payment/webhook entitlement verification is still pending.
+- Subscription billing foundation is implemented, including subscription checkout, subscription-aware entitlement response, Account & Access status, success/cancel copy, and focused entitlement tests. Preview/Test Mode subscription checkout/webhook entitlement QA has passed; final Production Live Mode verification remains pending before public paid launch.
 - There is still no billing portal or full auth-backed account/workspace system.
 - Plan intelligence readback is rich in the app UI and represented in generated estimate PDFs through a customer-safe Estimator Plan Review and compact plan evidence summary.
 - AI-generated scope prose can still be generic even when typed plan readback is stronger.
@@ -505,6 +505,7 @@ Implemented:
 - Checkout cancellation page.
 - Account & Access panel in `/app` with email, plan, subscription status, current-period information, free usage, and manual entitlement refresh.
 - Focused entitlement tests for active, trialing, past-due, canceled, unpaid/incomplete, and legacy access rules.
+- Preview/Test Mode subscription checkout/webhook entitlement flow passed in Vercel Preview with Stripe sandbox checkout, webhook resend `200 OK`, and `/app` Pro access active.
 
 Known gaps:
 
@@ -514,7 +515,7 @@ Known gaps:
 - Entitlement is email-based, not user-auth based.
 - No robust webhook-delay recovery UI beyond entitlement refresh.
 - Success/cancel pages use current JobEstimate Pro payment flow copy.
-- Final subscription payment/webhook entitlement verification is still pending before public paid launch.
+- Final Production Live Mode subscription payment/webhook entitlement verification is still pending before public paid launch.
 
 ## Technical Debt / Broken Areas
 
@@ -533,7 +534,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
+- Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.

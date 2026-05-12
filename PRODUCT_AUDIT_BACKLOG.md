@@ -268,11 +268,21 @@ Done note:
 - Why it matters: Public paid launch depends on reliable subscription access.
 - Risk level: Launch-blocking
 - Priority: P0
-- Recommended fix approach: Run `SUBSCRIPTION_TEST_CHECKLIST.md` against test/live setup and document outcome.
+- Recommended fix approach: Run `SUBSCRIPTION_TEST_CHECKLIST.md` against test/live setup and document outcome. Preview/Test Mode verification has passed; final Production Live Mode verification remains pending before accepting real paid users.
 - Exact files/components likely involved: `app/api/checkout/route.ts`, `app/api/webhook/route.ts`, `app/api/entitlement/route.ts`, Stripe dashboard, Supabase entitlement tables.
 - What not to touch: Pricing model, app feature logic, Plan Intelligence, PDFs, approvals unless verification finds a real bug.
 - Tests or manual QA needed: Stripe checkout, webhook receipt, entitlement refresh, cancellation/payment-failed paths.
-- Status: Not started
+- Status: In progress
+
+Done/PASS note:
+
+- Preview/Test Mode subscription QA passed in a Vercel Preview deployment using Stripe test mode.
+- Test-mode checkout opened for JobEstimate Pro at `$29/month`, test card `4242 4242 4242 4242` succeeded, success page appeared, Stripe test events were created, `checkout.session.completed` webhook resend returned `200 OK` with `{ "received": true }`, and `/app` Account & Access showed `Pro subscription active` / `Plan: Pro (active)` for `test-subscription-002@gmail.com`.
+- The initial live/deployed checkout test-card failure was expected because production checkout used live Stripe values.
+
+Remaining/PENDING note:
+
+- Final Production Live Mode verification remains open as the last billing launch item. Do not claim public paid launch billing is fully verified until a real/live payment or approved live-mode verification is completed intentionally.
 
 ## Post-Launch Improvements
 

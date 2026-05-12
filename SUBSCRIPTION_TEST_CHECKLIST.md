@@ -8,6 +8,47 @@ Scope:
 - Out of scope: estimator pricing, estimate generation quality, approvals, invoices, PDFs, Plan Intelligence, billing portal, full auth/workspaces, one-time payment launch strategy, and App Store/native billing.
 - Important: One-time checkout fallback remains documented for legacy/backward compatibility only. Do not use or recommend one-time payment for public launch unless the billing model is intentionally changed back.
 
+## Completed QA Log
+
+### Preview/Test Mode Subscription QA — PASS
+
+Status: PASS for Preview/Test Mode subscription QA.
+
+Setup and observations:
+
+- An initial checkout attempt from the deployed/live environment opened Stripe Checkout successfully, but the page was in live mode.
+- Stripe test card `4242 4242 4242 4242` failed there with: “Your card was declined. Your request was in live mode, but used a known test card.”
+- That live-mode test-card failure was expected and confirmed the deployed production checkout was using live Stripe values.
+- A safe Vercel Preview/Test Mode setup was created for subscription QA.
+- A Stripe test-mode recurring monthly price was created for `$29/month`.
+- Vercel Preview env vars were configured with test-mode Stripe checkout values:
+  - `STRIPE_SECRET_KEY` using a test-mode key.
+  - `STRIPE_PRO_MONTHLY_PRICE_ID` using the test recurring monthly price id.
+  - `STRIPE_WEBHOOK_SECRET` using the test webhook signing secret.
+  - `ALLOWED_ORIGIN_HOSTS` including the Preview host.
+  - Existing Supabase/OpenAI env vars remained available as needed.
+- Preview deployment initially failed because `STRIPE_WEBHOOK_SECRET` was missing.
+- After adding Preview `STRIPE_WEBHOOK_SECRET` and redeploying, the Preview deployment succeeded.
+- Checkout initially logged `NEXT_PUBLIC_SITE_URL` missing.
+- After env correction and redeploy, Preview checkout opened successfully in Stripe test/sandbox mode.
+- Stripe Checkout displayed JobEstimate Pro / Unlimited Change Orders / Estimates at `$29.00` per month.
+- Test email used: `test-subscription-002@gmail.com`.
+- Test card `4242 4242 4242 4242` succeeded in Stripe sandbox.
+- Success page appeared with `Payment Successful`.
+- Stripe test events appeared, including `checkout.session.completed`, `customer.subscription.created`, invoice paid/succeeded events, `payment_intent.succeeded`, and `charge.succeeded`.
+- Webhook delivery initially returned `401`/`400` due to protected Preview URL / old endpoint attempts.
+- After fixing Preview access/origin setup and resending, `checkout.session.completed` delivered successfully with `200 OK` and response body `{ "received": true }`.
+- Returning to the Preview app and refreshing access showed:
+  - `Access status: Pro subscription active`
+  - `Plan: Pro (active)`
+  - `Pro subscription is active.`
+
+Confirmed Preview/Test Mode loop:
+
+Preview app checkout -> Stripe test subscription -> webhook resend `200 OK` -> app entitlement refresh -> Pro access active.
+
+Production Live Mode verification remains pending. This Preview/Test Mode pass does not mean production live billing is fully verified. Do not mark public paid launch billing complete until a real/live payment or approved live-mode verification is completed intentionally.
+
 ## Test Setup
 
 Use a deployed preview/staging environment connected to Stripe test mode and the intended Supabase project.

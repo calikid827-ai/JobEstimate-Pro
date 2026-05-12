@@ -193,9 +193,10 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: `/success` and `/cancel` use subscription-oriented copy.
 - DONE: Focused entitlement tests cover active, trialing, past-due, canceled, unpaid/incomplete, and legacy access rules.
 - DONE: Success page entitlement refresh posts the saved `jobestimatepro_email` to `/api/entitlement`.
+- DONE: Preview/Test Mode subscription QA passed in a Vercel Preview deployment using Stripe test mode. Checkout opened in Stripe sandbox at `$29/month`, test card `4242 4242 4242 4242` succeeded for `test-subscription-002@gmail.com`, `Payment Successful` appeared, `checkout.session.completed` webhook resend returned `200 OK` with `{ "received": true }`, and `/app` Account & Access showed `Pro subscription active` / `Plan: Pro (active)`.
 - DONE: Free generation limit is currently 3 through Supabase/RPC-backed usage flow.
 - PARTIAL: Billing is still email-based and does not use full accounts/auth.
-- PARTIAL/PENDING: Final subscription payment, webhook delivery, and entitlement activation verification is still pending because a payment has not been completed yet.
+- PARTIAL/PENDING: Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification remains pending before accepting real paid users. The Preview/Test Mode pass does not fully verify production live billing.
 - PARTIAL: Subscription planning is web/PWA-first through Stripe Checkout and web entitlement flows. Do not design around Apple in-app purchases or App Store subscription requirements yet.
 - NOT STARTED: Billing portal/account management.
 - DEFERRED: Business tier, invoice payments, and client portal billing can wait.
@@ -219,8 +220,9 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - PARTIAL: Verify the final subscription billing path before accepting public paid users.
 - DONE: Subscription checkout, webhook lifecycle handling, entitlement response, Account & Access status display, success/cancel copy, and focused entitlement tests are implemented.
 - DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, post-env-var redeploy, and 6-event webhook configuration are complete.
+- DONE: Preview/Test Mode subscription checkout/webhook/entitlement QA passed with Stripe sandbox and Vercel Preview.
 - DONE: Production Supabase schema, RPCs, and uniqueness constraints were manually verified for entitlement, webhook dedupe, approval snapshots, owner sync tokens, approvals, and approval invoices.
-- PENDING: Complete final subscription payment/webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
+- PENDING: Complete final Production Live Mode subscription payment/webhook entitlement verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before accepting real paid users.
 - DONE: Full app-side PWA/web smoke test passed:
   - Free generation.
   - Account/access refresh.
