@@ -7,14 +7,16 @@ Principles:
 - Keep pricing authority, estimate generation, Plan Intelligence pricing influence, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, and Generate payload shape stable unless a task explicitly requires a later scoped change.
 - Treat Plan Intelligence and Photo Intelligence as review support unless a future task proves reliable measured quantities with source provenance and regression coverage.
 - Favor small UI/review-language safety passes before broad architecture changes.
+- Preserve AI-generated intelligent step-by-step customer-facing scope descriptions as a core product strength. Materials, sequencing, and task-description detail should not be automatically flattened, shortened, removed, or rewritten by safety guards.
+- Customer-facing scope guard work should detect and review unsupported expansion. It should stay warning-only / review-only unless a separate scoped task explicitly changes customer text.
 
 ## Current Priority Order
 
-1. Finish final subscription payment/webhook entitlement verification before public paid launch.
-2. Add deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable.
-3. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-4. Add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
-5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
+1. Next active app-improvement task: add warning-only AI Scope Protection / Unsupported Scope Review Guard.
+2. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+3. Add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
+4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
+5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
 
 ## Pre-Launch Must-Fix / Should-Fix Items
 
@@ -282,7 +284,7 @@ Done note:
 - Why it matters: Public paid launch depends on reliable subscription access.
 - Risk level: Launch-blocking
 - Priority: P0
-- Recommended fix approach: Run `SUBSCRIPTION_TEST_CHECKLIST.md` against test/live setup and document outcome. Preview/Test Mode verification has passed; final Production Live Mode verification remains pending before accepting real paid users.
+- Recommended fix approach: Keep this as the final pre-launch gate, not the next active app-improvement task. Run `SUBSCRIPTION_TEST_CHECKLIST.md` against the final live setup and document the outcome before accepting real paid users. Preview/Test Mode verification has passed, so billing does not need to block continued product polish.
 - Exact files/components likely involved: `app/api/checkout/route.ts`, `app/api/webhook/route.ts`, `app/api/entitlement/route.ts`, Stripe dashboard, Supabase entitlement tables.
 - What not to touch: Pricing model, app feature logic, Plan Intelligence, PDFs, approvals unless verification finds a real bug.
 - Tests or manual QA needed: Stripe checkout, webhook receipt, entitlement refresh, cancellation/payment-failed paths.
@@ -322,7 +324,7 @@ Remaining/PENDING note:
 - Why it matters: Customer output should not overpromise unsupported work.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Add deterministic post-generation review or warning before send; do not rewrite customer text until separately scoped.
+- Recommended fix approach: Add warning-only AI Scope Protection / Unsupported Scope Review Guard before send. Detect unsupported trade/scope expansion while preserving the AI-generated detailed step-by-step scope, materials, sequencing, and task-description value. Do not rewrite, flatten, shorten, remove, or mutate `result.text` unless a later task explicitly scopes customer-text cleanup.
 - Exact files/components likely involved: `app/app/page.tsx`, possible new client helper.
 - What not to touch: Generation prompt, pricing, PDFs/approvals unless task explicitly includes output changes.
 - Tests or manual QA needed: Unsupported trade language regression cases.

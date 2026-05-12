@@ -49,6 +49,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Bathroom tile/general renovation path
   - Carpentry/general renovation path
 - Scope entry with smart generation.
+- AI-generated customer-facing scope descriptions with useful step-by-step task sequencing, materials language, and work-description detail. This detailed estimator prose is a core product strength to preserve; safety guards should review unsupported expansion rather than automatically flattening, shortening, removing, or rewriting `result.text`.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -135,7 +136,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Subscription billing foundation is implemented, including subscription checkout, subscription-aware entitlement response, Account & Access status, success/cancel copy, and focused entitlement tests. Preview/Test Mode subscription checkout/webhook entitlement QA has passed; final Production Live Mode verification remains pending before public paid launch.
 - There is still no billing portal or full auth-backed account/workspace system.
 - Plan intelligence readback is rich in the app UI and represented in generated estimate PDFs through a customer-safe Estimator Plan Review and compact plan evidence summary.
-- AI-generated scope prose can still be generic even when typed plan readback is stronger.
+- AI-generated scope prose can still be generic or occasionally over-expanded even when typed plan readback is stronger. The product direction is to preserve useful AI-generated sequencing/material/task detail while adding warning-only review for unsupported expansion.
 - Jobs, estimates, invoices, budgets, and actuals remain local-first outside the server-backed approval snapshot workflow.
 - Some advanced analysis panels are more diagnostic than customer-facing.
 - README documents the product, local development, environment variables, API routes, Stripe webhook notes, Supabase expectations, approval links, plan upload/rendering notes, localStorage keys, limitations, and development guidance.
@@ -539,8 +540,8 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
-- Deterministic customer-facing scope guard / customer scope cleanup after launch-readiness UI warnings stay stable; current warnings organize review items but do not rewrite `result.text`.
+- Warning-only AI Scope Protection / Unsupported Scope Review Guard for customer-facing scope drift. Preserve useful AI-generated detailed scope descriptions and detect unsupported expansion without rewriting `result.text`.
+- Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
@@ -579,8 +580,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Complete final subscription test-mode/live payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.
-2. Add warning-only deterministic customer-facing scope guard / customer scope cleanup after the current readiness warnings remain stable.
+1. Add warning-only AI Scope Protection / Unsupported Scope Review Guard after the current readiness warnings remain stable.
+2. Complete final Production Live Mode payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
 3. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
 4. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 5. Keep further PriceGuard Review improvements narrow and deterministic if new QA finds over-warning or unclear copy.

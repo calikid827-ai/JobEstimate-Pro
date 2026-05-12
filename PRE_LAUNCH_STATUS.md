@@ -52,7 +52,8 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Trade-aware scope quality review is complete with focused scope-quality and PriceGuard propagation tests passing 12/12. It keeps the existing review-only output shape and does not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Plan Review Summary raw-text cleanup is complete and tested. Marina Dunes retest passed: long all-caps sheet/index/OCR text was suppressed from the main summary, contractor-friendly fallback headline copy appeared, Pages Needing Review and evidence counts stayed visible, review-only/not-pricing-input language stayed visible, and deeper Plan-to-price details / Estimator Diagnostics remained available. `npx tsc --noEmit` and `git diff --check` passed. This was UI-only and did not change pricing, generation behavior, Plan Intelligence backend logic, upload/staging, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Result-page hierarchy cleanup is complete and tested. The generated result page now prioritizes Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule, while full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details` and AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`. `npx tsc --noEmit`, `git diff --check`, and manual QA for a simple painting estimate plus Marina Dunes plan-assisted estimate passed. This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
-- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. The next highest-priority item is final subscription payment/webhook entitlement verification before public paid launch.
+- DONE: Preview/Test Mode subscription billing QA passed. Production Live Mode subscription payment/webhook entitlement verification remains pending as the final pre-launch gate before accepting public paid users, not the next active product-polish task.
+- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. The next active product task is warning-only AI Scope Protection / Unsupported Scope Review Guard for customer-facing scope drift.
 - DONE: Plan-aware pre-generate scope warning clarity pass softens scope-quality copy when plans are uploaded while keeping the existing missing-scope warning behavior when no plans are uploaded.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented through `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`, and `/app` result workflow integration. It is UI-side only and does not change pricing math, estimate generation, Plan Intelligence, PDFs, approvals, invoices, billing, API routes, localStorage keys, or saved estimate data shapes.
 - DONE: PriceGuard Review QA false-positive reduction pass is complete. The deterministic helper now filters scope-quality warnings against the combined original scope and generated customer-facing estimate text, reducing over-warning when the generated estimate already includes prep, materials, cleanup, protection, exclusions, approval, or work process language.
@@ -146,7 +147,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Customer Output Readiness dedupe/grouping cleanup is complete and tested. It keeps the pre-send checklist compact without duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
 - DONE: Plan Review Summary raw-text cleanup is complete and tested. Long all-caps sheet/index/OCR text is suppressed from the main summary while Pages Needing Review, selected/read/useful evidence counts, review-only/not-pricing-input language, Plan-to-price details, and Estimator Diagnostics remain available.
 - DONE: Result-page hierarchy cleanup is complete and tested. Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule now form the primary generated-result workflow; PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`; Estimator Diagnostics remains separately collapsed.
-- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. The next highest-priority item is final subscription payment/webhook entitlement verification before public paid launch.
+- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. The next active product task is warning-only AI Scope Protection / Unsupported Scope Review Guard. Keep Production Live Mode subscription verification as the final pre-launch gate.
 - DEFERRED: Major measured-takeoff upgrades should wait until the current launch-critical stability and billing work is settled.
 
 ## Invoice Workflow Status
@@ -218,7 +219,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 ## Remaining Must-Fix Before Launch
 
 - PARTIAL: Keep launch readiness scoped to the PWA/web app path unless the launch-channel decision changes.
-- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. Prioritize final subscription payment/webhook entitlement verification before public paid launch.
+- NEXT: Work from `PRODUCT_AUDIT_BACKLOG.md`. Prioritize warning-only AI Scope Protection / Unsupported Scope Review Guard as the next app-improvement task. Keep final Production Live Mode subscription verification pending before public paid launch.
 - PARTIAL: Verify the final subscription billing path before accepting public paid users.
 - DONE: Subscription checkout, webhook lifecycle handling, entitlement response, Account & Access status display, success/cancel copy, and focused entitlement tests are implemented.
 - DONE: Stripe recurring monthly price setup, `STRIPE_PRO_MONTHLY_PRICE_ID` Vercel env var setup, post-env-var redeploy, and 6-event webhook configuration are complete.
@@ -286,9 +287,10 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 
 ## Recommended Next 10 Codex Tasks In Safest Order
 
-1. NEXT: Final subscription test-mode/live verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
-   - Complete a real subscription checkout/payment in the intended Stripe mode, confirm all required webhook deliveries, and verify the Supabase entitlement row plus `/success`, `/api/entitlement`, and `/app` Account & Access behavior.
-   - Keep this as the final pre-launch billing gate before accepting public paid users.
+1. NEXT: Warning-only AI Scope Protection / Unsupported Scope Review Guard.
+   - Detect unsupported customer-facing scope expansion before send while preserving the AI-generated detailed step-by-step scope, materials, sequencing, and task-description value.
+   - Keep this warning-only / review-only unless a separate task explicitly scopes customer-text cleanup.
+   - Do not rewrite, flatten, shorten, remove, or mutate `result.text`.
 
 2. DONE: Focused non-billing QA polish for the deterministic PriceGuard Review panel.
    - False-positive reduction for generated scope language is complete.
@@ -319,13 +321,13 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 8. PARTIAL: Resolve any remaining non-billing launch blockers found during focused verification.
    - Keep fixes narrowly scoped to verified runtime, production-safety, or launch-readiness failures.
 
-9. PARTIAL: Subscription/free-limit regression tests after final billing verification.
+9. FINAL PRE-LAUNCH GATE: Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md`.
+   - Preview/Test Mode subscription QA has passed, so billing should not block continued product polish.
+   - Before public paid launch, complete a real subscription checkout/payment in the intended Stripe mode, confirm all required webhook deliveries, and verify the Supabase entitlement row plus `/success`, `/api/entitlement`, and `/app` Account & Access behavior.
+
+10. PARTIAL: Subscription/free-limit regression tests after final billing verification.
    - Extend coverage if the manual subscription verification finds gaps beyond the focused entitlement access-rule tests.
    - Cover free users, active Pro, canceled/past-due policy, webhook idempotency, and success-page refresh as needed.
-
-10. PARTIAL: Warning-only deterministic customer-facing scope guard / customer scope cleanup.
-   - Keep this scoped to estimator-facing review or send-readiness guidance unless a separate task explicitly changes customer text.
-   - Do not rewrite `result.text`, pricing, generation behavior, PDFs, approvals, invoices, billing, persistence, or payload shapes.
 
 ## Features We Should Not Rebuild
 
