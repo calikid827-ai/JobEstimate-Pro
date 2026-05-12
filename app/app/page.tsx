@@ -102,7 +102,7 @@ import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
 import { checkScopeQuality } from "./lib/scope-quality-check"
 import { buildPriceGuardReview } from "./lib/priceguard-review"
-import { buildCustomerScopeTradeDriftWarning } from "./lib/customer-scope-drift"
+import { buildCustomerScopeReviewGuard } from "./lib/customer-scope-drift"
 import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
@@ -3478,8 +3478,8 @@ const priceGuardReview = useMemo(() => {
   estimateSections,
 ])
 
-const customerScopeTradeDriftWarning = useMemo(() => {
-  return buildCustomerScopeTradeDriftWarning({
+const customerScopeReviewGuard = useMemo(() => {
+  return buildCustomerScopeReviewGuard({
     selectedTrade: trade,
     writtenScope: scopeChange,
     resultText: result?.text || "",
@@ -3488,6 +3488,7 @@ const customerScopeTradeDriftWarning = useMemo(() => {
     planIntelligence,
   })
 }, [trade, scopeChange, result?.text, estimateSections, scopeXRay, planIntelligence])
+const customerScopeTradeDriftWarning = customerScopeReviewGuard.summary
 
 const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() => {
   if (!result) return []
@@ -3526,6 +3527,10 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
     pushItem({
       label: "Unsupported trade wording",
       message: customerScopeTradeDriftWarning,
+      details: cleanItems(
+        customerScopeReviewGuard.warnings.flatMap((warning) => warning.details || [warning.message]),
+        2
+      ),
     })
   }
 
@@ -3641,6 +3646,7 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
 }, [
   result,
   customerScopeTradeDriftWarning,
+  customerScopeReviewGuard.warnings,
   planIntelligence,
   priceGuardReview,
   schedule,

@@ -31,6 +31,17 @@ type TradeRule = {
   supportPattern: RegExp
 }
 
+export type CustomerScopeReviewWarning = {
+  label: string
+  message: string
+  details?: string[]
+}
+
+export type CustomerScopeReviewGuard = {
+  summary: string | null
+  warnings: CustomerScopeReviewWarning[]
+}
+
 export type BuildCustomerScopeTradeDriftWarningArgs = {
   selectedTrade: UiTrade
   writtenScope: string
@@ -128,6 +139,24 @@ const EXCLUDED_TRADE_PATTERN =
 const SUPPORTED_REMOVAL_TRADE_PATTERN =
   /\b(flooring|lvp|laminate|hardwood|carpet|tile|tiling|paint|painting|drywall|sheetrock|baseboards?|trim|carpentry|wallcovering|wallpaper)\b/i
 
+const ELECTRICAL_SYSTEM_PATTERN =
+  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|wiring|rewire|circuits?|breakers?|electrical\s+panels?|outlets?|receptacles?|switches?)\b/i
+
+const PLUMBING_SYSTEM_PATTERN =
+  /\b(plumbing\s+rough[- ]?in|rough[- ]?in\s+plumbing|water\s+lines?|supply\s+lines?|drains?|drainage|waste\s+lines?|valves?)\b/i
+
+const WALL_FLOOR_REPAIR_PATTERN =
+  /\b(wall\s+repairs?|floor\s+repairs?|flooring\s+repairs?|drywall\s+repairs?|sheetrock\s+repairs?|carpentry\s+repairs?)\b/i
+
+const PAINTING_ADJACENT_DRYWALL_PATTERN =
+  /\b(drywall\s+repairs?|sheetrock\s+repairs?|skim\s+coat|finish\s+level|level\s+[345]|texture\s+match|orange\s+peel|knockdown)\b/i
+
+const MINOR_PAINT_PATCH_PATTERN =
+  /\b(minor|nail[- ]?hole|small)\b.{0,40}\b(patch(?:ing|es)?|repair(?:s)?)\b|\b(patch(?:ing|es)?|repair(?:s)?)\b.{0,40}\b(minor|nail[- ]?hole|small)\b/i
+
+const FLOORING_ADJACENT_PATTERN =
+  /\b(baseboard\s+(replacement|replace|install|installation|repair)|baseboards?\s+(replacement|replace|install|installation|repair)|painting\s+(walls?|trim|baseboards?)|paint\s+(walls?|trim|baseboards?)|carpentry\s+work|trim\s+install|casing|crown)\b/i
+
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
 }
@@ -215,13 +244,90 @@ function formatTradeList(trades: string[]) {
   return `${trades.slice(0, -1).join(", ")}, and ${trades[trades.length - 1]}`
 }
 
-export function buildCustomerScopeTradeDriftWarning(args: BuildCustomerScopeTradeDriftWarningArgs): string | null {
-  if (!String(args.resultText || "").trim()) return null
+function addWarning(warnings: CustomerScopeReviewWarning[], warning: CustomerScopeReviewWarning) {
+  const key = `${warning.label} ${warning.message}`.toLowerCase()
+  if (warnings.some((item) => `${item.label} ${item.message}`.toLowerCase() === key)) return
+  warnings.push(warning)
+}
 
-  const unsupportedTrades = TRADE_RULES.filter(
+function unsupportedTradeRules(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return TRADE_RULES.filter(
     (rule) => hasActionableMention(rule, args.resultText, args) && !isTradeSupported(rule, args)
   )
+}
 
+function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
+  const writtenExcludesTrade = sentenceParts(args.writtenScope).some(
+    (part) => EXCLUDED_TRADE_PATTERN.test(part) && rule.supportPattern.test(part)
+  )
+  if (!writtenExcludesTrade) return false
+
+  if (rule.id === "electrical") {
+    return sentenceParts(args.resultText).some(
+      (part) => ELECTRICAL_SYSTEM_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
+    )
+  }
+  if (rule.id === "plumbing") {
+    return sentenceParts(args.resultText).some(
+      (part) => PLUMBING_SYSTEM_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
+    )
+  }
+
+  return hasActionableMention(rule, args.resultText, args)
+}
+
+function hasWallFloorRepairExclusionConflict(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  const writtenExcludesRepair = sentenceParts(args.writtenScope).some(
+    (part) =>
+      EXCLUDED_TRADE_PATTERN.test(part) &&
+      /\b(wall|walls|floor|floors|flooring|drywall|sheetrock|carpentry|repair|repairs)\b/i.test(part)
+  )
+
+  return (
+    writtenExcludesRepair &&
+    sentenceParts(args.resultText).some(
+      (part) => WALL_FLOOR_REPAIR_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
+    )
+  )
+}
+
+function hasPaintingAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  const paintingRule = TRADE_RULES.find((rule) => rule.id === "painting")
+  const drywallRule = TRADE_RULES.find((rule) => rule.id === "drywall")
+  if (!paintingRule || !drywallRule) return false
+  if (!isTradeSupported(paintingRule, args)) return false
+  if (isTradeSupported(drywallRule, args)) return false
+  if (MINOR_PAINT_PATCH_PATTERN.test(args.resultText) && !PAINTING_ADJACENT_DRYWALL_PATTERN.test(args.resultText)) {
+    return false
+  }
+
+  return sentenceParts(args.resultText).some(
+    (part) => PAINTING_ADJACENT_DRYWALL_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
+  )
+}
+
+function hasFlooringAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  const flooringRule = TRADE_RULES.find((rule) => rule.id === "flooring")
+  const paintingRule = TRADE_RULES.find((rule) => rule.id === "painting")
+  const carpentryRule = TRADE_RULES.find((rule) => rule.id === "carpentry")
+  if (!flooringRule || !paintingRule || !carpentryRule) return false
+  if (!isTradeSupported(flooringRule, args)) return false
+
+  return sentenceParts(args.resultText).some((part) => {
+    if (EXCLUDED_TRADE_PATTERN.test(part)) return false
+    if (!FLOORING_ADJACENT_PATTERN.test(part)) return false
+    const mentionsPainting = /\b(painting\s+(walls?|trim|baseboards?)|paint\s+(walls?|trim|baseboards?))\b/i.test(part)
+    const mentionsCarpentry =
+      /\b(baseboard\s+(replacement|replace|install|installation|repair)|baseboards?\s+(replacement|replace|install|installation|repair)|carpentry\s+work|trim\s+install|casing|crown)\b/i.test(part)
+
+    return (
+      (mentionsPainting && !isTradeSupported(paintingRule, args)) ||
+      (mentionsCarpentry && !isTradeSupported(carpentryRule, args))
+    )
+  })
+}
+
+function buildUnsupportedTradeSummary(unsupportedTrades: TradeRule[]) {
   if (unsupportedTrades.length === 0) return null
 
   const visibleTradeLabels = unsupportedTrades.slice(0, 2).map((rule) => rule.label)
@@ -232,4 +338,74 @@ export function buildCustomerScopeTradeDriftWarning(args: BuildCustomerScopeTrad
       : formatTradeList(visibleTradeLabels)
 
   return `Customer-Facing Scope mentions ${tradeText} work, but ${visibleTradeLabels.length === 1 && extraCount === 0 ? "that trade is" : "those trades are"} not strongly supported by the selected trade, written scope, priced sections, or plan readback. Review this wording before sending.`
+}
+
+export function buildCustomerScopeReviewGuard(
+  args: BuildCustomerScopeTradeDriftWarningArgs
+): CustomerScopeReviewGuard {
+  if (!String(args.resultText || "").trim()) {
+    return { summary: null, warnings: [] }
+  }
+
+  const warnings: CustomerScopeReviewWarning[] = []
+  const unsupportedTrades = unsupportedTradeRules(args)
+
+  for (const rule of TRADE_RULES) {
+    if (!tradeExclusionConflict(rule, args)) continue
+
+    addWarning(warnings, {
+      label: "Excluded scope conflict",
+      message: `Written scope appears to exclude ${rule.label} work, but Customer-Facing Scope includes ${rule.label} system work. Review before sending.`,
+      details: [`Confirm whether ${rule.label} work is excluded, by others, or actually included before customer output.`],
+    })
+  }
+
+  if (hasWallFloorRepairExclusionConflict(args)) {
+    addWarning(warnings, {
+      label: "Excluded repair conflict",
+      message:
+        "Written scope appears to exclude wall, floor, drywall, flooring, or carpentry repair, but Customer-Facing Scope includes repair wording. Review before sending.",
+      details: ["Confirm excluded repairs are not being promised in the customer-facing scope."],
+    })
+  }
+
+  if (hasPaintingAdjacentExpansion(args)) {
+    addWarning(warnings, {
+      label: "Adjacent drywall expansion",
+      message:
+        "Customer-Facing Scope appears to expand a painting scope into drywall repair, skim coat, texture match, or finish-level work without strong support.",
+      details: ["Minor nail-hole patching is okay, but drywall finishing or texture work should be confirmed before sending."],
+    })
+  }
+
+  if (hasFlooringAdjacentExpansion(args)) {
+    addWarning(warnings, {
+      label: "Adjacent flooring expansion",
+      message:
+        "Customer-Facing Scope appears to expand a flooring scope into baseboard replacement, painting, or carpentry work without strong support.",
+      details: ["Base shoe and transitions are okay when scoped; baseboard replacement, painting, or carpentry should be confirmed before sending."],
+    })
+  }
+
+  if (unsupportedTrades.length > 0) {
+    addWarning(warnings, {
+      label: "Unsupported trade wording",
+      message: buildUnsupportedTradeSummary(unsupportedTrades) || "",
+      details: unsupportedTrades
+        .slice(0, 2)
+        .map((rule) => `Generated customer scope mentions ${rule.label} work without strong typed, priced, or plan-readback support.`),
+    })
+  }
+
+  const summary =
+    warnings[0]?.message || buildUnsupportedTradeSummary(unsupportedTrades)
+
+  return {
+    summary: summary || null,
+    warnings,
+  }
+}
+
+export function buildCustomerScopeTradeDriftWarning(args: BuildCustomerScopeTradeDriftWarningArgs): string | null {
+  return buildCustomerScopeReviewGuard(args).summary
 }
