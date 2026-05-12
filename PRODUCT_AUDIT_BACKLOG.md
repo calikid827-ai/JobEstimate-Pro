@@ -12,9 +12,9 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active app-improvement task: add warning-only AI Scope Protection / Unsupported Scope Review Guard.
-2. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-3. Add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
+1. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+2. Next active app-improvement task: add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
+3. Keep warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
 
@@ -318,17 +318,26 @@ Remaining/PENDING note:
 
 ### 5. Customer-Facing Output Safety
 
-#### Item: Deterministic customer-facing scope guard
+#### Item: Warning-only AI Scope Protection / Unsupported Scope Review Guard
 
 - Problem: AI-polished Customer-Facing Scope can still drift from supported scope.
 - Why it matters: Customer output should not overpromise unsupported work.
 - Risk level: Medium
 - Priority: P1
 - Recommended fix approach: Add warning-only AI Scope Protection / Unsupported Scope Review Guard before send. Detect unsupported trade/scope expansion while preserving the AI-generated detailed step-by-step scope, materials, sequencing, and task-description value. Do not rewrite, flatten, shorten, remove, or mutate `result.text` unless a later task explicitly scopes customer-text cleanup.
-- Exact files/components likely involved: `app/app/page.tsx`, possible new client helper.
+- Exact files/components likely involved: `app/app/page.tsx`, `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`
 - What not to touch: Generation prompt, pricing, PDFs/approvals unless task explicitly includes output changes.
 - Tests or manual QA needed: Unsupported trade language regression cases.
-- Status: Not started
+- Status: Done
+
+Done note:
+
+- Commit `e2f1ef1` added the warning-only AI Scope Protection / Unsupported Scope Review Guard.
+- The guard extends `app/app/lib/customer-scope-drift.ts` with structured estimator-facing review warnings via `buildCustomerScopeReviewGuard` while preserving `buildCustomerScopeTradeDriftWarning`.
+- It detects explicit electrical/plumbing exclusion conflicts, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without mutating `result.text`.
+- Customer-Facing Scope still shows one compact estimator-facing warning above the AI-generated scope when needed, and Customer Output Readiness receives capped supporting details.
+- Validation passed: focused customer-scope drift tests passed 29/29, `npx tsc --noEmit` passed, and `git diff --check` passed. Manual QA covered painting minor patching, painting drywall/texture exclusion, flooring base shoe/transitions, and General Renovation excluded-scope expansion.
+- The guard did not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 
 ### 6. Plan Intelligence / Plan Review Support
 

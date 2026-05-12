@@ -1009,3 +1009,79 @@ Result:
 Final decision:
 - Result-page hierarchy cleanup passes.
 - The generated estimate now gives contractors a faster primary send workflow while preserving the full estimator review and diagnostics stack for follow-up review.
+
+## Test Entry 12 — Warning-Only AI Scope Protection / Unsupported Scope Review Guard
+
+Status: PASS
+
+Commit:
+- `e2f1ef1` Add warning-only AI scope protection guard
+
+Scope:
+- Warning-only AI Scope Protection / Unsupported Scope Review Guard.
+- Extended `app/app/lib/customer-scope-drift.ts` with structured estimator-facing review warnings.
+- Added `buildCustomerScopeReviewGuard` while preserving `buildCustomerScopeTradeDriftWarning`.
+- Kept existing multi-trade unsupported drift warning behavior.
+- Added detection for:
+  - explicit electrical exclusion conflicts.
+  - explicit plumbing exclusion conflicts.
+  - wall/floor/drywall/flooring/carpentry repair exclusions.
+  - painting scope expanding into drywall repair, skim coat, texture match, or finish-level work.
+  - flooring scope expanding into baseboard replacement, painting, or carpentry work.
+  - bathroom/tile scope expanding into unsupported electrical/plumbing rough-in.
+  - General Renovation not automatically supporting every trade without written, priced, Scope X-Ray, or plan-readback support.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed.
+- Focused customer-scope drift tests passed 29/29 with 0 failed.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- `git status` before commit showed only:
+  - `app/app/lib/customer-scope-drift.ts`
+  - `app/app/lib/customer-scope-drift.test.ts`
+  - `app/app/page.tsx`
+
+Manual QA:
+
+### Test 1 — Painting Minor Nail-Hole Patching
+
+Result:
+- PASS.
+- No warning appeared when scope only included normal minor nail-hole patching.
+- AI-generated detailed scope stayed intact.
+- Customer Output Readiness remained visible before pricing.
+- Pricing/PDF and schedule remained in the improved result hierarchy.
+
+### Test 2 — Painting With Drywall Repair / Texture Matching Excluded
+
+Result:
+- PASS.
+- Warning appeared above Customer-Facing Scope when the AI mentioned drywall-related work despite exclusions.
+- Customer Output Readiness showed unsupported trade wording details.
+- `result.text` remained unchanged and visible.
+
+### Test 3 — Flooring With Base Shoe / Transitions
+
+Result:
+- PASS.
+- No false-positive warning appeared for base shoe/transitions when included in written scope.
+- Customer-Facing Scope stayed detailed.
+- Pricing/PDF and schedule remained easy to find.
+
+### Test 4 — General Renovation With Wall/Floor Repair Excluded And Electrical By Others
+
+Result:
+- PASS.
+- Warning appeared above Customer-Facing Scope when generated text included repair wording or unsupported expansion.
+- Customer Output Readiness showed supporting review details.
+- Pricing/PDF, schedule, Estimator review details, Estimator Diagnostics, Jobs, Invoices, and Saved Estimates remained available.
+
+Final decision:
+- The warning-only AI Scope Protection guard passes.
+- The guard protects the contractor with estimator-facing warnings only.
+- Customer-Facing Scope still shows one compact warning above `result.text` when needed.
+- Customer Output Readiness receives capped supporting details, at most 1-2 useful details.
+- `result.text` is not rewritten, shortened, flattened, removed, hidden, or mutated.
+- Generate is not blocked.
+- PDF and approval output were not changed.
+- This did not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.

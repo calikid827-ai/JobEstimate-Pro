@@ -41,10 +41,10 @@ Difficulty levels:
 ## Current Next Active Tasks
 
 1. NEXT: Use `PRODUCT_AUDIT_BACKLOG.md` as the master improvement tracker and work the next launch-safe product intelligence task one focused pass at a time.
-2. Next active product-improvement task: warning-only AI Scope Protection / Unsupported Scope Review Guard for customer-facing scope drift.
+2. Next active product-improvement task: PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
 3. Keep final Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md` pending as the final pre-launch gate before accepting public paid users.
 4. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-5. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
+5. Keep warning-only AI scope protection under regression watch while preserving detailed AI-generated step-by-step customer scope prose as a core product strength.
 
 Completed pre-launch task kept visible:
 
@@ -81,6 +81,7 @@ Completed pre-launch task kept visible:
 - DONE: Customer Output Readiness dedupe/grouping cleanup is complete and tested. The panel now dedupes details across readiness items, caps details at 2 per item, stays capped at 6 items, keeps unsupported trade wording visible, and makes assumptions/exclusions a clearer pre-send boundary checkpoint without changing pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 - DONE: Trade-aware scope quality review is complete with focused scope-quality and PriceGuard propagation tests passing 12/12. It keeps the existing review-only output shape and does not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Result-page hierarchy cleanup is complete and tested. The generated result page now prioritizes Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule; full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`; AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`; Jobs, Invoices, and Saved Estimates placement is unchanged. `npx tsc --noEmit`, `git diff --check`, and manual QA for a simple painting estimate plus Marina Dunes plan-assisted estimate passed. This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+- DONE: Warning-only AI Scope Protection / Unsupported Scope Review Guard is complete in commit `e2f1ef1`. It adds structured estimator-facing review warnings for unsupported customer-facing scope expansion while preserving the AI-generated detailed step-by-step scope, materials language, sequencing, and work-description detail in `result.text`. Customer-Facing Scope keeps one compact warning above the text when needed, and Customer Output Readiness receives capped supporting details. Focused customer-scope drift tests passed 29/29, `npx tsc --noEmit` passed, `git diff --check` passed, and manual QA passed.
 
 ## 1. Critical Fixes
 

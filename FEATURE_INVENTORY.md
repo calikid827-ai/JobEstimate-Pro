@@ -50,6 +50,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Carpentry/general renovation path
 - Scope entry with smart generation.
 - AI-generated customer-facing scope descriptions with useful step-by-step task sequencing, materials language, and work-description detail. This detailed estimator prose is a core product strength to preserve; safety guards should review unsupported expansion rather than automatically flattening, shortening, removing, or rewriting `result.text`.
+- Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -94,6 +95,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Pre-generation fallback state
 - Customer Output Readiness provides an estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing customer output or pricing.
   - Details are deduped across readiness items, capped at 2 per item, and the panel remains capped at 6 items so it stays a compact pre-send checklist rather than duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
+  - Warning-only AI Scope Protection can send capped supporting details into Customer Output Readiness so contractors see 1-2 useful review reasons before Pricing/PDF without hiding or rewriting Customer-Facing Scope.
 - Generated estimate result hierarchy now prioritizes the primary send workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. Unsupported trade drift warnings remain visible above Customer-Facing Scope when present. Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
 - Tax controls.
 - Deposit controls.
@@ -136,7 +138,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Subscription billing foundation is implemented, including subscription checkout, subscription-aware entitlement response, Account & Access status, success/cancel copy, and focused entitlement tests. Preview/Test Mode subscription checkout/webhook entitlement QA has passed; final Production Live Mode verification remains pending before public paid launch.
 - There is still no billing portal or full auth-backed account/workspace system.
 - Plan intelligence readback is rich in the app UI and represented in generated estimate PDFs through a customer-safe Estimator Plan Review and compact plan evidence summary.
-- AI-generated scope prose can still be generic or occasionally over-expanded even when typed plan readback is stronger. The product direction is to preserve useful AI-generated sequencing/material/task detail while adding warning-only review for unsupported expansion.
+- AI-generated scope prose can still be generic or occasionally over-expanded even when typed plan readback is stronger, but the current warning-only guard now flags clear unsupported expansion before customer output. The product direction remains to preserve useful AI-generated sequencing/material/task detail and add estimator-facing review rather than rewriting `result.text`.
 - Jobs, estimates, invoices, budgets, and actuals remain local-first outside the server-backed approval snapshot workflow.
 - Some advanced analysis panels are more diagnostic than customer-facing.
 - README documents the product, local development, environment variables, API routes, Stripe webhook notes, Supabase expectations, approval links, plan upload/rendering notes, localStorage keys, limitations, and development guidance.
@@ -540,7 +542,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Warning-only AI Scope Protection / Unsupported Scope Review Guard for customer-facing scope drift. Preserve useful AI-generated detailed scope descriptions and detect unsupported expansion without rewriting `result.text`.
+- PriceGuard trade-specific missed-scope checks as review-only estimator guidance. Warning-only AI Scope Protection / Unsupported Scope Review Guard is now implemented; keep it under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
