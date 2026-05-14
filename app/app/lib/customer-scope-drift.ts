@@ -157,6 +157,30 @@ const MINOR_PAINT_PATCH_PATTERN =
 const FLOORING_ADJACENT_PATTERN =
   /\b(baseboard\s+(replacement|replace|install|installation|repair)|baseboards?\s+(replacement|replace|install|installation|repair)|painting\s+(walls?|trim|baseboards?)|paint\s+(walls?|trim|baseboards?)|carpentry\s+work|trim\s+install|casing|crown)\b/i
 
+const NON_SCOPE_CONTEXT_PATTERN =
+  /\b(protect(?:ing|ion)?|safeguard(?:ing)?|cover(?:ing)?|mask(?:ing)?|adjacent\s+finishes?|avoid(?:ing)?\s+interference|no\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|work(?:ing)?\s+around|around\s+existing|existing\s+(?:flooring|floors?|baseboards?|trim|cabinetry|cabinets?|door\s+jambs?|closets?|transitions?))\b/i
+
+const FLOORING_CONTEXT_ONLY_PATTERN =
+  /\b(protect(?:ing|ion)?|safeguard(?:ing)?|cover(?:ing)?|work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference)\b.{0,80}\b(flooring|floors?|lvp|laminate|hardwood|carpet|transitions?)\b|\b(flooring|floors?|lvp|laminate|hardwood|carpet|transitions?)\b.{0,80}\b(protect(?:ing|ion)?|safeguard(?:ing)?|cover(?:ing)?|work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference)\b/i
+
+const FLOORING_TRUE_WORK_PATTERN =
+  /\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|level(?:ing)?)\s+(?:\w+\s+){0,3}(flooring|floors?|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b|\b(flooring|floors?|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\s+(?:\w+\s+){0,3}(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|level(?:ing)?)\b|\bunderlayment\b/i
+
+const ELECTRICAL_CONTEXT_ONLY_PATTERN =
+  /\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b.{0,80}\b(electrical|electrician|wiring|outlets?|switches?|lighting|fixtures?)\b|\b(electrical|electrician|wiring|outlets?|switches?|lighting|fixtures?)\b.{0,80}\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b/i
+
+const PLUMBING_CONTEXT_ONLY_PATTERN =
+  /\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b.{0,80}\b(plumbing|plumber|water\s+lines?|supply\s+lines?|drains?|valves?|fixtures?)\b|\b(plumbing|plumber|water\s+lines?|supply\s+lines?|drains?|valves?|fixtures?)\b.{0,80}\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b/i
+
+const PLUMBING_TRUE_WORK_PATTERN =
+  /\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|rough[- ]?in|plumb(?:ing)?|connect(?:ion|ing)?|reconnect(?:ion|ing)?|valves?|drains?|supply\s+lines?|water\s+lines?)\b.{0,60}\b(plumbing|plumber|fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|showers?|tubs?)\b|\b(plumbing|plumber|fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|showers?|tubs?)\b.{0,60}\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|rough[- ]?in|plumb(?:ing)?|connect(?:ion|ing)?|reconnect(?:ion|ing)?|valves?|drains?|supply\s+lines?|water\s+lines?)\b/i
+
+const CARPENTRY_CONTEXT_ONLY_PATTERN =
+  /\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b|\b(door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b.{0,100}\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b/i
+
+const CARPENTRY_TRUE_WORK_PATTERN =
+  /\b(baseboards?|casing|crown|trim|doors?|shelving|millwork|cabinetry|cabinets?)\s+(replacement|replace|install(?:ation|ing)?|repair(?:ing|s)?)\b|\b(replace(?:ment|ing)?|install(?:ation|ing)?|repair(?:ing|s)?)\s+(?:\w+\s+){0,2}(baseboards?|casing|crown|trim|doors?|shelving|millwork|cabinetry|cabinets?)\b|\b(framing|blocking|carpentry\s+work)\b/i
+
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
 }
@@ -216,10 +240,30 @@ function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCust
   )
 }
 
+function isNonScopeContextMention(part: string, rule: TradeRule) {
+  if (!NON_SCOPE_CONTEXT_PATTERN.test(part)) return false
+
+  if (rule.id === "flooring") {
+    return FLOORING_CONTEXT_ONLY_PATTERN.test(part) && !FLOORING_TRUE_WORK_PATTERN.test(part)
+  }
+  if (rule.id === "electrical") {
+    return ELECTRICAL_CONTEXT_ONLY_PATTERN.test(part) && !ELECTRICAL_SYSTEM_PATTERN.test(part)
+  }
+  if (rule.id === "plumbing") {
+    return PLUMBING_CONTEXT_ONLY_PATTERN.test(part) && !PLUMBING_TRUE_WORK_PATTERN.test(part)
+  }
+  if (rule.id === "carpentry") {
+    return CARPENTRY_CONTEXT_ONLY_PATTERN.test(part) && !CARPENTRY_TRUE_WORK_PATTERN.test(part)
+  }
+
+  return false
+}
+
 function hasActionableMention(rule: TradeRule, resultText: string, args: BuildCustomerScopeTradeDriftWarningArgs) {
   return sentenceParts(resultText).some((part) => {
     if (!rule.mentionPattern.test(part)) return false
     if (EXCLUDED_TRADE_PATTERN.test(part)) return false
+    if (isNonScopeContextMention(part, rule)) return false
     if (rule.id === "bathroom_tile" && /\bbathrooms?\b/i.test(part) && !rule.supportPattern.test(part)) return false
     if (rule.id === "electrical" && /\bfixtures?\b/i.test(part) && !rule.supportPattern.test(part)) return false
     if (rule.id === "plumbing" && /\bfixtures?\b/i.test(part) && !rule.supportPattern.test(part)) return false

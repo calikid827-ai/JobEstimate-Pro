@@ -205,6 +205,42 @@ test("warns for unsupported flooring drift", () => {
   )
 })
 
+test("does not warn when plumbing scope mentions flooring protection only", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and vanity faucet. Wall repair excluded.",
+      resultText:
+        "Customer-facing scope includes plumbing fixture replacement, protection for existing flooring, safeguard adjacent finishes, cleanup, and customer approval.",
+    }),
+    null
+  )
+})
+
+test("does not warn when plumbing scope mentions no electrical interference only", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and vanity faucet. Electrical by others.",
+      resultText:
+        "Customer-facing scope includes plumbing fixture replacement with no interference with electrical fixtures or cabinetry.",
+    }),
+    null
+  )
+})
+
+test("does not warn when flooring scope mentions finish coordination only", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "flooring",
+      writtenScope: "Install 650 sq ft LVP. Include transitions and base shoe. Owner supplies flooring.",
+      resultText:
+        "Customer-facing scope includes LVP installation while working around door jambs, closets, transitions, and existing baseboard finishes.",
+    }),
+    null
+  )
+})
+
 test("warns for unsupported painting drift", () => {
   assert.match(
     warning({
@@ -236,6 +272,38 @@ test("warns when flooring scope expands into baseboard replacement or painting",
 
   assert.match(review.summary || "", /baseboard replacement|painting|carpentry/i)
   assert.match(review.warnings.map((item) => item.label).join(" | "), /Adjacent flooring expansion/)
+})
+
+test("true electrical rough-in still warns when unsupported", () => {
+  assert.match(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and faucet.",
+      resultText: "Customer-facing scope includes electrical rough-in for vanity lighting.",
+    }) || "",
+    /electrical/
+  )
+})
+
+test("true flooring repair still warns when unsupported", () => {
+  assert.match(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and faucet.",
+      resultText: "Customer-facing scope includes flooring repair at the vanity area.",
+    }) || "",
+    /flooring/
+  )
+})
+
+test("true baseboard replacement still warns when unsupported", () => {
+  const review = guard({
+    selectedTrade: "flooring",
+    writtenScope: "Install 650 sq ft LVP. Include transitions only. Owner supplies flooring.",
+    resultText: "Customer-facing scope includes LVP installation and baseboard replacement.",
+  })
+
+  assert.match(review.summary || "", /baseboard replacement|carpentry/i)
 })
 
 test("warns for unsupported bathroom tile drift", () => {

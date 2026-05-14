@@ -37,6 +37,7 @@ export type PriceGuardReview = {
 
 export type BuildPriceGuardReviewArgs = {
   hasResult: boolean
+  selectedTrade?: string
   scopeText: string
   resultText?: string
   pricing: PricingInput
@@ -73,6 +74,264 @@ function normalize(value: string) {
 
 function hasAny(text: string, words: string[]) {
   return words.some((word) => text.includes(word))
+}
+
+function matchesAny(text: string, patterns: RegExp[]) {
+  return patterns.some((pattern) => pattern.test(text))
+}
+
+type PriceGuardTradeGroup =
+  | "painting"
+  | "drywall"
+  | "flooring"
+  | "electrical"
+  | "plumbing"
+  | "bathroom_tile"
+  | "wallcovering"
+  | "carpentry"
+  | "general_renovation"
+  | null
+
+function resolvePriceGuardTrade(selectedTrade: string | undefined, text: string): PriceGuardTradeGroup {
+  const selected = normalize(selectedTrade || "")
+
+  if (selected === "painting") return "painting"
+  if (selected === "drywall") return "drywall"
+  if (selected === "flooring") return "flooring"
+  if (selected === "electrical") return "electrical"
+  if (selected === "plumbing") return "plumbing"
+  if (selected === "bathroom_tile" || selected === "tile") return "bathroom_tile"
+  if (selected === "wallcovering" || selected === "wallpaper") return "wallcovering"
+  if (selected === "carpentry") return "carpentry"
+  if (selected === "general_renovation" || selected === "general") return "general_renovation"
+
+  if (hasAny(text, ["wallpaper", "wallcovering", "wall covering", "vinyl wallcovering"])) {
+    return "wallcovering"
+  }
+  if (hasAny(text, ["shower", "tub", "tile", "waterproof", "waterproofing", "bathroom remodel"])) {
+    return "bathroom_tile"
+  }
+  if (hasAny(text, ["outlet", "receptacle", "switch", "circuit", "breaker", "panel", "wiring", "lighting"])) {
+    return "electrical"
+  }
+  if (hasAny(text, ["toilet", "faucet", "sink", "vanity", "drain", "supply line", "plumbing"])) {
+    return "plumbing"
+  }
+  if (hasAny(text, ["lvp", "laminate", "hardwood", "carpet", "flooring", "transition strip", "underlayment"])) {
+    return "flooring"
+  }
+  if (hasAny(text, ["drywall", "sheetrock", "gypsum", "texture match", "level 5", "level five"])) {
+    return "drywall"
+  }
+  if (hasAny(text, ["baseboard", "baseboards", "casing", "crown", "shelving", "cabinet install"])) {
+    return "carpentry"
+  }
+  if (hasAny(text, ["paint", "painting", "coat", "primer", "prime", "walls", "ceilings", "trim"])) {
+    return "painting"
+  }
+  if (hasAny(text, ["renovation", "remodel", "ada", "unit", "per plans"])) {
+    return "general_renovation"
+  }
+
+  return null
+}
+
+function hasQuantityDetail(text: string) {
+  return matchesAny(text, [
+    /\b\d+(\.\d+)?\s?(sq\.?\s?ft|sf|square feet|square foot|lf|linear feet|linear foot|ln ft)\b/,
+    /\b\d+\s?(rooms?|areas?|walls?|ceilings?|doors?|windows?|outlets?|switches?|fixtures?|lights?|receptacles?|circuits?|sinks?|toilets?|faucets?|vanities?|showers?|patches?)\b/,
+    /\b\d+(\.\d+)?\s+(?:[a-z]+\s+){1,3}(rooms?|areas?|walls?|ceilings?|doors?|windows?|outlets?|switches?|fixtures?|lights?|receptacles?|circuits?|sinks?|toilets?|faucets?|vanities?|showers?|patches?)\b/,
+  ]) || hasAny(text, ["per plan", "per plans", "selected sheets"])
+}
+
+function hasMaterialBoundary(text: string) {
+  return hasAny(text, [
+    "owner supplied",
+    "owner-supplied",
+    "customer supplied",
+    "contractor supplied",
+    "contractor-supplied",
+    "by owner",
+    "allowance",
+    "material selection",
+    "finish selection",
+    "supplied by",
+    "provide",
+  ])
+}
+
+function hasExclusionBoundary(text: string) {
+  return hasAny(text, [
+    "exclude",
+    "excludes",
+    "excluded",
+    "not included",
+    "by others",
+    "by owner",
+    "allowance",
+    "hidden damage",
+    "unless approved",
+    "work by others",
+  ])
+}
+
+function hasPermitBoundary(text: string) {
+  return hasAny(text, ["permit", "permits", "inspection", "inspections", "code", "utility coordination"])
+}
+
+function addTradeReviewNote(
+  target: string[],
+  warning: string,
+  scoreChange: { value: number },
+  penalty = 3
+) {
+  const before = target.length
+  addUnique(target, warning, 6)
+  if (target.length > before) scoreChange.value -= penalty
+}
+
+function applyTradeSpecificMissedScopeChecks(args: {
+  trade: PriceGuardTradeGroup
+  text: string
+  missedScopeWarnings: string[]
+  scopeClarityWarnings: string[]
+  suggestedExclusions: string[]
+  contractorRiskNotes: string[]
+  score: { value: number }
+}) {
+  const {
+    trade,
+    text,
+    missedScopeWarnings,
+    scopeClarityWarnings,
+    suggestedExclusions,
+    contractorRiskNotes,
+    score,
+  } = args
+
+  if (!trade) return
+
+  if (trade === "painting") {
+    if (!hasAny(text, ["wall", "walls", "ceiling", "ceilings", "trim", "door", "doors", "cabinet", "exterior", "siding"])) {
+      addTradeReviewNote(scopeClarityWarnings, "Painting scope should confirm included surfaces before sending.", score)
+    }
+    if (!hasAny(text, ["coat", "coats", "primer", "prime", "finish", "sheen"])) {
+      addTradeReviewNote(missedScopeWarnings, "Paint system, coat count, or finish sheen is not clearly stated.", score)
+    }
+    if (!hasAny(text, ["mask", "protect", "protection", "cover", "plastic", "drop cloth", "occupied"])) {
+      addTradeReviewNote(missedScopeWarnings, "Masking/protection for adjacent finishes or occupied areas is not clearly stated.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm paint/material supply and finish selection responsibility.", score)
+    }
+  } else if (trade === "drywall") {
+    if (!hasQuantityDetail(text) && !hasAny(text, ["small patch", "medium patch", "large patch"])) {
+      addTradeReviewNote(scopeClarityWarnings, "Drywall scope should confirm patch count, sheet count, or affected square footage.", score)
+    }
+    if (!hasAny(text, ["level 3", "level 4", "level 5", "level three", "level four", "level five", "texture", "smooth", "orange peel", "knockdown", "match"])) {
+      addTradeReviewNote(missedScopeWarnings, "Drywall finish level or texture match is not clearly stated.", score)
+    }
+    if (!hasAny(text, ["paint excluded", "painting excluded", "paint by others", "prime", "primer", "paint"])) {
+      addTradeReviewNote(suggestedExclusions, "Clarify whether primer/paint is included or by others after drywall work.", score)
+    }
+    if (!hasAny(text, ["dust", "protection", "containment", "plastic"])) {
+      addTradeReviewNote(missedScopeWarnings, "Drywall dust protection, cleanup, or debris handling is not clearly stated.", score)
+    }
+  } else if (trade === "flooring") {
+    if (!hasAny(text, ["lvp", "vinyl", "laminate", "hardwood", "engineered", "tile", "carpet", "flooring product", "floor material"])) {
+      addTradeReviewNote(scopeClarityWarnings, "Flooring product type and finish selection should be confirmed.", score)
+    }
+    if (!hasAny(text, ["remove", "removal", "demo", "demolition", "tear out", "tear-out", "existing"])) {
+      addTradeReviewNote(missedScopeWarnings, "Existing flooring removal and disposal are not clearly stated.", score)
+    }
+    if (!hasAny(text, ["subfloor", "level", "leveling", "prep", "underlayment", "moisture"])) {
+      addTradeReviewNote(missedScopeWarnings, "Subfloor prep, leveling, underlayment, or moisture assumptions are not clearly stated.", score)
+    }
+    if (!hasAny(text, ["base", "baseboard", "baseboards", "shoe", "quarter round", "transition", "transitions", "threshold"])) {
+      addTradeReviewNote(missedScopeWarnings, "Base, shoe, thresholds, and transitions are not clearly addressed.", score)
+    }
+  } else if (trade === "electrical") {
+    if (!hasQuantityDetail(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Electrical scope should confirm device, fixture, circuit, or panel counts.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm whether fixtures, devices, lamps, and trims are contractor-supplied or owner-supplied.", score)
+    }
+    if (!hasAny(text, ["access", "open wall", "open ceiling", "attic", "crawl", "surface mount", "conduit", "fishing", "patch", "patching"])) {
+      addTradeReviewNote(missedScopeWarnings, "Electrical access and wall/ceiling patching responsibility are not clearly stated.", score)
+    }
+    if (!hasPermitBoundary(text)) {
+      addTradeReviewNote(suggestedExclusions, "Clarify permit, inspection, code, and utility coordination assumptions for electrical work.", score)
+    }
+  } else if (trade === "plumbing") {
+    if (!hasQuantityDetail(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Plumbing scope should confirm fixture, valve, drain, supply, or rough-in counts.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm whether fixtures, valves, trims, and plumbing materials are contractor-supplied or owner-supplied.", score)
+    }
+    if (!hasAny(text, ["access", "open wall", "open ceiling", "crawl", "slab", "patch", "wall repair", "floor repair", "tile repair"])) {
+      addTradeReviewNote(missedScopeWarnings, "Plumbing access and wall/floor/tile repair responsibility are not clearly stated.", score)
+    }
+    if (!hasAny(text, ["shutoff", "shut off", "water shut", "permit", "inspection", "code"])) {
+      addTradeReviewNote(suggestedExclusions, "Clarify shutoff, permit, inspection, and code assumptions for plumbing work.", score)
+    }
+  } else if (trade === "bathroom_tile") {
+    if (!hasAny(text, ["demo", "demolition", "remove", "removal", "tear out", "tear-out", "haul", "disposal"])) {
+      addTradeReviewNote(missedScopeWarnings, "Bathroom/tile demolition, haul-off, and disposal are not clearly stated.", score)
+    }
+    if (!hasAny(text, ["waterproof", "waterproofing", "membrane", "pan", "backer", "cement board", "substrate", "mud bed"])) {
+      addTradeReviewNote(missedScopeWarnings, "Waterproofing, backer board, pan, or substrate prep is not clearly stated.", score)
+    }
+    if (!hasAny(text, ["fixture", "fixtures", "toilet", "vanity", "faucet", "valve", "plumbing", "electrical", "fan", "light"])) {
+      addTradeReviewNote(scopeClarityWarnings, "Fixture, plumbing, and electrical boundaries should be confirmed for bathroom/tile work.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm tile, grout, trim, fixture, and finish material responsibility.", score)
+    }
+    if (!hasExclusionBoundary(text)) {
+      addTradeReviewNote(suggestedExclusions, "Clarify exclusions for glass, accessories, hidden damage, plumbing, electrical, and finish upgrades.", score)
+    }
+  } else if (trade === "wallcovering") {
+    if (!hasQuantityDetail(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Wallcovering scope should confirm wall area, linear footage, or affected rooms.", score)
+    }
+    if (!hasAny(text, ["remove", "removal", "strip", "existing", "skim", "prime", "primer", "substrate", "wall condition", "repair"])) {
+      addTradeReviewNote(missedScopeWarnings, "Existing wallcovering removal, wall repair, or substrate prep is not clearly stated.", score)
+    }
+    if (!hasAny(text, ["pattern", "repeat", "match", "seam", "seams", "waste", "layout"])) {
+      addTradeReviewNote(missedScopeWarnings, "Pattern repeat, seam layout, matching, and waste assumptions are not clearly stated.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm wallcovering material, adhesive, and finish selection responsibility.", score)
+    }
+  } else if (trade === "carpentry") {
+    if (!hasQuantityDetail(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Carpentry scope should confirm item count, linear footage, or affected areas.", score)
+    }
+    if (!hasAny(text, ["paint", "stain", "finish", "caulk", "fill", "patch", "hardware"])) {
+      addTradeReviewNote(missedScopeWarnings, "Carpentry finish, caulk, paint/stain, patching, or hardware responsibility is not clearly stated.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm wood, trim, hardware, and finish material responsibility.", score)
+    }
+  } else if (trade === "general_renovation") {
+    if (!hasAny(text, ["paint", "drywall", "floor", "flooring", "tile", "plumbing", "electrical", "carpentry", "fixture", "fixtures", "demo", "finish", "finishes"])) {
+      addTradeReviewNote(scopeClarityWarnings, "General renovation scope should confirm which trades are included.", score)
+    }
+    if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in"])) {
+      addTradeReviewNote(missedScopeWarnings, "Renovation demolition, prep, rough-in, and finish-work limits are not clearly stated.", score)
+    }
+    if (!hasMaterialBoundary(text)) {
+      addTradeReviewNote(scopeClarityWarnings, "Confirm finish selections, fixture responsibility, and material allowances.", score)
+    }
+    if (!hasExclusionBoundary(text)) {
+      addTradeReviewNote(suggestedExclusions, "Clarify exclusions, allowances, permits, hidden damage, and work by others.", score)
+    }
+    if (!hasAny(text, ["schedule", "sequence", "sequencing", "phasing", "rough-in", "inspection", "return trip"])) {
+      addTradeReviewNote(contractorRiskNotes, "Multi-trade sequencing or return-trip assumptions should be reviewed before sending.", score)
+    }
+  }
 }
 
 function resolvedScopeQualityWarning(warning: string, reviewedText: string) {
@@ -303,6 +562,7 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
   const customerPriceDefenseNotes: string[] = []
   const contractorRiskNotes: string[] = []
   let score = 100
+  const scoreChange = { value: score }
 
   if (!scopeText || scopeText.length < 35) {
     addUnique(scopeClarityWarnings, "Scope description is short. Add affected rooms, quantities, surfaces, and finish expectations.")
@@ -322,6 +582,18 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     addUnique(scopeClarityWarnings, "Scope uses vague wording. Replace open-ended language with specific included work.")
     score -= 8
   }
+
+  scoreChange.value = score
+  applyTradeSpecificMissedScopeChecks({
+    trade: resolvePriceGuardTrade(args.selectedTrade, combinedText),
+    text: combinedText,
+    missedScopeWarnings,
+    scopeClarityWarnings,
+    suggestedExclusions,
+    contractorRiskNotes,
+    score: scoreChange,
+  })
+  score = scoreChange.value
 
   if (!hasAny(combinedText, ["prep", "preparation", "prepare", "patch", "repair", "sand", "demo", "remove", "scrape", "caulk", "fill", "prime", "substrate"])) {
     addUnique(missedScopeWarnings, "Prep or demolition expectations are not clearly stated.")

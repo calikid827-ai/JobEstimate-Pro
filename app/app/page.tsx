@@ -3432,6 +3432,7 @@ const smartPricingReasons = useMemo(() => {
 const priceGuardReview = useMemo(() => {
   return buildPriceGuardReview({
     hasResult: Boolean(result),
+    selectedTrade: trade,
     scopeText: scopeChange,
     resultText: result?.text || "",
     pricing,
@@ -3458,6 +3459,7 @@ const priceGuardReview = useMemo(() => {
   })
 }, [
   result,
+  trade,
   scopeChange,
   pricing,
   schedule,
