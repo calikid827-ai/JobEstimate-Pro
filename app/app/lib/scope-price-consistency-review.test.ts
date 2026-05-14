@@ -283,6 +283,21 @@ test("owner-supplied LVP creates material responsibility note only", () => {
   assert.doesNotMatch(text, /materials list includes flooring items/)
 })
 
+test("contractor-supplied paint does not create owner material responsibility note", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint walls in hallway. Two coats. Contractor-supplied paint.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint walls in hallway." }],
+    }),
+    materialsList: materials(["Interior paint / primer", "Masking tape"]),
+    estimateSections: [section("painting")],
+  })
+
+  assert.doesNotMatch(reviewText(review), /owner\/customer-supplied materials/)
+})
+
 test("flooring scope with painting by others and existing baseboards remains flooring only", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "flooring",

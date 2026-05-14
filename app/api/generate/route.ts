@@ -4970,7 +4970,7 @@ function inferPhaseVisitsFromSignals(args: {
     /\b(baseboard|baseboards|base\s*board|trim|shoe\s*mold|quarter\s*round|casing)\b/.test(s)
 
   const hasTextureOrPatch =
-    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/.test(s)
+    hasIncludedPatchTextureSignal(args.scopeText)
 
   const hasPaint =
     /\b(paint|painting|prime|primer|repaint)\b/.test(s)
@@ -5030,6 +5030,25 @@ function inferPhaseVisitsFromSignals(args: {
     visits,
     phases: Array.from(new Set(phases)),
   }
+}
+
+function sentenceParts(value: string) {
+  return String(value || "")
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function isExcludedPatchTextureContext(text: string) {
+  return /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b.{0,90}\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(text) ||
+    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b.{0,90}\b(excluded|not included|does not include|does not cover|by others|schedule consideration)\b/i.test(text)
+}
+
+function hasIncludedPatchTextureSignal(scopeText: string) {
+  return sentenceParts(scopeText).some((part) =>
+    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(part) &&
+    !isExcludedPatchTextureContext(part)
+  )
 }
 
 function validateCrewAndSequencing(args: {
@@ -5244,7 +5263,7 @@ function estimateCalendarDaysRange(args: {
   }
 
   const drywallSignals =
-    /\b(drywall|sheetrock|tape|mud|mudding|texture|skim\s*coat|orange\s*peel|knockdown)\b/.test(s)
+    hasIncludedPatchTextureSignal(args.scopeText)
   if (drywallSignals) {
     minWorkdays += 1
     maxWorkdays += 2

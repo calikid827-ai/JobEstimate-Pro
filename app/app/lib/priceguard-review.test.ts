@@ -319,3 +319,39 @@ test("PriceGuard includes scope-to-price consistency notes through existing fiel
   assert.match(text, /pricing anchor appears flooring-based/)
   assert.match(text, /materials list includes flooring items/)
 })
+
+test("PriceGuard suppresses primer after patching material confirmation when drywall patching is excluded", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "painting",
+      scopeText:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint. Excludes drywall repair, skim coat, and texture matching.",
+      resultText:
+        "Includes wall painting, masking, protection, cleanup, and approval. Drywall repair and texture matching are excluded.",
+      materialsList: {
+        items: [],
+        confirmItems: ["Primer / sealer after patching"],
+        notes: [],
+      },
+    })
+  )
+
+  assert.doesNotMatch(text, /primer \/ sealer after patching/)
+})
+
+test("PriceGuard preserves primer after patching confirmation for true patch-and-paint", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "painting",
+      scopeText: "Patch drywall, prime, and paint one room.",
+      resultText: "Includes patching, primer, paint, cleanup, and approval.",
+      materialsList: {
+        items: [],
+        confirmItems: ["Primer / sealer after patching"],
+        notes: [],
+      },
+    })
+  )
+
+  assert.match(text, /primer \/ sealer after patching/)
+})

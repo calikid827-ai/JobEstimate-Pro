@@ -481,6 +481,31 @@ test("does not warn when plumbing scope coordinates with electrical trade to pre
   )
 })
 
+test("does not warn when drywall scope mentions plumbing and electrical as independent trades", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "drywall",
+      writtenScope:
+        "Repair 6 drywall access patches in corridor walls. Painting by others. Electrical and plumbing by others.",
+      resultText:
+        "Customer-facing scope includes drywall patch repairs and cleanup. Electrical and plumbing trades will conduct their tasks independently, with coordination to allow other trades to proceed.",
+    }),
+    null
+  )
+})
+
+test("true plumbing rough-in still warns from drywall scope", () => {
+  assert.match(
+    warning({
+      selectedTrade: "drywall",
+      writtenScope: "Repair 6 drywall access patches in corridor walls. Plumbing by others.",
+      resultText:
+        "Customer-facing scope includes drywall patch repairs and plumbing rough-in with supply and drain work.",
+    }) || "",
+    /plumbing/
+  )
+})
+
 test("does not warn when plumbing scope avoids existing electrical wiring", () => {
   assert.equal(
     warning({

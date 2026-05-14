@@ -172,6 +172,10 @@ function isPaintingPrepConsumable(label: string) {
     !/\b(drywall|sheetrock|gypsum|joint\s+compound|drywall\s+tape|texture)\b/.test(label)
 }
 
+function hasOwnerCustomerMaterialResponsibility(text: string) {
+  return /\b(owner supplied|owner-supplied|owner supplies|customer supplied|customer-supplied|customer supplies|owner provides?|customer provides?|owner to provide|customer to provide|by owner)\b/.test(text)
+}
+
 function detectIncludedTrades(scopeText: string) {
   const normalized = normalizeTypedScope(scopeText)
   const includedClauses: string[] = []
@@ -375,7 +379,7 @@ export function buildScopePriceConsistencyReview(
     )
   }
 
-  if (included.hasMaterialResponsibility) {
+  if (included.hasMaterialResponsibility && hasOwnerCustomerMaterialResponsibility(normalize(args.scopeText))) {
     addUnique(
       laborMaterialConfidenceNotes,
       "Owner/customer-supplied materials are referenced. Confirm the estimate carries only contractor-supplied consumables, handling, protection, and return-trip risk."

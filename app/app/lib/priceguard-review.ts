@@ -541,6 +541,33 @@ function addMany(items: string[], values: string[] | undefined, max = 6) {
   for (const value of values || []) addUnique(items, value, max)
 }
 
+function excludedPatchTextureOnly(text: string) {
+  return (
+    /\b(excludes?|excluded|excluding|does not include|does not cover|not included|by others|without)\b.{0,80}\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b/i.test(text) ||
+    /\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b.{0,80}\b(excluded|by others|not included|does not include|does not cover)\b/i.test(text)
+  )
+}
+
+function includedPatchTextureWork(text: string) {
+  return /\b(include|includes|included|repair|patch|patching|skim|texture|match)\b.{0,80}\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b/i.test(text) &&
+    !excludedPatchTextureOnly(text)
+}
+
+function unresolvedMaterialConfirmItems(items: string[] | undefined, combinedText: string) {
+  return (items || []).filter((item) => {
+    const text = normalize(item)
+    if (
+      /\b(primer|sealer)\b/.test(text) &&
+      /\b(after patching|patching|patch|texture|drywall)\b/.test(text) &&
+      excludedPatchTextureOnly(combinedText) &&
+      !includedPatchTextureWork(combinedText)
+    ) {
+      return false
+    }
+    return true
+  })
+}
+
 function clampScore(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)))
 }
@@ -715,9 +742,10 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 5
   }
 
-  if (args.materialsList?.confirmItems?.length) {
-    addMany(missedScopeWarnings, args.materialsList.confirmItems.slice(0, 3), 6)
-    score -= Math.min(6, args.materialsList.confirmItems.length * 2)
+  const materialConfirmItems = unresolvedMaterialConfirmItems(args.materialsList?.confirmItems, combinedText)
+  if (materialConfirmItems.length) {
+    addMany(missedScopeWarnings, materialConfirmItems.slice(0, 3), 6)
+    score -= Math.min(6, materialConfirmItems.length * 2)
   }
 
   if (args.areaScopeBreakdown?.missingConfirmations?.length) {

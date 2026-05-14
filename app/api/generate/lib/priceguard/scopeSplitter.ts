@@ -213,7 +213,7 @@ function detectTradeForSegment(
   }
 
   if (
-    /\b(floor|flooring|lvp|vinyl plank|luxury vinyl|laminate|hardwood|engineered wood|tile floor|install flooring)\b/.test(s)
+    /\b(floor|flooring|carpet|lvp|vinyl plank|luxury vinyl|laminate|hardwood|engineered wood|tile floor|install flooring)\b/.test(s)
   ) {
     signals.push("flooring keywords")
     return { trade: "flooring", signals }

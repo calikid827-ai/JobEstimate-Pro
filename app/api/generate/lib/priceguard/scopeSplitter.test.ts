@@ -56,6 +56,18 @@ test("flooring scope ignores existing baseboards painting by others and owner ma
   assertNoTrades(scope, /\bbaseboards|painting|owner-supplied\b/i)
 })
 
+test("flooring carpet removal stays flooring context when LVP install is included", () => {
+  const scope =
+    "Remove existing carpet and install owner-supplied LVP in bedrooms 201 and 202 with underlayment and transitions. Existing baseboards to remain. Painting by others. Include floor protection, cleanup, and customer approval."
+
+  const splitScopes = splitScopeByTrade(scope)
+
+  assert.deepEqual(splitScopes.map((chunk) => chunk.trade), ["flooring"])
+  assert.match(splitScopes[0]?.scope ?? "", /Remove existing carpet/i)
+  assert.match(splitScopes[0]?.scope ?? "", /install owner-supplied LVP/i)
+  assert.equal(isMultiTradeScope(scope), false)
+})
+
 test("owner-supplied material does not hide included installation work", () => {
   assert.deepEqual(
     tradesFor("Install owner-supplied LVP flooring with transitions."),
