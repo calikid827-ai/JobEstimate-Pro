@@ -171,6 +171,32 @@ test("warns when plan-review-only scope expands into disconnecting and reinstall
   assert.match(review.summary || "", /not strongly supported|electrical system work/)
 })
 
+test("warns when plan-review-only scope expands into electrical fixture relocation and device adjustment", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "ADA unit renovation per selected plan pages. Electrical coordination only. Plan evidence review only. Owner and GC-provided items excluded. Estimator to confirm final quantities and inclusions.",
+    resultText:
+      "Customer-facing scope includes electrical coordination, relocation of fixtures, adjustment of devices to align with new layouts, verification of existing wiring, patching of penetrations, and sequencing demolition, electrical, drywall, and finishes.",
+  })
+
+  const visibleText = [review.summary, ...review.warnings.map((item) => `${item.label}: ${item.message}`)].join(" ")
+  assert.match(visibleText, /electrical/i)
+  assert.match(visibleText, /not strongly supported|electrical system work/i)
+})
+
+test("warns when electrical coordination-only scope expands into device relocation", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope: "Electrical by others. Coordination only.",
+    resultText:
+      "Customer-facing scope includes electrical device relocation, wiring adjustments, and device adjustment to align with the new layout.",
+  })
+
+  assert.match(review.summary || "", /electrical/i)
+  assert.match(review.summary || "", /not strongly supported|electrical system work/i)
+})
+
 test("warns for explicit plumbing exclusion conflicts", () => {
   const review = guard({
     selectedTrade: "bathroom_tile",
