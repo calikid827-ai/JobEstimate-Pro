@@ -229,6 +229,30 @@ test("does not warn when plumbing scope mentions no electrical interference only
   )
 })
 
+test("does not warn when plumbing scope coordinates with electrical trade to prevent interference", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and vanity faucet. Electrical by others.",
+      resultText:
+        "Customer-facing scope includes plumbing fixture replacement. Coordination with the electrical trade is planned to prevent interference with adjacent electrical components or wiring during plumbing work.",
+    }),
+    null
+  )
+})
+
+test("does not warn when plumbing scope avoids existing electrical wiring", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and vanity faucet. Electrical by others.",
+      resultText:
+        "Customer-facing scope includes plumbing fixture replacement with no interference with existing electrical wiring.",
+    }),
+    null
+  )
+})
+
 test("does not warn when flooring scope mentions finish coordination only", () => {
   assert.equal(
     warning({
@@ -280,6 +304,28 @@ test("true electrical rough-in still warns when unsupported", () => {
       selectedTrade: "plumbing",
       writtenScope: "Replace toilet and faucet.",
       resultText: "Customer-facing scope includes electrical rough-in for vanity lighting.",
+    }) || "",
+    /electrical/
+  )
+})
+
+test("true electrical rough-in for vanity light still warns when unsupported", () => {
+  assert.match(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and faucet.",
+      resultText: "Customer-facing scope includes electrical rough-in for vanity light.",
+    }) || "",
+    /electrical/
+  )
+})
+
+test("true outlet switch and wiring installation still warns when unsupported", () => {
+  assert.match(
+    warning({
+      selectedTrade: "plumbing",
+      writtenScope: "Replace toilet and faucet.",
+      resultText: "Customer-facing scope includes install new outlet, switch, and wiring.",
     }) || "",
     /electrical/
   )

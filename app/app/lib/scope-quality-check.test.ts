@@ -48,6 +48,21 @@ test("weak electrical scope asks for true electrical support", () => {
   assert.doesNotMatch(warnings, /painted surfaces/)
 })
 
+test("electrical by others does not count as included electrical work", () => {
+  const warnings = warningsFor("Electrical by others.", "electrical")
+
+  assert.match(warnings, /device, fixture, circuit, panel, or rough-in counts/)
+  assert.match(warnings, /devices, fixtures, wiring, circuits, panel work, or rough-in/)
+})
+
+test("electrical by others does not drive auto trade inference", () => {
+  const warnings = warningsFor("Electrical by others. Paint walls in room 2032 with contractor supplied paint.")
+
+  assert.doesNotMatch(warnings, /electrical device/)
+  assert.doesNotMatch(warnings, /devices, fixtures, wiring/)
+  assert.match(warnings, /prep/)
+})
+
 test("strong plumbing scope avoids painting-specific warnings", () => {
   const result = checkScopeQuality(
     "Replace 1 toilet, 1 vanity faucet, and 1 shower valve trim. Owner supplied fixtures; wall repair excluded.",
@@ -69,6 +84,25 @@ test("weak plumbing scope asks for plumbing-specific details", () => {
   assert.doesNotMatch(warnings, /painted surfaces/)
 })
 
+test("plumbing excluded does not count as included plumbing work", () => {
+  const warnings = warningsFor("Plumbing excluded.", "plumbing")
+
+  assert.match(warnings, /fixture count/)
+  assert.match(warnings, /supply lines, drains, valves, or rough-in/)
+})
+
+test("remove and reinstall toilet and faucet counts as real plumbing work", () => {
+  const warnings = warningsFor(
+    "Remove and reinstall 1 toilet and 1 faucet. Owner supplied fixtures; GC to handle permits.",
+    "plumbing"
+  )
+
+  assert.doesNotMatch(warnings, /fixture count/)
+  assert.doesNotMatch(warnings, /supply lines, drains, valves, or rough-in/)
+  assert.doesNotMatch(warnings, /permit, inspection/)
+  assert.doesNotMatch(warnings, /owner-supplied/)
+})
+
 test("strong flooring scope avoids painting-specific warnings", () => {
   const result = checkScopeQuality(
     "Install 650 sq ft LVP, remove carpet, include underlayment, transitions, and base shoe. Owner supplied flooring.",
@@ -81,6 +115,29 @@ test("strong flooring scope avoids painting-specific warnings", () => {
   assert.doesNotMatch(warnings, /ceiling/)
 })
 
+test("protect flooring does not infer flooring work", () => {
+  const warnings = warningsFor("Protect flooring during plumbing work. Replace 1 toilet. Owner supplied fixture.", "plumbing")
+
+  assert.doesNotMatch(warnings, /flooring square footage/)
+  assert.doesNotMatch(warnings, /flooring product type/)
+  assert.doesNotMatch(warnings, /base, trim, transitions/)
+})
+
+test("rooms range counts as quantity or location support", () => {
+  const warnings = warningsFor("Paint walls only in rooms 2032-2036. Contractor supplied paint.", "painting")
+
+  assert.doesNotMatch(warnings, /painting area/)
+  assert.doesNotMatch(warnings, /painted surfaces/)
+})
+
+test("touch-up only is not vague when area and surface are clear", () => {
+  const warnings = warningsFor("Touch-up only on walls in room 2032. Contractor supplied paint.", "painting")
+
+  assert.doesNotMatch(warnings, /vague wording/)
+  assert.doesNotMatch(warnings, /painting area/)
+  assert.doesNotMatch(warnings, /painted surfaces/)
+})
+
 test("weak drywall scope asks for drywall production details", () => {
   const warnings = warningsFor("Repair drywall.", "drywall")
 
@@ -88,6 +145,13 @@ test("weak drywall scope asks for drywall production details", () => {
   assert.match(warnings, /wall, ceiling/)
   assert.match(warnings, /finish level/)
   assert.doesNotMatch(warnings, /painted surfaces/)
+})
+
+test("wall repair excluded does not satisfy drywall repair scope", () => {
+  const warnings = warningsFor("Wall repair excluded.", "drywall")
+
+  assert.match(warnings, /wall, ceiling/)
+  assert.match(warnings, /finish level/)
 })
 
 test("weak bathroom tile scope asks for tile, fixture, and exclusion boundaries", () => {
@@ -98,6 +162,29 @@ test("weak bathroom tile scope asks for tile, fixture, and exclusion boundaries"
   assert.match(warnings, /waterproofing/)
   assert.match(warnings, /fixture responsibility/)
   assert.match(warnings, /exclusions/)
+})
+
+test("owner supplies fixtures resolves material responsibility only", () => {
+  const warnings = warningsFor("Owner supplies fixtures.", "plumbing")
+
+  assert.match(warnings, /fixture count/)
+  assert.match(warnings, /supply lines, drains, valves, or rough-in/)
+  assert.doesNotMatch(warnings, /owner-supplied/)
+})
+
+test("gc handles permits resolves permit boundary only", () => {
+  const warnings = warningsFor("GC to handle permits.", "electrical")
+
+  assert.match(warnings, /device, fixture, circuit, panel, or rough-in counts/)
+  assert.match(warnings, /devices, fixtures, wiring, circuits, panel work, or rough-in/)
+  assert.doesNotMatch(warnings, /permit, inspection/)
+})
+
+test("demo by others does not satisfy included demolition scope", () => {
+  const warnings = warningsFor("Demo by others. Install shower wall tile with waterproofing. Owner supplied tile.", "bathroom_tile")
+
+  assert.match(warnings, /demolition/)
+  assert.doesNotMatch(warnings, /waterproofing/)
 })
 
 test("weak general renovation scope asks for rooms, trades, finishes, and exclusions", () => {
@@ -117,6 +204,16 @@ test("weak wallcovering scope asks for wallcovering-specific details", () => {
   assert.match(warnings, /removal/)
   assert.match(warnings, /pattern\/repeat/)
   assert.doesNotMatch(warnings, /painted surfaces/)
+})
+
+test("work around existing baseboards does not infer carpentry work", () => {
+  const warnings = warningsFor(
+    "Install 300 sq ft LVP and work around existing baseboards. Owner supplied flooring.",
+    "flooring"
+  )
+
+  assert.doesNotMatch(warnings, /carpentry item/)
+  assert.doesNotMatch(warnings, /wood, trim/)
 })
 
 test("PriceGuard can resolve trade-aware scope-quality warnings from generated review text", () => {

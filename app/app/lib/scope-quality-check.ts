@@ -1,3 +1,8 @@
+import {
+  normalizeTypedScope,
+  type TypedScopeNormalization,
+} from "./typed-scope-normalization"
+
 export type ScopeQualityResult = {
   score: number
   warnings: string[]
@@ -127,34 +132,62 @@ const VAGUE_TERMS = [
   "make ready",
 ]
 
-function hasQuantityDetail(text: string) {
-  return matchesAny(text, QUANTITY_PATTERNS) || hasAny(text, ["per plan", "per plans", "selected sheets"])
+function hasQuantityDetail(text: string, scope?: TypedScopeNormalization) {
+  return (
+    matchesAny(text, QUANTITY_PATTERNS) ||
+    hasAny(text, ["per plan", "per plans", "selected sheets"]) ||
+    Boolean(scope?.hasQuantityLocationSignal)
+  )
 }
 
-function hasMeasuredQuantityDetail(text: string) {
-  return matchesAny(text, QUANTITY_PATTERNS)
+function hasMeasuredQuantityDetail(text: string, scope?: TypedScopeNormalization) {
+  return (
+    matchesAny(text, QUANTITY_PATTERNS) ||
+    Boolean(scope && /\brooms?\s+\d+[a-z]?\s*(?:-|to|through|thru)\s*\d+[a-z]?\b|\b(?:room|area|unit|suite)\s+\d+[a-z]?\b/.test(scope.normalizedText))
+  )
 }
 
-function hasMaterialResponsibility(text: string) {
-  return hasAny(text, MATERIAL_RESPONSIBILITY_TERMS)
+function hasMaterialResponsibility(text: string, scope?: TypedScopeNormalization) {
+  return hasAny(text, MATERIAL_RESPONSIBILITY_TERMS) || Boolean(scope?.hasMaterialResponsibility)
 }
 
-function hasExclusionBoundary(text: string) {
-  return hasAny(text, EXCLUSION_TERMS)
+function hasExclusionBoundary(text: string, scope?: TypedScopeNormalization) {
+  return hasAny(text, EXCLUSION_TERMS) || Boolean(scope?.hasExclusionOrByOthersBoundary || scope?.hasPermitResponsibility)
 }
 
-function applySharedWarnings(text: string, warnings: string[], score: { value: number }) {
+function hasAccessOrRepairBoundary(text: string, scope: TypedScopeNormalization) {
+  return (
+    hasAny(text, ["access", "open wall", "open ceiling", "attic", "crawl", "conduit", "surface mount", "fishing", "rough-in", "rough in", "slab", "wall repair", "floor repair", "tile repair", "patch"]) ||
+    (scope.hasExclusionOrByOthersBoundary &&
+      /\b(access|open wall|open ceiling|attic|crawl|conduit|surface mount|fishing|slab|wall repair|floor repair|tile repair|patch|patching|repair)\b/.test(scope.boundaryText))
+  )
+}
+
+function hasNarrowTouchUpDetail(text: string, scope: TypedScopeNormalization) {
+  return (
+    /\btouch[-\s]*ups?\s+only\b|\btouch[-\s]*ups?\b/.test(text) &&
+    scope.hasQuantityLocationSignal &&
+    hasAny(text, ["wall", "walls", "ceiling", "ceilings", "trim", "baseboard", "baseboards", "door", "doors", "surface", "surfaces", "room"])
+  )
+}
+
+function applySharedWarnings(
+  text: string,
+  warnings: string[],
+  score: { value: number },
+  scope: TypedScopeNormalization
+) {
   if (text.length < 20) {
     addWarning(warnings, "Scope description is very short", score, 20)
   }
 
-  if (hasAny(text, VAGUE_TERMS)) {
+  if (hasAny(text, VAGUE_TERMS) && !hasNarrowTouchUpDetail(text, scope)) {
     addWarning(warnings, "Scope uses vague wording. Replace open-ended language with specific included work.", score, 10)
   }
 }
 
-function checkPainting(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkPainting(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm painting area, rooms, or square footage.", score, 18)
   }
 
@@ -170,13 +203,13 @@ function checkPainting(text: string, warnings: string[], score: { value: number 
     addWarning(warnings, "Confirm paint system, coat count, or finish expectations.", score, 8)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm whether paint and materials are contractor-supplied or owner-supplied.", score, 8)
   }
 }
 
-function checkDrywall(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text) && !hasAny(text, ["small patch", "medium patch", "large patch"])) {
+function checkDrywall(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope) && !hasAny(text, ["small patch", "medium patch", "large patch"])) {
     addWarning(warnings, "Confirm drywall patch count, sheet count, or square footage.", score, 18)
   }
 
@@ -188,13 +221,13 @@ function checkDrywall(text: string, warnings: string[], score: { value: number }
     addWarning(warnings, "Confirm finish level, texture match, and whether paint is excluded.", score, 12)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm drywall material and texture responsibility.", score, 8)
   }
 }
 
-function checkFlooring(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkFlooring(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm flooring square footage or affected rooms.", score, 18)
   }
 
@@ -210,13 +243,13 @@ function checkFlooring(text: string, warnings: string[], score: { value: number 
     addWarning(warnings, "Confirm base, trim, transitions, and threshold scope.", score, 8)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm whether flooring, underlayment, and trims are contractor-supplied or owner-supplied.", score, 8)
   }
 }
 
-function checkElectrical(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkElectrical(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm electrical device, fixture, circuit, panel, or rough-in counts.", score, 18)
   }
 
@@ -224,21 +257,21 @@ function checkElectrical(text: string, warnings: string[], score: { value: numbe
     addWarning(warnings, "Confirm electrical scope type: devices, fixtures, wiring, circuits, panel work, or rough-in.", score, 14)
   }
 
-  if (!hasAny(text, ["access", "open wall", "open ceiling", "attic", "crawl", "conduit", "surface mount", "fishing", "rough-in", "rough in"])) {
+  if (!hasAccessOrRepairBoundary(text, scope)) {
     addWarning(warnings, "Confirm access conditions and whether patching is excluded.", score, 8)
   }
 
-  if (!hasAny(text, ["permit", "inspection", "inspect", "code", "utility", "panel"])) {
+  if (!hasAny(text, ["permit", "inspection", "inspect", "code", "utility", "panel"]) && !scope.hasPermitResponsibility) {
     addWarning(warnings, "Confirm permit, inspection, code, or utility coordination assumptions.", score, 8)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm whether fixtures, devices, and trims are contractor-supplied or owner-supplied.", score, 8)
   }
 }
 
-function checkPlumbing(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkPlumbing(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm plumbing fixture count, rough-in count, or affected locations.", score, 18)
   }
 
@@ -246,21 +279,21 @@ function checkPlumbing(text: string, warnings: string[], score: { value: number 
     addWarning(warnings, "Confirm plumbing scope type: fixtures, supply lines, drains, valves, or rough-in.", score, 14)
   }
 
-  if (!hasAny(text, ["access", "open wall", "open ceiling", "crawl", "slab", "wall repair", "floor repair", "tile repair", "patch", "rough-in", "rough in"])) {
+  if (!hasAccessOrRepairBoundary(text, scope)) {
     addWarning(warnings, "Confirm access conditions and whether wall, floor, or tile repair is excluded.", score, 8)
   }
 
-  if (!hasAny(text, ["permit", "inspection", "inspect", "code", "shutoff", "shut off"])) {
+  if (!hasAny(text, ["permit", "inspection", "inspect", "code", "shutoff", "shut off"]) && !scope.hasPermitResponsibility) {
     addWarning(warnings, "Confirm permit, inspection, shutoff, or code assumptions.", score, 8)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm whether fixtures, valves, trims, and plumbing materials are contractor-supplied or owner-supplied.", score, 8)
   }
 }
 
-function checkBathroomTile(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkBathroomTile(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm bathroom or tile area, affected rooms, or square footage.", score, 18)
   }
 
@@ -276,17 +309,17 @@ function checkBathroomTile(text: string, warnings: string[], score: { value: num
     addWarning(warnings, "Confirm fixture responsibility and any plumbing or electrical boundaries.", score, 12)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm tile, grout, fixtures, waterproofing, and finish material responsibility.", score, 8)
   }
 
-  if (!hasExclusionBoundary(text)) {
+  if (!hasExclusionBoundary(text, scope)) {
     addWarning(warnings, "Confirm exclusions for hidden damage, permits, glass, plumbing, electrical, or finish upgrades.", score, 8)
   }
 }
 
-function checkWallcovering(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkWallcovering(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm wallcovering wall area, linear footage, or affected rooms.", score, 18)
   }
 
@@ -302,13 +335,13 @@ function checkWallcovering(text: string, warnings: string[], score: { value: num
     addWarning(warnings, "Confirm pattern/repeat, seams, waste, and access constraints.", score, 8)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm whether wallcovering material and adhesive are contractor-supplied or owner-supplied.", score, 8)
   }
 }
 
-function checkCarpentry(text: string, warnings: string[], score: { value: number }) {
-  if (!hasQuantityDetail(text)) {
+function checkCarpentry(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm carpentry count, linear footage, or affected areas.", score, 18)
   }
 
@@ -320,13 +353,13 @@ function checkCarpentry(text: string, warnings: string[], score: { value: number
     addWarning(warnings, "Confirm install, repair, finish, caulk, paint, or stain expectations.", score, 10)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm wood, trim, hardware, and finish material responsibility.", score, 8)
   }
 }
 
-function checkGeneralRenovation(text: string, warnings: string[], score: { value: number }) {
-  if (!hasMeasuredQuantityDetail(text)) {
+function checkGeneralRenovation(text: string, warnings: string[], score: { value: number }, scope: TypedScopeNormalization) {
+  if (!hasMeasuredQuantityDetail(text, scope)) {
     addWarning(warnings, "Confirm affected rooms, areas, or plan pages for the renovation scope.", score, 18)
   }
 
@@ -338,33 +371,35 @@ function checkGeneralRenovation(text: string, warnings: string[], score: { value
     addWarning(warnings, "Confirm demolition, preparation, rough-in, and finish-work limits.", score, 12)
   }
 
-  if (!hasMaterialResponsibility(text)) {
+  if (!hasMaterialResponsibility(text, scope)) {
     addWarning(warnings, "Confirm finish selections, fixture responsibility, and material allowances.", score, 10)
   }
 
-  if (!hasExclusionBoundary(text)) {
+  if (!hasExclusionBoundary(text, scope)) {
     addWarning(warnings, "Confirm exclusions, allowances, permits, hidden damage, and work by others.", score, 10)
   }
 }
 
 export function checkScopeQuality(scope: string, trade?: string): ScopeQualityResult {
   const text = normalize(scope)
+  const typedScope = normalizeTypedScope(scope)
+  const reviewText = typedScope.hasIncludedWork ? typedScope.includedWorkText : ""
   const warnings: string[] = []
   const score = { value: 100 }
 
-  applySharedWarnings(text, warnings, score)
+  applySharedWarnings(text, warnings, score, typedScope)
 
-  const group = resolveScopeTradeGroup(text, trade)
+  const group = resolveScopeTradeGroup(typedScope.hasIncludedWork ? reviewText : "", trade)
 
-  if (group === "painting") checkPainting(text, warnings, score)
-  else if (group === "drywall") checkDrywall(text, warnings, score)
-  else if (group === "flooring") checkFlooring(text, warnings, score)
-  else if (group === "electrical") checkElectrical(text, warnings, score)
-  else if (group === "plumbing") checkPlumbing(text, warnings, score)
-  else if (group === "bathroom_tile") checkBathroomTile(text, warnings, score)
-  else if (group === "wallcovering") checkWallcovering(text, warnings, score)
-  else if (group === "carpentry") checkCarpentry(text, warnings, score)
-  else checkGeneralRenovation(text, warnings, score)
+  if (group === "painting") checkPainting(reviewText, warnings, score, typedScope)
+  else if (group === "drywall") checkDrywall(reviewText, warnings, score, typedScope)
+  else if (group === "flooring") checkFlooring(reviewText, warnings, score, typedScope)
+  else if (group === "electrical") checkElectrical(reviewText, warnings, score, typedScope)
+  else if (group === "plumbing") checkPlumbing(reviewText, warnings, score, typedScope)
+  else if (group === "bathroom_tile") checkBathroomTile(reviewText, warnings, score, typedScope)
+  else if (group === "wallcovering") checkWallcovering(reviewText, warnings, score, typedScope)
+  else if (group === "carpentry") checkCarpentry(reviewText, warnings, score, typedScope)
+  else checkGeneralRenovation(reviewText, warnings, score, typedScope)
 
   return {
     score: Math.max(0, Math.min(100, score.value)),
