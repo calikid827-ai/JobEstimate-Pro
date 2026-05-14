@@ -200,7 +200,7 @@ const CARPENTRY_REPLACEMENT_REMOVAL_PATTERN =
   /\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b.{0,90}\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b.{0,90}\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b/i
 
 const CARPENTRY_REPLACEMENT_DEMO_CONTEXT_PATTERN =
-  /\bprior\s+to\s+demolition\b.{0,120}\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b.{0,120}\bprior\s+to\s+demolition\b/i
+  /\bdemolition\s+of\s+(?:the\s+)?(?:existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\s+demolition\b/i
 
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
@@ -290,7 +290,12 @@ function hasSupportedCarpentryReplacementRemovalContext(
   resultText: string,
   args: BuildCustomerScopeTradeDriftWarningArgs
 ) {
-  if (!CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(resultText)) return false
+  if (
+    !CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(resultText) &&
+    !CARPENTRY_REPLACEMENT_DEMO_CONTEXT_PATTERN.test(resultText)
+  ) {
+    return false
+  }
   const carpentryRule = TRADE_RULES.find((candidate) => candidate.id === "carpentry")
   return Boolean(carpentryRule && isTradeSupported(carpentryRule, args))
 }

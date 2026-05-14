@@ -881,6 +881,19 @@ test("does not warn on baseboard demolition wording inside supported carpentry r
   )
 })
 
+test("does not warn when demolition is directly tied to existing baseboards", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "carpentry",
+      writtenScope:
+        "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain.",
+      resultText:
+        "Customer-facing scope includes removal of existing baseboards followed by the demolition of existing baseboards and installation of new baseboards.",
+    }),
+    null
+  )
+})
+
 test("does not warn when prior-to-demolition phrase is separate from supported baseboard removal", () => {
   assert.equal(
     warning({
