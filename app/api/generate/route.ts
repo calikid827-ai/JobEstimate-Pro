@@ -58,7 +58,7 @@ import type {
   SplitScopeItem as EstimatorSplitScopeItem,
   TradeStack as EstimatorTradeStack,
 } from "./lib/estimator/types"
-import { splitScopeByTrade, isMultiTradeScope } from "./lib/priceguard/scopeSplitter"
+import { splitScopeByTrade, isMultiTradeScope, getIncludedScopeText } from "./lib/priceguard/scopeSplitter"
 import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
@@ -5588,7 +5588,8 @@ function autoDetectTrade(scope: string): string {
 }
 
 function isMixedRenovation(scope: string) {
-  const s = scope.toLowerCase()
+  const includedScope = getIncludedScopeText(scope)
+  const s = includedScope.toLowerCase()
 
   const hasPaint = /\b(paint|painting|repaint|prime|primer)\b/.test(s)
   const hasNonPaint =
@@ -8014,11 +8015,13 @@ const allowAnchors =
 const allowBathAnchorInPlumbing =
   trade === "plumbing" && /\b(bath|bathroom|shower|tub)\b/i.test(scopeChange)
 
+const includedScopeForAnchors = getIncludedScopeText(scopeChange)
+
 const anchorHit =
  (!allowAnchors && !allowBathAnchorInPlumbing)
     ? null
     : runPriceGuardAnchors({
-    scope: scopeChange,
+    scope: includedScopeForAnchors || scopeChange,
     trade,
     stateMultiplier,
     measurements,

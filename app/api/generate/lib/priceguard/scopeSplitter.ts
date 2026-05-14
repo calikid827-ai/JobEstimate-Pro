@@ -72,6 +72,66 @@ function splitIntoSegments(scopeText: string): string[] {
     .filter(Boolean)
 }
 
+function stripExcludedScopeText(scopeText: string): string {
+  return normalizeScopeText(scopeText)
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) =>
+      sentence
+        .replace(
+          /\b(excludes?|excluding|does\s+not\s+(?:include|cover)|not\s+included|not\s+part\s+of|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+(?:contractor|trade)|NIC)\b.*$/i,
+          ""
+        )
+        .trim()
+    )
+    .filter(Boolean)
+    .join(" ")
+}
+
+function isBoundaryOnlySegment(segment: string): boolean {
+  const s = segment.toLowerCase().trim()
+  if (!s) return true
+
+  const hasWorkVerb =
+    /\b(paint|painting|prime|primer|repaint|patch|repair|replace|install|remove|demo|demolition|texture|skim|frame|hang|mount|relocate|move|wire|plumb|add|rough[- ]?in)\b/.test(
+      s
+    )
+
+  if (
+    /\b(protect|protection|mask|masking|cover|covering|safeguard|floor protection|surface protection|adjacent finish protection)\b/.test(
+      s
+    ) &&
+    !hasWorkVerb
+  ) {
+    return true
+  }
+
+  if (
+    /\b(coordinate|coordination|avoid(?:ing)? interference|no interference|without interference|work(?:ing)? around|existing)\b/.test(
+      s
+    ) &&
+    !hasWorkVerb
+  ) {
+    return true
+  }
+
+  if (
+    /\b(cleanup|clean up|customer approval|final approval|contractor supplied|contractor-supplied|owner supplied|owner-supplied)\b/.test(
+      s
+    ) &&
+    !hasWorkVerb
+  ) {
+    return true
+  }
+
+  return false
+}
+
+export function getIncludedScopeText(scopeText: string): string {
+  return splitIntoSegments(stripExcludedScopeText(scopeText))
+    .filter((segment) => !isBoundaryOnlySegment(segment))
+    .join(", ")
+}
+
 function detectTradeForSegment(
   segment: string,
   context: ScopeContext
@@ -197,11 +257,12 @@ function mergeRelatedTrades(
 }
 
 export function splitScopeByTrade(scopeText: string): ScopeChunk[] {
-  const segments = splitIntoSegments(scopeText)
+  const includedScopeText = getIncludedScopeText(scopeText)
+  const segments = splitIntoSegments(includedScopeText)
 
   if (!segments.length) return []
 
-  const context = buildScopeContext(scopeText)
+  const context = buildScopeContext(includedScopeText)
   const buckets = new Map<SplitTrade, SegmentBucket>()
 
   for (const segment of segments) {
