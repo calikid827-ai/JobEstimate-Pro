@@ -57,9 +57,9 @@ const TRADE_RULES: TradeRule[] = [
     label: "electrical",
     aliases: ["electrical", "electrician"],
     mentionPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in|electrical\s+coordination|electrical\s+trade)\b/i,
+      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|electrical\s+coordination|electrical\s+trade)\b/i,
     supportPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in)\b/i,
+      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical)\b/i,
   },
   {
     id: "plumbing",
@@ -134,7 +134,7 @@ const TRADE_RULES: TradeRule[] = [
 ]
 
 const EXCLUDED_TRADE_PATTERN =
-  /\b(excludes?|excluded|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
+  /\b(excludes?|excluded|excluding|does\s+not\s+cover|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
 
 const SUPPORTED_REMOVAL_TRADE_PATTERN =
   /\b(flooring|lvp|laminate|hardwood|carpet|tile|tiling|paint|painting|drywall|sheetrock|baseboards?|trim|carpentry|wallcovering|wallpaper)\b/i
@@ -231,7 +231,12 @@ function pricedSectionsSupport(rule: TradeRule, estimateSections: EstimateStruct
 }
 
 function writtenScopeSupports(rule: TradeRule, writtenScope: string) {
-  return sentenceParts(writtenScope).some((part) => rule.supportPattern.test(part) && !EXCLUDED_TRADE_PATTERN.test(part))
+  return sentenceParts(writtenScope).some(
+    (part) =>
+      rule.supportPattern.test(part) &&
+      !EXCLUDED_TRADE_PATTERN.test(part) &&
+      !isNonScopeContextMention(part, rule)
+  )
 }
 
 function scopeXRaySupports(rule: TradeRule, scopeXRay: ScopeXRay) {
@@ -490,8 +495,13 @@ export function buildCustomerScopeReviewGuard(
     })
   }
 
+  const unsupportedSummary = buildUnsupportedTradeSummary(unsupportedTrades)
   const summary =
-    warnings[0]?.message || buildUnsupportedTradeSummary(unsupportedTrades)
+    warnings[0]?.label === "Excluded scope conflict"
+      ? warnings[0].message
+      : unsupportedTrades.some((rule) => rule.id === "electrical") && unsupportedSummary
+      ? unsupportedSummary
+      : warnings[0]?.message || unsupportedSummary
 
   return {
     summary: summary || null,

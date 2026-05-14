@@ -145,6 +145,19 @@ test("warns when excluded electrical expands into device reinstallation and wiri
   assert.match(review.warnings.map((item) => item.label).join(" | "), /Excluded scope conflict/)
 })
 
+test("warns when electrical coordination-only scope expands into electrical tasks and rough-in", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "Plan review only. Electrical coordination only. Electrical by others. GC to provide remaining trade work.",
+    resultText:
+      "Customer-facing scope says electrical tasks include the removal and reinstallation of devices and wiring. Following demolition and electrical rough-in, wiring will align with the new layout.",
+  })
+
+  assert.match(review.summary || "", /electrical/)
+  assert.match(review.summary || "", /not strongly supported|electrical system work/)
+})
+
 test("warns for explicit plumbing exclusion conflicts", () => {
   const review = guard({
     selectedTrade: "bathroom_tile",
@@ -239,6 +252,19 @@ test("does not warn when simple painting output mentions excluded adjacent trade
         "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
       resultText:
         "Customer-facing scope includes wall painting, masking, floor protection, cleanup, and customer approval. Coordinate with existing drywall and carpentry trades, confirm flooring before trim/baseboard sequencing, and coordinate across drywall/carpentry activities without adding those trades to the scope.",
+    }),
+    null
+  )
+})
+
+test("does not warn when simple painting output explicitly excludes drywall and adjacent trades", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+      resultText:
+        "Customer-facing scope includes wall painting with surface preparation limited to cleaning and light dust removal, explicitly excluding drywall repair or texture matching. This scope does not cover drywall patching, skim coating, trim painting, ceiling painting, electrical, plumbing, flooring, or carpentry tasks. Coordinate access with existing trades and finishes, sequence work to prevent interference with ongoing activities, and account for patch/texture drying time only as a schedule consideration.",
     }),
     null
   )
