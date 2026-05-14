@@ -5041,7 +5041,7 @@ function sentenceParts(value: string) {
 
 function isExcludedPatchTextureContext(text: string) {
   return /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b.{0,90}\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(text) ||
-    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b.{0,90}\b(excluded|not included|does not include|does not cover|by others|schedule consideration)\b/i.test(text)
+    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b.{0,90}\b(excluded|not included|does not include|does not cover|by others|schedule consideration|dry time|drying time)\b/i.test(text)
 }
 
 function hasIncludedPatchTextureSignal(scopeText: string) {

@@ -327,7 +327,7 @@ test("PriceGuard suppresses primer after patching material confirmation when dry
       scopeText:
         "Paint walls only in living room and hallway. Two coats, contractor-supplied paint. Excludes drywall repair, skim coat, and texture matching.",
       resultText:
-        "Includes wall painting, masking, protection, cleanup, and approval. Drywall repair and texture matching are excluded.",
+        "Includes wall painting, masking, protection, cleanup, and approval. Drywall repair and texture matching are excluded. Allowing patch/texture dry time before painting is only a schedule consideration for work by others.",
       materialsList: {
         items: [],
         confirmItems: ["Primer / sealer after patching"],

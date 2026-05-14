@@ -99,7 +99,7 @@ function sentenceParts(value: string) {
 function isExcludedOrContextOnly(text: string) {
   return hasAny(text, [
     /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b/,
-    /\b(schedule consideration|coordination only|by separate trade)\b/,
+    /\b(schedule consideration|coordination only|by separate trade|dry time|drying time)\b/,
   ])
 }
 

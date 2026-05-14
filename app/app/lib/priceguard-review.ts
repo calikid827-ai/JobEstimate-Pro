@@ -544,13 +544,18 @@ function addMany(items: string[], values: string[] | undefined, max = 6) {
 function excludedPatchTextureOnly(text: string) {
   return (
     /\b(excludes?|excluded|excluding|does not include|does not cover|not included|by others|without)\b.{0,80}\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b/i.test(text) ||
-    /\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b.{0,80}\b(excluded|by others|not included|does not include|does not cover)\b/i.test(text)
+    /\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b.{0,80}\b(excluded|by others|not included|does not include|does not cover)\b/i.test(text) ||
+    /\b(patch(?:ing)?|texture)\b.{0,40}\b(dry time|drying time|schedule consideration)\b/i.test(text)
   )
 }
 
 function includedPatchTextureWork(text: string) {
-  return /\b(include|includes|included|repair|patch|patching|skim|texture|match)\b.{0,80}\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b/i.test(text) &&
-    !excludedPatchTextureOnly(text)
+  return String(text || "")
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .some((part) =>
+      /\b(include|includes|included|repair|patch|patching|skim|texture|match)\b.{0,80}\b(drywall repair|drywall patch|patching|skim coat|texture match|texture matching|texture)\b/i.test(part) &&
+      !excludedPatchTextureOnly(part)
+    )
 }
 
 function unresolvedMaterialConfirmItems(items: string[] | undefined, combinedText: string) {

@@ -494,6 +494,19 @@ test("does not warn when drywall scope mentions plumbing and electrical as indep
   )
 })
 
+test("does not warn when drywall scope says electrical and plumbing trades work independently", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "drywall",
+      writtenScope:
+        "Repair 6 drywall access patches in corridor walls. Painting by others. Electrical and plumbing by others.",
+      resultText:
+        "Customer-facing scope includes drywall patch repairs, dust protection, and cleanup. Electrical and plumbing trades will conduct their work independently. Work is sequenced to minimize disruption and allow other trades to proceed independently.",
+    }),
+    null
+  )
+})
+
 test("true plumbing rough-in still warns from drywall scope", () => {
   assert.match(
     warning({
