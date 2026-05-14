@@ -1249,3 +1249,52 @@ Customer-facing output:
 Final decision:
 - Schedule Sequencing Review Guard passes.
 - Keep this UI-side/warning-only estimator guidance under regression watch during real-world estimate QA.
+
+## Test Entry 16 — Real-World Customer Scope Drift Cleanup
+
+Status: PASS
+
+Scope:
+- Real-world QA cleanup for Customer Scope Drift false positives and false negatives.
+- The cleanup fixed Case 1B where noisy `scopeXRay` split entries such as `electrical` or `electrical coordination only` were treated as support and hid true unsupported electrical drift.
+- Unsupported electrical expansion now remains visible when Customer-Facing Scope promises actual electrical work such as electrical rough-in, device adjustments, electrical fixture relocation, conduit penetration patching, disconnection/reinstallation of devices and wiring, or electrical scope/work that includes wiring, devices, conduit, fixtures, outlets, switches, circuits, panels, or breakers.
+- Electrical unsupported drift remains visible when drywall drift is also present.
+- Electrical coordination-only and avoid-interference language remains quiet.
+- Case 7A Customer Scope Drift passes with Trade Type = Painting: walls-only painting with ceiling/trim painting excluded is not treated as a whole-painting exclusion, no unsupported drywall/painting warning appeared, and Customer-Facing Scope stayed painting-focused with exclusions preserved.
+- Case 1B Plan Review Summary is acceptable for this pass: selected pages processed 8, selected pages read 1, pages with useful evidence 1, with review-only plan evidence language explaining that some selected pages may not render, extract, classify, or produce compact evidence.
+- Customer-Facing Scope remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 57/57.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 34/34.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was warning-only/review-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, layouts, or Customer Output Readiness behavior.
+
+### Manual QA Cases
+
+Case 1B electrical and drywall drift:
+- PASS.
+- Unsupported electrical warning appeared when Customer-Facing Scope mentioned actual electrical and drywall work.
+- Customer Output Readiness showed that generated customer scope mentions electrical work without strong typed, priced, or plan-readback support.
+
+Case 7A painting scope:
+- PASS.
+- With Trade Type = Painting, the bad unsupported drywall/painting warning did not appear.
+- Customer-Facing Scope stayed painting-focused and explicitly excluded drywall repair, skim coating, texture matching, ceiling/trim painting, electrical, plumbing, flooring, and carpentry.
+
+Customer-facing output:
+- PASS.
+- Customer-Facing Scope stayed detailed and unchanged.
+
+Known remaining future audit item:
+- Case 7A still shows backend split-scope / scope-to-price diagnostic noise.
+- Scope-to-Price X-Ray detects primary trade as general renovation.
+- Pricing Method shows anchor: `flooring_only_v1`.
+- Split scopes pull excluded/protection words into flooring, drywall, electrical, plumbing, and carpentry buckets.
+- Materials List shows flooring material, underlayment, base/quarter round, transitions, and floor protection for a painting-style scope.
+- Treat this as a separate future audit only. Do not change backend pricing, scope splitter semantics, pricing math, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data, payload shape, API routes, layouts, or Customer Output Readiness behavior without a separately scoped task.
+
+Final decision:
+- Real-world Customer Scope Drift cleanup passes.
+- Next active smart-estimator task should be backend split-scope / scope-to-price diagnostic noise audit.

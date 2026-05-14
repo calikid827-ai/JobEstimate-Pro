@@ -56,6 +56,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Reduces false positives for phrases such as electrical by others, plumbing excluded, wall repair excluded, protect flooring, work around existing baseboards, owner supplies fixtures, GC handles permits, demo by others, room ranges, remove/reinstall plumbing work, and narrow touch-up scopes.
 - AI-generated customer-facing scope descriptions with useful step-by-step task sequencing, materials language, and work-description detail. This detailed estimator prose is a core product strength to preserve; safety guards should review unsupported expansion rather than automatically flattening, shortening, removing, or rewriting `result.text`.
 - Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text. It also suppresses adjacent-trade context false positives such as protecting flooring, avoiding electrical interference, coordinating with other trades, or working around door jambs/baseboards/transitions unless actual trade work is promised. Electrical coordination/protection-only wording such as coordination with the electrical trade, preventing interference with adjacent electrical components, and avoiding existing electrical wiring no longer triggers unsupported electrical warnings unless actual electrical work is promised.
+- Real-world Customer Scope Drift cleanup now prevents noisy `scopeXRay` split-scope entries such as `electrical` or `electrical coordination only` from suppressing true unsupported electrical drift. Unsupported electrical expansion remains visible when Customer-Facing Scope promises electrical rough-in, device adjustments, fixture relocation, conduit penetration patching, disconnection/reinstallation of devices and wiring, or electrical scope/work with wiring, devices, conduit, fixtures, outlets, switches, circuits, panels, or breakers. Case 1B manual QA now passes for electrical visibility, and Case 7A with Trade Type = Painting passes without the previous unsupported drywall/painting false positive. `result.text` remains preserved.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -105,6 +106,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Customer Output Readiness provides an estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing customer output or pricing.
   - Details are deduped across readiness items, capped at 2 per item, and the panel remains capped at 6 items so it stays a compact pre-send checklist rather than duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
   - Warning-only AI Scope Protection can send capped supporting details into Customer Output Readiness so contractors see 1-2 useful review reasons before Pricing/PDF without hiding or rewriting Customer-Facing Scope.
+  - Unsupported electrical drift now stays visible in Customer Output Readiness when real electrical work is promised but only coordination/review support exists.
 - Generated estimate result hierarchy now prioritizes the primary send workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. Unsupported trade drift warnings remain visible above Customer-Facing Scope when present. Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
 - Tax controls.
 - Deposit controls.
@@ -248,6 +250,7 @@ Implemented pricing and guard modules include:
 - Customer-scope drift false-positive reduction for adjacent-trade context language while preserving true unsupported-scope warnings for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion.
 - UI-side typed-scope normalization helper for pre-generate scope-quality warnings, including clause-level included work, excluded/by-others, protection-only, coordination-only, existing-condition, material responsibility, permit responsibility, and quantity/location classifications.
 - Customer-scope electrical false-positive cleanup for coordination/protection-only mentions of electrical trades, wiring, and components while preserving true unsupported electrical work warnings for rough-in, wiring, outlets, switches, circuits, fixtures, and panel/breaker work.
+- Customer-scope support classification now avoids treating bare/noisy `scopeXRay` split scopes such as `electrical` or `electrical coordination only` as strong support. This keeps unsupported electrical drift visible in app/PDF review paths while preserving quiet behavior for true coordination-only / avoid-interference language.
 - Plan-aware live trade pricing influence.
 - Section rows and embedded burdens.
 - Estimate rows normalized from structured sections.
@@ -557,7 +560,8 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Continue real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, and adjacent-trade/electrical false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
+- Next active smart-estimator audit: backend split-scope / scope-to-price diagnostic noise from real-world Case 7A QA. Scope-to-Price X-Ray can still detect General Renovation, `flooring_only_v1`, adjacent split scopes, and flooring materials for a painting-style scope when exclusions/protection wording are present. Audit before changing backend pricing or splitter semantics.
+- Continue real-PDF QA for plan evidence and customer-output safety. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and Customer Scope Drift cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
@@ -597,7 +601,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Run real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety.
+1. Audit backend split-scope / scope-to-price diagnostic noise from excluded/protection language before changing pricing semantics.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.

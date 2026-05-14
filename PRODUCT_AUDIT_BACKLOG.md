@@ -12,8 +12,8 @@ Principles:
 
 ## Current Priority Order
 
-1. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-2. Next active app-improvement task: continue real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety.
+1. Next active smart-estimator audit: backend split-scope / scope-to-price diagnostic noise from excluded/protection wording.
+2. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
@@ -151,6 +151,30 @@ Done note:
 - What not to touch: Result text, pricing, generation, PDFs, approvals, saved data.
 - Tests or manual QA needed: Marina Dunes retest; desktop and mobile visual QA.
 - Status: Done
+
+Done note:
+
+- Real-world QA Customer Scope Drift cleanup is complete. The guard now catches true unsupported electrical expansion even when noisy `scopeXRay` split scopes exist.
+- Fixed the real-app Case 1B issue where split entries such as `electrical` or `electrical coordination only` were treated as support and hid unsupported electrical drift.
+- Unsupported electrical expansion remains visible when Customer-Facing Scope promises actual electrical work such as electrical rough-in, device adjustments, electrical fixture relocation, conduit penetration patching, disconnection/reinstallation of devices and wiring, or electrical scope/work that includes wiring, devices, conduit, fixtures, outlets, switches, circuits, panels, or breakers.
+- Electrical unsupported drift remains visible when drywall drift is also present, while electrical coordination-only and avoid-interference language remains quiet.
+- Case 7A Customer Scope Drift now passes with Trade Type = Painting: walls-only painting with ceiling/trim painting excluded is not treated as whole-painting exclusion, no unsupported drywall/painting warning appeared, and Customer-Facing Scope stayed painting-focused with exclusions preserved.
+- Case 1B Plan Review Summary is acceptable for this pass with selected pages processed 8, selected pages read 1, pages with useful evidence 1, and review-only plan evidence language explaining that some selected pages may not render, extract, classify, or produce compact evidence.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` with 57/57 passing, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` with 34/34 passing, `npx tsc --noEmit`, and `git diff --check`.
+- Manual QA passed for Case 1B unsupported electrical visibility, Customer Output Readiness electrical support details, Case 7A painting drift suppression, detailed unchanged Customer-Facing Scope, and preserved exclusions.
+- This was warning-only/review-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, layouts, or Customer Output Readiness behavior.
+
+#### Item: Backend split-scope / scope-to-price diagnostic noise audit
+
+- Problem: Case 7A painting QA still shows backend diagnostic noise where excluded/protection words are pulled into adjacent trade split scopes and pricing-prep signals.
+- Why it matters: Even when Customer Scope Drift is now correct, noisy diagnostics such as General Renovation primary trade, `flooring_only_v1` anchor, adjacent split scopes, and flooring materials for a painting-style scope can reduce estimator trust.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit only first. Map where backend scope splitter, pricing anchor selection, scope-to-price x-ray, and materials diagnostics classify excluded/protection language. Keep any later fix review-only unless a separate scoped task proves a tiny safe classification cleanup.
+- Exact files/components likely involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, estimator pricing prep/material diagnostics, Scope-to-Price X-Ray display, related tests.
+- What not to touch: Pricing math, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data, payload shape, API routes, layouts, or Customer Output Readiness behavior.
+- Tests or manual QA needed: Reproduce Case 7A with Trade Type = Painting; inspect split scopes, primary trade, pricing anchor, materials list, and Customer Scope Drift output; add focused tests only after audit identifies a narrow safe behavior.
+- Status: Next active smart-estimator audit
 
 #### Item: Customer Output Readiness panel
 
