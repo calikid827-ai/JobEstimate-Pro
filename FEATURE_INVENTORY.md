@@ -49,6 +49,11 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Bathroom tile/general renovation path
   - Carpentry/general renovation path
 - Scope entry with smart generation.
+- Shared EstimatorScopeFacts helper:
+  - Added as deterministic text-only architecture groundwork for the estimator brain.
+  - Centralizes raw/normalized scope text, clause-level included work, boundary text, included/excluded/coordination/protection/existing-condition trades, owner/customer/contractor-supplied material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
+  - `typed-scope-normalization.ts` consumes `buildEstimatorScopeFacts()` first while preserving its existing public function names and return shape.
+  - Customer Scope Drift, Schedule Sequencing, Scope-to-Price Consistency Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated yet.
 - UI-side typed scope normalization for pre-generate scope-quality review:
   - Splits typed scope into clauses.
   - Classifies included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
@@ -569,7 +574,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active smart-estimator audit: EstimatorScopeFacts / shared scope-understanding architecture. Map how included work, exclusions/by-others, protection-only, coordination-only, sequencing-only, existing-condition, owner-supplied, and true mixed-scope facts flow through Customer Scope Drift, Scope-to-Price, schedule sequencing, materials, Estimate Defense, and backend split-scope diagnostics.
+- Next active smart-estimator task: Phase 2 Scope-to-Price Consistency Review migration to EstimatorScopeFacts. The shared facts helper is now in place, and Scope-to-Price is the safest first review consumer because it is UI-side, warning-only, already test-covered, and directly depends on included-work / boundary-context / material-responsibility interpretation.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -610,7 +615,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Run an EstimatorScopeFacts / shared scope-understanding audit across the completed estimator-intelligence stack.
+1. Migrate Scope-to-Price Consistency Review to EstimatorScopeFacts as Phase 2 of the shared scope-understanding architecture.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.

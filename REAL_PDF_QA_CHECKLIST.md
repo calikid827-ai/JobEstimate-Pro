@@ -1583,5 +1583,36 @@ Acceptable remaining notes:
 
 Final decision:
 - Remaining real-world QA false-positive cleanup across Cases 4, 6, 7, and 8 passes.
-- Next active smart-estimator task should shift from individual false-positive cleanup to an EstimatorScopeFacts / shared scope-understanding audit.
+- Next active smart-estimator task should shift from individual false-positive cleanup to EstimatorScopeFacts architecture work. Phase 1 is now complete, so the current next task is Phase 2: migrate Scope-to-Price Consistency Review to EstimatorScopeFacts.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 22 — Phase 1 EstimatorScopeFacts Architecture Groundwork
+
+Status: PASS
+
+Scope:
+- Phase 1 added `app/app/lib/estimator-scope-facts.ts` and `app/app/lib/estimator-scope-facts.test.ts`.
+- `app/app/lib/typed-scope-normalization.ts` now uses `buildEstimatorScopeFacts()` internally while preserving its public function names and return shape.
+- The shared deterministic text-only facts helper centralizes included work, excluded/by-others clauses, protection-only clauses, coordination-only clauses, existing/to-remain clauses, owner/customer/contractor-supplied material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
+- Customer Scope Drift, Schedule Sequencing, Scope-to-Price Consistency Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense were intentionally not migrated in Phase 1.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 11/11.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 38/38.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was architecture groundwork only.
+- It did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
+
+Final decision:
+- Phase 1 EstimatorScopeFacts passes.
+- Next active smart-estimator task is Phase 2: migrate Scope-to-Price Consistency Review to EstimatorScopeFacts.
+- Next manual QA should happen after the Phase 2 migration, because Phase 1 intentionally preserved current visible behavior.
 - Production Live Mode subscription verification remains the final pre-launch gate only.

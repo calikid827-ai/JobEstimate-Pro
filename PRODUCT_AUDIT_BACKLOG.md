@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator audit: EstimatorScopeFacts / shared scope-understanding architecture audit so Customer Scope Drift, Scope-to-Price, schedule sequencing, materials, Estimate Defense, and backend split-scope logic can keep converging on one included-work interpretation.
+1. Next active smart-estimator task: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review, so the warning-only consistency guard starts consuming the shared included-work / boundary-context facts layer.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Next active smart-estimator priority is an EstimatorScopeFacts / shared scope-understanding audit. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 2: migrate Scope-to-Price Consistency Review to EstimatorScopeFacts. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -268,17 +268,39 @@ Done note:
 - True mixed scopes, true unsupported warnings, wet-area cure/set-time for real tile work, permit/inspection review for electrical rough-in, owner-supplied material responsibility, and wallcovering layout/pattern/substrate confirmation remain acceptable estimator guidance.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
 
-#### Item: EstimatorScopeFacts / shared scope-understanding audit
+#### Item: Phase 1 EstimatorScopeFacts / shared scope-understanding helper
 
 - Problem: Recent fixes repeatedly taught Customer Scope Drift, Scope-to-Price, schedule, materials, Estimate Defense, and backend split-scope paths the same included-work vs boundary-context rules in separate places.
 - Why it matters: A senior-estimator app should share one defensible view of included work, excluded/by-others work, owner-supplied materials, coordination-only language, sequencing-only context, existing conditions, and true mixed scope.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit current scope-understanding helpers and design the smallest shared EstimatorScopeFacts shape or adapter before implementing. Keep the first pass read-only/planning unless the audit finds a tiny duplication cleanup.
-- Exact files/components likely involved: `app/app/lib/typed-scope-normalization.ts`, `app/app/lib/customer-scope-drift.ts`, `app/app/lib/scope-price-consistency-review.ts`, `app/app/lib/schedule-sequencing-review.ts`, `app/app/lib/priceguard-review.ts`, `app/api/generate/lib/priceguard/scopeSplitter.ts`, and `app/api/generate/route.ts`.
+- Recommended fix approach: Completed Phase 1 by adding a deterministic text-only shared facts helper and adapting typed-scope normalization to consume it internally while preserving public behavior.
+- Exact files/components involved: `app/app/lib/estimator-scope-facts.ts`, `app/app/lib/estimator-scope-facts.test.ts`, `app/app/lib/typed-scope-normalization.ts`.
 - What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Tests or manual QA needed: Architecture map first; later focused tests only for any scoped shared helper.
-- Status: Next active smart-estimator audit
+- Tests or manual QA needed: Focused EstimatorScopeFacts tests, existing estimator tests, adjacent review helper tests, TypeScript, and diff check.
+- Status: Done
+
+Done note:
+
+- Commit `b8d780f` added `app/app/lib/estimator-scope-facts.ts` and `app/app/lib/estimator-scope-facts.test.ts`.
+- The shared helper returns stable deterministic facts for raw/normalized scope text, clauses, included-work text, boundary text, included/excluded/coordination/protection/existing-condition trades, material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
+- `typed-scope-normalization.ts` now uses `buildEstimatorScopeFacts()` internally while preserving existing exported function names and return shape.
+- Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, Scope-to-Price Consistency Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet.
+- Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
+- This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
+- Next active smart-estimator priority is Phase 2: migrate Scope-to-Price Consistency Review to EstimatorScopeFacts. Production Live Mode subscription verification remains the final pre-launch gate only.
+
+#### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
+
+- Problem: Scope-to-Price Consistency Review already checks included typed scope, diagnostics, pricing anchors, materials, and estimate sections, but it still owns some boundary/context interpretation that now belongs in the shared facts layer.
+- Why it matters: Migrating the consistency guard first is the safest next consumer step because it is UI-side, warning-only, already covered by focused tests, and directly benefits from consistent included-work and material-responsibility facts.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Adapt `scope-price-consistency-review.ts` to consume EstimatorScopeFacts for included trades, boundary clauses, material responsibility, patch/texture context, tile trim, wallcovering prep, and true mixed-trade checks while preserving existing warning fields and behavior unless tests prove a narrower cleanup is needed.
+- Exact files/components likely involved: `app/app/lib/scope-price-consistency-review.ts`, `app/app/lib/scope-price-consistency-review.test.ts`, possible focused integration coverage in `app/app/lib/priceguard-review.test.ts`.
+- What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, backend route diagnostics, `scopeSplitter`, materials generation, Customer Scope Drift, or Schedule Sequencing.
+- Tests or manual QA needed: Existing Scope-to-Price Consistency tests plus mirrored Case 1, 4, 6, 7, 8, and true mixed controls; existing estimator tests; TypeScript; diff check; manual QA after migration.
+- Status: Next active smart-estimator task
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 
