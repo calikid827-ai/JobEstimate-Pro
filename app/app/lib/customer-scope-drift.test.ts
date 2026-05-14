@@ -213,6 +213,34 @@ test("warns when plan-review-only scope expands into electrical fixture relocati
   assert.match(visibleText, /not strongly supported|electrical system work/i)
 })
 
+test("warns when electrical coordination expands into fixture relocation device adjustment and conduit patching", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "ADA unit renovation per selected plan pages. Electrical coordination only. Plan evidence review only. Owner and GC-provided items. Estimator to confirm quantities and inclusions.",
+    resultText:
+      "Electrical work includes coordination for the relocation of fixtures, adjustment of devices, and patching of conduit penetrations. The work sequence is followed by electrical rough-in.",
+  })
+
+  const visibleText = [review.summary, ...review.warnings.map((item) => `${item.label}: ${item.message}`)].join(" ")
+  assert.match(visibleText, /electrical/i)
+  assert.match(visibleText, /not strongly supported|electrical system work/i)
+})
+
+test("keeps electrical unsupported warning visible for fixture relocation when drywall drift is also present", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "ADA unit renovation per selected plan pages. Electrical coordination only. Plan evidence review only. Owner and GC-provided items. Drywall by others.",
+    resultText:
+      "Customer-facing scope includes drywall patching and refinishing. Electrical work includes coordination for the relocation of fixtures, adjustment of devices, and patching of conduit penetrations, followed by electrical rough-in.",
+  })
+
+  const visibleText = [review.summary, ...review.warnings.map((item) => `${item.label}: ${item.message}`)].join(" ")
+  assert.match(visibleText, /electrical/i)
+  assert.match(visibleText, /not strongly supported|electrical system work/i)
+})
+
 test("warns when electrical coordination-only scope expands into device relocation", () => {
   const review = guard({
     selectedTrade: "general_renovation",

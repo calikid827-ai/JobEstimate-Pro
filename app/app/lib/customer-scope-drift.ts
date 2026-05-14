@@ -57,9 +57,9 @@ const TRADE_RULES: TradeRule[] = [
     label: "electrical",
     aliases: ["electrical", "electrician"],
     mentionPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|electrical\s+coordination|electrical\s+trade)\b/i,
+      /\b(electrical|electrician|wiring|rewire|conduits?|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|electrical\s+coordination|electrical\s+trade)\b/i,
     supportPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical)\b/i,
+      /\b(electrical|electrician|wiring|rewire|conduits?|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|electrical\s+rough[- ]?in|rough[- ]?in\s+electrical)\b/i,
   },
   {
     id: "plumbing",
@@ -170,7 +170,7 @@ const ELECTRICAL_CONTEXT_ONLY_PATTERN =
   /\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b|\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b.{0,100}\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b|\b(existing|adjacent)\s+electrical\s+(wiring|components?)\b/i
 
 const ELECTRICAL_TRUE_WORK_PATTERN =
-  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|wiring\s+adjustments?|electrical\s+wiring\s+adjustments?|(?:electrical\s+)?wiring\s+to\s+(?:accommodate|align)|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(disconnect(?:ing|ion)?|install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|run(?:ning)?|add(?:ing)?|relocate|rewire|wire|adjust(?:ment|ing|s)?)\s+(?:new\s+)?(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(disconnection|disconnecting|removal|replacement|reinstallation|reinstall|repair)\s+(?:and\s+(?:reinstallation|reinstalling|replacement|reinstall|repair)\s+)?of\s+(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(relocation|adjustments?|verification)\s+of\s+(?:existing\s+)?(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\s+(?:scope|tasks?|work)\s+includes\b.{0,120}\b(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\b.{0,100}\b(relocation|adjustments?)\s+of\s+(?:existing\s+)?fixtures?\b|\b(relocation|adjustments?)\s+of\s+(?:existing\s+)?fixtures?\b.{0,100}\belectrical\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(disconnect(?:ing|ion)?|install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|adjustments?|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?)\b/i
+  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|wiring\s+adjustments?|electrical\s+wiring\s+adjustments?|(?:electrical\s+)?wiring\s+to\s+(?:accommodate|align)|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(disconnect(?:ing|ion)?|install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|run(?:ning)?|add(?:ing)?|relocate|rewire|wire|adjust(?:ment|ing|s)?)\s+(?:new\s+)?(?:electrical\s+)?(wiring|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(disconnection|disconnecting|removal|replacement|reinstallation|reinstall|repair)\s+(?:and\s+(?:reinstallation|reinstalling|replacement|reinstall|repair)\s+)?of\s+(?:electrical\s+)?(wiring|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(relocation|adjustments?|verification)\s+of\s+(?:existing\s+)?(?:electrical\s+)?(wiring|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\s+(?:scope|tasks?|work)\s+includes\b.{0,120}\b(wiring|conduits?|devices?|outlets?|receptacles?|switches?|fixtures?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\b.{0,120}\b(relocation|adjustments?|patching)\s+of\s+(?:existing\s+)?(?:fixtures?|conduit\s+penetrations?|penetrations?)\b|\b(relocation|adjustments?|patching)\s+of\s+(?:existing\s+)?(?:fixtures?|conduit\s+penetrations?|penetrations?)\b.{0,120}\belectrical\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(disconnect(?:ing|ion)?|install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|adjustments?|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?)\b/i
 
 const SUBSEQUENT_TRADE_CONTEXT_PATTERN =
   /\b(after|before|following|once|upon completion of|prior to|subsequent|by others|others to|separate trade|separate trades|separate contractor|coordinate|coordinating|coordination|sequencing|sequence|existing)\b/i
@@ -497,11 +497,17 @@ export function buildCustomerScopeReviewGuard(
   }
 
   const unsupportedSummary = buildUnsupportedTradeSummary(unsupportedTrades)
+  const hasElectricalUnsupported = unsupportedTrades.some((rule) => rule.id === "electrical")
+  const electricalConflict = warnings.find(
+    (warning) => warning.label === "Excluded scope conflict" && /\belectrical\b/i.test(warning.message)
+  )
   const summary =
-    warnings[0]?.label === "Excluded scope conflict"
-      ? warnings[0].message
-      : unsupportedTrades.some((rule) => rule.id === "electrical") && unsupportedSummary
+    electricalConflict
+      ? electricalConflict.message
+      : hasElectricalUnsupported && unsupportedSummary
       ? unsupportedSummary
+      : warnings[0]?.label === "Excluded scope conflict"
+      ? warnings[0].message
       : warnings[0]?.message || unsupportedSummary
 
   return {
