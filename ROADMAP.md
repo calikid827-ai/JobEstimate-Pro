@@ -41,10 +41,10 @@ Difficulty levels:
 ## Current Next Active Tasks
 
 1. NEXT: Use `PRODUCT_AUDIT_BACKLOG.md` as the master improvement tracker and work the next launch-safe product intelligence task one focused pass at a time.
-2. Next active product-improvement task: PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
+2. Next active product-improvement task: typed scope normalization audit before changing scope or pricing behavior.
 3. Keep final Production Live Mode subscription verification using `SUBSCRIPTION_TEST_CHECKLIST.md` pending as the final pre-launch gate before accepting public paid users.
 4. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-5. Keep warning-only AI scope protection under regression watch while preserving detailed AI-generated step-by-step customer scope prose as a core product strength.
+5. Keep PriceGuard trade-specific missed-scope guidance and warning-only AI scope protection under regression watch while preserving detailed AI-generated step-by-step customer scope prose as a core product strength.
 
 Completed pre-launch task kept visible:
 
@@ -53,6 +53,7 @@ Completed pre-launch task kept visible:
 - DONE: Advanced analysis customer-facing mode separates the clean estimate result summary from estimator diagnostics.
 - DONE: First-version deterministic PriceGuard Review / Estimate Intelligence panel is implemented in `/app`. It computes UI-side review notes from existing estimate state, including score/level, missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, customer-ready price defense notes, contractor-only risk notes, and a pre-generation fallback state. It does not change pricing math, generation, PDFs, approvals, invoices, billing, API routes, or saved data shapes.
 - DONE: PriceGuard Review QA false-positive reduction pass is complete. The helper now filters scope-quality warnings against generated customer-facing estimate text and better recognizes trim/baseboard work, linear-foot quantities, prep/workflow language, and site-visit-only schedule confidence.
+- DONE: PriceGuard trade-specific missed-scope review pass is complete. PriceGuard Review now uses selected-trade context to add warning-only estimator guidance for painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation risks such as fixture supply, access, patching, permits/inspections, substrate prep, transitions, disposal, finish selections, waterproofing, texture match, protection, exclusions, and sequencing. A small customer-scope drift false-positive cleanup suppresses adjacent-trade context such as flooring protection, electrical interference avoidance, coordination, and working around door jambs/baseboards/transitions while preserving true warnings for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion. Validation and manual QA passed. This was review-only/warning-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 - DONE: Saved Estimates and Invoices empty states/workflow guidance now keep those sections visible when filtered lists are empty and explain where records come from, including selected-job context when applicable.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` documents the manual PWA/web production-readiness smoke test checklist.
 - DONE: Full app-side PWA/web smoke test passed for free generation, account/access refresh, plan upload/selected-page generation, estimate PDF, invoice creation/PDF, the earlier checkout/success entitlement refresh path, approval link creation, cross-browser/device approval, approval sync, and approval-created invoice import. Current subscription billing still requires final payment, webhook delivery, and entitlement activation verification through `SUBSCRIPTION_TEST_CHECKLIST.md` before public paid launch.

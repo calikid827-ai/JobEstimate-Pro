@@ -50,7 +50,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Carpentry/general renovation path
 - Scope entry with smart generation.
 - AI-generated customer-facing scope descriptions with useful step-by-step task sequencing, materials language, and work-description detail. This detailed estimator prose is a core product strength to preserve; safety guards should review unsupported expansion rather than automatically flattening, shortening, removing, or rewriting `result.text`.
-- Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text.
+- Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text. It also suppresses adjacent-trade context false positives such as protecting flooring, avoiding electrical interference, coordinating with other trades, or working around door jambs/baseboards/transitions unless actual trade work is promised.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -85,6 +85,8 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Deterministic PriceGuard Review / Estimate Intelligence panel:
   - UI-side review from existing estimate state
   - Filters warnings against generated customer-facing estimate text to reduce over-warning when the generated scope already resolves original-scope concerns
+  - Uses selected-trade context for review-only missed-scope guidance across painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation
+  - Flags trade-specific estimator review items such as fixture supply, access, patching, permits/inspections, substrate prep, transitions, disposal, finish selections, waterproofing, texture match, protection, exclusions, and sequencing
   - Score/level
   - Missed-scope warnings
   - Labor/material confidence notes
@@ -233,6 +235,8 @@ Implemented pricing and guard modules include:
 - PriceGuard status/confidence.
 - PriceGuard applied rules, assumptions, and warnings.
 - PriceGuard Review warning filtering against generated customer-facing estimate text to reduce false positives for resolved prep, material, cleanup, protection, exclusion, approval, and work-process concerns.
+- PriceGuard Review selected-trade-aware missed-scope guidance for common contractor underbid risks across painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation.
+- Customer-scope drift false-positive reduction for adjacent-trade context language while preserving true unsupported-scope warnings for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion.
 - Plan-aware live trade pricing influence.
 - Section rows and embedded burdens.
 - Estimate rows normalized from structured sections.
@@ -542,7 +546,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- PriceGuard trade-specific missed-scope checks as review-only estimator guidance. Warning-only AI Scope Protection / Unsupported Scope Review Guard is now implemented; keep it under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
+- Typed scope normalization audit before changing scope or pricing behavior. The PriceGuard trade-specific missed-scope checks and adjacent-trade false-positive cleanup are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -582,7 +586,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Add warning-only AI Scope Protection / Unsupported Scope Review Guard after the current readiness warnings remain stable.
+1. Run typed scope normalization audit before changing scope or pricing behavior.
 2. Complete final Production Live Mode payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
 3. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
 4. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.

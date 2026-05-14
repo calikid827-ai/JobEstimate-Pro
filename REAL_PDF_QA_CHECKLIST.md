@@ -1085,3 +1085,58 @@ Final decision:
 - Generate is not blocked.
 - PDF and approval output were not changed.
 - This did not change pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+
+## Test Entry 13 — PriceGuard Trade-Specific Missed-Scope Checks And False-Positive Cleanup
+
+Status: PASS
+
+Scope:
+- PriceGuard Review now uses selected-trade context for review-only missed-scope guidance.
+- Trade-specific checks were added for painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation.
+- Review warnings cover estimator-risk items such as fixture supply, access, patching, permits/inspections, substrate prep, transitions, disposal, finish selections, waterproofing, texture match, protection, exclusions, and sequencing.
+- Warning-only customer-scope drift false-positive cleanup was added so adjacent trade context does not trigger unsupported-trade warnings unless actual work is promised.
+- Customer-Facing Scope remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was review-only/warning-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+
+### Manual QA Cases
+
+Plumbing scope mentioning flooring protection:
+- PASS.
+- Flooring protection language did not falsely warn for unsupported flooring work.
+
+Plumbing scope mentioning no interference with electrical:
+- PASS.
+- Electrical interference-avoidance language did not falsely warn for unsupported electrical work.
+
+Flooring scope mentioning door jambs, closets, transitions, and baseboard finish coordination:
+- PASS.
+- Coordination/work-around language did not falsely warn for unsupported carpentry work.
+
+True electrical rough-in:
+- PASS.
+- Unsupported electrical rough-in still warned.
+
+True flooring install/repair:
+- PASS.
+- Unsupported flooring install/repair still warned.
+
+True baseboard replacement/carpentry work:
+- PASS.
+- Unsupported baseboard replacement/carpentry expansion still warned.
+
+Result workflow:
+- PASS.
+- Customer Output Readiness stayed before pricing.
+- Pricing/PDF and schedule remained easy to find.
+- Customer-Facing Scope stayed detailed and unchanged.
+
+Final decision:
+- PriceGuard trade-specific missed-scope checks pass.
+- Adjacent-trade false-positive cleanup passes.
+- Keep this warning-only estimator guidance under regression watch during real-world estimate QA.

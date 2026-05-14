@@ -13,8 +13,8 @@ Principles:
 ## Current Priority Order
 
 1. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-2. Next active app-improvement task: add PriceGuard trade-specific missed-scope checks as review-only estimator guidance.
-3. Keep warning-only AI scope protection under regression watch during real-world estimate QA.
+2. Next active app-improvement task: typed scope normalization audit before changing any scope or pricing logic.
+3. Keep PriceGuard trade-specific missed-scope checks and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
 
@@ -102,8 +102,18 @@ Done note:
 - Recommended fix approach: Add review-only, trade-aware notes from existing app state; avoid pricing changes.
 - Exact files/components likely involved: `app/app/lib/priceguard-review.ts`, `app/app/components/PriceGuardReviewPanel.tsx`
 - What not to touch: Pricing math, estimate generation, PDFs, approvals, saved data.
-- Tests or manual QA needed: PriceGuard helper tests for electrical, plumbing, flooring, drywall, painting, bathroom/tile.
-- Status: Not started
+- Tests or manual QA needed: PriceGuard helper tests for electrical, plumbing, flooring, drywall, painting, bathroom/tile; customer-scope false-positive cleanup tests; manual QA.
+- Status: Done
+
+Done note:
+
+- PriceGuard Review now receives selected-trade context and adds review-only, trade-specific missed-scope guidance for painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation.
+- Warnings cover estimator review issues such as fixture supply, access, patching, permits/inspections, substrate prep, transitions, disposal, finish selections, waterproofing, texture match, protection, exclusions, and sequencing.
+- A focused false-positive cleanup in the warning-only customer scope drift guard prevents adjacent trade context such as flooring protection, electrical interference avoidance, trade coordination, and working around door jambs/baseboards/transitions from triggering unsupported-trade warnings unless actual work is promised.
+- True unsupported warnings remain for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts`, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts`, `npx tsc --noEmit`, and `git diff --check`.
+- Manual QA passed for plumbing flooring-protection wording, plumbing electrical-interference wording, flooring door-jamb/closet/transition/baseboard-finish coordination, true electrical rough-in, true flooring install/repair, true baseboard/carpentry work, Customer Output Readiness placement, Pricing/PDF visibility, schedule visibility, and detailed unchanged Customer-Facing Scope.
+- This was review-only/warning-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
 
 #### Item: PriceGuard review false-positive watchlist
 
@@ -115,7 +125,7 @@ Done note:
 - Exact files/components likely involved: `app/app/lib/priceguard-review.ts`, helper tests.
 - What not to touch: Pricing math and generation behavior.
 - Tests or manual QA needed: Regression tests for resolved warnings and no-paint-bias cases.
-- Status: In progress
+- Status: Done for current pass; keep under regression watch during real-world QA.
 
 ### 5. Customer-Facing Output Safety
 
