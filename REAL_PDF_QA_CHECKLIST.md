@@ -1343,4 +1343,71 @@ True mixed painting + LVP control:
 
 Final decision:
 - Backend scope-boundary safety fix passes.
-- Next active smart-estimator task should be cross-trade backend scope-boundary regression review before expanding the Case 7A filtering pattern.
+- Cross-trade backend scope-boundary regression review was completed later in Test Entry 18.
+
+---
+
+# Test Entry 18 — Cross-Trade Backend Scope-Boundary Regression Fix
+
+Status: PASS
+
+Scope:
+- Cross-trade backend included-work filtering cleanup after the Case 7A safety fix.
+- Improved `getIncludedScopeText()` in `app/api/generate/lib/priceguard/scopeSplitter.ts` so boundary clauses are filtered at the sentence/segment level instead of trimming after boundary words and leaving orphan trade nouns behind.
+- Boundary clauses such as `Electrical by others`, `Painting by others`, `Texture match excluded`, `Flooring protection only`, `Existing baseboards to remain`, `Owner-supplied fixtures`, `Furniture moving by others`, `Plumbing by others`, `Glass by others`, and `Coordinate with electrical trade only` are removed from included-work scope.
+- True included work remains preserved, including install LVP, electrical rough-in, replace baseboards, drywall patch included, plumbing rough-in, replace toilet/faucet, install tile/waterproofing/grout, wallcovering prep/primer, and true mixed painting + LVP.
+- Added local splitter recognition for tile and wallcovering so true included tile/waterproofing and wallcovering prep/primer scopes do not fall into generic renovation or painting buckets.
+- Customer-Facing Scope / `result.text` remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` passed 18/18.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 34/34.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This did not change pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, or broad backend pricing semantics.
+
+### Manual QA Cases
+
+Plumbing:
+- PASS.
+- Scope: `Replace toilet and faucet. Electrical by others. Flooring protection only. Wall patching by others. Owner-supplied fixtures.`
+- Result: plumbing-only. Electrical, flooring, drywall, and painting boundary language did not create false split scopes.
+
+Electrical:
+- PASS.
+- Scope: `Electrical rough-in for vanity light. Drywall and paint by others. Owner-supplied fixture.`
+- Result: electrical-only. Drywall, paint, and owner fixture boundaries were filtered while electrical rough-in remained real included work.
+
+Flooring:
+- PASS.
+- Scope: `Install owner-supplied LVP flooring with transitions. Existing baseboards to remain. Painting by others.`
+- Result: flooring-only. Existing baseboards and painting by others did not create carpentry or painting split scopes.
+
+Drywall:
+- PASS.
+- Scope: `Drywall patch at access holes. Painting by others. Texture match excluded. Electrical and plumbing by others.`
+- Result: drywall-only. Painting, electrical, plumbing, and excluded texture-match boundaries were filtered.
+
+Bathroom/Tile:
+- PASS.
+- Scope: `Waterproof shower walls and install tile. Plumbing by others. Glass by others. Owner-supplied tile and fixtures.`
+- Result: tile-related included scope was preserved. Plumbing, glass, and owner-supplied boundaries were filtered.
+
+Wallcovering:
+- PASS.
+- Scope: `Install wallcovering with wall prep and primer included. Painting, electrical, and furniture moving by others.`
+- Result: wallcovering recognized. Wall prep and primer stayed in wallcovering context, while painting, electrical, and furniture-moving boundaries were filtered.
+
+Carpentry:
+- PASS.
+- Scope: `Replace baseboards in hallway. Painting by others. Flooring protection only.`
+- Result: carpentry-only. Painting by others and flooring protection did not create painting or flooring scopes.
+
+True mixed control:
+- PASS.
+- Scope: `Paint walls in living room and install LVP flooring with transitions.`
+- Result: mixed scope still works. Split scopes show painting and flooring, and General Renovation / `flooring_only_v1` behavior remains where intended.
+
+Final decision:
+- Cross-trade backend scope-boundary regression fix passes.
+- Next active smart-estimator task should be real-world estimate QA matrix coverage for diagnostic consistency across Customer-Facing Scope, Customer Output Readiness, PriceGuard Review, Scope-to-Price X-Ray, materials, schedule, and PDF/customer-output safety.

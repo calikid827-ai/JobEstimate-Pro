@@ -12,8 +12,8 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator audit: cross-trade backend scope-boundary regression review for by-others, owner-supplied, protection, coordination, and existing-condition language.
-2. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
+1. Next active smart-estimator audit: continue real-world estimate QA matrix coverage for plan evidence, customer-output safety, scope-to-price diagnostics, and trade-specific materials consistency.
+2. Keep cross-trade backend scope-boundary filtering under regression watch during real-world trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
@@ -193,10 +193,31 @@ Done note:
 - Why it matters: The app should read messy contractor scope like a senior estimator and avoid treating exclusions or boundaries as included work.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit first with real-world examples across electrical, plumbing, flooring, drywall, carpentry, wallcovering, and bathroom/tile. Only implement additional tiny scope-boundary fixes if repeated false backend signals are confirmed.
-- Exact files/components likely involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/route.ts`, backend estimator tests.
+- Recommended fix approach: Completed a focused cross-trade backend scope-boundary regression fix. `getIncludedScopeText()` now filters boundary clauses at the sentence/segment level instead of trimming after boundary words and leaving orphan trade nouns behind.
+- Exact files/components involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/lib/priceguard/scopeSplitter.test.ts`
 - What not to touch: Pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, payloads, API contracts, Customer Scope Drift, Customer Output Readiness layout, or measured plan pricing eligibility.
-- Tests or manual QA needed: Targeted backend controls for true included work vs excluded/by-others/protection/coordination-only language by trade.
+- Tests or manual QA needed: Targeted backend controls for true included work vs excluded/by-others/protection/coordination-only language by trade; manual app retest across plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, and true mixed painting + LVP.
+- Status: Done
+
+Done note:
+
+- Improved backend included-work filtering so boundary clauses such as `Electrical by others`, `Painting by others`, `Texture match excluded`, `Flooring protection only`, `Existing baseboards to remain`, `Owner-supplied fixtures`, `Furniture moving by others`, `Plumbing by others`, and `Coordinate with electrical trade only` are removed from included-work scope instead of leaving orphan trade nouns.
+- True included work remains preserved for `install LVP`, electrical rough-in, baseboard replacement, drywall patching, plumbing rough-in, toilet/faucet replacement, tile/waterproofing/grout work, wallcovering prep/primer, and true mixed painting + LVP.
+- Added local splitter recognition for tile and wallcovering so included tile/waterproofing and wallcovering prep/primer scopes do not fall into generic renovation or painting buckets.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` with 18/18 passing, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` with 34/34 passing, `npx tsc --noEmit`, and `git diff --check`.
+- Manual retest passed for plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, and true mixed painting + LVP scopes. Boundary language no longer created false electrical, flooring, drywall, painting, plumbing, carpentry, or furniture-moving split scopes, while true mixed behavior remained intact.
+- This did not change pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, or broad backend pricing semantics.
+
+#### Item: Real-world estimate QA matrix for diagnostic consistency
+
+- Problem: The current estimator-intelligence stack is now broad enough that regressions are most likely to show up in full estimate QA rather than isolated helper behavior.
+- Why it matters: Contractors need Customer-Facing Scope, PriceGuard Review, Customer Output Readiness, Scope-to-Price X-Ray, materials, schedule, and PDFs to tell one consistent story.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Run focused real-world trade examples first. Only implement small deterministic fixes when repeated QA shows a narrow false-signal, missing-warning, or diagnostic consistency issue.
+- Exact files/components likely involved: QA docs first; possible future scoped fixes in `app/api/generate/lib/priceguard/*`, `app/app/lib/*`, or `app/app/page.tsx` only if QA proves a specific issue.
+- What not to touch: Pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data, payload shape, API routes, layouts, or measured plan pricing eligibility unless a later task explicitly scopes it.
+- Tests or manual QA needed: Real-world estimates across plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, painting, and general renovation, with split scopes, anchors, materials, warnings, schedule, and PDF/customer-output safety reviewed together.
 - Status: Next active smart-estimator audit
 
 #### Item: Customer Output Readiness panel
