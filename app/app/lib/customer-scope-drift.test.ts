@@ -557,6 +557,31 @@ test("does not warn when electrical scope references drywall and paint as subseq
   )
 })
 
+test("does not warn when electrical scope mentions framing and finish trades only as sequencing context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "electrical",
+      writtenScope:
+        "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures.",
+      resultText:
+        "Customer-facing scope includes electrical rough-in, device installation, permit coordination, and cleanup. The sequencing of this work is coordinated to follow any rough-in or framing work and will precede finish trades.",
+    }),
+    null
+  )
+})
+
+test("true carpentry work in electrical output still warns", () => {
+  assert.match(
+    warning({
+      selectedTrade: "electrical",
+      writtenScope: "Electrical rough-in for vanity lights.",
+      resultText:
+        "Customer-facing scope includes electrical rough-in plus framing repair, blocking installation, and trim replacement.",
+    }) || "",
+    /carpentry/
+  )
+})
+
 test("does not warn when flooring scope mentions finish coordination only", () => {
   assert.equal(
     warning({
@@ -838,6 +863,19 @@ test("does not warn on baseboard removal and disposal inside supported carpentry
         "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain.",
       resultText:
         "Customer-facing scope includes careful removal and disposal of existing baseboards prior to installation of new baseboards, cleanup, and customer approval.",
+    }),
+    null
+  )
+})
+
+test("does not warn on baseboard demolition wording inside supported carpentry replacement", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "carpentry",
+      writtenScope:
+        "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain.",
+      resultText:
+        "Customer-facing scope includes flooring protection prior to demolition and careful removal and disposal of existing baseboards before installing new baseboards.",
     }),
     null
   )

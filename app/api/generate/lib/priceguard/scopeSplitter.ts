@@ -235,6 +235,14 @@ function detectTradeForSegment(
 
   if (
     context.tileContext &&
+    /\b(demo|demolition|remove|removal|tear\s*out|cement\s*board|backer\s*board|durock|hardie(?:backer)?|membrane|waterproof|waterproofing)\b/.test(s)
+  ) {
+    signals.push("tile prep context")
+    return { trade: "tile", signals }
+  }
+
+  if (
+    context.tileContext &&
     /\b(tile\s+trim|edge\s+trim|trim\s+piece|trim\s+pieces|schluter|jolly|bullnose|trim)\b/.test(s) &&
     !/\b(baseboards?|casing|crown|door|window|finish\s+carpentry|carpentry)\b/.test(s)
   ) {

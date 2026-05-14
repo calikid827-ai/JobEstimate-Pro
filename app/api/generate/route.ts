@@ -1189,7 +1189,10 @@ if (args.quantityInputs.photoWallSqft) {
     args.splitScopes.some(
       (x) =>
         x.trade === "carpentry" ||
-        /\b(baseboard|trim|casing|quarter round|shoe mold)\b/i.test(x.scope)
+        (
+          x.trade !== "tile" &&
+          /\b(baseboard|casing|quarter round|shoe mold)\b/i.test(x.scope)
+        )
     ) &&
     !/(\d{1,5})\s*(linear\s*ft|lf|feet)\b/i.test(scopeBlob)
 
@@ -1207,7 +1210,12 @@ if (args.quantityInputs.photoWallSqft) {
 
   return {
     detectedScope: {
-      primaryTrade: args.trade,
+      primaryTrade:
+        args.trade === "general renovation" &&
+        args.splitScopes.length === 1 &&
+        args.splitScopes[0]?.trade !== "general renovation"
+          ? args.splitScopes[0].trade
+          : args.trade,
       splitScopes: (args.splitScopes || []).map((x) => ({
         trade: x.trade,
         scope: x.scope,
@@ -5191,7 +5199,9 @@ if (primary && REAL_TRADES.has(primary)) trades.push(primary)
   // --- ACTUAL TRADES ---
   const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
   const hasPlumbing =
-    /\b(toilet|sink|faucet|shower|tub|valve|drain|supply)\b/.test(s) ||
+    /\b(toilet|sink|faucet|valve|drain|supply)\b/.test(s) ||
+    /\b(shower|tub)\b.{0,40}\b(valve|drain|supply|rough[-\s]*in|plumb(?:ing)?)\b/.test(s) ||
+    /\b(valve|drain|supply|rough[-\s]*in|plumb(?:ing)?)\b.{0,40}\b(shower|tub)\b/.test(s) ||
     (/\bvanity\b/.test(s) && !hasVanityLight)
   const hasElectrical = /\b(outlet|switch|recessed|can\s*light|fixture|panel)\b/.test(s)
   const hasDrywall = /\b(drywall|sheetrock|texture|patch)\b/.test(s)

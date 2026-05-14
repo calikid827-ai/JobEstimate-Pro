@@ -199,6 +199,9 @@ const DEMOLITION_LIMITING_CONTEXT_PATTERN =
 const CARPENTRY_REPLACEMENT_REMOVAL_PATTERN =
   /\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b.{0,90}\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b.{0,90}\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b/i
 
+const CARPENTRY_REPLACEMENT_DEMO_CONTEXT_PATTERN =
+  /\bprior\s+to\s+demolition\b.{0,120}\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b.{0,120}\bprior\s+to\s+demolition\b/i
+
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
 }
@@ -265,7 +268,10 @@ function scopeXRaySupports(rule: TradeRule, scopeXRay: ScopeXRay) {
 
 function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
   if (rule.id !== "demolition") return false
-  if (CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(part)) {
+  if (
+    CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(part) ||
+    CARPENTRY_REPLACEMENT_DEMO_CONTEXT_PATTERN.test(part)
+  ) {
     const carpentryRule = TRADE_RULES.find((candidate) => candidate.id === "carpentry")
     if (carpentryRule && isTradeSupported(carpentryRule, args)) return true
   }
@@ -310,6 +316,14 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
     SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
     rule.mentionPattern.test(part) &&
     !CARPENTRY_TRUE_WORK_PATTERN.test(part)
+  ) {
+    return true
+  }
+  if (
+    rule.id === "carpentry" &&
+    /\b(follow|follows|following|precede|precedes|preceding|before|after|sequence|sequencing|coordinat(?:e|ed|ion))\b/i.test(part) &&
+    /\b(framing|finish trades?|carpentry|trim|baseboards?)\b/i.test(part) &&
+    !/\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|construct(?:ion|ing)?|build(?:ing)?|frame|blocking)\s+(?:\w+\s+){0,2}(framing|blocking|baseboards?|trim|casing|crown|doors?|cabinets?|carpentry)\b/i.test(part)
   ) {
     return true
   }

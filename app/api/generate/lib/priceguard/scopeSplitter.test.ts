@@ -104,6 +104,19 @@ test("bathroom tile trim stays tile context instead of carpentry", () => {
   assert.equal(isMultiTradeScope(scope), false)
 })
 
+test("bathroom tile demo backer and membrane stay tile context", () => {
+  const scope =
+    "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval."
+
+  const splitScopes = splitScopeByTrade(scope)
+
+  assert.deepEqual(splitScopes.map((chunk) => chunk.trade), ["tile"])
+  assert.match(splitScopes[0]?.scope ?? "", /demo/i)
+  assert.match(splitScopes[0]?.scope ?? "", /cement board\/backer/i)
+  assert.match(splitScopes[0]?.scope ?? "", /membrane/i)
+  assert.equal(isMultiTradeScope(scope), false)
+})
+
 test("wallcovering scope keeps prep and primer while ignoring by-others trades", () => {
   const scope =
     "Install wallcovering with wall prep and primer included. Painting, electrical, and furniture moving by others."
