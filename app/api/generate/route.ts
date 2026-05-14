@@ -5034,7 +5034,7 @@ function inferPhaseVisitsFromSignals(args: {
 
 function sentenceParts(value: string) {
   return String(value || "")
-    .split(/(?<=[.!?;])\s+|\n+/)
+    .split(/(?<=[.!?;])\s+|\n+|\s+\b(?:and\s+)?(?=excludes?|excluding|excluded|does not include|does not cover|by others|without)\b/i)
     .map((part) => part.trim())
     .filter(Boolean)
 }

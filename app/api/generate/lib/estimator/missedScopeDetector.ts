@@ -77,6 +77,28 @@ function hasScope(ctx: DetectorContext, pattern: RegExp): boolean {
   return pattern.test(ctx.scope)
 }
 
+function scopeClauses(value: string): string[] {
+  return String(value || "")
+    .split(/(?<=[.!?;])\s+|\n+|\s+\b(?:and\s+)?(?=excludes?|excluding|excluded|does not include|does not cover|by others|without)\b/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function isExcludedPatchTextureContext(text: string): boolean {
+  return (
+    /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b.{0,90}\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(text) ||
+    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b.{0,90}\b(excluded|not included|does not include|does not cover|by others|schedule consideration|dry time|drying time)\b/i.test(text)
+  )
+}
+
+function hasIncludedPatchTextureSignal(scopeText: string): boolean {
+  return scopeClauses(scopeText).some(
+    (part) =>
+      /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(part) &&
+      !isExcludedPatchTextureContext(part)
+  )
+}
+
 function findPlanText(ctx: DetectorContext, pattern: RegExp): string | null {
   return ctx.planTexts.find((value) => pattern.test(value)) ?? null
 }
@@ -141,7 +163,7 @@ function detectJobType(args: DetectorArgs): JobType {
     return "baseboard_install"
   }
 
-  if (/\b(patch|repair|texture)\b/.test(scope) && /\b(paint|prime|repaint)\b/.test(scope)) {
+  if (hasIncludedPatchTextureSignal(args.scopeText) && /\b(paint|prime|repaint)\b/.test(scope)) {
     return "patch_and_paint"
   }
 
