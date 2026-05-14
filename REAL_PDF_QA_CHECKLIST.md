@@ -1411,3 +1411,51 @@ True mixed control:
 Final decision:
 - Cross-trade backend scope-boundary regression fix passes.
 - Next active smart-estimator task should be real-world estimate QA matrix coverage for diagnostic consistency across Customer-Facing Scope, Customer Output Readiness, PriceGuard Review, Scope-to-Price X-Ray, materials, schedule, and PDF/customer-output safety.
+
+---
+
+# Test Entry 19 — Scope-to-Price Consistency Review Guard False-Positive Cleanup
+
+Status: PASS
+
+Scope:
+- UI-side warning-only Scope-to-Price Consistency Review Guard false-positive cleanup.
+- Painting prep consumables such as caulk, spackle, filler, and masking tape no longer warn as unsupported drywall materials.
+- True drywall materials such as drywall sheet, joint compound, and drywall tape still warn when drywall is unsupported.
+- Generic flooring adhesive / misc install supplies no longer warn as wallcovering materials.
+- Clear wallcovering material labels such as wallpaper rolls or wallcovering seam adhesive still warn when wallcovering is unsupported.
+- Wallcovering wall prep and primer are treated as wallcovering prep context, not separate painting work.
+- Customer-Facing Scope / `result.text` remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 12/12.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 35/35.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was warning-only/review-only and did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, or layouts.
+
+### Manual QA Outcomes
+
+Case 7A painting scope:
+- PASS.
+- Painting scope remained quiet for false flooring anchor/material consistency warnings.
+- Painting prep consumables did not trigger unsupported drywall material warnings.
+
+True mixed painting + LVP:
+- PASS.
+- True mixed painting + LVP remained accepted.
+- Generic flooring adhesive / misc install supplies did not trigger false wallcovering material warnings.
+
+False flooring anchor/material warning test:
+- PASS.
+- No false `flooring_only_v1` anchor appeared in the passing case.
+- The guard still remains available to warn if unsupported flooring anchor/material diagnostics appear without flooring support.
+
+Wallcovering context:
+- PASS.
+- Wallcovering wall prep and primer no longer create a false painting + wallcovering mixed-scope warning.
+- Clear unsupported wallcovering material labels remain warning-worthy when wallcovering is not supported.
+
+Final decision:
+- Scope-to-Price Consistency Review Guard false-positive cleanup passes.
+- Next active smart-estimator task remains real-world estimate QA matrix coverage for diagnostic consistency across Customer-Facing Scope, Customer Output Readiness, PriceGuard Review, Scope-to-Price X-Ray, materials, schedule, and PDF/customer-output safety.

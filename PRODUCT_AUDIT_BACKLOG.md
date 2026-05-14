@@ -220,6 +220,26 @@ Done note:
 - Tests or manual QA needed: Real-world estimates across plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, painting, and general renovation, with split scopes, anchors, materials, warnings, schedule, and PDF/customer-output safety reviewed together.
 - Status: Next active smart-estimator audit
 
+#### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
+
+- Problem: The new UI-side Scope-to-Price Consistency Review Guard initially over-classified some normal trade consumables and prep context as unsupported material or mixed-scope issues.
+- Why it matters: Scope-to-price review should feel like a senior estimator checking estimate consistency, not a generic materials keyword checklist.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a focused false-positive cleanup in the warning-only guard. Painting prep consumables such as caulk, spackle, filler, and masking tape no longer warn as unsupported drywall materials; true drywall materials such as drywall sheet, joint compound, and drywall tape still warn when drywall is unsupported. Generic flooring adhesive / misc install supplies no longer warn as wallcovering materials; clear wallcovering labels such as wallpaper rolls or wallcovering seam adhesive still warn when wallcovering is unsupported. Wallcovering wall prep and primer are treated as wallcovering prep context, not separate painting work.
+- Exact files/components involved: `app/app/lib/scope-price-consistency-review.ts`, `app/app/lib/scope-price-consistency-review.test.ts`
+- What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+- Tests or manual QA needed: Focused consistency guard tests, existing estimator tests, TypeScript, diff check, and manual QA for the first three retest PDFs.
+- Status: Done
+
+Done note:
+
+- Scope-to-Price Consistency Review Guard false-positive cleanup is complete.
+- Case 7A painting scope remains quiet, true mixed painting + LVP remains accepted, the false flooring anchor/material warning test now passes, and the wallcovering test no longer shows the false painting + wallcovering mixed-scope warning.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` with 12/12 passing, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` with 35/35 passing, `npx tsc --noEmit`, and `git diff --check`.
+- Manual QA passed for the first three retest PDFs.
+- This was UI-side/warning-only and did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+
 #### Item: Customer Output Readiness panel
 
 - Problem: Estimator-only risks were scattered across PriceGuard, Plan Review, and customer-facing scope warnings.
