@@ -2,16 +2,21 @@ import test from "node:test"
 import assert from "node:assert/strict"
 
 import { buildPriceGuardReview } from "./priceguard-review"
+import type { MaterialsList, ScopeXRay } from "./types"
 
 function buildReview({
   selectedTrade,
   scopeText,
   resultText = "",
   schedule,
+  materialsList,
+  scopeXRay,
 }: {
   selectedTrade: string
   scopeText: string
   resultText?: string
+  materialsList?: MaterialsList
+  scopeXRay?: ScopeXRay
   schedule?: {
     crewDays: number
     visits: number
@@ -32,6 +37,8 @@ function buildReview({
       markup: 25,
       total: 2800,
     },
+    materialsList,
+    scopeXRay,
     schedule: schedule || {
       crewDays: 1,
       visits: 1,
@@ -47,10 +54,45 @@ function buildReview({
   })
 }
 
+function baseScopeXRay({
+  primaryTrade = "",
+  splitScopes = [],
+  anchorId = null,
+}: {
+  primaryTrade?: string
+  splitScopes?: Array<{ trade: string; scope: string }>
+  anchorId?: string | null
+}): ScopeXRay {
+  return {
+    detectedScope: {
+      primaryTrade,
+      splitScopes,
+      paintScope: null,
+      state: "",
+    },
+    quantities: [],
+    pricingMethod: {
+      pricingSource: anchorId ? "deterministic" : "ai",
+      detSource: anchorId ? "anchor" : null,
+      anchorId,
+      verified: Boolean(anchorId),
+      stateAdjusted: false,
+    },
+    scheduleLogic: {
+      crewDays: null,
+      visits: null,
+      reasons: [],
+    },
+    riskFlags: [],
+    needsConfirmation: [],
+  }
+}
+
 function reviewText(review: ReturnType<typeof buildReview>) {
   assert.ok(review)
   return [
     ...review.missedScopeWarnings,
+    ...review.laborMaterialConfidenceNotes,
     ...review.scopeClarityWarnings,
     ...review.suggestedExclusions,
     ...review.contractorRiskNotes,
@@ -247,4 +289,33 @@ test("PriceGuard includes schedule sequencing review notes through existing fiel
 
   assert.match(text, /grout cure/)
   assert.match(text, /fixture\/accessory return coordination/)
+})
+
+test("PriceGuard includes scope-to-price consistency notes through existing fields", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "painting",
+      scopeText: "Paint walls in hallway. Flooring protection only. Flooring excluded.",
+      resultText: "Paint walls with cleanup and customer approval.",
+      scopeXRay: baseScopeXRay({
+        primaryTrade: "painting",
+        splitScopes: [{ trade: "painting", scope: "Paint walls in hallway." }],
+        anchorId: "flooring_only_v1",
+      }),
+      materialsList: {
+        items: [
+          {
+            label: "LVP flooring",
+            quantity: "verify",
+            category: "material",
+          },
+        ],
+        confirmItems: [],
+        notes: [],
+      },
+    })
+  )
+
+  assert.match(text, /pricing anchor appears flooring-based/)
+  assert.match(text, /materials list includes flooring items/)
 })

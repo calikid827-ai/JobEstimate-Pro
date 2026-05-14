@@ -10,8 +10,10 @@ import type {
   ProfitLeakDetector,
   ProfitProtection,
   Schedule,
+  ScopeXRay,
 } from "./types"
 import { buildScheduleSequencingReview } from "./schedule-sequencing-review"
+import { buildScopePriceConsistencyReview } from "./scope-price-consistency-review"
 
 type PricingInput = {
   labor?: number
@@ -60,6 +62,7 @@ export type BuildPriceGuardReviewArgs = {
   priceGuardVerified?: boolean
   pricingSource?: PricingSource
   materialsList?: MaterialsList
+  scopeXRay?: ScopeXRay
   areaScopeBreakdown?: AreaScopeBreakdown
   profitProtection?: ProfitProtection
   missedScopeDetector?: MissedScopeDetector
@@ -615,6 +618,21 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     addMany(suggestedExclusions, sequencingReview.suggestedExclusions, 6)
     addMany(missedScopeWarnings, sequencingReview.missedScopeWarnings, 6)
   }
+
+  const scopePriceConsistencyReview = buildScopePriceConsistencyReview({
+    selectedTrade: args.selectedTrade,
+    scopeText: args.scopeText,
+    resultText: args.resultText,
+    scopeXRay: args.scopeXRay,
+    materialsList: args.materialsList,
+    estimateSections: args.estimateSections,
+  })
+
+  addMany(contractorRiskNotes, scopePriceConsistencyReview.contractorRiskNotes, 6)
+  addMany(scopeClarityWarnings, scopePriceConsistencyReview.scopeClarityWarnings, 6)
+  addMany(laborMaterialConfidenceNotes, scopePriceConsistencyReview.laborMaterialConfidenceNotes, 6)
+  addMany(suggestedExclusions, scopePriceConsistencyReview.suggestedExclusions, 6)
+  addMany(missedScopeWarnings, scopePriceConsistencyReview.missedScopeWarnings, 6)
 
   if (!hasAny(combinedText, ["prep", "preparation", "prepare", "patch", "repair", "sand", "demo", "remove", "scrape", "caulk", "fill", "prime", "substrate"])) {
     addUnique(missedScopeWarnings, "Prep or demolition expectations are not clearly stated.")
