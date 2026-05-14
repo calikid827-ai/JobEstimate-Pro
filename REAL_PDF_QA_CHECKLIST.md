@@ -1140,3 +1140,63 @@ Final decision:
 - PriceGuard trade-specific missed-scope checks pass.
 - Adjacent-trade false-positive cleanup passes.
 - Keep this warning-only estimator guidance under regression watch during real-world estimate QA.
+
+## Test Entry 14 — Typed Scope Normalization And Electrical False-Positive Cleanup
+
+Status: PASS
+
+Scope:
+- UI-side typed scope normalization for pre-generate scope-quality warnings.
+- New helper: `app/app/lib/typed-scope-normalization.ts`.
+- Scope-quality checks now use clause-level typed scope classification for included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
+- Customer-scope electrical false-positive cleanup suppresses unsupported electrical warnings when generated Customer-Facing Scope only mentions coordination/protection context such as electrical trade coordination, preventing interference, adjacent electrical components, existing wiring/components, or no interference with electrical components/wiring.
+- True unsupported electrical warnings remain for electrical rough-in, install/run wiring, install/replace outlets, switches, receptacles, lights/light fixtures, add circuits, and panel/breaker work.
+- Customer-Facing Scope remained detailed and unchanged.
+
+Validation:
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts` passed 24/24.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 39/39.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was UI-side/review-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, or Customer Output Readiness behavior.
+
+### Manual QA Cases
+
+Flooring protection language:
+- PASS.
+- Protection language did not falsely infer flooring work.
+
+Plumbing scope with electrical coordination/interference language:
+- PASS.
+- Coordination with the electrical trade, preventing interference, and adjacent electrical components/wiring did not falsely warn for unsupported electrical work.
+
+Plumbing scope with existing electrical wiring avoidance:
+- PASS.
+- Existing wiring avoidance language did not falsely warn for unsupported electrical work.
+
+True electrical rough-in:
+- PASS.
+- Unsupported electrical rough-in still warned.
+
+True new outlet/switch/wiring:
+- PASS.
+- Unsupported new outlet, switch, and wiring language still warned.
+
+Existing baseboard work-around language:
+- PASS.
+- Working around existing baseboards did not infer carpentry work.
+
+Remove/reinstall toilet/faucet:
+- PASS.
+- Remove and reinstall plumbing language behaved as real plumbing work.
+
+Result workflow:
+- PASS.
+- Customer Output Readiness stayed before pricing.
+- Pricing/PDF and schedule remained easy to find.
+- Customer-Facing Scope stayed detailed and unchanged.
+
+Final decision:
+- Typed scope normalization pass passes.
+- Customer-scope electrical false-positive cleanup passes.
+- Keep this UI-side/review-only estimator intelligence under regression watch during real-world estimate QA.

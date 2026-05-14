@@ -49,8 +49,13 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Bathroom tile/general renovation path
   - Carpentry/general renovation path
 - Scope entry with smart generation.
+- UI-side typed scope normalization for pre-generate scope-quality review:
+  - Splits typed scope into clauses.
+  - Classifies included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
+  - Uses included-work clauses for trade work detection while preserving boundary clauses for material responsibility, permit responsibility, exclusions, access/patching exclusions, and quantity/location support.
+  - Reduces false positives for phrases such as electrical by others, plumbing excluded, wall repair excluded, protect flooring, work around existing baseboards, owner supplies fixtures, GC handles permits, demo by others, room ranges, remove/reinstall plumbing work, and narrow touch-up scopes.
 - AI-generated customer-facing scope descriptions with useful step-by-step task sequencing, materials language, and work-description detail. This detailed estimator prose is a core product strength to preserve; safety guards should review unsupported expansion rather than automatically flattening, shortening, removing, or rewriting `result.text`.
-- Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text. It also suppresses adjacent-trade context false positives such as protecting flooring, avoiding electrical interference, coordinating with other trades, or working around door jambs/baseboards/transitions unless actual trade work is promised.
+- Warning-only AI Scope Protection / Unsupported Scope Review Guard detects unsupported customer-facing scope expansion while preserving `result.text`. It adds estimator-facing review warnings for explicit electrical/plumbing exclusions, repair exclusions, painting-to-drywall expansion, flooring-to-baseboard/painting/carpentry expansion, bathroom/tile rough-in expansion, and General Renovation over-support cases without changing generated customer text. It also suppresses adjacent-trade context false positives such as protecting flooring, avoiding electrical interference, coordinating with other trades, or working around door jambs/baseboards/transitions unless actual trade work is promised. Electrical coordination/protection-only wording such as coordination with the electrical trade, preventing interference with adjacent electrical components, and avoiding existing electrical wiring no longer triggers unsupported electrical warnings unless actual electrical work is promised.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -237,6 +242,8 @@ Implemented pricing and guard modules include:
 - PriceGuard Review warning filtering against generated customer-facing estimate text to reduce false positives for resolved prep, material, cleanup, protection, exclusion, approval, and work-process concerns.
 - PriceGuard Review selected-trade-aware missed-scope guidance for common contractor underbid risks across painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation.
 - Customer-scope drift false-positive reduction for adjacent-trade context language while preserving true unsupported-scope warnings for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion.
+- UI-side typed-scope normalization helper for pre-generate scope-quality warnings, including clause-level included work, excluded/by-others, protection-only, coordination-only, existing-condition, material responsibility, permit responsibility, and quantity/location classifications.
+- Customer-scope electrical false-positive cleanup for coordination/protection-only mentions of electrical trades, wiring, and components while preserving true unsupported electrical work warnings for rough-in, wiring, outlets, switches, circuits, fixtures, and panel/breaker work.
 - Plan-aware live trade pricing influence.
 - Section rows and embedded burdens.
 - Estimate rows normalized from structured sections.
@@ -546,12 +553,12 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Typed scope normalization audit before changing scope or pricing behavior. The PriceGuard trade-specific missed-scope checks and adjacent-trade false-positive cleanup are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
-- Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
+- Continue real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, and adjacent-trade/electrical false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
 - Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 - Small customer-facing estimate confidence and contractor workflow copy polish where manual QA finds confusion.
+- Final Production Live Mode subscription payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` remains the final pre-launch gate before public paid launch, not the next active product-improvement task.
 - Narrow targeted lint cleanup only where it reduces a concrete launch/runtime risk.
 - Better plan quantity extraction for schedules, finish tables, room counts, SF/LF, and fixture/device counts after current launch-critical QA.
 - Broader server-backed persistence layer for saved estimates, jobs, invoices, budgets, and actuals after launch-critical local-first workflows and billing verification are stable.
@@ -586,8 +593,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Run typed scope normalization audit before changing scope or pricing behavior.
-2. Complete final Production Live Mode payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
-3. Run real-PDF QA, mobile usability checks, and estimator UI clarity review for Plan Intelligence diagnostics.
-4. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
-5. Keep further PriceGuard Review improvements narrow and deterministic if new QA finds over-warning or unclear copy.
+1. Run real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety.
+2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
+3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
+4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.
+5. Complete final Production Live Mode payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` only as the final pre-launch gate before public paid launch.

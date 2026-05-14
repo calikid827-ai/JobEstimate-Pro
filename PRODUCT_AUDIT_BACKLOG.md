@@ -13,7 +13,7 @@ Principles:
 ## Current Priority Order
 
 1. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
-2. Next active app-improvement task: typed scope normalization audit before changing any scope or pricing logic.
+2. Next active app-improvement task: continue real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety.
 3. Keep PriceGuard trade-specific missed-scope checks and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
@@ -71,11 +71,22 @@ Done note:
 - Why it matters: Better typed-scope interpretation is the path toward a more estimator-like product.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit typed scope detectors and document false positives/false negatives before changing logic.
-- Exact files/components likely involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/route.ts`, `app/app/lib/scope-quality-check.ts`
-- What not to touch: Pricing authority, plan-derived pricing eligibility, saved data shapes.
-- Tests or manual QA needed: Fixture ambiguity cases; general renovation cases; trade split smoke tests.
-- Status: Not started
+- Recommended fix approach: Completed a first UI-side, review-only normalization pass for pre-generate scope-quality warnings and customer-scope electrical false-positive cleanup. Keep deeper backend/pricing scope interpretation changes out of scope until more real-world QA examples exist.
+- Exact files/components involved: `app/app/lib/typed-scope-normalization.ts`, `app/app/lib/scope-quality-check.ts`, `app/app/lib/scope-quality-check.test.ts`, `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`
+- What not to touch: Pricing authority, plan-derived pricing eligibility, saved data shapes, Generate payload shape, API routes, backend pricing logic, Customer Output Readiness behavior, or `result.text`.
+- Tests or manual QA needed: Focused scope-quality and customer-scope drift tests; manual QA for excluded/by-others, protection-only, coordination-only, existing-condition, material/permit boundary, and true electrical work cases.
+- Status: Done
+
+Done note:
+
+- Added a UI-side typed-scope normalization helper that splits typed scope into clauses and classifies included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
+- Scope-quality checks now use included-work clauses for trade work detection while boundary clauses still count for material responsibility, permit responsibility, exclusions, access/patching exclusions, and quantity/location support.
+- Covered cases include `electrical by others`, `plumbing excluded`, `wall repair excluded`, `protect flooring`, `work around existing baseboards`, `owner supplies fixtures`, `GC to handle permits`, `demo by others`, `rooms 2032-2036`, `remove and reinstall toilet/faucet`, and narrow `touch-up only` scopes with clear area/surface.
+- Customer-scope electrical false-positive cleanup now suppresses unsupported electrical warnings when generated Customer-Facing Scope only mentions coordination with the electrical trade, preventing/no interference, adjacent electrical components, or existing wiring/components to avoid or protect.
+- True unsupported electrical warnings remain for electrical rough-in, install/run wiring, install/replace outlets/switches/receptacles/lights/light fixtures, add circuits, and panel/breaker work.
+- Validation passed: `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts` with 24/24 passing, `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` with 39/39 passing, `npx tsc --noEmit`, and `git diff --check`.
+- Manual QA passed for flooring protection, electrical coordination/interference language, existing electrical wiring avoidance, true electrical rough-in, true new outlet/switch/wiring, existing baseboard work-around language, remove/reinstall toilet/faucet, Customer Output Readiness placement, Pricing/PDF and schedule visibility, and detailed unchanged Customer-Facing Scope.
+- This was UI-side/review-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, or Customer Output Readiness behavior.
 
 ### 3. Trade-Aware Missing-Info Review
 
