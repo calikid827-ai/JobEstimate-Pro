@@ -60,7 +60,6 @@ const TRADE_LABELS: Record<TradeGroup, string> = {
 const TRUE_WORK_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegExp[]> = {
   painting: [
     /\bpaint(?:ing|ed)?\b/,
-    /\bprime\b|\bprimer\b/,
     /\bcoat(?:s)?\b/,
     /\bsheen\b/,
   ],
@@ -106,7 +105,7 @@ const MATERIAL_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegEx
     /\bpaint\b|\bprimer\b|\broller\b|\bbrush(?:es)?\b|\bpaint\s+tray\b/,
   ],
   drywall: [
-    /\bdrywall\b|\bjoint\s+compound\b|\bmud\b|\btape\b|\btexture\b/,
+    /\bdrywall\b|\bjoint\s+compound\b|\bdrywall\s+mud\b|\bdrywall\s+tape\b|\btexture\b/,
   ],
   flooring: [
     /\blvp\b|\bflooring\b|\blaminate\b|\bhardwood\b|\bcarpet\b/,
@@ -124,7 +123,8 @@ const MATERIAL_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegEx
     /\btile\b|\bgrout\b|\bthinset\b|\bmembrane\b|\bbacker\s*board\b|\bcement\s*board\b/,
   ],
   wallcovering: [
-    /\bwallcovering\b|\bwall\s*covering\b|\bwallpaper\b|\badhesive\b|\bvinyl\b/,
+    /\bwallcovering\b|\bwall\s*covering\b|\bwallpaper\b/,
+    /\bvinyl\s+wallcovering\b|\bpattern\b|\bseam(?:s)?\b|\broll(?:s)?\b/,
   ],
   carpentry: [
     /\bbaseboard(?:s)?\b|\btrim\b|\bcasing\b|\bcrown\b|\bcabinet(?:s|ry)?\b/,
@@ -157,6 +157,11 @@ function normalizeTrade(value: string | undefined | null): TradeGroup | null {
 
 function textMatches(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text))
+}
+
+function isPaintingPrepConsumable(label: string) {
+  return /\b(caulk|spackle|filler|patching\s+compound|painter'?s\s+putty)\b/.test(label) &&
+    !/\b(drywall|sheetrock|gypsum|joint\s+compound|drywall\s+tape|texture)\b/.test(label)
 }
 
 function detectIncludedTrades(scopeText: string) {
@@ -199,6 +204,11 @@ function detectMaterialTrades(materialsList: MaterialsList, supportedTrades: Set
 
   for (const item of materialsList?.items || []) {
     const label = normalize(`${item.label} ${item.quantity}`)
+
+    if (supportedTrades.has("painting") && isPaintingPrepConsumable(label)) {
+      trades.add("painting")
+      continue
+    }
 
     if (
       supportedTrades.has("wallcovering") &&

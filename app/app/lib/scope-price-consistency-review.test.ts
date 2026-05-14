@@ -130,6 +130,55 @@ test("flooring anchor and materials without flooring support warn", () => {
   assert.match(text, /materials list includes flooring items/)
 })
 
+test("painting prep caulk spackle and filler do not warn as drywall materials", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint walls in hallway. Flooring protection only. Flooring excluded.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint walls in hallway." }],
+    }),
+    materialsList: materials(["Caulk", "Spackle", "Filler", "Masking tape"]),
+    estimateSections: [section("painting")],
+  })
+
+  assert.doesNotMatch(reviewText(review), /drywall items/)
+})
+
+test("true drywall material labels still warn when drywall is unsupported", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint walls in hallway. Drywall repair excluded.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint walls in hallway." }],
+    }),
+    materialsList: materials(["Drywall sheet", "Joint compound", "Drywall tape"]),
+    estimateSections: [section("painting")],
+  })
+
+  assert.match(reviewText(review), /materials list includes drywall items/)
+})
+
+test("flooring adhesive and misc install supplies do not warn as wallcovering materials", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint walls in living room and install LVP flooring with transitions.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "general_renovation",
+      splitScopes: [
+        { trade: "painting", scope: "Paint walls in living room." },
+        { trade: "flooring", scope: "Install LVP flooring with transitions." },
+      ],
+      anchorId: "flooring_only_v1",
+    }),
+    materialsList: materials(["Paint", "LVP flooring", "Flooring adhesive", "Misc install supplies"]),
+    estimateSections: [section("painting"), section("flooring")],
+  })
+
+  assert.doesNotMatch(reviewText(review), /wallcovering items/)
+})
+
 test("electrical materials and sections without electrical support warn", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "plumbing",
@@ -177,7 +226,24 @@ test("wallcovering prep and primer does not warn as painting drift", () => {
     estimateSections: [section("wallcovering")],
   })
 
-  assert.doesNotMatch(reviewText(review), /painting items/)
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /painting items/)
+  assert.doesNotMatch(text, /multiple trades/)
+})
+
+test("wallcovering material labels without wallcovering support still warn", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint walls in hallway.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint walls in hallway." }],
+    }),
+    materialsList: materials(["Wallpaper rolls", "Wallcovering seam adhesive"]),
+    estimateSections: [section("painting")],
+  })
+
+  assert.match(reviewText(review), /materials list includes wallcovering items/)
 })
 
 test("owner-supplied LVP creates material responsibility note only", () => {
