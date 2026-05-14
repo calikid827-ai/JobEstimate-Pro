@@ -134,7 +134,7 @@ const TRADE_RULES: TradeRule[] = [
 ]
 
 const EXCLUDED_TRADE_PATTERN =
-  /\b(excludes?|excluded|excluding|does\s+not\s+cover|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
+  /\b(excludes?|excluded|excluding|does\s+not\s+cover|does\s+not\s+include|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
 
 const SUPPORTED_REMOVAL_TRADE_PATTERN =
   /\b(flooring|lvp|laminate|hardwood|carpet|tile|tiling|paint|painting|drywall|sheetrock|baseboards?|trim|carpentry|wallcovering|wallpaper)\b/i
@@ -188,10 +188,13 @@ const PLUMBING_TRUE_WORK_PATTERN =
   /\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|rough[- ]?in|plumb(?:ing)?|connect(?:ion|ing)?|reconnect(?:ion|ing)?|valves?|drains?|supply\s+lines?|water\s+lines?)\b.{0,60}\b(plumbing|plumber|fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|showers?|tubs?)\b|\b(plumbing|plumber|fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|showers?|tubs?)\b.{0,60}\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|rough[- ]?in|plumb(?:ing)?|connect(?:ion|ing)?|reconnect(?:ion|ing)?|valves?|drains?|supply\s+lines?|water\s+lines?)\b/i
 
 const CARPENTRY_CONTEXT_ONLY_PATTERN =
-  /\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b|\b(door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b.{0,100}\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b/i
+  /\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(carpentry|carpentry\s+activities|carpentry\s+elements|door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b|\b(carpentry|carpentry\s+activities|carpentry\s+elements|door\s+jambs?|closets?|transitions?|baseboards?|baseboard\s+finishes?|trim|cabinetry|cabinets?)\b.{0,100}\b(work(?:ing)?\s+around|around\s+existing|coordinate|coordination|no\s+interference|avoid(?:ing)?\s+interference|protect(?:ing|ion)?|safeguard(?:ing)?)\b/i
 
 const CARPENTRY_TRUE_WORK_PATTERN =
   /\b(baseboards?|casing|crown|trim|doors?|shelving|millwork|cabinetry|cabinets?)\s+(replacement|replace|install(?:ation|ing)?|repair(?:ing|s)?)\b|\b(replace(?:ment|ing)?|install(?:ation|ing)?|repair(?:ing|s)?)\s+(?:\w+\s+){0,2}(baseboards?|casing|crown|trim|doors?|shelving|millwork|cabinetry|cabinets?)\b|\b(framing|blocking|carpentry\s+work)\b/i
+
+const DEMOLITION_LIMITING_CONTEXT_PATTERN =
+  /\b(without|no|excluding|excluded|excludes?|not\s+including|does\s+not\s+include|does\s+not\s+cover)\b.{0,50}\b(demo|demolition|tear[- ]?out|removal)\b|\b(demo|demolition|tear[- ]?out|removal)\b.{0,50}\b(excluded|by\s+others|not\s+included|beyond\s+patch\s+repairs?)\b/i
 
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
@@ -259,6 +262,7 @@ function scopeXRaySupports(rule: TradeRule, scopeXRay: ScopeXRay) {
 
 function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
   if (rule.id !== "demolition") return false
+  if (/\bdemolition\b/i.test(part) && !DEMOLITION_LIMITING_CONTEXT_PATTERN.test(part)) return false
   if (!SUPPORTED_REMOVAL_TRADE_PATTERN.test(part)) return false
 
   return TRADE_RULES.some(
@@ -300,6 +304,9 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
     rule.mentionPattern.test(part) &&
     !CARPENTRY_TRUE_WORK_PATTERN.test(part)
   ) {
+    return true
+  }
+  if (rule.id === "demolition" && DEMOLITION_LIMITING_CONTEXT_PATTERN.test(part)) {
     return true
   }
 

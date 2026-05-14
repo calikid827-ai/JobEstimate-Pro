@@ -89,6 +89,28 @@ function hasOwnerMaterialLeadTime(text: string) {
   ])
 }
 
+function sentenceParts(value: string) {
+  return String(value || "")
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function isExcludedOrContextOnly(text: string) {
+  return hasAny(text, [
+    /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b/,
+    /\b(schedule consideration|coordination only|by separate trade)\b/,
+  ])
+}
+
+function hasIncludedPatchOrTextureWork(text: string) {
+  return sentenceParts(text).some(
+    (part) =>
+      hasAny(part, [/\bpatch|patching|skim|texture|drywall repair|drywall patch|mud|joint compound\b/]) &&
+      !isExcludedOrContextOnly(part)
+  )
+}
+
 function leadTimeAlreadyAddressed(text: string) {
   return hasAny(text, [
     /\blead time|available before start|on site before|materials? on site|fixtures? on site\b/,
@@ -113,7 +135,7 @@ export function buildScheduleSequencingReview(
   const missedScopeWarnings: string[] = []
 
   const patchAndPaint =
-    hasAny(text, [/\bpatch|patching|skim|texture|drywall repair|drywall patch|mud|joint compound\b/]) &&
+    hasIncludedPatchOrTextureWork(text) &&
     hasAny(text, [/\bpaint|painting|prime|primer|coat|coats\b/])
 
   if (

@@ -398,6 +398,19 @@ test("does not warn when simple painting output explicitly excludes drywall and 
   )
 })
 
+test("does not warn when painting output mentions carpentry only as coordination or exclusion context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+      resultText:
+        "Customer-facing scope includes wall painting, masking, protection, cleanup, and customer approval. Coordination with ongoing drywall and carpentry activities is required to prevent interference. This scope does not include painting of ceilings, trim, doors, or any carpentry elements.",
+    }),
+    null
+  )
+})
+
 test("does not treat ceiling or trim paint exclusions as whole-painting exclusion", () => {
   assert.equal(
     warning({
@@ -619,6 +632,31 @@ test("warns for unsupported demolition drift", () => {
       selectedTrade: "painting",
       writtenScope: "Paint one bedroom.",
       resultText: "Customer-facing scope includes demolition and tear-out of existing finishes.",
+    }) || "",
+    /demolition/
+  )
+})
+
+test("does not warn when demolition is limited beyond drywall patch repairs", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "drywall",
+      writtenScope:
+        "Repair 6 drywall access patches in corridor walls. Level 4 finish only. Texture match excluded. Painting by others. Electrical and plumbing by others.",
+      resultText:
+        "Customer-facing scope includes drywall access patch repairs, level 4 finish, dust protection, cleanup, and customer approval without demolition beyond patch repairs.",
+    }),
+    null
+  )
+})
+
+test("true demolition beyond supported drywall patch repairs still warns", () => {
+  assert.match(
+    warning({
+      selectedTrade: "drywall",
+      writtenScope: "Repair 6 drywall access patches in corridor walls.",
+      resultText:
+        "Customer-facing scope includes demolition and tear-out of existing wall finishes before drywall patch repairs.",
     }) || "",
     /demolition/
   )

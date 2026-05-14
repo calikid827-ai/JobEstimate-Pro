@@ -93,6 +93,24 @@ test("Case 7A painting scope stays quiet for flooring anchor and material noise"
   assert.doesNotMatch(text, /flooring anchor|flooring items|general renovation/)
 })
 
+test("painting scope exclusion list does not become painting and drywall mixed scope", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint walls only in living room and hallway." }],
+    }),
+    materialsList: materials(["Caulk / spackle / filler", "Roller covers", "Masking tape"]),
+    estimateSections: [section("painting")],
+  })
+
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /multiple trades/)
+  assert.doesNotMatch(text, /drywall/)
+})
+
 test("true painting plus LVP mixed scope remains accepted", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "general_renovation",
@@ -263,6 +281,47 @@ test("owner-supplied LVP creates material responsibility note only", () => {
   assert.match(text, /owner\/customer-supplied materials/)
   assert.doesNotMatch(text, /pricing anchor appears flooring-based/)
   assert.doesNotMatch(text, /materials list includes flooring items/)
+})
+
+test("flooring scope with painting by others and existing baseboards remains flooring only", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "flooring",
+    scopeText:
+      "Remove existing carpet and install owner-supplied LVP in bedrooms 201 and 202 with underlayment and transitions. Existing baseboards to remain. Painting by others. Include floor protection, cleanup, and customer approval.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "flooring",
+      splitScopes: [
+        { trade: "general_renovation", scope: "Remove existing carpet." },
+        { trade: "flooring", scope: "Install owner-supplied LVP with underlayment and transitions." },
+      ],
+      anchorId: "flooring_only_v1",
+    }),
+    materialsList: materials(["LVP flooring", "Underlayment", "Transitions", "Floor protection"]),
+    estimateSections: [section("flooring")],
+  })
+
+  const text = reviewText(review)
+  assert.match(text, /owner\/customer-supplied materials/)
+  assert.doesNotMatch(text, /multiple trades/)
+  assert.doesNotMatch(text, /painting/)
+  assert.doesNotMatch(text, /carpentry/)
+  assert.doesNotMatch(text, /pricing anchor appears flooring-based/)
+})
+
+test("flooring with baseboard replacement still detects carpentry mixed scope", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "flooring",
+    scopeText: "Install LVP flooring with transitions and replace baseboards.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "flooring",
+      splitScopes: [{ trade: "flooring", scope: "Install LVP flooring with transitions." }],
+      anchorId: "flooring_only_v1",
+    }),
+    materialsList: materials(["LVP flooring", "Transitions"]),
+    estimateSections: [section("flooring")],
+  })
+
+  assert.match(reviewText(review), /multiple trades/)
 })
 
 test("true mixed scope missing from diagnostics creates missed-scope review note", () => {

@@ -159,6 +159,14 @@ function textMatches(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text))
 }
 
+function hasWorkVerb(text: string) {
+  return /\b(install|replace|repair|remove|reinstall|reset|demo|demolish|paint|prime|patch|skim|texture|match|waterproof|rough[-\s]*in|run|relocate|set|mount|hang|finish|caulk|sand|prep|touch[-\s]*up|r&r|remove and reinstall)\b/.test(text)
+}
+
+function isBoundaryContinuation(text: string) {
+  return /\b(drywall|sheetrock|skim|texture|texture\s+matching|texture\s+match|trim|ceiling\s+paint|electrical|plumbing|flooring|carpentry|baseboards?|painting|paint|demo|demolition)\b/.test(text)
+}
+
 function isPaintingPrepConsumable(label: string) {
   return /\b(caulk|spackle|filler|patching\s+compound|painter'?s\s+putty)\b/.test(label) &&
     !/\b(drywall|sheetrock|gypsum|joint\s+compound|drywall\s+tape|texture)\b/.test(label)
@@ -166,7 +174,39 @@ function isPaintingPrepConsumable(label: string) {
 
 function detectIncludedTrades(scopeText: string) {
   const normalized = normalizeTypedScope(scopeText)
-  const includedText = normalized.includedWorkText || normalized.normalizedText
+  const includedClauses: string[] = []
+  let boundaryCarry = false
+
+  for (const clause of normalized.clauses) {
+    if (clause.excludedByOthers) {
+      boundaryCarry = true
+      continue
+    }
+
+    if (boundaryCarry && isBoundaryContinuation(clause.text)) {
+      continue
+    }
+
+    if (
+      clause.protectionOnly ||
+      clause.coordinationOnly ||
+      clause.existingCondition ||
+      clause.permitResponsibility
+    ) {
+      boundaryCarry = false
+      continue
+    }
+
+    if (clause.includedWork || (clause.materialResponsibility && hasWorkVerb(clause.text))) {
+      includedClauses.push(clause.text)
+      boundaryCarry = false
+      continue
+    }
+
+    boundaryCarry = false
+  }
+
+  const includedText = includedClauses.join(" ")
   const trades = new Set<TradeGroup>()
 
   for (const trade of TRADE_GROUPS) {

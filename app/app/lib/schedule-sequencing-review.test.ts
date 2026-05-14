@@ -140,6 +140,19 @@ test("simple walls-only painting does not create noisy sequencing warnings", () 
   assert.equal(review, null)
 })
 
+test("walls-only painting with drywall repair texture exclusions does not warn for patch dry-time", () => {
+  const review = buildScheduleSequencingReview({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint walls only in living room and hallway. Two coats. Excludes drywall repair, skim coat, and texture matching.",
+    resultText:
+      "Includes wall painting, masking, protection, cleanup, and approval. Drywall repair and texture matching are excluded; patch/texture drying time is only a schedule consideration for work by others.",
+    schedule: oneVisitSchedule,
+  })
+
+  assert.equal(review, null)
+})
+
 test("owner-supplied fixtures add material lead-time review note only", () => {
   const review = buildScheduleSequencingReview({
     selectedTrade: "plumbing",
