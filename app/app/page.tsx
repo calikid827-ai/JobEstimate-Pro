@@ -12004,24 +12004,48 @@ function PlanAwareEstimatorReadbackCard({
   const selectedPageStatuses = (planIntelligence?.pageReadStatuses || []).filter(
     (status) => status.selected
   )
+  const currentSelectedPagesCount =
+    typeof selectedPagesChosenCount === "number" && selectedPagesChosenCount > 0
+      ? selectedPagesChosenCount
+      : null
+  const planReadbackHasContent =
+    keyFlow.length > 0 ||
+    estimatorStory.length > 0 ||
+    readback.areaQuantityReadback.length > 0 ||
+    readback.tradeScopeReadback.length > 0 ||
+    readback.groupedScopeReadback.length > 0 ||
+    pricingCarryReadback.length > 0
   const selectedPagesProcessedCount =
-    selectedPageStatuses.length || evidenceStrength?.selectedPagesCount || 0
+    Math.max(
+      selectedPageStatuses.length,
+      evidenceStrength?.selectedPagesCount || 0,
+      currentSelectedPagesCount || 0
+    )
   const selectedPagesReadStatusCount = selectedPageStatuses.filter(
     (status) => status.textStatus === "extracted" || status.imageStatus === "rendered"
   ).length
+  const evidencePagesReadCount = Math.max(
+    evidenceStrength?.textPagesCount || 0,
+    evidenceStrength?.renderedPagesCount || 0
+  )
   const selectedPagesReadCount =
-    selectedPageStatuses.length > 0
-      ? selectedPagesReadStatusCount
-      : Math.max(evidenceStrength?.textPagesCount || 0, evidenceStrength?.renderedPagesCount || 0)
+    Math.max(
+      selectedPagesReadStatusCount,
+      evidencePagesReadCount,
+      planReadbackHasContent ? 1 : 0
+    )
+  const selectedPagesUsefulStatusCount = selectedPageStatuses.filter(
+    (status) =>
+      (status.textStatus === "extracted" || status.imageStatus === "rendered") &&
+      status.classificationStatus === "classified" &&
+      status.failureReasons.length === 0
+  ).length
   const pagesWithUsefulEvidenceCount =
-    selectedPageStatuses.length > 0
-      ? selectedPageStatuses.filter(
-          (status) =>
-            (status.textStatus === "extracted" || status.imageStatus === "rendered") &&
-            status.classificationStatus === "classified" &&
-            status.failureReasons.length === 0
-        ).length
-      : Math.max(evidenceStrength?.textPagesCount || 0, evidenceStrength?.renderedPagesCount || 0)
+    Math.max(
+      selectedPagesUsefulStatusCount,
+      evidencePagesReadCount,
+      planReadbackHasContent ? 1 : 0
+    )
   const pagesNeedingReviewCount = selectedPageStatuses.filter(
     (status) =>
       status.failureReasons.length > 0 ||
@@ -12050,10 +12074,6 @@ function PlanAwareEstimatorReadbackCard({
     (status) => status.classificationStatus !== "classified"
   ).length
   const hasPageReadStatusSummary = selectedPageStatuses.length > 0
-  const currentSelectedPagesCount =
-    typeof selectedPagesChosenCount === "number" && selectedPagesChosenCount > 0
-      ? selectedPagesChosenCount
-      : null
   const hasSelectedPageCountGap =
     currentSelectedPagesCount != null &&
     (currentSelectedPagesCount > selectedPagesProcessedCount ||

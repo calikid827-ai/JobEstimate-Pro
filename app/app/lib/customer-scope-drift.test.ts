@@ -121,6 +121,18 @@ test("warns for explicit electrical exclusion conflicts", () => {
   assert.match(review.warnings.map((item) => item.label).join(" | "), /Excluded scope conflict/)
 })
 
+test("warns when excluded electrical expands into device and wiring removal or replacement", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope: "Bathroom refresh. Electrical coordination only. Electrical by others.",
+    resultText:
+      "Customer-facing scope includes removal and replacement of electrical devices and wiring affected by the work.",
+  })
+
+  assert.match(review.summary || "", /electrical system work/i)
+  assert.match(review.warnings.map((item) => item.label).join(" | "), /Excluded scope conflict/)
+})
+
 test("warns for explicit plumbing exclusion conflicts", () => {
   const review = guard({
     selectedTrade: "bathroom_tile",
@@ -194,6 +206,19 @@ test("warns when painting scope expands into drywall skim coat or texture match"
   assert.match(review.warnings.map((item) => item.label).join(" | "), /Adjacent drywall expansion/)
 })
 
+test("does not warn when simple painting output mentions adjacent trades only as sequencing context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Excludes drywall repair, carpentry, flooring, trim, and baseboards.",
+      resultText:
+        "Customer-facing scope includes wall painting, protection, cleanup, and coordination of drywall/carpentry finishes and flooring before trim/baseboard sequencing by others.",
+    }),
+    null
+  )
+})
+
 test("warns for unsupported flooring drift", () => {
   assert.match(
     warning({
@@ -248,6 +273,19 @@ test("does not warn when plumbing scope avoids existing electrical wiring", () =
       writtenScope: "Replace toilet and vanity faucet. Electrical by others.",
       resultText:
         "Customer-facing scope includes plumbing fixture replacement with no interference with existing electrical wiring.",
+    }),
+    null
+  )
+})
+
+test("does not warn when electrical scope references drywall and paint as subsequent work by others", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "electrical",
+      writtenScope:
+        "Electrical rough-in for vanity light. Drywall repair and paint by others after inspection.",
+      resultText:
+        "Customer-facing scope includes electrical rough-in. Fixture installation will occur after drywall and paint by others.",
     }),
     null
   )

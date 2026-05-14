@@ -57,9 +57,9 @@ const TRADE_RULES: TradeRule[] = [
     label: "electrical",
     aliases: ["electrical", "electrician"],
     mentionPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in|electrical\s+coordination|electrical\s+trade)\b/i,
+      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in|electrical\s+coordination|electrical\s+trade)\b/i,
     supportPattern:
-      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in)\b/i,
+      /\b(electrical|electrician|wiring|rewire|outlets?|receptacles?|devices?|switches?|circuits?|breakers?|electrical\s+panels?|lighting|light\s+fixtures?|can\s+lights?|recessed\s+lights?|recessed\s+lighting|rough[- ]?in)\b/i,
   },
   {
     id: "plumbing",
@@ -170,7 +170,16 @@ const ELECTRICAL_CONTEXT_ONLY_PATTERN =
   /\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b|\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b.{0,100}\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b|\b(existing|adjacent)\s+electrical\s+(wiring|components?)\b/i
 
 const ELECTRICAL_TRUE_WORK_PATTERN =
-  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|run(?:ning)?|add(?:ing)?|relocate|rewire|wire)\s+(?:new\s+)?(?:electrical\s+)?(wiring|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?)\b/i
+  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|run(?:ning)?|add(?:ing)?|relocate|rewire|wire)\s+(?:new\s+)?(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(removal|replacement|repair)\s+(?:and\s+(?:replacement|repair)\s+)?of\s+(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal)\b/i
+
+const SUBSEQUENT_TRADE_CONTEXT_PATTERN =
+  /\b(after|before|following|once|upon completion of|prior to|subsequent|by others|others to|separate trade|separate contractor|coordinate|coordination|sequencing|sequence)\b/i
+
+const DRYWALL_CONTEXT_ONLY_PATTERN =
+  /\b(drywall|sheetrock|gypsum|skim\s+coat|finish\s+level|level\s+[345]|texture\s+match|orange\s+peel|knockdown)\b/i
+
+const PAINTING_CONTEXT_ONLY_PATTERN =
+  /\b(painting|paint|painter|primer|prime|coats?|painted\s+(walls?|ceilings?|trim|doors?|cabinets?))\b/i
 
 const PLUMBING_CONTEXT_ONLY_PATTERN =
   /\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b.{0,80}\b(plumbing|plumber|water\s+lines?|supply\s+lines?|drains?|valves?|fixtures?)\b|\b(plumbing|plumber|water\s+lines?|supply\s+lines?|drains?|valves?|fixtures?)\b.{0,80}\b(no\s+interference|avoid(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination)\b/i
@@ -244,6 +253,39 @@ function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCust
 }
 
 function isNonScopeContextMention(part: string, rule: TradeRule) {
+  if (
+    rule.id === "drywall" &&
+    SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
+    DRYWALL_CONTEXT_ONLY_PATTERN.test(part) &&
+    !PAINTING_ADJACENT_DRYWALL_PATTERN.test(part)
+  ) {
+    return true
+  }
+  if (
+    rule.id === "painting" &&
+    SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
+    PAINTING_CONTEXT_ONLY_PATTERN.test(part) &&
+    !/\b(paint(?:ing)?|prime|primer)\s+(walls?|ceilings?|trim|doors?|cabinets?|baseboards?)\b/i.test(part)
+  ) {
+    return true
+  }
+  if (
+    rule.id === "flooring" &&
+    SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
+    rule.mentionPattern.test(part) &&
+    !FLOORING_TRUE_WORK_PATTERN.test(part)
+  ) {
+    return true
+  }
+  if (
+    rule.id === "carpentry" &&
+    SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
+    rule.mentionPattern.test(part) &&
+    !CARPENTRY_TRUE_WORK_PATTERN.test(part)
+  ) {
+    return true
+  }
+
   if (!NON_SCOPE_CONTEXT_PATTERN.test(part)) return false
 
   if (rule.id === "flooring") {
@@ -349,7 +391,10 @@ function hasPaintingAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningA
   }
 
   return sentenceParts(args.resultText).some(
-    (part) => PAINTING_ADJACENT_DRYWALL_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
+    (part) =>
+      PAINTING_ADJACENT_DRYWALL_PATTERN.test(part) &&
+      !EXCLUDED_TRADE_PATTERN.test(part) &&
+      !isNonScopeContextMention(part, drywallRule)
   )
 }
 
