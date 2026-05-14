@@ -4825,7 +4825,7 @@ type ComplexityProfile = {
 }
 
 function buildComplexityProfile(args: { scopeText: string; trade: string }): ComplexityProfile {
-  const s = (args.scopeText || "").toLowerCase()
+  const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
   const trade = (args.trade || "").toLowerCase()
 
   const notes: string[] = []
@@ -4944,7 +4944,7 @@ function inferPhaseVisitsFromSignals(args: {
   scopeText: string
   cp: ComplexityProfile | null
 }): { visits: number; phases: string[] } {
-  const s = (args.scopeText || "").toLowerCase()
+  const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
   const cp = args.cp
 
   const phases: string[] = []
@@ -5134,7 +5134,7 @@ type TradeStack = {
 }
 
 function detectTradeStack(args: { scopeText: string; primaryTrade: string }): TradeStack {
-const s = (args.scopeText || "").toLowerCase()
+const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
 const primary = (args.primaryTrade || "").toLowerCase()
 
 const trades: string[] = []
@@ -5239,7 +5239,7 @@ function estimateCalendarDaysRange(args: {
   const crewDays = Math.max(0.5, Number(args.crewDays || 0))
   const cp = args.cp
   const trade = (args.trade || "").toLowerCase()
-  const s = (args.scopeText || "").toLowerCase()
+  const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
   const stack = args.tradeStack
   const workDaysPerWeek = args.workDaysPerWeek
 

@@ -411,6 +411,19 @@ test("does not warn when painting output mentions carpentry only as coordination
   )
 })
 
+test("does not warn when painting output mentions ongoing carpentry work only as coordination context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+      resultText:
+        "Customer-facing scope includes wall painting, masking, protection, cleanup, and customer approval. Coordination with ongoing drywall and carpentry work is required to minimize interference and maintain proper sequencing. This scope excludes drywall repairs, texture modifications, carpentry, electrical work, plumbing, flooring, trim, and ceiling paint.",
+    }),
+    null
+  )
+})
+
 test("does not treat ceiling or trim paint exclusions as whole-painting exclusion", () => {
   assert.equal(
     warning({
