@@ -286,6 +286,15 @@ function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCust
   )
 }
 
+function hasSupportedCarpentryReplacementRemovalContext(
+  resultText: string,
+  args: BuildCustomerScopeTradeDriftWarningArgs
+) {
+  if (!CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(resultText)) return false
+  const carpentryRule = TRADE_RULES.find((candidate) => candidate.id === "carpentry")
+  return Boolean(carpentryRule && isTradeSupported(carpentryRule, args))
+}
+
 function isNonScopeContextMention(part: string, rule: TradeRule) {
   if (
     rule.id === "drywall" &&
@@ -354,6 +363,13 @@ function hasActionableMention(rule: TradeRule, resultText: string, args: BuildCu
     if (!rule.mentionPattern.test(part)) return false
     if (EXCLUDED_TRADE_PATTERN.test(part)) return false
     if (isNonScopeContextMention(part, rule)) return false
+    if (
+      rule.id === "demolition" &&
+      /\bprior\s+to\s+demolition\b/i.test(part) &&
+      hasSupportedCarpentryReplacementRemovalContext(resultText, args)
+    ) {
+      return false
+    }
     if (rule.id === "bathroom_tile" && /\bbathrooms?\b/i.test(part) && !rule.supportPattern.test(part)) return false
     if (rule.id === "electrical" && /\bfixtures?\b/i.test(part) && !rule.supportPattern.test(part)) return false
     if (rule.id === "plumbing" && /\bfixtures?\b/i.test(part) && !rule.supportPattern.test(part)) return false
