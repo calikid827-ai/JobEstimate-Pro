@@ -220,6 +220,31 @@ Done note:
 - Tests or manual QA needed: Real-world estimates across plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, painting, and general renovation, with split scopes, anchors, materials, warnings, schedule, and PDF/customer-output safety reviewed together.
 - Status: Next active smart-estimator audit
 
+#### Item: Case 1 Painting real-world QA false-positive cleanup
+
+- Problem: Real-world QA Case 1 found a walls-only painting scope with adjacent trade exclusions still produced unsupported carpentry drift, patch/texture schedule wording, multi-trade coordination, and primer-after-patching review noise.
+- Why it matters: A senior estimator should distinguish included painting work from excluded drywall, flooring, trim/baseboard, and carpentry context before showing contractor-facing diagnostics.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a focused false-positive cleanup. Customer Scope Drift now treats ongoing drywall/carpentry coordination and minimize-interference wording as coordination-only context, backend trade-stack/complexity/schedule phase detection uses included-work scope text, and missed-scope detection no longer classifies excluded drywall/skim/texture wording as patch-and-paint.
+- Exact files/components involved: `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`, `app/api/generate/route.ts`, `app/api/generate/lib/estimator/missedScopeDetector.ts`, `app/api/generate/lib/estimator/missedScopeDetector.test.ts`, `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/lib/priceguard/scopeSplitter.test.ts`, `app/app/lib/priceguard-review.ts`, `app/app/lib/priceguard-review.test.ts`, `app/app/lib/schedule-sequencing-review.ts`
+- What not to touch: Pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+- Tests or manual QA needed: Focused customer-scope drift, schedule sequencing, missed-scope detector, scope splitter, PriceGuard/scope-quality tests, TypeScript, diff check, and manual QA for Case 1 plus true patch-and-paint control.
+- Status: Done
+
+Done note:
+
+- Customer Scope Drift now treats `coordination with ongoing drywall and carpentry work`, `coordination with carpentry activities`, and `minimize interference` as coordination-only context when no actual carpentry/baseboard/trim install, replacement, or repair is promised.
+- Included-work scope text now prevents excluded adjacent trades from creating false backend diagnostics such as multi-trade coordination, flooring-before-trim/baseboard sequencing, flooring-paint coordination, or Estimate Defense wording that the job is not single-trade only across painting/drywall/carpentry.
+- Backend missed-scope detection no longer classifies painting scopes as patch-and-paint when drywall repair, skim coat, or texture matching appear only in excluded clauses, so `Primer / sealer after patching` is no longer recommended from excluded drywall/texture wording.
+- Backend schedule phase parsing keeps exclusion context attached, so excluded patch/texture wording does not drive patch/texture dry-time before paint.
+- Manual retest passed for Case 1 Painting: primary trade painting, walls-only paint scope, painting-only split scopes, AI pricing source, no `flooring_only_v1`, painting/protection consumables only, no unsupported carpentry warning, no painting+drywall mixed-scope warning, no owner/customer-supplied material note, no primer/sealer-after-patching, no drywall dry/return, no patch/texture dry-time before painting, no flooring/trim/baseboard sequencing phrase, and no false multi-trade/Estimate Defense statement.
+- True patch-and-paint control remains preserved: drywall patching, compound/tape, sanding, primer, painting, patch/texture dry-time, drywall dry/return, and drywall/painting split scopes still appear when patching is actually included.
+- Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
+- Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
+- This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+- Next active smart-estimator priority remains continuing the real-world estimate QA matrix. Production Live Mode subscription verification remains the final pre-launch gate only.
+
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 
 - Problem: The new UI-side Scope-to-Price Consistency Review Guard initially over-classified some normal trade consumables and prep context as unsupported material or mixed-scope issues.

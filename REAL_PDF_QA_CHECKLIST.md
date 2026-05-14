@@ -1459,3 +1459,64 @@ Wallcovering context:
 Final decision:
 - Scope-to-Price Consistency Review Guard false-positive cleanup passes.
 - Next active smart-estimator task remains real-world estimate QA matrix coverage for diagnostic consistency across Customer-Facing Scope, Customer Output Readiness, PriceGuard Review, Scope-to-Price X-Ray, materials, schedule, and PDF/customer-output safety.
+
+---
+
+# Test Entry 20 — Case 1 Painting Real-World QA False-Positive Cleanup
+
+Status: PASS
+
+Scope:
+- Focused cleanup for the real-world estimate QA matrix Case 1 Painting false positives.
+- Trade Type: Painting.
+- Typed scope: `Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.`
+- Customer Scope Drift now treats `coordination with ongoing drywall and carpentry work`, `coordination with carpentry activities`, and `minimize interference` as coordination-only context rather than promised carpentry scope.
+- Backend included-work scope interpretation now prevents excluded drywall, flooring, trim/baseboard, and carpentry terms from creating false multi-trade coordination, flooring-before-trim/baseboard sequencing, flooring-paint coordination, or Estimate Defense wording that the job is not single-trade only across painting/drywall/carpentry.
+- Missed-scope detection no longer classifies painting scopes as patch-and-paint when drywall repair, skim coat, or texture matching appear only in excluded scope clauses.
+- `Primer / sealer after patching` is no longer recommended from excluded drywall/texture wording.
+- Backend schedule phase parsing keeps exclusion context attached, so excluded patch/texture wording does not drive patch/texture dry time before paint.
+- Customer-Facing Scope / `result.text` remains a core product strength and was not broadly rewritten.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 64/64.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 10/10.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/missedScopeDetector.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` passed 19/19.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 37/37.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, or layouts.
+
+### Manual QA Outcomes
+
+Case 1 Painting:
+- PASS.
+- Primary trade is painting.
+- Paint scope is walls.
+- Split scopes show painting only.
+- Pricing Method source is AI.
+- No `flooring_only_v1` appears.
+- Materials List shows painting/protection consumables only.
+- No unsupported carpentry warning appears.
+- No painting+drywall mixed-scope consistency warning appears.
+- No owner/customer-supplied material note appears.
+- No `Primer / sealer after patching` appears.
+- No `drywall dry/return` appears.
+- No patch/texture dry-time before painting appears.
+- No flooring/trim/baseboard sequencing phrase appears.
+- No multi-trade coordination / Estimate Defense false statement appears.
+- Normal two-coat paint dry-time, low-confidence, measurement, and payment review notes are acceptable estimator guidance.
+
+True patch-and-paint control:
+- PASS.
+- Scope: `Patch drywall access holes, prime repairs, and paint walls.`
+- Customer-Facing Scope still includes drywall patching, compound/tape, sanding, primer, and painting.
+- Schedule still includes patch/texture drying time before painting.
+- Estimated Schedule still includes drywall dry/return.
+- Scope-to-Price X-Ray split scopes still show drywall and painting.
+- True patch-and-paint behavior remains preserved.
+
+Final decision:
+- Case 1 Painting false-positive cleanup passes.
+- Continue the real-world estimate QA matrix for remaining trade cases and diagnostic consistency.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
