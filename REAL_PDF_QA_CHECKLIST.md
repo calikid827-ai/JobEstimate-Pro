@@ -1298,3 +1298,49 @@ Known remaining future audit item:
 Final decision:
 - Real-world Customer Scope Drift cleanup passes.
 - Next active smart-estimator task should be backend split-scope / scope-to-price diagnostic noise audit.
+
+## Test Entry 17 — Backend Scope-Boundary Safety Fix
+
+Status: PASS
+
+Scope:
+- Backend split-scope / scope-to-price diagnostic noise cleanup for the real-world Case 7A painting scope.
+- Added backend included-work scope filtering in `app/api/generate/lib/priceguard/scopeSplitter.ts`.
+- `splitScopeByTrade()` now uses included-work scope text so excluded/by-others/protection/coordination-only/existing-condition clauses do not create false split-scope trades.
+- `isMixedRenovation()` now checks included work only.
+- PriceGuard anchor eligibility now receives included-work scope text, preventing false `flooring_only_v1` anchor matches from protection/exclusion wording.
+- Added targeted backend tests in `app/api/generate/lib/priceguard/scopeSplitter.test.ts`.
+- Customer-Facing Scope remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` passed 6/6.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 34/34.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This did not change pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+
+### Manual QA Cases
+
+Case 7A painting scope:
+- PASS.
+- Trade Type was Painting.
+- Scope-to-Price X-Ray primary trade stayed painting.
+- Pricing Method source stayed AI.
+- `flooring_only_v1` did not appear.
+- Split scopes only showed painting: `Paint walls only in living room and hallway. Two coats, contractor-supplied paint`.
+- Materials List showed painting-style consumables/protection only: caulk/spackle/filler, roller covers/brushes/sanding supplies, and masking plastic/tape/paper.
+- Flooring material, underlayment, base/quarter round, and transitions did not appear.
+- Customer Scope Drift remained quiet for the previous bad unsupported drywall/painting warning.
+
+True mixed painting + LVP control:
+- PASS.
+- Scope: `Paint walls in living room and install LVP flooring with transitions.`
+- Trade Type was General Renovation.
+- Scope-to-Price X-Ray primary trade stayed general renovation.
+- Split scopes correctly showed painting and flooring.
+- Pricing Method correctly showed anchor: `flooring_only_v1`.
+- Materials List correctly showed flooring material, underlayment, base/quarter round, transitions, and floor protection.
+
+Final decision:
+- Backend scope-boundary safety fix passes.
+- Next active smart-estimator task should be cross-trade backend scope-boundary regression review before expanding the Case 7A filtering pattern.

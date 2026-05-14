@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator audit: backend split-scope / scope-to-price diagnostic noise from excluded/protection wording.
+1. Next active smart-estimator audit: cross-trade backend scope-boundary regression review for by-others, owner-supplied, protection, coordination, and existing-condition language.
 2. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -170,10 +170,33 @@ Done note:
 - Why it matters: Even when Customer Scope Drift is now correct, noisy diagnostics such as General Renovation primary trade, `flooring_only_v1` anchor, adjacent split scopes, and flooring materials for a painting-style scope can reduce estimator trust.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit only first. Map where backend scope splitter, pricing anchor selection, scope-to-price x-ray, and materials diagnostics classify excluded/protection language. Keep any later fix review-only unless a separate scoped task proves a tiny safe classification cleanup.
-- Exact files/components likely involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, estimator pricing prep/material diagnostics, Scope-to-Price X-Ray display, related tests.
+- Recommended fix approach: Completed the smallest backend scope-boundary safety fix. Backend split-scope, mixed-renovation, and anchor eligibility now use included-work scope filtering so excluded/protection/coordination-only/existing-condition clauses do not create false trade signals.
+- Exact files/components involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/lib/priceguard/scopeSplitter.test.ts`, `app/api/generate/route.ts`
 - What not to touch: Pricing math, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data, payload shape, API routes, layouts, or Customer Output Readiness behavior.
-- Tests or manual QA needed: Reproduce Case 7A with Trade Type = Painting; inspect split scopes, primary trade, pricing anchor, materials list, and Customer Scope Drift output; add focused tests only after audit identifies a narrow safe behavior.
+- Tests or manual QA needed: Targeted backend scope splitter tests, existing estimator tests, TypeScript, diff check, and manual retest for Case 7A plus a true painting + LVP mixed-scope control.
+- Status: Done
+
+Done note:
+
+- Added backend included-work scope filtering in `scopeSplitter.ts`.
+- `splitScopeByTrade()` now uses included-work scope text so excluded/by-others/protection/coordination-only/existing-condition clauses do not create false split-scope trades.
+- `isMixedRenovation()` now checks included work only.
+- PriceGuard anchor eligibility now receives included-work scope text, preventing false `flooring_only_v1` anchor matches from protection/exclusion wording.
+- Case 7A with Trade Type = Painting now passes: primary trade stays painting, Pricing Method source stays AI, no `flooring_only_v1` anchor appears, split scopes only show painting, Materials List shows painting-style consumables/protection only, and Customer Scope Drift remains quiet.
+- True mixed control still passes: `Paint walls in living room and install LVP flooring with transitions` remains General Renovation, splits into painting and flooring, uses `flooring_only_v1`, and shows flooring materials as intended.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` with 6/6 passing, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` with 34/34 passing, `npx tsc --noEmit`, and `git diff --check`.
+- This did not change pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Scope Drift, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+
+#### Item: Cross-trade backend scope-boundary regression review
+
+- Problem: The Case 7A fix was intentionally narrow. Other trades may still have edge cases where by-others, owner-supplied, protection, coordination, or existing-condition language creates backend diagnostic or pricing-signal noise.
+- Why it matters: The app should read messy contractor scope like a senior estimator and avoid treating exclusions or boundaries as included work.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit first with real-world examples across electrical, plumbing, flooring, drywall, carpentry, wallcovering, and bathroom/tile. Only implement additional tiny scope-boundary fixes if repeated false backend signals are confirmed.
+- Exact files/components likely involved: `app/api/generate/lib/priceguard/scopeSplitter.ts`, `app/api/generate/route.ts`, backend estimator tests.
+- What not to touch: Pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, payloads, API contracts, Customer Scope Drift, Customer Output Readiness layout, or measured plan pricing eligibility.
+- Tests or manual QA needed: Targeted backend controls for true included work vs excluded/by-others/protection/coordination-only language by trade.
 - Status: Next active smart-estimator audit
 
 #### Item: Customer Output Readiness panel
