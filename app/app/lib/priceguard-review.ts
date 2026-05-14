@@ -11,6 +11,7 @@ import type {
   ProfitProtection,
   Schedule,
 } from "./types"
+import { buildScheduleSequencingReview } from "./schedule-sequencing-review"
 
 type PricingInput = {
   labor?: number
@@ -42,6 +43,10 @@ export type BuildPriceGuardReviewArgs = {
   resultText?: string
   pricing: PricingInput
   schedule?: Schedule | null
+  scopeSignals?: {
+    needsReturnVisit?: boolean
+    reason?: string
+  } | null
   deposit?: {
     enabled?: boolean
     type?: "percent" | "fixed"
@@ -594,6 +599,22 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score: scoreChange,
   })
   score = scoreChange.value
+
+  const sequencingReview = buildScheduleSequencingReview({
+    selectedTrade: args.selectedTrade,
+    scopeText: args.scopeText,
+    resultText: args.resultText,
+    schedule: args.schedule,
+    scopeSignals: args.scopeSignals,
+    estimateSections: args.estimateSections,
+  })
+
+  if (sequencingReview) {
+    addMany(contractorRiskNotes, sequencingReview.contractorRiskNotes, 6)
+    addMany(scopeClarityWarnings, sequencingReview.scopeClarityWarnings, 6)
+    addMany(suggestedExclusions, sequencingReview.suggestedExclusions, 6)
+    addMany(missedScopeWarnings, sequencingReview.missedScopeWarnings, 6)
+  }
 
   if (!hasAny(combinedText, ["prep", "preparation", "prepare", "patch", "repair", "sand", "demo", "remove", "scrape", "caulk", "fill", "prime", "substrate"])) {
     addUnique(missedScopeWarnings, "Prep or demolition expectations are not clearly stated.")

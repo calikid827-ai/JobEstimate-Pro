@@ -3437,6 +3437,7 @@ const priceGuardReview = useMemo(() => {
     resultText: result?.text || "",
     pricing,
     schedule,
+    scopeSignals,
     deposit: depositEnabled
       ? {
           enabled: true,
@@ -3463,6 +3464,7 @@ const priceGuardReview = useMemo(() => {
   scopeChange,
   pricing,
   schedule,
+  scopeSignals,
   depositEnabled,
   depositType,
   depositValue,

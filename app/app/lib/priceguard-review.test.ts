@@ -7,10 +7,18 @@ function buildReview({
   selectedTrade,
   scopeText,
   resultText = "",
+  schedule,
 }: {
   selectedTrade: string
   scopeText: string
   resultText?: string
+  schedule?: {
+    crewDays: number
+    visits: number
+    calendarDays: { min: number; max: number }
+    workDaysPerWeek: number
+    rationale: string[]
+  }
 }) {
   return buildPriceGuardReview({
     hasResult: true,
@@ -24,7 +32,7 @@ function buildReview({
       markup: 25,
       total: 2800,
     },
-    schedule: {
+    schedule: schedule || {
       crewDays: 1,
       visits: 1,
       calendarDays: { min: 1, max: 2 },
@@ -219,4 +227,24 @@ test("strong trade scopes avoid trade-specific missed-scope review notes", () =>
       assert.doesNotMatch(text, pattern, item.selectedTrade)
     }
   }
+})
+
+test("PriceGuard includes schedule sequencing review notes through existing fields", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "bathroom_tile",
+      scopeText: "Waterproof shower walls, install tile, grout, and reinstall fixtures.",
+      resultText: "Includes waterproofing membrane, shower tile, grout, cleanup, and customer approval.",
+      schedule: {
+        crewDays: 1,
+        visits: 1,
+        calendarDays: { min: 1, max: 1 },
+        workDaysPerWeek: 5,
+        rationale: ["One site visit assumed."],
+      },
+    })
+  )
+
+  assert.match(text, /grout cure/)
+  assert.match(text, /fixture\/accessory return coordination/)
 })
