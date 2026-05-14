@@ -241,7 +241,19 @@ function writtenScopeSupports(rule: TradeRule, writtenScope: string) {
 
 function scopeXRaySupports(rule: TradeRule, scopeXRay: ScopeXRay) {
   return (scopeXRay?.detectedScope?.splitScopes || []).some(
-    (item) => rule.supportPattern.test(item.scope || "") && !EXCLUDED_TRADE_PATTERN.test(item.scope || "")
+    (item) =>
+      sentenceParts(item.scope || "").some(
+        (part) =>
+          rule.supportPattern.test(part) &&
+          !EXCLUDED_TRADE_PATTERN.test(part) &&
+          !isNonScopeContextMention(part, rule) &&
+          !(
+            rule.id === "electrical" &&
+            /^(electrical|electrical\s+trade|electrical\s+coordination|electrical\s+coordination\s+only)$/i.test(
+              normalize(part)
+            )
+          )
+      )
   )
 }
 

@@ -241,6 +241,39 @@ test("keeps electrical unsupported warning visible for fixture relocation when d
   assert.match(visibleText, /not strongly supported|electrical system work/i)
 })
 
+test("keeps electrical unsupported warning visible when noisy scope x-ray split mentions electrical only", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "ADA unit renovation per selected plan pages. Electrical coordination only. Plan evidence review only. Owner and GC-provided items. Estimator to confirm quantities and inclusions.",
+    scopeXRay: baseScopeXRay([
+      { trade: "electrical", scope: "electrical" },
+      { trade: "drywall", scope: "drywall repairs" },
+    ]),
+    resultText:
+      "Customer-facing scope includes drywall patching and refinishing. Electrical rough-in and device adjustments are executed in coordination with drywall repairs.",
+  })
+
+  const visibleText = [review.summary, ...review.warnings.map((item) => `${item.label}: ${item.message}`)].join(" ")
+  assert.match(visibleText, /electrical/i)
+  assert.match(visibleText, /not strongly supported|electrical system work/i)
+})
+
+test("keeps electrical unsupported warning visible when noisy scope x-ray split mentions coordination only", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "ADA unit renovation per selected plan pages. Electrical coordination only. Plan evidence review only. Owner and GC-provided items.",
+    scopeXRay: baseScopeXRay([{ trade: "electrical", scope: "electrical coordination only" }]),
+    resultText:
+      "Electrical rough-in and device adjustments are executed in coordination with drywall repairs.",
+  })
+
+  const visibleText = [review.summary, ...review.warnings.map((item) => `${item.label}: ${item.message}`)].join(" ")
+  assert.match(visibleText, /electrical/i)
+  assert.match(visibleText, /not strongly supported|electrical system work/i)
+})
+
 test("warns when electrical coordination-only scope expands into device relocation", () => {
   const review = guard({
     selectedTrade: "general_renovation",
