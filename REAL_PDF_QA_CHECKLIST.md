@@ -1520,3 +1520,68 @@ Final decision:
 - Case 1 Painting false-positive cleanup passes.
 - Continue the real-world estimate QA matrix for remaining trade cases and diagnostic consistency.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 21 — Remaining Real-World QA False-Positive Cleanup, Cases 4, 6, 7, and 8
+
+Status: PASS
+
+Scope:
+- Focused cleanup for the remaining real-world estimate QA matrix false positives across Electrical Case 4, Bathroom/Tile Case 6, Wallcovering Case 7, and Carpentry Case 8.
+- The cleanup reduced false positives caused by excluded, by-others, coordination-only, sequencing-only, and normal trade-prep context.
+- Customer-Facing Scope / `result.text` remains a core product strength and was not broadly rewritten.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 11/11.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSplitter.test.ts` passed 21/21.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 38/38.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+
+### Manual QA Outcomes
+
+Case 4 Electrical:
+- PASS.
+- Vanity lights no longer create false plumbing/carpentry mixed-trade diagnostics.
+- Electrical rough-in with owner-supplied fixtures, permit/inspection coordination, access through open walls, cleanup, and drywall/paint by others stays electrical-only.
+- Sequencing/framing/finish-trade wording no longer creates unsupported carpentry drift.
+- True carpentry work still warns.
+- Permit/inspection review for electrical rough-in remains acceptable estimator guidance.
+
+Case 6 Bathroom/Tile:
+- PASS.
+- Shower wall waterproofing/tile/grout/trim stays tile/bathroom context.
+- Demo, cement board/backer, membrane, waterproofing, tile, grout, and tile trim no longer create false General Renovation split noise.
+- Tile trim / edge trim is not treated as carpentry trim unless baseboard/casing/carpentry trim is clearly included.
+- Plumbing by others and owner-supplied fixtures no longer create false plumbing material warnings or plumbing multi-trade defense wording.
+- Bathroom flooring allowance is not added unless flooring/floor tile/floor replacement is actually included.
+- Wet-area cure/set-time notes remain acceptable for true tile work.
+
+Case 7 Wallcovering:
+- PASS.
+- There is no selectable Wallcovering Trade Type, so this test was correctly run as General Renovation.
+- General Renovation with detected wallcovering-only included scope now respects wallcovering scope.
+- Wallcovering-only scope no longer gets bathroom/tile cure, glass/fixture, demo/rough-in, or broad General Renovation sequencing noise.
+- Acceptable wallcovering-specific notes remain: wall elevations/heights, affected walls, material type, roll-good assumptions, pattern repeat, seam/layout direction, substrate readiness, primer/prep expectations, and owner-supplied wallcovering timing.
+
+Case 8 Carpentry:
+- PASS.
+- Baseboard removal/disposal and `demolition of existing baseboards` are treated as normal carpentry/baseboard replacement prep.
+- A separate `Prior to demolition...` sentence is suppressed when the same Customer-Facing Scope clearly contains supported baseboard replacement/removal context.
+- True unrelated demolition/tear-out of walls, floors, cabinets, non-baseboard finishes, or unrelated demolition still warns.
+
+Acceptable remaining notes:
+- Owner-supplied material responsibility.
+- Wet-area cure/set-time for true tile work.
+- Permit/inspection review for electrical rough-in.
+- Wallcovering layout/pattern/substrate confirmation.
+- True mixed-scope coordination when multiple trades are actually included.
+
+Final decision:
+- Remaining real-world QA false-positive cleanup across Cases 4, 6, 7, and 8 passes.
+- Next active smart-estimator task should shift from individual false-positive cleanup to an EstimatorScopeFacts / shared scope-understanding audit.
+- Production Live Mode subscription verification remains the final pre-launch gate only.

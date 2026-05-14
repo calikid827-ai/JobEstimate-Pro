@@ -12,8 +12,8 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator audit: continue real-world estimate QA matrix coverage for plan evidence, customer-output safety, scope-to-price diagnostics, and trade-specific materials consistency.
-2. Keep cross-trade backend scope-boundary filtering under regression watch during real-world trade QA.
+1. Next active smart-estimator audit: EstimatorScopeFacts / shared scope-understanding architecture audit so Customer Scope Drift, Scope-to-Price, schedule sequencing, materials, Estimate Defense, and backend split-scope logic can keep converging on one included-work interpretation.
+2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
@@ -218,7 +218,7 @@ Done note:
 - Exact files/components likely involved: QA docs first; possible future scoped fixes in `app/api/generate/lib/priceguard/*`, `app/app/lib/*`, or `app/app/page.tsx` only if QA proves a specific issue.
 - What not to touch: Pricing formulas, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data, payload shape, API routes, layouts, or measured plan pricing eligibility unless a later task explicitly scopes it.
 - Tests or manual QA needed: Real-world estimates across plumbing, electrical, flooring, drywall, bathroom/tile, wallcovering, carpentry, painting, and general renovation, with split scopes, anchors, materials, warnings, schedule, and PDF/customer-output safety reviewed together.
-- Status: Next active smart-estimator audit
+- Status: Done for the current real-world QA matrix cleanup pass; keep under regression watch.
 
 #### Item: Case 1 Painting real-world QA false-positive cleanup
 
@@ -243,7 +243,42 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Next active smart-estimator priority remains continuing the real-world estimate QA matrix. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is an EstimatorScopeFacts / shared scope-understanding audit. Production Live Mode subscription verification remains the final pre-launch gate only.
+
+#### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
+
+- Problem: The remaining real-world QA matrix cases exposed false estimator diagnostics from excluded, by-others, coordination-only, sequencing-only, normal trade-prep, and broad General Renovation fallback context.
+- Why it matters: Contractors should be able to trust Customer Scope Drift, Scope-to-Price X-Ray, materials, schedule, and Estimate Defense together without seeing adjacent-trade false positives on otherwise clean estimates.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed focused false-positive cleanup across electrical, bathroom/tile, wallcovering, and carpentry without changing pricing formulas, broad backend pricing semantics, customer-output layouts, or measured plan pricing eligibility.
+- Exact files/components involved: Customer Scope Drift, Scope-to-Price Consistency Review, schedule sequencing review, backend scope splitting / route diagnostics, materials, and Estimate Defense paths.
+- What not to touch: Pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+- Tests or manual QA needed: Focused helper/backend tests, existing estimator tests, TypeScript, diff check, and manual retest for Cases 4, 6, 7, and 8.
+- Status: Done
+
+Done note:
+
+- Case 4 Electrical now passes: vanity lights no longer create false plumbing/carpentry mixed-trade diagnostics, electrical rough-in with owner-supplied fixtures and drywall/paint by others stays electrical-only, sequencing/framing/finish-trade wording no longer creates unsupported carpentry drift, and true carpentry work still warns.
+- Case 6 Bathroom/Tile now passes: shower wall waterproofing/tile/grout/trim stays tile/bathroom context, demo/cement board/backer/membrane/tile trim no longer create false General Renovation split noise, plumbing by others and owner-supplied fixtures no longer create false plumbing material or multi-trade defense wording, and bathroom flooring allowance appears only when flooring/floor tile/floor replacement is actually included.
+- Case 7 Wallcovering now passes: because there is no selectable Wallcovering Trade Type, General Renovation with detected wallcovering-only included scope now respects wallcovering scope and avoids bathroom/tile cure, glass/fixture, demo/rough-in, or broad General Renovation sequencing noise while keeping wallcovering-specific layout/pattern/substrate/material timing notes.
+- Case 8 Carpentry now passes: baseboard removal/disposal and `demolition of existing baseboards` are treated as normal carpentry/baseboard replacement prep, while unrelated demolition/tear-out of walls, floors, cabinets, non-baseboard finishes, or unrelated demolition still warns.
+- Validation passed: `customer-scope-drift.test.ts` 71/71, `scope-price-consistency-review.test.ts` 18/18, `schedule-sequencing-review.test.ts` 11/11, `scopeSplitter.test.ts` 21/21, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
+- Manual retest passed for Cases 4, 6, 7, and 8.
+- True mixed scopes, true unsupported warnings, wet-area cure/set-time for real tile work, permit/inspection review for electrical rough-in, owner-supplied material responsibility, and wallcovering layout/pattern/substrate confirmation remain acceptable estimator guidance.
+- This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+
+#### Item: EstimatorScopeFacts / shared scope-understanding audit
+
+- Problem: Recent fixes repeatedly taught Customer Scope Drift, Scope-to-Price, schedule, materials, Estimate Defense, and backend split-scope paths the same included-work vs boundary-context rules in separate places.
+- Why it matters: A senior-estimator app should share one defensible view of included work, excluded/by-others work, owner-supplied materials, coordination-only language, sequencing-only context, existing conditions, and true mixed scope.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit current scope-understanding helpers and design the smallest shared EstimatorScopeFacts shape or adapter before implementing. Keep the first pass read-only/planning unless the audit finds a tiny duplication cleanup.
+- Exact files/components likely involved: `app/app/lib/typed-scope-normalization.ts`, `app/app/lib/customer-scope-drift.ts`, `app/app/lib/scope-price-consistency-review.ts`, `app/app/lib/schedule-sequencing-review.ts`, `app/app/lib/priceguard-review.ts`, `app/api/generate/lib/priceguard/scopeSplitter.ts`, and `app/api/generate/route.ts`.
+- What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
+- Tests or manual QA needed: Architecture map first; later focused tests only for any scoped shared helper.
+- Status: Next active smart-estimator audit
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 
