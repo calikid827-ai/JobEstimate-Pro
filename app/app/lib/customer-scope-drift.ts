@@ -196,6 +196,9 @@ const CARPENTRY_TRUE_WORK_PATTERN =
 const DEMOLITION_LIMITING_CONTEXT_PATTERN =
   /\b(without|no|excluding|excluded|excludes?|not\s+including|does\s+not\s+include|does\s+not\s+cover)\b.{0,50}\b(demo|demolition|tear[- ]?out|removal)\b|\b(demo|demolition|tear[- ]?out|removal)\b.{0,50}\b(excluded|by\s+others|not\s+included|beyond\s+patch\s+repairs?)\b/i
 
+const CARPENTRY_REPLACEMENT_REMOVAL_PATTERN =
+  /\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b.{0,90}\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b|\b(existing\s+)?(baseboards?|trim|casing|crown|millwork)\b.{0,90}\b(remov(?:e|al|ing)|dispos(?:e|al|ing))\b/i
+
 function normalize(value: string) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase()
 }
@@ -262,6 +265,10 @@ function scopeXRaySupports(rule: TradeRule, scopeXRay: ScopeXRay) {
 
 function isNormalSupportedRemoval(part: string, rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
   if (rule.id !== "demolition") return false
+  if (CARPENTRY_REPLACEMENT_REMOVAL_PATTERN.test(part)) {
+    const carpentryRule = TRADE_RULES.find((candidate) => candidate.id === "carpentry")
+    if (carpentryRule && isTradeSupported(carpentryRule, args)) return true
+  }
   if (/\bdemolition\b/i.test(part) && !DEMOLITION_LIMITING_CONTEXT_PATTERN.test(part)) return false
   if (!SUPPORTED_REMOVAL_TRADE_PATTERN.test(part)) return false
 

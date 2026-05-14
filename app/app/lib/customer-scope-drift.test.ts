@@ -830,6 +830,31 @@ test("does not warn on normal removal language inside supported flooring scope",
   )
 })
 
+test("does not warn on baseboard removal and disposal inside supported carpentry scope", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "carpentry",
+      writtenScope:
+        "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain.",
+      resultText:
+        "Customer-facing scope includes careful removal and disposal of existing baseboards prior to installation of new baseboards, cleanup, and customer approval.",
+    }),
+    null
+  )
+})
+
+test("true demolition outside supported carpentry scope still warns", () => {
+  assert.match(
+    warning({
+      selectedTrade: "carpentry",
+      writtenScope: "Replace 120 LF of baseboards in hallway. Painting by others.",
+      resultText:
+        "Customer-facing scope includes demolition of adjacent walls and tear-out of non-baseboard finishes before baseboard replacement.",
+    }) || "",
+    /demolition/
+  )
+})
+
 test("does not warn on bathroom or fixture by itself", () => {
   assert.equal(
     warning({

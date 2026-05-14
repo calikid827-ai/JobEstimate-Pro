@@ -81,8 +81,9 @@ const TRUE_WORK_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegE
     /\blight(?:s|ing)?\b|\bfixture(?:s)?\b/,
   ],
   plumbing: [
-    /\bplumbing\b|\brough[-\s]*in\b/,
-    /\btoilet(?:s)?\b|\bfaucet(?:s)?\b|\bsink(?:s)?\b|\bvanit(?:y|ies)\b/,
+    /\bplumbing\b/,
+    /\btoilet(?:s)?\b|\bfaucet(?:s)?\b|\bsink(?:s)?\b/,
+    /\bvanit(?:y|ies)\b(?!\s+lights?\b)/,
     /\bdrain(?:s)?\b|\bsupply\s+line(?:s)?\b|\bvalve(?:s)?\b/,
   ],
   bathroom_tile: [
@@ -212,9 +213,19 @@ function detectIncludedTrades(scopeText: string) {
 
   const includedText = includedClauses.join(" ")
   const trades = new Set<TradeGroup>()
+  const wallcoveringSupported = textMatches(includedText, TRUE_WORK_PATTERNS.wallcovering)
 
   for (const trade of TRADE_GROUPS) {
     if (trade === "general_renovation") continue
+    if (
+      trade === "painting" &&
+      wallcoveringSupported &&
+      !/\bpaint(?:ing|ed)?\s+(walls?|ceilings?|trim|doors?|cabinets?)\b|\brepaint\b|\bfinish\s+coats?\b|\bcoating\s+application\b/.test(
+        includedText
+      )
+    ) {
+      continue
+    }
     if (textMatches(includedText, TRUE_WORK_PATTERNS[trade])) trades.add(trade)
   }
 

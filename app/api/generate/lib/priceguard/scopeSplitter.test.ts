@@ -93,6 +93,17 @@ test("bathroom tile scope ignores plumbing glass and owner-supplied fixture boun
   assertNoTrades(scope, /\bplumbing|glass|owner-supplied|fixtures\b/i)
 })
 
+test("bathroom tile trim stays tile context instead of carpentry", () => {
+  const scope =
+    "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures."
+
+  const splitScopes = splitScopeByTrade(scope)
+
+  assert.deepEqual(splitScopes.map((chunk) => chunk.trade), ["tile"])
+  assert.match(splitScopes[0]?.scope ?? "", /trim/i)
+  assert.equal(isMultiTradeScope(scope), false)
+})
+
 test("wallcovering scope keeps prep and primer while ignoring by-others trades", () => {
   const scope =
     "Install wallcovering with wall prep and primer included. Painting, electrical, and furniture moving by others."

@@ -14,6 +14,7 @@ import type {
 } from "./types"
 import { buildScheduleSequencingReview } from "./schedule-sequencing-review"
 import { buildScopePriceConsistencyReview } from "./scope-price-consistency-review"
+import { normalizeTypedScope } from "./typed-scope-normalization"
 
 type PricingInput = {
   labor?: number
@@ -111,7 +112,21 @@ function resolvePriceGuardTrade(selectedTrade: string | undefined, text: string)
   if (selected === "bathroom_tile" || selected === "tile") return "bathroom_tile"
   if (selected === "wallcovering" || selected === "wallpaper") return "wallcovering"
   if (selected === "carpentry") return "carpentry"
-  if (selected === "general_renovation" || selected === "general") return "general_renovation"
+  if (selected === "general_renovation" || selected === "general") {
+    const normalizedScope = normalizeTypedScope(text)
+    const includedText = normalize(
+      normalizedScope.clauses
+        .filter((clause) => clause.includedWork && !clause.excludedByOthers && !clause.coordinationOnly)
+        .map((clause) => clause.text)
+        .join(" ")
+    )
+    const wallcoveringOnly =
+      /\b(wallpaper|wallcovering|wall covering|vinyl wallcovering)\b/.test(includedText) &&
+      !/\b(tile|grout|waterproof|shower|tub|plumbing|electrical|outlets?|switches?|flooring|lvp|baseboards?|trim install|cabinet|drywall repair|paint walls?|paint ceilings?|demo|rough[-\s]*in)\b/.test(
+        includedText
+      )
+    return wallcoveringOnly ? "wallcovering" : "general_renovation"
+  }
 
   if (hasAny(text, ["wallpaper", "wallcovering", "wall covering", "vinyl wallcovering"])) {
     return "wallcovering"

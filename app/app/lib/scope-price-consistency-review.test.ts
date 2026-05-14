@@ -353,3 +353,59 @@ test("true mixed scope missing from diagnostics creates missed-scope review note
 
   assert.match(reviewText(review), /pricing diagnostics do not clearly show the mixed scope/)
 })
+
+test("electrical vanity lights do not create plumbing mixed-scope warning", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "electrical",
+    scopeText:
+      "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures. Include permit/inspection coordination, access through open walls, cleanup, and customer approval.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "electrical",
+      splitScopes: [
+        {
+          trade: "electrical",
+          scope: "Electrical rough-in for 4 vanity lights and 2 GFCI outlets.",
+        },
+      ],
+      anchorId: "electrical_engine_v1_verified",
+    }),
+    materialsList: materials(["Electrical devices / fixtures", "Electrical hardware", "Protection"]),
+    estimateSections: [section("electrical")],
+  })
+
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /multiple trades/)
+  assert.doesNotMatch(text, /plumbing/)
+  assert.doesNotMatch(text, /carpentry/)
+})
+
+test("bathroom tile materials do not warn for plumbing or flooring when boundaries exclude them", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "bathroom_tile",
+    scopeText:
+      "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "tile",
+      splitScopes: [
+        {
+          trade: "tile",
+          scope: "Waterproof shower walls and install tile, grout, and trim.",
+        },
+      ],
+      anchorId: "bathroom_remodel_v1",
+    }),
+    materialsList: materials([
+      "Waterproofing materials",
+      "Tile / setting materials",
+      "Thinset / mortar",
+      "Grout / sealant / caulk",
+      "Protection / masking materials",
+    ]),
+    estimateSections: [section("tile")],
+  })
+
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /plumbing items/)
+  assert.doesNotMatch(text, /flooring items/)
+  assert.match(text, /owner\/customer-supplied materials/)
+})

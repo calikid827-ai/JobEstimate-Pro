@@ -167,3 +167,19 @@ test("owner-supplied fixtures add material lead-time review note only", () => {
   assert.doesNotMatch(text, /rough-in sequencing/)
   assert.equal(review?.contractorRiskNotes.length, 1)
 })
+
+test("wallcovering-only general renovation does not get bathroom or generic renovation sequencing", () => {
+  const review = buildScheduleSequencingReview({
+    selectedTrade: "general_renovation",
+    scopeText:
+      "Install wallcovering in lobby walls with wall prep and primer included. Painting, electrical, and furniture moving by others. Owner-supplied wallcovering. Include layout, pattern match, adhesive, cleanup, protection, and customer approval.",
+    resultText:
+      "Customer-facing scope includes wallcovering installation, wall prep, primer, pattern match, adhesive, cleanup, protection, exclusions, and customer approval.",
+    schedule: oneVisitSchedule,
+  })
+  const text = reviewText(review)
+
+  assert.doesNotMatch(text, /shower|tile sequencing|waterproofing|grout cure|fixture/)
+  assert.doesNotMatch(text, /demo, rough-in, inspection, close-up/)
+  assert.match(text, /wallcovering sequence/)
+})

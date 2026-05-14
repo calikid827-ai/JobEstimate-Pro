@@ -26,6 +26,7 @@ type ScopeContext = {
   paintingContext: boolean
   exteriorPaintingContext: boolean
   wallcoveringContext: boolean
+  tileContext: boolean
 }
 
 function normalizeScopeText(scopeText: string): string {
@@ -51,10 +52,16 @@ function buildScopeContext(scopeText: string): ScopeContext {
   const wallcoveringContext =
     /\b(wallcovering|wall\s*covering|wallpaper|paper\s*hanging)\b/.test(s)
 
+  const tileContext =
+    /\b(tile|tiling|grout|thinset|waterproof|waterproofing|membrane|shower\s+walls?|tub\s+surround|cement\s*board|backer\s*board)\b/.test(
+      s
+    )
+
   return {
     paintingContext,
     exteriorPaintingContext,
     wallcoveringContext,
+    tileContext,
   }
 }
 
@@ -223,6 +230,15 @@ function detectTradeForSegment(
     /\b(wall\s*tile|shower\s+walls?|tub\s+surround|waterproof|waterproofing|membrane|thinset|grout|install\s+tile)\b/.test(s)
   ) {
     signals.push("tile keywords")
+    return { trade: "tile", signals }
+  }
+
+  if (
+    context.tileContext &&
+    /\b(tile\s+trim|edge\s+trim|trim\s+piece|trim\s+pieces|schluter|jolly|bullnose|trim)\b/.test(s) &&
+    !/\b(baseboards?|casing|crown|door|window|finish\s+carpentry|carpentry)\b/.test(s)
+  ) {
+    signals.push("tile trim context")
     return { trade: "tile", signals }
   }
 

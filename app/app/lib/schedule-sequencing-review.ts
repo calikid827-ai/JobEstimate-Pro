@@ -34,10 +34,12 @@ function addUnique(items: string[], value: string, max = 3) {
 
 function resolveTrade(args: BuildScheduleSequencingReviewArgs, text: string) {
   const selected = normalize(args.selectedTrade || "")
-  if (selected) return selected
+  if (selected && selected !== "general_renovation" && selected !== "general renovation") return selected
 
   const sectionTrade = normalize(args.estimateSections?.[0]?.trade || "")
-  if (sectionTrade) return sectionTrade
+  if (sectionTrade && sectionTrade !== "general_renovation" && sectionTrade !== "general renovation") {
+    return sectionTrade
+  }
 
   if (hasAny(text, [/\bwallcovering|wallpaper|wall covering\b/])) return "wallcovering"
   if (hasAny(text, [/\bbathroom|shower|tub|waterproof|tile\b/])) return "bathroom_tile"
@@ -86,6 +88,14 @@ function hasOwnerMaterialLeadTime(text: string) {
   return hasAny(text, [
     /\bowner[-\s]*supplied|customer[-\s]*supplied|by owner|owner provides?|customer provides?\b/,
     /\bmaterial selection|fixture selection|finish selection|allowance\b/,
+  ])
+}
+
+function hasOwnerFixtureLeadTime(text: string) {
+  return hasAny(text, [
+    /\b(owner[-\s]*supplied|customer[-\s]*supplied|by owner|owner provides?|customer provides?)\b.{0,80}\b(fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|lights?)\b/,
+    /\b(fixtures?|toilets?|faucets?|sinks?|vanit(?:y|ies)|lights?)\b.{0,80}\b(owner[-\s]*supplied|customer[-\s]*supplied|by owner|owner provides?|customer provides?)\b/,
+    /\bfixture selection\b/,
   ])
 }
 
@@ -228,13 +238,16 @@ export function buildScheduleSequencingReview(
   }
 
   if (hasOwnerMaterialLeadTime(text) && !leadTimeAlreadyAddressed(text)) {
+    const materialLabel = hasOwnerFixtureLeadTime(text) ? "materials or fixtures" : "materials"
     addUnique(
       contractorRiskNotes,
-      "Owner-supplied materials or fixtures may affect start date, return trips, and install sequencing if not on site before work starts."
+      `Owner-supplied ${materialLabel} may affect start date, return trips, and install sequencing if not on site before work starts.`
     )
     addUnique(
       suggestedExclusions,
-      "Excludes delays or return trips caused by late owner-supplied materials, fixtures, selections, or missing parts."
+      hasOwnerFixtureLeadTime(text)
+        ? "Excludes delays or return trips caused by late owner-supplied materials, fixtures, selections, or missing parts."
+        : "Excludes delays or return trips caused by late owner-supplied materials, selections, or missing parts."
     )
   }
 

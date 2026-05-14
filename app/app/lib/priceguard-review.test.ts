@@ -223,6 +223,22 @@ test("PriceGuard adds wallcovering-specific missed-scope review notes", () => {
   assert.match(text, /material, adhesive/)
 })
 
+test("PriceGuard treats wallcovering-only general renovation as wallcovering review", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "general_renovation",
+      scopeText:
+        "Install wallcovering in lobby walls with wall prep and primer included. Painting, electrical, and furniture moving by others. Owner-supplied wallcovering. Include layout, pattern match, adhesive, cleanup, protection, and customer approval.",
+      resultText:
+        "Install wallcovering with wall prep, primer, layout, pattern match, adhesive, cleanup, protection, exclusions, and customer approval.",
+    })
+  )
+
+  assert.doesNotMatch(text, /bathroom|waterproofing|grout cure|fixture\/accessory|rough-in/)
+  assert.match(text, /wall area, linear footage/)
+  assert.doesNotMatch(text, /multi-trade sequencing/)
+})
+
 test("strong trade scopes avoid trade-specific missed-scope review notes", () => {
   const strongCases = [
     {

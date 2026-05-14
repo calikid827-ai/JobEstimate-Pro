@@ -612,6 +612,8 @@ function buildMaterialsList(args: {
   const notes: string[] = []
 
   const s = (args.scopeText || "").toLowerCase()
+  const includedScopeText = getIncludedScopeText(args.scopeText || "")
+  const included = includedScopeText.toLowerCase()
 
   const addItem = (
     label: string,
@@ -693,9 +695,18 @@ function buildMaterialsList(args: {
 
 if (args.anchorId === "bathroom_remodel_v1") {
   const floorSqft = args.quantityInputs.effectiveFloorSqft ?? 60
+  const includesPlumbingFixtures =
+    /\b(install|replace|reset|set|connect|reconnect|rough[-\s]*in|relocat(?:e|ion|ing)|move)\b.{0,80}\b(toilets?|sinks?|faucets?|vanit(?:y|ies)|fixtures?|valves?|drains?|supply\s+lines?)\b/.test(included) ||
+    /\b(toilets?|sinks?|faucets?|vanit(?:y|ies)|fixtures?|valves?|drains?|supply\s+lines?)\b.{0,80}\b(install|replace|reset|set|connect|reconnect|rough[-\s]*in|relocat(?:e|ion|ing)|move)\b/.test(included)
+  const includesBathroomFlooring =
+    /\b(flooring|floor\s+tile|tile\s+floor|bathroom\s+floor|shower\s+floor|lvp|vinyl\s+plank|laminate|underlayment)\b/.test(
+      included
+    )
 
-  addItem("Vanity / sink / faucet allowance", "allowance", "material", "medium")
-  addItem("Toilet / plumbing trim allowance", "allowance", "material", "medium")
+  if (includesPlumbingFixtures) {
+    addItem("Vanity / sink / faucet allowance", "allowance", "material", "medium")
+    addItem("Toilet / plumbing trim allowance", "allowance", "material", "medium")
+  }
   addItem("Waterproofing materials", "allowance", "material", "high")
   addItem("Tile / setting materials", "allowance", "material", "medium")
   addItem("Thinset / mortar", "allowance", "material", "medium")
@@ -703,15 +714,17 @@ if (args.anchorId === "bathroom_remodel_v1") {
   addItem("Protection / masking materials", "1 lot", "protection", "high")
   addItem("Demo / disposal supplies", "1 lot", "consumable", "high")
 
-  if (floorSqft > 0) {
+  if (includesBathroomFlooring && floorSqft > 0) {
     addItem("Bathroom flooring allowance", `~${Math.ceil(floorSqft * 1.1)} sqft`, "material", "medium")
   }
 
-  confirmItems.push(
-    "Confirm shower wall tile extent.",
-    "Confirm valve / drain / plumbing relocation scope.",
-    "Confirm fixture finish level before buying."
-  )
+  confirmItems.push("Confirm shower wall tile extent.")
+  if (includesPlumbingFixtures) {
+    confirmItems.push(
+      "Confirm valve / drain / plumbing relocation scope.",
+      "Confirm fixture finish level before buying."
+    )
+  }
 }
 
 if (args.anchorId === "flooring_only_v1") {
@@ -4849,9 +4862,11 @@ function buildComplexityProfile(args: { scopeText: string; trade: string }): Com
   const multiPhase =
     hasDemo || roughInOrRelocate || wetAreaSignals || permitSignals
 
+  const hasVanityLight = /\bvanity\s+lights?\b/.test(s)
   const multiTradeSignals =
     /\b(plumb|plumbing)\b/.test(s) &&
-    /\b(electric|electrical)\b/.test(s)
+    /\b(electric|electrical)\b/.test(s) &&
+    !hasVanityLight
 
   const finishTradeSignals =
     /\b(tile|backsplash|cabinet|counter(top)?|floor|flooring|drywall|paint|painting|trim|baseboard)\b/.test(s)
@@ -5136,6 +5151,9 @@ type TradeStack = {
 function detectTradeStack(args: { scopeText: string; primaryTrade: string }): TradeStack {
 const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
 const primary = (args.primaryTrade || "").toLowerCase()
+const hasVanityLight = /\bvanity\s+lights?\b/.test(s)
+const tileTrimContext =
+  /\b(tile|grout|thinset|waterproof|waterproofing|membrane|shower\s+walls?|tub\s+surround|cement\s*board|backer\s*board)\b/.test(s)
 
 const trades: string[] = []
 const activities: string[] = []
@@ -5172,10 +5190,14 @@ if (primary && REAL_TRADES.has(primary)) trades.push(primary)
 
   // --- ACTUAL TRADES ---
   const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
-  const hasPlumbing = /\b(toilet|sink|faucet|vanity|shower|tub|valve|drain|supply)\b/.test(s)
+  const hasPlumbing =
+    /\b(toilet|sink|faucet|shower|tub|valve|drain|supply)\b/.test(s) ||
+    (/\bvanity\b/.test(s) && !hasVanityLight)
   const hasElectrical = /\b(outlet|switch|recessed|can\s*light|fixture|panel)\b/.test(s)
   const hasDrywall = /\b(drywall|sheetrock|texture|patch)\b/.test(s)
-  const hasCarpentry = /\b(cabinet|vanity|trim|baseboard|framing|blocking|door)\b/.test(s)
+  const hasCarpentry =
+    /\b(cabinet|baseboard|framing|blocking|door)\b/.test(s) ||
+    (/\btrim\b/.test(s) && !tileTrimContext)
 
   if (hasTile) addTrade("tile", "Tile detected")
   if (hasPlumbing) addTrade("plumbing", "Plumbing work detected")
