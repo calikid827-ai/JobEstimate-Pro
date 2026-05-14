@@ -92,6 +92,8 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Filters warnings against generated customer-facing estimate text to reduce over-warning when the generated scope already resolves original-scope concerns
   - Uses selected-trade context for review-only missed-scope guidance across painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation
   - Flags trade-specific estimator review items such as fixture supply, access, patching, permits/inspections, substrate prep, transitions, disposal, finish selections, waterproofing, texture match, protection, exclusions, and sequencing
+  - Includes UI-side, warning-only schedule sequencing intelligence for dry-time, cure-time, rough-in access/inspection/patching, flooring phases, wallcovering phases, general renovation phase order, and owner-supplied material lead-time/return-trip risk
+  - Surfaces sequencing notes through existing PriceGuardReview fields only and suppresses notes when scope, generated result text, or schedule already addresses the sequencing issue
   - Score/level
   - Missed-scope warnings
   - Labor/material confidence notes
@@ -107,6 +109,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
+- Schedule Sequencing Review Guard adds estimator-facing review guidance without changing the displayed schedule calculation, pricing, Customer Output Readiness behavior, or detailed AI-generated `result.text`.
 - Saved estimate history with empty-state workflow guidance and selected-job context when filtered history is empty.
 - Jobs dashboard.
 - Job actuals tracking.
@@ -241,6 +244,7 @@ Implemented pricing and guard modules include:
 - PriceGuard applied rules, assumptions, and warnings.
 - PriceGuard Review warning filtering against generated customer-facing estimate text to reduce false positives for resolved prep, material, cleanup, protection, exclusion, approval, and work-process concerns.
 - PriceGuard Review selected-trade-aware missed-scope guidance for common contractor underbid risks across painting, drywall, flooring, electrical, plumbing, bathroom/tile, wallcovering, carpentry, and general renovation.
+- PriceGuard Review schedule sequencing guidance for patch/texture/paint dry-time and return visits, shower/tile waterproofing and grout cure, electrical/plumbing rough-in access/inspection/patching, flooring demo/subfloor/install/transitions/base/protection timing, wallcovering removal/prep/primer/layout/pattern/install timing, general renovation demo-to-finish phase order, and owner-supplied material lead-time.
 - Customer-scope drift false-positive reduction for adjacent-trade context language while preserving true unsupported-scope warnings for electrical rough-in, flooring install/repair, baseboard replacement, and carpentry expansion.
 - UI-side typed-scope normalization helper for pre-generate scope-quality warnings, including clause-level included work, excluded/by-others, protection-only, coordination-only, existing-condition, material responsibility, permit responsibility, and quantity/location classifications.
 - Customer-scope electrical false-positive cleanup for coordination/protection-only mentions of electrical trades, wiring, and components while preserving true unsupported electrical work warnings for rough-in, wiring, outlets, switches, circuits, fixtures, and panel/breaker work.

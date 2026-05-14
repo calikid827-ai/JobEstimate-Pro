@@ -14,7 +14,7 @@ Principles:
 
 1. Continue real-PDF QA matrix coverage for plan evidence and customer-output safety.
 2. Next active app-improvement task: continue real-PDF QA and estimator UI clarity review for plan evidence, selected-page readback, and customer-output safety.
-3. Keep PriceGuard trade-specific missed-scope checks and warning-only AI scope protection under regression watch during real-world estimate QA.
+3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
 5. Final pre-launch gate: complete Production Live Mode subscription payment/webhook entitlement verification before accepting public paid users.
 
@@ -245,15 +245,25 @@ Done note:
 
 #### Item: Schedule assumptions review language
 
-- Problem: Schedule output is useful but can look more precise than the underlying crew/calendar assumptions support.
-- Why it matters: Contractors need a defensible schedule range, not a false commitment.
+- Problem: Schedule output and generated scope can miss estimator review risks around dry-time, cure-time, rough-in inspections, access, patching, owner materials, and phase order.
+- Why it matters: Contractors need sequencing awareness that protects schedule assumptions without changing price or customer-facing scope text.
 - Risk level: Low
-- Priority: P2
-- Recommended fix approach: UI/review copy that labels schedule as estimator-confirmed assumptions unless crew days, visits, and calendar days are strong.
-- Exact files/components likely involved: `app/app/page.tsx`, schedule display/edit components.
-- What not to touch: Schedule calculation, pricing, PDFs unless separately scoped.
-- Tests or manual QA needed: Generate estimates with thin and detailed schedule data.
-- Status: Not started
+- Priority: P1
+- Recommended fix approach: Completed a UI-side, warning-only Schedule Sequencing Review Guard integrated through existing PriceGuardReview fields.
+- Exact files/components involved: `app/app/lib/schedule-sequencing-review.ts`, `app/app/lib/schedule-sequencing-review.test.ts`, `app/app/lib/priceguard-review.ts`, `app/app/lib/priceguard-review.test.ts`, `app/app/page.tsx`
+- What not to touch: Pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, or Customer Output Readiness behavior.
+- Tests or manual QA needed: Focused schedule sequencing tests, existing PriceGuard/scope-quality tests, TypeScript check, diff check, and manual QA for dry-time, cure-time, rough-in, owner-material, and quiet simple-scope cases.
+- Status: Done
+
+Done note:
+
+- Added a UI-side deterministic Schedule Sequencing Review Guard that receives selected trade, typed scope, generated result text, schedule, scope signals, and estimate sections where available.
+- Sequencing notes surface only through existing PriceGuardReview fields: `contractorRiskNotes`, `scopeClarityWarnings`, `suggestedExclusions`, and `missedScopeWarnings` only when truly missing scope.
+- Warning-only behavior covers patch/texture/paint dry-time and return visits; shower/tile waterproofing, grout cure, and fixture/accessory return coordination; electrical/plumbing rough-in access, inspection/code, and patch/close-up responsibility; flooring demo/subfloor/install/transitions/base/protection timing; wallcovering removal/prep/primer/layout/pattern/install timing; general renovation demo -> rough-in -> inspection -> close-up -> finishes; and owner-supplied fixture/material lead-time and return-trip risk.
+- The guard suppresses notes when scope, generated result text, or schedule already addresses the sequencing issue.
+- Validation passed: `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` with 9/9 passing, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` with 34/34 passing, `npx tsc --noEmit`, and `git diff --check`.
+- Manual QA passed for patch-and-paint one-visit dry-time/return-visit guidance, quiet simple walls-only painting, shower waterproofing/tile cure and fixture-return sequencing guidance, owner-supplied plumbing fixture lead-time/return-trip guidance only, electrical rough-in access/inspection/patching guidance, and detailed unchanged Customer-Facing Scope.
+- This was UI-side/warning-only estimator guidance and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, or Customer Output Readiness behavior.
 
 ### 9. PDF / Proposal / Approval Readiness
 

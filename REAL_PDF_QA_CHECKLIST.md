@@ -1200,3 +1200,52 @@ Final decision:
 - Typed scope normalization pass passes.
 - Customer-scope electrical false-positive cleanup passes.
 - Keep this UI-side/review-only estimator intelligence under regression watch during real-world estimate QA.
+
+## Test Entry 15 — Schedule Sequencing Review Guard
+
+Status: PASS
+
+Scope:
+- UI-side, warning-only Schedule Sequencing Review Guard was added through existing PriceGuardReview fields.
+- The guard reviews selected trade, typed scope, generated result text, schedule, scope signals, and estimate sections where available.
+- Sequencing notes surface through `contractorRiskNotes`, `scopeClarityWarnings`, `suggestedExclusions`, and `missedScopeWarnings` only when truly missing scope.
+- Review guidance covers patch/texture/paint dry-time and return visits; shower/tile waterproofing, grout cure, and fixture/accessory return coordination; electrical/plumbing rough-in access, inspection/code, and patch/close-up responsibility; flooring demo, subfloor prep, install, transitions/base, and protection timing; wallcovering removal, prep, primer, layout, pattern match, and install timing; general renovation demo -> rough-in -> inspection -> close-up -> finish phase order; and owner-supplied fixture/material lead-time and return-trip risk.
+- The guard suppresses notes when scope, generated result text, or schedule already addresses the sequencing issue.
+- Customer-Facing Scope remained detailed and unchanged.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` passed 34/34.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- This was UI-side/warning-only and did not change pricing, generation behavior, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API routes, backend pricing logic, or Customer Output Readiness behavior.
+
+### Manual QA Cases
+
+Patch-and-paint one-visit scope:
+- PASS.
+- Dry-time and return-visit review guidance appeared.
+
+Simple walls-only painting:
+- PASS.
+- Simple painting stayed quiet and did not create noisy sequencing warnings.
+
+Shower waterproofing/tile one-visit scope:
+- PASS.
+- Waterproofing, grout cure, and fixture/accessory return sequencing guidance appeared.
+
+Plumbing owner-supplied fixture scope:
+- PASS.
+- Owner-material lead-time and return-trip guidance appeared only.
+
+Electrical rough-in scope:
+- PASS.
+- Access, inspection/code, and patch/close-up responsibility guidance appeared.
+
+Customer-facing output:
+- PASS.
+- Customer-Facing Scope stayed detailed and unchanged.
+
+Final decision:
+- Schedule Sequencing Review Guard passes.
+- Keep this UI-side/warning-only estimator guidance under regression watch during real-world estimate QA.
