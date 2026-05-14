@@ -158,6 +158,19 @@ test("warns when electrical coordination-only scope expands into electrical task
   assert.match(review.summary || "", /not strongly supported|electrical system work/)
 })
 
+test("warns when plan-review-only scope expands into disconnecting and reinstalling electrical devices", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope:
+      "Review selected pages only. Electrical coordination only. Electrical by others. GC-provided items are not included.",
+    resultText:
+      "The electrical scope includes disconnecting and reinstalling devices and wiring as necessitated by the new layout, followed by electrical rough-in coordinated with drywall repairs.",
+  })
+
+  assert.match(review.summary || "", /electrical/)
+  assert.match(review.summary || "", /not strongly supported|electrical system work/)
+})
+
 test("warns for explicit plumbing exclusion conflicts", () => {
   const review = guard({
     selectedTrade: "bathroom_tile",
@@ -268,6 +281,29 @@ test("does not warn when simple painting output explicitly excludes drywall and 
     }),
     null
   )
+})
+
+test("does not treat ceiling or trim paint exclusions as whole-painting exclusion", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint. Excludes trim painting and ceiling paint.",
+      resultText:
+        "Customer-facing scope includes wall painting with two coats and explicitly excludes trim painting and ceiling painting.",
+    }),
+    null
+  )
+})
+
+test("true whole-painting exclusion still warns when customer scope promises painting", () => {
+  const review = guard({
+    selectedTrade: "flooring",
+    writtenScope: "Install LVP flooring. Painting excluded and painting by others.",
+    resultText: "Customer-facing scope includes LVP flooring and painting walls after flooring installation.",
+  })
+
+  assert.match(review.summary || "", /painting/)
 })
 
 test("warns for unsupported flooring drift", () => {
