@@ -3,6 +3,8 @@ export type SplitTrade =
   | "drywall"
   | "texture"
   | "flooring"
+  | "tile"
+  | "wallcovering"
   | "carpentry"
   | "electrical"
   | "plumbing"
@@ -23,6 +25,7 @@ type SegmentBucket = {
 type ScopeContext = {
   paintingContext: boolean
   exteriorPaintingContext: boolean
+  wallcoveringContext: boolean
 }
 
 function normalizeScopeText(scopeText: string): string {
@@ -45,9 +48,13 @@ function buildScopeContext(scopeText: string): ScopeContext {
     paintingContext &&
     /\b(exterior|outside|stucco|siding|body|trim|garage door|front door|entry door|fascia|soffit|eaves|shutters?)\b/.test(s)
 
+  const wallcoveringContext =
+    /\b(wallcovering|wall\s*covering|wallpaper|paper\s*hanging)\b/.test(s)
+
   return {
     paintingContext,
     exteriorPaintingContext,
+    wallcoveringContext,
   }
 }
 
@@ -66,25 +73,21 @@ function splitIntoSegments(scopeText: string): string[] {
 
   return text
     .split(
-      /\s*,\s*|\s+\bthen\b\s+|\s+\balso\b\s+|\s+\band\s+(?=(?:paint|painting|prime|primer|repaint|patch|repair|replace|install|remove|demo|demolition|texture|skim|frame|tile|floor|flooring|hang|mount|relocate|move|wire|plumb|add)\b)/i
+      /\s*,\s*|(?<=[.!?])\s+|\s+\bthen\b\s+|\s+\balso\b\s+|\s+\band\s+(?=(?:paint|painting|prime|primer|repaint|patch|repair|replace|install|remove|demo|demolition|texture|skim|frame|tile|floor|flooring|hang|mount|relocate|move|wire|plumb|add|protect|protection|coordinate|coordination|existing|owner|furniture)\b)/i
     )
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/[.!?]+$/g, ""))
     .filter(Boolean)
 }
 
-function stripExcludedScopeText(scopeText: string): string {
-  return normalizeScopeText(scopeText)
+function splitIntoSentences(scopeText: string): string[] {
+  const text = normalizeScopeText(scopeText)
+
+  if (!text) return []
+
+  return text
     .split(/(?<=[.!?])\s+/)
-    .map((sentence) =>
-      sentence
-        .replace(
-          /\b(excludes?|excluding|does\s+not\s+(?:include|cover)|not\s+included|not\s+part\s+of|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+(?:contractor|trade)|NIC)\b.*$/i,
-          ""
-        )
-        .trim()
-    )
+    .map((s) => s.trim())
     .filter(Boolean)
-    .join(" ")
 }
 
 function isBoundaryOnlySegment(segment: string): boolean {
@@ -95,6 +98,34 @@ function isBoundaryOnlySegment(segment: string): boolean {
     /\b(paint|painting|prime|primer|repaint|patch|repair|replace|install|remove|demo|demolition|texture|skim|frame|hang|mount|relocate|move|wire|plumb|add|rough[- ]?in)\b/.test(
       s
     )
+
+  if (
+    /\b(excludes?|excluded|excluding|does\s+not\s+(?:include|cover)|not\s+included|not\s+part\s+of|by\s+others|by\s+owner|separate\s+(?:contractor|trade)|NIC)\b/.test(
+      s
+    )
+  ) {
+    return true
+  }
+
+  if (
+    /\b(owner\s+provided|owner\s+supplied|owner-provided|owner-supplied)\b/.test(
+      s
+    ) &&
+    !hasWorkVerb
+  ) {
+    return true
+  }
+
+  if (/\b(existing|remain|to\s+remain|remain\s+in\s+place)\b/.test(s) && !hasWorkVerb) {
+    return true
+  }
+
+  if (
+    /\b(coordinate|coordination)\b/.test(s) &&
+    /\b(only|with|trade|trades|avoid|interference)\b/.test(s)
+  ) {
+    return true
+  }
 
   if (
     /\b(protect|protection|mask|masking|cover|covering|safeguard|floor protection|surface protection|adjacent finish protection)\b/.test(
@@ -127,7 +158,10 @@ function isBoundaryOnlySegment(segment: string): boolean {
 }
 
 export function getIncludedScopeText(scopeText: string): string {
-  return splitIntoSegments(stripExcludedScopeText(scopeText))
+  return splitIntoSentences(scopeText)
+    .flatMap((sentence) =>
+      isBoundaryOnlySegment(sentence) ? [] : splitIntoSegments(sentence)
+    )
     .filter((segment) => !isBoundaryOnlySegment(segment))
     .join(", ")
 }
@@ -151,6 +185,19 @@ function detectTradeForSegment(
     return { trade: "painting", signals }
   }
 
+  if (context.paintingContext && /\b(?:one|two|three|\d+)\s+coats?\b/.test(s)) {
+    signals.push("painting coat count")
+    return { trade: "painting", signals }
+  }
+
+  if (
+    /\b(wallcovering|wall\s*covering|wallpaper|paper\s*hanging)\b/.test(s) ||
+    (context.wallcoveringContext && /\b(wall\s+prep|primer|prime)\b/.test(s))
+  ) {
+    signals.push("wallcovering keywords")
+    return { trade: "wallcovering", signals }
+  }
+
   if (
     /\b(texture|orange peel|knockdown|skip trowel|smooth texture|retexture|re-texture|skim coat)\b/.test(s)
   ) {
@@ -170,6 +217,13 @@ function detectTradeForSegment(
   ) {
     signals.push("flooring keywords")
     return { trade: "flooring", signals }
+  }
+
+  if (
+    /\b(wall\s*tile|shower\s+walls?|tub\s+surround|waterproof|waterproofing|membrane|thinset|grout|install\s+tile)\b/.test(s)
+  ) {
+    signals.push("tile keywords")
+    return { trade: "tile", signals }
   }
 
   if (
