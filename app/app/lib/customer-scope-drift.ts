@@ -134,7 +134,7 @@ const TRADE_RULES: TradeRule[] = [
 ]
 
 const EXCLUDED_TRADE_PATTERN =
-  /\b(excludes?|excluded|not\s+included|not\s+part\s+of|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
+  /\b(excludes?|excluded|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
 
 const SUPPORTED_REMOVAL_TRADE_PATTERN =
   /\b(flooring|lvp|laminate|hardwood|carpet|tile|tiling|paint|painting|drywall|sheetrock|baseboards?|trim|carpentry|wallcovering|wallpaper)\b/i
@@ -170,10 +170,10 @@ const ELECTRICAL_CONTEXT_ONLY_PATTERN =
   /\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b.{0,100}\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b|\b(electrical|electrician|wiring|components?|outlets?|switches?|lighting|fixtures?)\b.{0,100}\b(no\s+interference|avoid(?:ing)?\s+interference|prevent(?:ing)?\s+interference|without\s+interference|coordinate|coordinates|coordinating|coordination|protect(?:ing|ion)?|safeguard(?:ing)?)\b|\b(existing|adjacent)\s+electrical\s+(wiring|components?)\b/i
 
 const ELECTRICAL_TRUE_WORK_PATTERN =
-  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|run(?:ning)?|add(?:ing)?|relocate|rewire|wire)\s+(?:new\s+)?(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(removal|replacement|repair)\s+(?:and\s+(?:replacement|repair)\s+)?of\s+(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal)\b/i
+  /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|panel\s+work|breaker\s+work|wiring\s+adjustments?|electrical\s+wiring\s+adjustments?|(?:electrical\s+)?wiring\s+to\s+accommodate|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|run(?:ning)?|add(?:ing)?|relocate|rewire|wire|adjust(?:ment|ing|s)?)\s+(?:new\s+)?(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(removal|replacement|reinstallation|reinstall|repair)\s+(?:and\s+(?:replacement|reinstallation|reinstall|repair)\s+)?of\s+(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|adjustments?|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?)\b/i
 
 const SUBSEQUENT_TRADE_CONTEXT_PATTERN =
-  /\b(after|before|following|once|upon completion of|prior to|subsequent|by others|others to|separate trade|separate contractor|coordinate|coordination|sequencing|sequence)\b/i
+  /\b(after|before|following|once|upon completion of|prior to|subsequent|by others|others to|separate trade|separate trades|separate contractor|coordinate|coordinating|coordination|sequencing|sequence|existing)\b/i
 
 const DRYWALL_CONTEXT_ONLY_PATTERN =
   /\b(drywall|sheetrock|gypsum|skim\s+coat|finish\s+level|level\s+[345]|texture\s+match|orange\s+peel|knockdown)\b/i
@@ -350,6 +350,7 @@ function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDr
     (part) => EXCLUDED_TRADE_PATTERN.test(part) && rule.supportPattern.test(part)
   )
   if (!writtenExcludesTrade) return false
+  if (selectedTradeSupports(rule, args.selectedTrade)) return false
 
   if (rule.id === "electrical") {
     return sentenceParts(args.resultText).some(

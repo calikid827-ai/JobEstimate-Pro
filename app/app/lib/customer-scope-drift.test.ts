@@ -133,6 +133,18 @@ test("warns when excluded electrical expands into device and wiring removal or r
   assert.match(review.warnings.map((item) => item.label).join(" | "), /Excluded scope conflict/)
 })
 
+test("warns when excluded electrical expands into device reinstallation and wiring adjustments", () => {
+  const review = guard({
+    selectedTrade: "general_renovation",
+    writtenScope: "Bathroom refresh. Electrical coordination only. Electrical by others.",
+    resultText:
+      "Customer-facing scope includes removal and reinstallation of electrical devices and wiring adjustments to accommodate the new layout.",
+  })
+
+  assert.match(review.summary || "", /electrical system work/i)
+  assert.match(review.warnings.map((item) => item.label).join(" | "), /Excluded scope conflict/)
+})
+
 test("warns for explicit plumbing exclusion conflicts", () => {
   const review = guard({
     selectedTrade: "bathroom_tile",
@@ -214,6 +226,19 @@ test("does not warn when simple painting output mentions adjacent trades only as
         "Paint walls only in living room and hallway. Excludes drywall repair, carpentry, flooring, trim, and baseboards.",
       resultText:
         "Customer-facing scope includes wall painting, protection, cleanup, and coordination of drywall/carpentry finishes and flooring before trim/baseboard sequencing by others.",
+    }),
+    null
+  )
+})
+
+test("does not warn when simple painting output mentions excluded adjacent trades as coordination and sequencing context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope:
+        "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+      resultText:
+        "Customer-facing scope includes wall painting, masking, floor protection, cleanup, and customer approval. Coordinate with existing drywall and carpentry trades, confirm flooring before trim/baseboard sequencing, and coordinate across drywall/carpentry activities without adding those trades to the scope.",
     }),
     null
   )
