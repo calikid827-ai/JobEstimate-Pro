@@ -1583,7 +1583,7 @@ Acceptable remaining notes:
 
 Final decision:
 - Remaining real-world QA false-positive cleanup across Cases 4, 6, 7, and 8 passes.
-- Next active smart-estimator task should shift from individual false-positive cleanup to EstimatorScopeFacts architecture work. Phase 1 and Phase 2 are now complete, so the current next task is Phase 3: migrate Customer Scope Drift to EstimatorScopeFacts.
+- Next active smart-estimator task should shift from individual false-positive cleanup to EstimatorScopeFacts architecture work. Phases 1, 2, and 3 are now complete, so the current next task is Phase 4: migrate Schedule Sequencing Review to EstimatorScopeFacts.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1614,8 +1614,9 @@ Architecture safety:
 Final decision:
 - Phase 1 EstimatorScopeFacts passes.
 - Phase 2 Scope-to-Price Consistency Review migration is complete.
-- Next active smart-estimator task is Phase 3: migrate Customer Scope Drift to EstimatorScopeFacts.
-- Next manual QA should happen after the Phase 3 Customer Scope Drift migration or after a focused migration verification pass.
+- Phase 3 Customer Scope Drift migration is complete.
+- Next active smart-estimator task is Phase 4: migrate Schedule Sequencing Review to EstimatorScopeFacts.
+- Next manual QA should happen after the Phase 4 Schedule Sequencing Review migration or after a focused migration verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1649,6 +1650,40 @@ Architecture safety:
 
 Final decision:
 - Phase 2 EstimatorScopeFacts Scope-to-Price migration passes.
-- Next active smart-estimator task is Phase 3: migrate Customer Scope Drift to EstimatorScopeFacts.
-- Next manual QA should happen after Phase 3 Customer Scope Drift migration or after a focused migration verification pass.
+- Phase 3 Customer Scope Drift migration is complete.
+- Next active smart-estimator task is Phase 4: migrate Schedule Sequencing Review to EstimatorScopeFacts.
+- Next manual QA should happen after Phase 4 Schedule Sequencing Review migration or after a focused migration verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 24 — Phase 3 EstimatorScopeFacts Customer Scope Drift Migration
+
+Status: PASS
+
+Scope:
+- Phase 3 migrated `app/app/lib/customer-scope-drift.ts` to consume `buildEstimatorScopeFacts()`.
+- Customer Scope Drift now uses EstimatorScopeFacts for written-scope support and boundary-context understanding.
+- Written-scope support now uses shared included-work facts.
+- Excluded/by-others, coordination-only, protection-only, and existing/to-remain typed-scope context now flows through shared facts for trade conflict checks.
+- Existing specialized generated-text true-work detection remains in place for electrical, plumbing, carpentry, demolition, drywall/patching, flooring, bathroom/tile, and wallcovering.
+- Public behavior was preserved: same exported function names, same return shapes, warning-only behavior, and no customer text mutation.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 11/11.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 38/38.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a warning-only architecture migration.
+- It intentionally did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, Schedule Sequencing behavior, Scope-to-Price behavior, backend route diagnostics, `scopeSplitter` behavior, or materials generation behavior.
+
+Final decision:
+- Phase 3 EstimatorScopeFacts Customer Scope Drift migration passes.
+- Next active smart-estimator task is Phase 4: migrate Schedule Sequencing Review to EstimatorScopeFacts.
+- Next manual QA should happen after Phase 4 Schedule Sequencing Review migration or after a focused migration verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
