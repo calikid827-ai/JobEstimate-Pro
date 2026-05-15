@@ -1,4 +1,9 @@
 import type { EstimateStructuredSection, ScopeXRay, UiTrade } from "./types"
+import {
+  buildEstimatorScopeFacts,
+  type EstimatorScopeFacts,
+  type EstimatorScopeTrade,
+} from "./estimator-scope-facts"
 
 type PlanTradeReadback = {
   trade?: string
@@ -224,6 +229,39 @@ function selectedTradeSupports(rule: TradeRule, selectedTrade: UiTrade) {
   return rule.aliases.includes(normalize(selectedTrade))
 }
 
+function ruleScopeTrade(rule: TradeRule): EstimatorScopeTrade {
+  return rule.id
+}
+
+function factsIncludeTrade(facts: EstimatorScopeFacts, rule: TradeRule) {
+  const trade = ruleScopeTrade(rule)
+  return (
+    facts.includedTrades.includes(trade) ||
+    facts.clauses.some((clause) => clause.includedWork && clause.trades.includes(trade))
+  )
+}
+
+function factsExcludeTrade(facts: EstimatorScopeFacts, rule: TradeRule) {
+  const trade = ruleScopeTrade(rule)
+  return (
+    facts.excludedTrades.includes(trade) ||
+    facts.clauses.some((clause) => clause.excludedByOthers && clause.trades.includes(trade))
+  )
+}
+
+function factsContextOnlyTrade(facts: EstimatorScopeFacts, rule: TradeRule) {
+  const trade = ruleScopeTrade(rule)
+  return (
+    facts.coordinationTrades.includes(trade) ||
+    facts.protectionTrades.includes(trade) ||
+    facts.existingConditionTrades.includes(trade)
+  )
+}
+
+function writtenScopeFacts(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return buildEstimatorScopeFacts(args.writtenScope)
+}
+
 function planReadbackSupports(rule: TradeRule, planIntelligence: PlanIntelligenceLike) {
   return (
     planIntelligence?.planReadback?.tradeScopeReadback?.some(
@@ -240,11 +278,15 @@ function pricedSectionsSupport(rule: TradeRule, estimateSections: EstimateStruct
 }
 
 function writtenScopeSupports(rule: TradeRule, writtenScope: string) {
-  return sentenceParts(writtenScope).some(
-    (part) =>
-      rule.supportPattern.test(part) &&
-      !EXCLUDED_TRADE_PATTERN.test(part) &&
-      !isNonScopeContextMention(part, rule)
+  const facts = buildEstimatorScopeFacts(writtenScope)
+  if (!factsIncludeTrade(facts, rule)) return false
+
+  return facts.clauses.some(
+    (clause) =>
+      clause.includedWork &&
+      clause.trades.includes(ruleScopeTrade(rule)) &&
+      rule.supportPattern.test(clause.text) &&
+      !isNonScopeContextMention(clause.text, rule)
   )
 }
 
@@ -415,7 +457,8 @@ function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDr
   const writtenExcludesTrade = sentenceParts(args.writtenScope).some(
     (part) => EXCLUDED_TRADE_PATTERN.test(part) && rule.supportPattern.test(part)
   )
-  if (!writtenExcludesTrade) return false
+  const facts = writtenScopeFacts(args)
+  if (!writtenExcludesTrade && !factsExcludeTrade(facts, rule) && !factsContextOnlyTrade(facts, rule)) return false
   if (selectedTradeSupports(rule, args.selectedTrade)) return false
   if (writtenScopeSupports(rule, args.writtenScope)) return false
 
