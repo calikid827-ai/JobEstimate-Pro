@@ -67,6 +67,8 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Backend scope-boundary filtering now uses included-work scope text for split-scope detection, mixed-renovation detection, and PriceGuard anchor eligibility. Excluded/by-others/protection/coordination-only/existing-condition clauses no longer create false backend split-scope trades. Cross-trade sentence/segment-level filtering prevents boundary clauses such as electrical by others, painting by others, texture match excluded, flooring protection only, existing baseboards to remain, owner-supplied fixtures, furniture moving by others, plumbing by others, and electrical coordination-only language from leaving orphan trade nouns as included scope. Tile and wallcovering recognition preserve true tile/waterproofing and wallcovering prep/primer scopes, and true mixed painting + flooring still works. `result.text` remains preserved.
 - Backend scope-to-price, schedule phase, complexity, and Estimate Defense diagnostics now use included-work interpretation where needed so excluded adjacent trade terms do not imply real multi-trade work. Excluded drywall repair, skim coat, and texture matching no longer classify a painting-only scope as patch-and-paint or create `Primer / sealer after patching`; true patch-and-paint still produces drywall/painting split scopes, patch/texture dry-time, drywall dry/return, primer, compound/tape, sanding, and painting details.
 - Scope-to-Price Consistency Review Guard is UI-side and warning-only. It reviews whether typed scope, selected trade, Scope-to-Price X-Ray, pricing method/anchor, materials list, and estimate sections agree without changing pricing or `result.text`. False-positive cleanup now treats painting prep consumables such as caulk, spackle, filler, and masking tape as painting prep rather than unsupported drywall materials; avoids treating generic flooring adhesive / misc install supplies as wallcovering materials; treats wallcovering wall prep and primer as wallcovering context rather than painting work; and preserves true unsupported drywall/wallcovering material warnings.
+- Scope-to-Price Consistency Review now consumes EstimatorScopeFacts for included work, boundary context, material responsibility, tile trim context, wallcovering prep/primer context, and true mixed-trade facts. The review remains UI-side/warning-only and preserves its public fields: missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, and contractor risk notes.
+- Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated to EstimatorScopeFacts yet. Customer-Facing Scope / `result.text` remains preserved and was not broadly rewritten.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -574,7 +576,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active smart-estimator task: Phase 2 Scope-to-Price Consistency Review migration to EstimatorScopeFacts. The shared facts helper is now in place, and Scope-to-Price is the safest first review consumer because it is UI-side, warning-only, already test-covered, and directly depends on included-work / boundary-context / material-responsibility interpretation.
+- Next active smart-estimator task: Phase 3 Customer Scope Drift migration to EstimatorScopeFacts. Scope-to-Price is now migrated, and Customer Scope Drift is the next highest-value consumer because it owns the richest boundary-context and unsupported-trade warning logic.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -615,7 +617,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Migrate Scope-to-Price Consistency Review to EstimatorScopeFacts as Phase 2 of the shared scope-understanding architecture.
+1. Migrate Customer Scope Drift to EstimatorScopeFacts as Phase 3 of the shared scope-understanding architecture.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.
