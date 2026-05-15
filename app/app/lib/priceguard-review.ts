@@ -14,7 +14,7 @@ import type {
 } from "./types"
 import { buildScheduleSequencingReview } from "./schedule-sequencing-review"
 import { buildScopePriceConsistencyReview } from "./scope-price-consistency-review"
-import { normalizeTypedScope } from "./typed-scope-normalization"
+import { buildEstimatorScopeFacts, type EstimatorScopeFacts } from "./estimator-scope-facts"
 
 type PricingInput = {
   labor?: number
@@ -101,7 +101,11 @@ type PriceGuardTradeGroup =
   | "general_renovation"
   | null
 
-function resolvePriceGuardTrade(selectedTrade: string | undefined, text: string): PriceGuardTradeGroup {
+function resolvePriceGuardTrade(
+  selectedTrade: string | undefined,
+  text: string,
+  facts: EstimatorScopeFacts
+): PriceGuardTradeGroup {
   const selected = normalize(selectedTrade || "")
 
   if (selected === "painting") return "painting"
@@ -113,15 +117,10 @@ function resolvePriceGuardTrade(selectedTrade: string | undefined, text: string)
   if (selected === "wallcovering" || selected === "wallpaper") return "wallcovering"
   if (selected === "carpentry") return "carpentry"
   if (selected === "general_renovation" || selected === "general") {
-    const normalizedScope = normalizeTypedScope(text)
-    const includedText = normalize(
-      normalizedScope.clauses
-        .filter((clause) => clause.includedWork && !clause.excludedByOthers && !clause.coordinationOnly)
-        .map((clause) => clause.text)
-        .join(" ")
-    )
+    const includedText = normalize(facts.includedWorkText)
     const wallcoveringOnly =
-      /\b(wallpaper|wallcovering|wall covering|vinyl wallcovering)\b/.test(includedText) &&
+      facts.includedTrades.includes("wallcovering") &&
+      facts.includedTrades.length === 1 &&
       !/\b(tile|grout|waterproof|shower|tub|plumbing|electrical|outlets?|switches?|flooring|lvp|baseboards?|trim install|cabinet|drywall repair|paint walls?|paint ceilings?|demo|rough[-\s]*in)\b/.test(
         includedText
       )
@@ -167,7 +166,8 @@ function hasQuantityDetail(text: string) {
   ]) || hasAny(text, ["per plan", "per plans", "selected sheets"])
 }
 
-function hasMaterialBoundary(text: string) {
+function hasMaterialBoundary(text: string, facts?: EstimatorScopeFacts) {
+  if (facts?.hasMaterialResponsibility) return true
   return hasAny(text, [
     "owner supplied",
     "owner-supplied",
@@ -183,7 +183,8 @@ function hasMaterialBoundary(text: string) {
   ])
 }
 
-function hasExclusionBoundary(text: string) {
+function hasExclusionBoundary(text: string, facts?: EstimatorScopeFacts) {
+  if (facts?.hasExclusionOrByOthersBoundary) return true
   return hasAny(text, [
     "exclude",
     "excludes",
@@ -198,7 +199,8 @@ function hasExclusionBoundary(text: string) {
   ])
 }
 
-function hasPermitBoundary(text: string) {
+function hasPermitBoundary(text: string, facts?: EstimatorScopeFacts) {
+  if (facts?.hasPermitResponsibility) return true
   return hasAny(text, ["permit", "permits", "inspection", "inspections", "code", "utility coordination"])
 }
 
@@ -221,6 +223,7 @@ function applyTradeSpecificMissedScopeChecks(args: {
   suggestedExclusions: string[]
   contractorRiskNotes: string[]
   score: { value: number }
+  facts: EstimatorScopeFacts
 }) {
   const {
     trade,
@@ -230,6 +233,7 @@ function applyTradeSpecificMissedScopeChecks(args: {
     suggestedExclusions,
     contractorRiskNotes,
     score,
+    facts,
   } = args
 
   if (!trade) return
@@ -244,7 +248,7 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["mask", "protect", "protection", "cover", "plastic", "drop cloth", "occupied"])) {
       addTradeReviewNote(missedScopeWarnings, "Masking/protection for adjacent finishes or occupied areas is not clearly stated.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm paint/material supply and finish selection responsibility.", score)
     }
   } else if (trade === "drywall") {
@@ -277,20 +281,20 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasQuantityDetail(text)) {
       addTradeReviewNote(scopeClarityWarnings, "Electrical scope should confirm device, fixture, circuit, or panel counts.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm whether fixtures, devices, lamps, and trims are contractor-supplied or owner-supplied.", score)
     }
     if (!hasAny(text, ["access", "open wall", "open ceiling", "attic", "crawl", "surface mount", "conduit", "fishing", "patch", "patching"])) {
       addTradeReviewNote(missedScopeWarnings, "Electrical access and wall/ceiling patching responsibility are not clearly stated.", score)
     }
-    if (!hasPermitBoundary(text)) {
+    if (!hasPermitBoundary(text, facts)) {
       addTradeReviewNote(suggestedExclusions, "Clarify permit, inspection, code, and utility coordination assumptions for electrical work.", score)
     }
   } else if (trade === "plumbing") {
     if (!hasQuantityDetail(text)) {
       addTradeReviewNote(scopeClarityWarnings, "Plumbing scope should confirm fixture, valve, drain, supply, or rough-in counts.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm whether fixtures, valves, trims, and plumbing materials are contractor-supplied or owner-supplied.", score)
     }
     if (!hasAny(text, ["access", "open wall", "open ceiling", "crawl", "slab", "patch", "wall repair", "floor repair", "tile repair"])) {
@@ -309,10 +313,10 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["fixture", "fixtures", "toilet", "vanity", "faucet", "valve", "plumbing", "electrical", "fan", "light"])) {
       addTradeReviewNote(scopeClarityWarnings, "Fixture, plumbing, and electrical boundaries should be confirmed for bathroom/tile work.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm tile, grout, trim, fixture, and finish material responsibility.", score)
     }
-    if (!hasExclusionBoundary(text)) {
+    if (!hasExclusionBoundary(text, facts)) {
       addTradeReviewNote(suggestedExclusions, "Clarify exclusions for glass, accessories, hidden damage, plumbing, electrical, and finish upgrades.", score)
     }
   } else if (trade === "wallcovering") {
@@ -325,7 +329,7 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["pattern", "repeat", "match", "seam", "seams", "waste", "layout"])) {
       addTradeReviewNote(missedScopeWarnings, "Pattern repeat, seam layout, matching, and waste assumptions are not clearly stated.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm wallcovering material, adhesive, and finish selection responsibility.", score)
     }
   } else if (trade === "carpentry") {
@@ -335,7 +339,7 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["paint", "stain", "finish", "caulk", "fill", "patch", "hardware"])) {
       addTradeReviewNote(missedScopeWarnings, "Carpentry finish, caulk, paint/stain, patching, or hardware responsibility is not clearly stated.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm wood, trim, hardware, and finish material responsibility.", score)
     }
   } else if (trade === "general_renovation") {
@@ -345,10 +349,10 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in"])) {
       addTradeReviewNote(missedScopeWarnings, "Renovation demolition, prep, rough-in, and finish-work limits are not clearly stated.", score)
     }
-    if (!hasMaterialBoundary(text)) {
+    if (!hasMaterialBoundary(text, facts)) {
       addTradeReviewNote(scopeClarityWarnings, "Confirm finish selections, fixture responsibility, and material allowances.", score)
     }
-    if (!hasExclusionBoundary(text)) {
+    if (!hasExclusionBoundary(text, facts)) {
       addTradeReviewNote(suggestedExclusions, "Clarify exclusions, allowances, permits, hidden damage, and work by others.", score)
     }
     if (!hasAny(text, ["schedule", "sequence", "sequencing", "phasing", "rough-in", "inspection", "return trip"])) {
@@ -573,14 +577,18 @@ function includedPatchTextureWork(text: string) {
     )
 }
 
-function unresolvedMaterialConfirmItems(items: string[] | undefined, combinedText: string) {
+function unresolvedMaterialConfirmItems(
+  items: string[] | undefined,
+  combinedText: string,
+  facts: EstimatorScopeFacts
+) {
   return (items || []).filter((item) => {
     const text = normalize(item)
     if (
       /\b(primer|sealer)\b/.test(text) &&
       /\b(after patching|patching|patch|texture|drywall)\b/.test(text) &&
-      excludedPatchTextureOnly(combinedText) &&
-      !includedPatchTextureWork(combinedText)
+      (facts.patchTextureExcluded || excludedPatchTextureOnly(combinedText)) &&
+      !(facts.patchTextureIncluded || includedPatchTextureWork(combinedText))
     ) {
       return false
     }
@@ -598,6 +606,7 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
   const scopeText = cleanText(args.scopeText)
   const resultText = cleanText(args.resultText || "")
   const combinedText = normalize(`${scopeText} ${resultText}`)
+  const scopeFacts = buildEstimatorScopeFacts(args.scopeText)
 
   const labor = Math.max(0, Number(args.pricing.labor || 0))
   const materials = Math.max(0, Number(args.pricing.materials || 0))
@@ -640,13 +649,14 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
 
   scoreChange.value = score
   applyTradeSpecificMissedScopeChecks({
-    trade: resolvePriceGuardTrade(args.selectedTrade, combinedText),
+    trade: resolvePriceGuardTrade(args.selectedTrade, combinedText, scopeFacts),
     text: combinedText,
     missedScopeWarnings,
     scopeClarityWarnings,
     suggestedExclusions,
     contractorRiskNotes,
     score: scoreChange,
+    facts: scopeFacts,
   })
   score = scoreChange.value
 
@@ -687,7 +697,10 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 8
   }
 
-  if (!hasAny(combinedText, ["material", "materials", "consumable", "consumables", "fixture", "paint", "tile", "flooring", "baseboard", "trim", "moulding", "molding", "allowance", "owner supplied", "contractor supplied"])) {
+  if (
+    !hasMaterialBoundary(combinedText, scopeFacts) &&
+    !hasAny(combinedText, ["material", "materials", "consumable", "consumables", "fixture", "paint", "tile", "flooring", "baseboard", "trim", "moulding", "molding", "allowance", "owner supplied", "contractor supplied"])
+  ) {
     addUnique(missedScopeWarnings, "Material responsibility or allowance language is not clear.")
     addUnique(suggestedExclusions, "Excludes material upgrades, fixture changes, and finish selections not listed in this estimate.")
     score -= 8
@@ -704,7 +717,7 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 6
   }
 
-  if (!hasAny(combinedText, ["exclude", "excludes", "not included", "allowance", "by owner", "owner supplied"])) {
+  if (!hasExclusionBoundary(combinedText, scopeFacts)) {
     addUnique(scopeClarityWarnings, "Exclusions or allowance boundaries are thin. Add scope protection before sending.")
     score -= 8
   }
@@ -762,7 +775,7 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 5
   }
 
-  const materialConfirmItems = unresolvedMaterialConfirmItems(args.materialsList?.confirmItems, combinedText)
+  const materialConfirmItems = unresolvedMaterialConfirmItems(args.materialsList?.confirmItems, combinedText, scopeFacts)
   if (materialConfirmItems.length) {
     addMany(missedScopeWarnings, materialConfirmItems.slice(0, 3), 6)
     score -= Math.min(6, materialConfirmItems.length * 2)

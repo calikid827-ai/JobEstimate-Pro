@@ -371,3 +371,50 @@ test("PriceGuard preserves primer after patching confirmation for true patch-and
 
   assert.match(text, /primer \/ sealer after patching/)
 })
+
+test("PriceGuard aggregator respects EstimatorScopeFacts boundaries for electrical rough-in", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "electrical",
+      scopeText:
+        "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures. Include permit/inspection coordination, access through open walls, cleanup, and customer approval.",
+      resultText:
+        "Includes electrical rough-in, vanity lights, GFCI outlets, permit and inspection coordination, access through open walls, cleanup, protection, and customer approval.",
+    })
+  )
+
+  assert.doesNotMatch(text, /plumbing/)
+  assert.doesNotMatch(text, /carpentry/)
+  assert.doesNotMatch(text, /fixture, device, circuit, or panel counts/)
+})
+
+test("PriceGuard aggregator keeps bathroom tile boundaries from creating false plumbing or flooring notes", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "bathroom_tile",
+      scopeText:
+        "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval.",
+      resultText:
+        "Includes waterproofing membrane, cement board, shower tile, tile trim, grout, cleanup, protection, plumbing and glass exclusions, and customer approval.",
+    })
+  )
+
+  assert.doesNotMatch(text, /plumbing material/)
+  assert.doesNotMatch(text, /flooring/)
+  assert.doesNotMatch(text, /carpentry/)
+  assert.doesNotMatch(text, /fixture, plumbing, and electrical boundaries/)
+})
+
+test("PriceGuard aggregator preserves true mixed renovation guidance", () => {
+  const text = reviewText(
+    buildReview({
+      selectedTrade: "general_renovation",
+      scopeText:
+        "Demo existing finishes, rough-in electrical and plumbing, patch drywall, install flooring, replace baseboards, and paint walls.",
+      resultText:
+        "Includes demolition, electrical rough-in, plumbing rough-in, drywall close-up, flooring, baseboards, painting, cleanup, protection, exclusions, and customer approval.",
+    })
+  )
+
+  assert.match(text, /multi-trade sequencing|rough-in sequencing|demo, rough-in, inspection, close-up/)
+})
