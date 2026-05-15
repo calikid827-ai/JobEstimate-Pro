@@ -1,4 +1,9 @@
 import type { EstimateStructuredSection, Schedule, ScopeSignals } from "./types"
+import {
+  buildEstimatorScopeFacts,
+  type EstimatorScopeFacts,
+  type EstimatorScopeTrade,
+} from "./estimator-scope-facts"
 
 export type ScheduleSequencingReview = {
   contractorRiskNotes: string[]
@@ -32,7 +37,7 @@ function addUnique(items: string[], value: string, max = 3) {
   items.push(clean)
 }
 
-function resolveTrade(args: BuildScheduleSequencingReviewArgs, text: string) {
+function resolveTrade(args: BuildScheduleSequencingReviewArgs, text: string, facts: EstimatorScopeFacts) {
   const selected = normalize(args.selectedTrade || "")
   if (selected && selected !== "general_renovation" && selected !== "general renovation") return selected
 
@@ -40,6 +45,15 @@ function resolveTrade(args: BuildScheduleSequencingReviewArgs, text: string) {
   if (sectionTrade && sectionTrade !== "general_renovation" && sectionTrade !== "general renovation") {
     return sectionTrade
   }
+
+  if (facts.trueMixedTrades) return "general_renovation"
+  if (facts.includedTrades.includes("wallcovering")) return "wallcovering"
+  if (facts.includedTrades.includes("bathroom_tile")) return "bathroom_tile"
+  if (facts.includedTrades.includes("electrical")) return "electrical"
+  if (facts.includedTrades.includes("plumbing")) return "plumbing"
+  if (facts.includedTrades.includes("flooring")) return "flooring"
+  if (facts.includedTrades.includes("drywall")) return "drywall"
+  if (facts.includedTrades.includes("painting")) return "painting"
 
   if (hasAny(text, [/\bwallcovering|wallpaper|wall covering\b/])) return "wallcovering"
   if (hasAny(text, [/\bbathroom|shower|tub|waterproof|tile\b/])) return "bathroom_tile"
@@ -128,16 +142,26 @@ function leadTimeAlreadyAddressed(text: string) {
   ])
 }
 
+function factsIncludeTrade(facts: EstimatorScopeFacts, trade: EstimatorScopeTrade) {
+  return facts.includedTrades.includes(trade)
+}
+
+function factsIncludeAnyTrade(facts: EstimatorScopeFacts, trades: EstimatorScopeTrade[]) {
+  return trades.some((trade) => factsIncludeTrade(facts, trade))
+}
+
 export function buildScheduleSequencingReview(
   args: BuildScheduleSequencingReviewArgs
 ): ScheduleSequencingReview | null {
-  const scopeText = normalize(args.scopeText)
+  const scopeFacts = buildEstimatorScopeFacts(args.scopeText)
+  const scopeText = normalize(scopeFacts.includedWorkText || args.scopeText)
   const resultText = normalize(args.resultText || "")
   const schedText = scheduleText(args)
+  const rawReviewText = normalize(`${args.scopeText} ${args.resultText || ""} ${schedText}`)
   const text = normalize(`${scopeText} ${resultText} ${schedText}`)
   if (!text) return null
 
-  const trade = resolveTrade(args, text)
+  const trade = resolveTrade(args, text, scopeFacts)
   const hasMultiVisit = hasMultiVisitSchedule(args, text)
   const contractorRiskNotes: string[] = []
   const scopeClarityWarnings: string[] = []
@@ -145,8 +169,8 @@ export function buildScheduleSequencingReview(
   const missedScopeWarnings: string[] = []
 
   const patchAndPaint =
-    hasIncludedPatchOrTextureWork(text) &&
-    hasAny(text, [/\bpaint|painting|prime|primer|coat|coats\b/])
+    (scopeFacts.patchTextureIncluded || hasIncludedPatchOrTextureWork(resultText)) &&
+    (factsIncludeTrade(scopeFacts, "painting") || hasAny(text, [/\bpaint|painting|prime|primer|coat|coats\b/]))
 
   if (
     (trade === "painting" || trade === "drywall" || trade === "general_renovation") &&
@@ -164,7 +188,7 @@ export function buildScheduleSequencingReview(
   }
 
   const wetAreaTile =
-    (trade === "bathroom_tile" || trade === "general_renovation") &&
+    (trade === "bathroom_tile" || (trade === "general_renovation" && factsIncludeTrade(scopeFacts, "bathroom_tile"))) &&
     hasAny(text, [/\bshower|tub|wet area|pan|waterproof|waterproofing|membrane|backer|cement board|tile|grout\b/]) &&
     hasAny(text, [/\bwaterproof|waterproofing|membrane|pan|tile|grout\b/])
 
@@ -180,7 +204,9 @@ export function buildScheduleSequencingReview(
   }
 
   const roughIn =
-    (trade === "electrical" || trade === "plumbing" || trade === "general_renovation") &&
+    (trade === "electrical" ||
+      trade === "plumbing" ||
+      (trade === "general_renovation" && factsIncludeAnyTrade(scopeFacts, ["electrical", "plumbing"]))) &&
     hasAny(text, [/\brough[-\s]*in|run new|relocate|new circuit|supply line|drain line|water line|wiring\b/])
 
   if (roughIn && !hasInspectionAccessPatchLanguage(text)) {
@@ -213,7 +239,7 @@ export function buildScheduleSequencingReview(
   }
 
   const wallcoveringSequence =
-    trade === "wallcovering" &&
+    (trade === "wallcovering" || scopeFacts.wallcoveringPrepContext) &&
     hasAny(text, [/\bremove|removal|strip|existing|wall repair|skim|prime|primer|prep|substrate\b/]) &&
     hasAny(text, [/\bpattern|repeat|match|layout|seam|seams|install|wallcovering|wallpaper\b/])
 
@@ -226,6 +252,7 @@ export function buildScheduleSequencingReview(
 
   const generalSequence =
     trade === "general_renovation" &&
+    scopeFacts.trueMixedTrades &&
     hasAny(text, [/\bdemo|demolition|remove|removal\b/]) &&
     hasAny(text, [/\brough[-\s]*in|plumbing|electrical|inspection|inspect\b/]) &&
     hasAny(text, [/\bdrywall|close[-\s]*up|patch|flooring|tile|paint|finish|finishes\b/])
@@ -237,8 +264,13 @@ export function buildScheduleSequencingReview(
     )
   }
 
-  if (hasOwnerMaterialLeadTime(text) && !leadTimeAlreadyAddressed(text)) {
-    const materialLabel = hasOwnerFixtureLeadTime(text) ? "materials or fixtures" : "materials"
+  if (
+    (scopeFacts.materialResponsibilities.includes("owner_supplied") ||
+      scopeFacts.materialResponsibilities.includes("customer_supplied") ||
+      hasOwnerMaterialLeadTime(text)) &&
+    !leadTimeAlreadyAddressed(text)
+  ) {
+    const materialLabel = hasOwnerFixtureLeadTime(text) || hasOwnerFixtureLeadTime(rawReviewText) ? "materials or fixtures" : "materials"
     addUnique(
       contractorRiskNotes,
       `Owner-supplied ${materialLabel} may affect start date, return trips, and install sequencing if not on site before work starts.`

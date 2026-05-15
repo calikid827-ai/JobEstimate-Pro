@@ -183,3 +183,50 @@ test("wallcovering-only general renovation does not get bathroom or generic reno
   assert.doesNotMatch(text, /demo, rough-in, inspection, close-up/)
   assert.match(text, /wallcovering sequence/)
 })
+
+test("bathroom tile with plumbing and glass by others keeps wet-area guidance without plumbing sequencing noise", () => {
+  const review = buildScheduleSequencingReview({
+    selectedTrade: "bathroom_tile",
+    scopeText:
+      "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval.",
+    resultText:
+      "Includes waterproofing membrane, tile trim, shower wall tile, grout, cleanup, protection, and approval. Plumbing and glass are by others.",
+    schedule: oneVisitSchedule,
+  })
+  const text = reviewText(review)
+
+  assert.match(text, /waterproofing/)
+  assert.match(text, /grout cure/)
+  assert.doesNotMatch(text, /rough-in sequencing/)
+})
+
+test("electrical rough-in with adjacent trades by others does not create plumbing or carpentry sequencing noise", () => {
+  const review = buildScheduleSequencingReview({
+    selectedTrade: "electrical",
+    scopeText:
+      "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures. Include permit/inspection coordination, access through open walls, cleanup, and customer approval.",
+    resultText:
+      "Includes electrical rough-in, vanity lights, GFCI outlet rough-in, permit inspection coordination, open-wall access, cleanup, and approval.",
+    schedule: oneVisitSchedule,
+  })
+  const text = reviewText(review)
+
+  assert.doesNotMatch(text, /plumbing/)
+  assert.doesNotMatch(text, /carpentry/)
+  assert.doesNotMatch(text, /demo, rough-in, inspection, close-up/)
+})
+
+test("true mixed general renovation can still get broad sequencing guidance", () => {
+  const text = reviewText(
+    buildScheduleSequencingReview({
+      selectedTrade: "general_renovation",
+      scopeText:
+        "Demo existing finishes, rough-in electrical and plumbing, patch drywall, install flooring, and paint walls.",
+      resultText:
+        "Includes demolition, rough-in, inspection coordination, drywall close-up, flooring, paint, cleanup, and approval.",
+      schedule: oneVisitSchedule,
+    })
+  )
+
+  assert.match(text, /demo, rough-in, inspection, close-up/)
+})
