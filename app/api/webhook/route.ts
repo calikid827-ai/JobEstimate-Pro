@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
+import { isSupportedStripeWebhookEvent } from "./webhook-events"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -159,6 +160,10 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET!)
   } catch (err: any) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
+  }
+
+  if (!isSupportedStripeWebhookEvent(event.type)) {
+    return NextResponse.json({ received: true, ignored: true })
   }
 
   // -----------------------------
