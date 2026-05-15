@@ -3,7 +3,11 @@ import type {
   MaterialsList,
   ScopeXRay,
 } from "./types"
-import { normalizeTypedScope } from "./typed-scope-normalization"
+import {
+  buildEstimatorScopeFacts,
+  type EstimatorScopeFacts,
+  type EstimatorScopeTrade,
+} from "./estimator-scope-facts"
 
 export type ScopePriceConsistencyReview = {
   missedScopeWarnings: string[]
@@ -55,50 +59,6 @@ const TRADE_LABELS: Record<TradeGroup, string> = {
   wallcovering: "wallcovering",
   carpentry: "carpentry",
   general_renovation: "general renovation",
-}
-
-const TRUE_WORK_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegExp[]> = {
-  painting: [
-    /\bpaint(?:ing|ed)?\b/,
-    /\bcoat(?:s)?\b/,
-    /\bsheen\b/,
-  ],
-  drywall: [
-    /\bdrywall\b|\bsheetrock\b|\bgypsum\b/,
-    /\bskim(?:\s+coat)?\b/,
-    /\btexture\s+match\b/,
-    /\bpatch(?:ing|es)?\b/,
-  ],
-  flooring: [
-    /\bflooring\b|\bfloor\b/,
-    /\blvp\b|\blaminate\b|\bhardwood\b|\bcarpet\b/,
-    /\btransition(?:s)?\b|\bunderlayment\b/,
-  ],
-  electrical: [
-    /\belectrical\b|\bwiring\b|\brough[-\s]*in\b/,
-    /\boutlet(?:s)?\b|\bswitch(?:es)?\b|\breceptacle(?:s)?\b/,
-    /\bcircuit(?:s)?\b|\bbreaker(?:s)?\b|\bpanel(?:s)?\b/,
-    /\blight(?:s|ing)?\b|\bfixture(?:s)?\b/,
-  ],
-  plumbing: [
-    /\bplumbing\b/,
-    /\btoilet(?:s)?\b|\bfaucet(?:s)?\b|\bsink(?:s)?\b/,
-    /\bvanit(?:y|ies)\b(?!\s+lights?\b)/,
-    /\bdrain(?:s)?\b|\bsupply\s+line(?:s)?\b|\bvalve(?:s)?\b/,
-  ],
-  bathroom_tile: [
-    /\btile\b|\bgrout\b|\bthinset\b/,
-    /\bwaterproof(?:ing)?\b|\bmembrane\b|\bshower\b|\btub\b/,
-    /\bbacker\s*board\b|\bcement\s*board\b|\bpan\b/,
-  ],
-  wallcovering: [
-    /\bwallcovering\b|\bwall\s*covering\b|\bwallpaper\b/,
-    /\bvinyl\s+wallcovering\b|\bpattern\s+match\b|\bseam(?:s)?\b/,
-  ],
-  carpentry: [
-    /\bbaseboard(?:s)?\b|\btrim\b|\bcasing\b|\bcrown\b/,
-    /\bcarpentry\b|\bcabinet(?:s|ry)?\b|\bshel(?:f|ving)\b/,
-  ],
 }
 
 const MATERIAL_PATTERNS: Record<Exclude<TradeGroup, "general_renovation">, RegExp[]> = {
@@ -160,79 +120,36 @@ function textMatches(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text))
 }
 
-function hasWorkVerb(text: string) {
-  return /\b(install|replace|repair|remove|reinstall|reset|demo|demolish|paint|prime|patch|skim|texture|match|waterproof|rough[-\s]*in|run|relocate|set|mount|hang|finish|caulk|sand|prep|touch[-\s]*up|r&r|remove and reinstall)\b/.test(text)
-}
-
-function isBoundaryContinuation(text: string) {
-  return /\b(drywall|sheetrock|skim|texture|texture\s+matching|texture\s+match|trim|ceiling\s+paint|electrical|plumbing|flooring|carpentry|baseboards?|painting|paint|demo|demolition)\b/.test(text)
-}
-
 function isPaintingPrepConsumable(label: string) {
   return /\b(caulk|spackle|filler|patching\s+compound|painter'?s\s+putty)\b/.test(label) &&
     !/\b(drywall|sheetrock|gypsum|joint\s+compound|drywall\s+tape|texture)\b/.test(label)
 }
 
-function hasOwnerCustomerMaterialResponsibility(text: string) {
-  return /\b(owner supplied|owner-supplied|owner supplies|customer supplied|customer-supplied|customer supplies|owner provides?|customer provides?|owner to provide|customer to provide|by owner)\b/.test(text)
+function factTradeToGroup(trade: EstimatorScopeTrade): TradeGroup | null {
+  if (trade === "demolition" || trade === "glass" || trade === "furniture_moving") return null
+  return trade
 }
 
-function detectIncludedTrades(scopeText: string) {
-  const normalized = normalizeTypedScope(scopeText)
-  const includedClauses: string[] = []
-  let boundaryCarry = false
-
-  for (const clause of normalized.clauses) {
-    if (clause.excludedByOthers) {
-      boundaryCarry = true
-      continue
-    }
-
-    if (boundaryCarry && isBoundaryContinuation(clause.text)) {
-      continue
-    }
-
-    if (
-      clause.protectionOnly ||
-      clause.coordinationOnly ||
-      clause.existingCondition ||
-      clause.permitResponsibility
-    ) {
-      boundaryCarry = false
-      continue
-    }
-
-    if (clause.includedWork || (clause.materialResponsibility && hasWorkVerb(clause.text))) {
-      includedClauses.push(clause.text)
-      boundaryCarry = false
-      continue
-    }
-
-    boundaryCarry = false
-  }
-
-  const includedText = includedClauses.join(" ")
+function detectIncludedTrades(facts: EstimatorScopeFacts) {
   const trades = new Set<TradeGroup>()
-  const wallcoveringSupported = textMatches(includedText, TRUE_WORK_PATTERNS.wallcovering)
-
-  for (const trade of TRADE_GROUPS) {
-    if (trade === "general_renovation") continue
-    if (
-      trade === "painting" &&
-      wallcoveringSupported &&
-      !/\bpaint(?:ing|ed)?\s+(walls?|ceilings?|trim|doors?|cabinets?)\b|\brepaint\b|\bfinish\s+coats?\b|\bcoating\s+application\b/.test(
-        includedText
-      )
-    ) {
-      continue
-    }
-    if (textMatches(includedText, TRUE_WORK_PATTERNS[trade])) trades.add(trade)
+  for (const trade of facts.includedTrades) {
+    const group = factTradeToGroup(trade)
+    if (group) trades.add(group)
   }
 
   return {
     trades,
-    includedText,
-    hasMaterialResponsibility: normalized.hasMaterialResponsibility,
+    includedText: facts.includedWorkText,
+    hasMaterialResponsibility: facts.hasMaterialResponsibility,
+    hasOwnerCustomerMaterialResponsibility:
+      facts.materialResponsibilities.includes("owner_supplied") ||
+      facts.materialResponsibilities.includes("customer_supplied"),
+    patchTextureIncluded: facts.patchTextureIncluded,
+    patchTextureExcluded: facts.patchTextureExcluded,
+    tileTrimContext: facts.tileTrimContext,
+    wallcoveringPrepContext: facts.wallcoveringPrepContext,
+    baseboardReplacementRemovalContext: facts.baseboardReplacementRemovalContext,
+    trueMixedTrades: facts.trueMixedTrades,
   }
 }
 
@@ -254,7 +171,11 @@ function detectSectionTrades(sections: EstimateStructuredSection[] | null | unde
   return trades
 }
 
-function detectMaterialTrades(materialsList: MaterialsList, supportedTrades: Set<TradeGroup>) {
+function detectMaterialTrades(
+  materialsList: MaterialsList,
+  supportedTrades: Set<TradeGroup>,
+  facts: EstimatorScopeFacts
+) {
   const trades = new Set<TradeGroup>()
 
   for (const item of materialsList?.items || []) {
@@ -266,7 +187,7 @@ function detectMaterialTrades(materialsList: MaterialsList, supportedTrades: Set
     }
 
     if (
-      supportedTrades.has("wallcovering") &&
+      (supportedTrades.has("wallcovering") || facts.wallcoveringPrepContext) &&
       /\b(primer|wall\s+prep|wall\s+repair|adhesive)\b/.test(label)
     ) {
       trades.add("wallcovering")
@@ -274,8 +195,8 @@ function detectMaterialTrades(materialsList: MaterialsList, supportedTrades: Set
     }
 
     if (
-      supportedTrades.has("bathroom_tile") &&
-      /\b(tile|grout|thinset|membrane|backer|cement board|waterproof)\b/.test(label)
+      (supportedTrades.has("bathroom_tile") || facts.tileTrimContext) &&
+      /\b(tile|tile\s+trim|edge\s+trim|grout|thinset|membrane|backer|cement board|waterproof)\b/.test(label)
     ) {
       trades.add("bathroom_tile")
       continue
@@ -283,6 +204,14 @@ function detectMaterialTrades(materialsList: MaterialsList, supportedTrades: Set
 
     for (const trade of TRADE_GROUPS) {
       if (trade === "general_renovation") continue
+      if (
+        trade === "carpentry" &&
+        facts.tileTrimContext &&
+        /\b(trim|edge\s+trim|tile\s+trim|schluter|jolly|bullnose)\b/.test(label) &&
+        !/\b(baseboards?|casing|crown|door|window|finish\s+carpentry|carpentry)\b/.test(label)
+      ) {
+        continue
+      }
       if (textMatches(label, MATERIAL_PATTERNS[trade])) trades.add(trade)
     }
   }
@@ -325,7 +254,8 @@ export function buildScopePriceConsistencyReview(
   const contractorRiskNotes: string[] = []
 
   const selectedTrade = normalizeTrade(args.selectedTrade)
-  const included = detectIncludedTrades(args.scopeText)
+  const facts = buildEstimatorScopeFacts(args.scopeText)
+  const included = detectIncludedTrades(facts)
   const xrayTrades = detectScopeXRayTrades(args.scopeXRay || null)
   const sectionTrades = detectSectionTrades(args.estimateSections)
   const supportedTrades = new Set<TradeGroup>([...included.trades, ...xrayTrades])
@@ -359,7 +289,7 @@ export function buildScopePriceConsistencyReview(
     )
   }
 
-  const materialTrades = detectMaterialTrades(args.materialsList || null, supportedTrades)
+  const materialTrades = detectMaterialTrades(args.materialsList || null, supportedTrades, facts)
   for (const trade of materialTrades) {
     if (!hasTradeSupport(trade, supportedTrades)) {
       addUnique(
@@ -378,7 +308,7 @@ export function buildScopePriceConsistencyReview(
     }
   }
 
-  const trueMixedIncluded = includedTradeCount > 1
+  const trueMixedIncluded = included.trueMixedTrades
   const diagnosticTradeCount = Array.from(new Set([...xrayTrades, ...sectionTrades])).filter(
     (trade) => trade !== "general_renovation"
   ).length
@@ -390,7 +320,7 @@ export function buildScopePriceConsistencyReview(
     )
   }
 
-  if (included.hasMaterialResponsibility && hasOwnerCustomerMaterialResponsibility(normalize(args.scopeText))) {
+  if (included.hasMaterialResponsibility && included.hasOwnerCustomerMaterialResponsibility) {
     addUnique(
       laborMaterialConfidenceNotes,
       "Owner/customer-supplied materials are referenced. Confirm the estimate carries only contractor-supplied consumables, handling, protection, and return-trip risk."
