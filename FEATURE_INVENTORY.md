@@ -53,7 +53,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Added as deterministic text-only architecture groundwork for the estimator brain.
   - Centralizes raw/normalized scope text, clause-level included work, boundary text, included/excluded/coordination/protection/existing-condition trades, owner/customer/contractor-supplied material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
   - `typed-scope-normalization.ts` consumes `buildEstimatorScopeFacts()` first while preserving its existing public function names and return shape.
-  - Customer Scope Drift, Schedule Sequencing, Scope-to-Price Consistency Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated yet.
+  - Scope-to-Price Consistency Review, Customer Scope Drift, and Schedule Sequencing Review now consume EstimatorScopeFacts. PriceGuard Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated yet.
 - UI-side typed scope normalization for pre-generate scope-quality review:
   - Splits typed scope into clauses.
   - Classifies included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
@@ -69,7 +69,8 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Backend scope-to-price, schedule phase, complexity, and Estimate Defense diagnostics now use included-work interpretation where needed so excluded adjacent trade terms do not imply real multi-trade work. Excluded drywall repair, skim coat, and texture matching no longer classify a painting-only scope as patch-and-paint or create `Primer / sealer after patching`; true patch-and-paint still produces drywall/painting split scopes, patch/texture dry-time, drywall dry/return, primer, compound/tape, sanding, and painting details.
 - Scope-to-Price Consistency Review Guard is UI-side and warning-only. It reviews whether typed scope, selected trade, Scope-to-Price X-Ray, pricing method/anchor, materials list, and estimate sections agree without changing pricing or `result.text`. False-positive cleanup now treats painting prep consumables such as caulk, spackle, filler, and masking tape as painting prep rather than unsupported drywall materials; avoids treating generic flooring adhesive / misc install supplies as wallcovering materials; treats wallcovering wall prep and primer as wallcovering context rather than painting work; and preserves true unsupported drywall/wallcovering material warnings.
 - Scope-to-Price Consistency Review now consumes EstimatorScopeFacts for included work, boundary context, material responsibility, tile trim context, wallcovering prep/primer context, and true mixed-trade facts. The review remains UI-side/warning-only and preserves its public fields: missed-scope warnings, labor/material confidence notes, scope clarity warnings, suggested exclusions, and contractor risk notes.
-- Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated to EstimatorScopeFacts yet. Customer-Facing Scope / `result.text` remains preserved and was not broadly rewritten.
+- Schedule Sequencing Review now consumes EstimatorScopeFacts for included trades, patch/texture context, wet-area tile sequencing, rough-in sequencing, wallcovering sequencing, owner/customer material timing, and true mixed sequencing where safe. It remains warning-only, preserves public review fields, and does not mutate Customer-Facing Scope / `result.text`.
+- PriceGuard Review, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, and Estimate Defense are not migrated to EstimatorScopeFacts yet. Customer-Facing Scope / `result.text` remains preserved and was not broadly rewritten.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -577,7 +578,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active smart-estimator task: Phase 4 Schedule Sequencing Review migration to EstimatorScopeFacts. Typed-scope normalization, Scope-to-Price, and Customer Scope Drift are now migrated; Schedule Sequencing is next because it still evaluates patch/texture timing, cure time, rough-in, owner-supplied material timing, and true mixed sequencing from scope text.
+- Next active smart-estimator task: Phase 5 PriceGuard Review aggregator migration/audit to EstimatorScopeFacts. Typed-scope normalization, Scope-to-Price, Customer Scope Drift, and Schedule Sequencing are now migrated; PriceGuard Review is next because it aggregates those guards plus scope-quality, materials/customer-readiness notes, and contractor risk notes before backend route diagnostics.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -618,7 +619,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Migrate Schedule Sequencing Review to EstimatorScopeFacts as Phase 4 of the shared scope-understanding architecture.
+1. Migrate/audit PriceGuard Review as the UI-side aggregator to EstimatorScopeFacts as Phase 5 of the shared scope-understanding architecture.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.
