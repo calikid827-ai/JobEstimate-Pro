@@ -65,6 +65,9 @@ import {
 } from "./lib/estimator/orchestrator"
 import {
   buildRouteDisplayScopeFacts,
+  filterMaterialConfirmItems,
+  flooringTransitionTrimConfirmation,
+  shouldAddCombinedMaterialsNote,
   shouldAddAreaDemoDriver,
   shouldAddAreaSurfacePrepDriver,
   shouldAddAreaTrimMaterialDriver,
@@ -614,6 +617,7 @@ function buildMaterialsList(args: {
     suggestedAdditions: string[]
   }
   anchorId?: string | null
+  scopeFacts: EstimatorScopeFacts
 }): MaterialsList {
   
   const items: NonNullable<MaterialsList>["items"] = []
@@ -753,7 +757,7 @@ if (args.anchorId === "flooring_only_v1") {
   addItem("Caulk / adhesive / misc install supplies", "1 lot", "consumable", "high")
   addItem("Floor protection", "1 lot", "protection", "high")
 
-  confirmItems.push("Confirm exact transition count and trim footage.")
+  confirmItems.push(flooringTransitionTrimConfirmation(args.scopeFacts))
 }
 
 if (args.anchorId === "kitchen_refresh_v1") {
@@ -1001,14 +1005,21 @@ if (args.trade === "general renovation" && !hasSpecializedItems) {
     notes.push("Visible access/protection conditions may affect final shopping list.")
   }
 
-  if (args.splitScopes.length > 1) {
+  if (
+    shouldAddCombinedMaterialsNote({
+      facts: args.scopeFacts,
+      splitScopes: args.splitScopes,
+    })
+  ) {
     notes.push("List combines materials implied across split scopes. Verify final selections by trade.")
   }
 
-  return items.length || confirmItems.length || notes.length
+  const filteredConfirmItems = filterMaterialConfirmItems(confirmItems, args.scopeFacts)
+
+  return items.length || filteredConfirmItems.length || notes.length
     ? {
         items,
-        confirmItems: Array.from(new Set(confirmItems)),
+        confirmItems: Array.from(new Set(filteredConfirmItems)),
         notes: Array.from(new Set(notes)),
       }
     : null
@@ -8180,6 +8191,7 @@ const materialsList = buildMaterialsList({
   photoAnalysis,
   photoScopeAssist,
   anchorId: anchorHit?.id ?? null,
+  scopeFacts,
 })
 
 const areaScopeBreakdown = buildAreaScopeBreakdown({

@@ -3,9 +3,12 @@ import assert from "node:assert/strict"
 
 import {
   buildRouteDisplayScopeFacts,
+  filterMaterialConfirmItems,
+  flooringTransitionTrimConfirmation,
   shouldAddAreaDemoDriver,
   shouldAddAreaSurfacePrepDriver,
   shouldAddAreaTrimMaterialDriver,
+  shouldAddCombinedMaterialsNote,
   shouldConfirmInteriorTrimFootage,
   shouldConfirmPatchTextureExtent,
 } from "./routeDisplayDiagnostics"
@@ -107,5 +110,115 @@ test("true mixed renovation still produces mixed diagnostic support", () => {
       isExteriorPainting: false,
     }),
     true
+  )
+})
+
+test("materials confirmations suppress patch primer notes when patch texture is excluded", () => {
+  const scopeFacts = facts(
+    "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry."
+  )
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Primer / sealer after patching"], scopeFacts),
+    []
+  )
+})
+
+test("materials confirmations preserve true patch-and-paint primer confirmation", () => {
+  const scopeFacts = facts("Patch drywall access holes, prime repairs, and paint walls.")
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Primer / sealer after patching"], scopeFacts),
+    ["Primer / sealer after patching"]
+  )
+})
+
+test("materials confirmations suppress plumbing fixture prompts for by-others owner-supplied bathroom tile scope", () => {
+  const scopeFacts = facts(
+    "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures."
+  )
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(
+      [
+        "Confirm valve / drain / plumbing relocation scope.",
+        "Confirm fixture finish level before buying.",
+      ],
+      scopeFacts
+    ),
+    []
+  )
+})
+
+test("materials confirmations suppress flooring prompts for protection-only flooring context", () => {
+  const scopeFacts = facts(
+    "Paint walls in bedroom. Flooring protection only. Existing flooring to remain."
+  )
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Confirm flooring material selection."], scopeFacts),
+    []
+  )
+})
+
+test("flooring transition confirmation drops trim footage when baseboards are existing to remain", () => {
+  const scopeFacts = facts(
+    "Remove existing carpet and install owner-supplied LVP with underlayment and transitions. Existing baseboards to remain."
+  )
+
+  assert.equal(flooringTransitionTrimConfirmation(scopeFacts), "Confirm exact transition count.")
+})
+
+test("owner-supplied fixtures remain boundary context unless install work is included", () => {
+  const ownerSuppliedOnly = facts("Owner-supplied light fixtures.")
+  const includedInstall = facts("Install 4 light fixtures. Owner-supplied fixtures.")
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Confirm fixture finish level before buying."], ownerSuppliedOnly),
+    []
+  )
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Confirm fixture finish level before buying."], includedInstall),
+    ["Confirm fixture finish level before buying."]
+  )
+})
+
+test("materials mixed note follows true mixed facts instead of noisy split scopes", () => {
+  const boundaryOnly = facts("Paint walls. Flooring protection only.")
+  const trueMixed = facts("Paint walls and install LVP flooring with transitions.")
+
+  assert.equal(
+    shouldAddCombinedMaterialsNote({
+      facts: boundaryOnly,
+      splitScopes: [
+        { trade: "painting", scope: "Paint walls" },
+        { trade: "flooring", scope: "Flooring protection only" },
+      ],
+    }),
+    false
+  )
+  assert.equal(
+    shouldAddCombinedMaterialsNote({
+      facts: trueMixed,
+      splitScopes: [
+        { trade: "painting", scope: "Paint walls" },
+        { trade: "flooring", scope: "install LVP flooring with transitions" },
+      ],
+    }),
+    true
+  )
+})
+
+test("materials confirmations preserve true plumbing and electrical fixture install prompts", () => {
+  const plumbing = facts("Install 2 faucets and reconnect drains.")
+  const electrical = facts("Electrical rough-in for 4 vanity lights and 2 GFCI outlets.")
+
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Confirm valve / drain / plumbing relocation scope."], plumbing),
+    ["Confirm valve / drain / plumbing relocation scope."]
+  )
+  assert.deepEqual(
+    filterMaterialConfirmItems(["Confirm fixture finish level before buying."], electrical),
+    ["Confirm fixture finish level before buying."]
   )
 })
