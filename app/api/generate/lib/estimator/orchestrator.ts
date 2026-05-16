@@ -56,6 +56,7 @@ import type {
   SplitScopeItem,
   PhotoAnalysis,
 } from "./types"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 
 export type OrchestratorDeps = {
   basis: BasisFinalizeHelpers
@@ -102,10 +103,11 @@ export type OrchestratorDeps = {
   }
   photoAnalysis: PhotoAnalysis | null
   scopeSignals?: ScopeSignals | null
-  complexityProfile: ComplexityProfile | null
-  tradeStack: TradeStack | null
-  schedule: ScheduleBlock
-}) => ScopeXRay
+    complexityProfile: ComplexityProfile | null
+    tradeStack: TradeStack | null
+    schedule: ScheduleBlock
+    scopeFacts: EstimatorScopeFacts
+  }) => ScopeXRay
 
   buildPriceGuardReport: (args: {
     pricingSource: "ai" | "deterministic" | "merged"
@@ -597,6 +599,7 @@ if (ctx.planIntelligence?.ok) {
     complexityProfile: ctx.complexityProfile,
     tradeStack: ctx.tradeStack,
     schedule,
+    scopeFacts: ctx.scopeFacts,
   })
 
   const missedScopeDetector = detectMissedScope({

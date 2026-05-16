@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { GenerateSchema } from "../guards"
 import type { PlanIntelligence } from "../plans/types"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import type { EstimateDefenseMode } from "./estimateDefenseMode"
 import type { EstimateSkeletonHandoff } from "./estimateSkeletonHandoff"
 import type { EstimateStructureConsumption } from "./estimateStructureConsumption"
@@ -890,6 +891,7 @@ export type EstimatorContext = PricingOwnerContext & {
 
   planIntelligence: PlanIntelligence | null
 
+  scopeFacts: EstimatorScopeFacts
   materialsList: MaterialsList
   areaScopeBreakdown: AreaScopeBreakdown
 }

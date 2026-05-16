@@ -63,6 +63,15 @@ import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
 } from "./lib/estimator/orchestrator"
+import {
+  buildRouteDisplayScopeFacts,
+  shouldAddAreaDemoDriver,
+  shouldAddAreaSurfacePrepDriver,
+  shouldAddAreaTrimMaterialDriver,
+  shouldConfirmInteriorTrimFootage,
+  shouldConfirmPatchTextureExtent,
+} from "./lib/estimator/routeDisplayDiagnostics"
+import type { EstimatorScopeFacts } from "../../app/lib/estimator-scope-facts"
 import { deriveSelectedPdfUploadOrNull } from "./lib/plans/pdfSelect"
 import { runPlanIntelligence } from "./lib/plans/orchestrator"
 import {
@@ -1068,6 +1077,7 @@ function buildScopeXRay(args: {
   complexityProfile: EstimatorComplexityProfile | null
   tradeStack: EstimatorTradeStack | null
   schedule: EstimatorScheduleBlock
+  scopeFacts: EstimatorScopeFacts
 }): EstimatorScopeXRay {
   const quantities: ScopeXRay["quantities"] = []
 
@@ -1157,7 +1167,7 @@ if (args.quantityInputs.photoWallSqft) {
       ...(args.complexityProfile?.permitLikely
         ? ["Permit/inspection coordination may affect cost and timing."]
         : []),
-      ...(args.tradeStack?.isMultiTrade
+      ...(args.tradeStack?.isMultiTrade || args.scopeFacts.trueMixedTrades
         ? ["Multiple trades require coordination and sequencing."]
         : []),
     ])
@@ -1184,23 +1194,17 @@ if (args.quantityInputs.photoWallSqft) {
       )
     )
 
-  const needsInteriorTrimFootage =
-    !isExteriorPainting &&
-    args.splitScopes.some(
-      (x) =>
-        x.trade === "carpentry" ||
-        (
-          x.trade !== "tile" &&
-          /\b(baseboard|casing|quarter round|shoe mold)\b/i.test(x.scope)
-        )
-    ) &&
-    !/(\d{1,5})\s*(linear\s*ft|lf|feet)\b/i.test(scopeBlob)
-
-  if (needsInteriorTrimFootage) {
+  if (
+    shouldConfirmInteriorTrimFootage({
+      facts: args.scopeFacts,
+      splitScopes: args.splitScopes,
+      isExteriorPainting,
+    })
+  ) {
     needsConfirmation.push("Confirm exact baseboard / trim linear footage.")
   }
 
-  if (args.splitScopes.some((x) => /patch|texture|drywall/i.test(x.scope))) {
+  if (shouldConfirmPatchTextureExtent(args.scopeFacts)) {
     needsConfirmation.push("Confirm exact patch / texture extent.")
   }
 
@@ -1253,8 +1257,10 @@ function buildAreaScopeBreakdown(args: {
     suggestedAdditions: string[]
   }
   complexityProfile: ComplexityProfile | null
+  scopeFacts: EstimatorScopeFacts
 }): AreaScopeBreakdown {
   const s = (args.scopeText || "").toLowerCase()
+  const includedScopeText = args.scopeFacts.includedWorkText || ""
 
   const job = args.photoAnalysis?.jobSummary ?? null
   const exteriorSummary = job?.exteriorSummary ?? null
@@ -1275,14 +1281,17 @@ function buildAreaScopeBreakdown(args: {
   )
 
   const interiorTrimWords =
-    /\b(baseboard|baseboards|base board|casing|casings|quarter round|shoe mold)\b/.test(s)
+    shouldAddAreaTrimMaterialDriver({
+      facts: args.scopeFacts,
+      isExteriorPainting: false,
+    })
 
   const exteriorTrimWords =
     /\b(eaves?|fascia|soffit|garage door|entry door|front door|window trim|exterior trim)\b/.test(s)
 
   const trimLf = isExteriorPainting
     ? null
-    : parseLinearFt(args.scopeText) ??
+    : parseLinearFt(includedScopeText) ??
       (interiorTrimWords
         ? estimateBaseboardLfFromFloorSqft(args.quantityInputs.effectiveFloorSqft)
         : null)
@@ -1293,11 +1302,11 @@ function buildAreaScopeBreakdown(args: {
   const scheduleDrivers: string[] = []
   const missingConfirmations: string[] = []
 
-  if (/\b(demo|demolition|tear\s*out|remove|haul\s*away|dispose)\b/.test(s)) {
+  if (shouldAddAreaDemoDriver(args.scopeFacts)) {
     prepDemo.push("Demolition / removal work detected")
   }
 
-  if (/\b(patch|repair|texture|skim|orange peel|knockdown|surface prep|prep|scrape|sand|caulk)\b/.test(s)) {
+  if (shouldAddAreaSurfacePrepDriver(args.scopeFacts)) {
     prepDemo.push("Surface prep / patch / finish prep detected")
   }
 
@@ -1360,7 +1369,13 @@ function buildAreaScopeBreakdown(args: {
       )
     }
 
-    if (trimLf) {
+    if (
+      trimLf &&
+      shouldAddAreaTrimMaterialDriver({
+        facts: args.scopeFacts,
+        isExteriorPainting,
+      })
+    ) {
       materialsDrivers.push(`Trim / base footage influencing material quantities: ${trimLf} LF`)
     }
 
@@ -1406,7 +1421,14 @@ function buildAreaScopeBreakdown(args: {
       missingConfirmations.push("Confirm measured square footage")
     }
 
-    if (interiorTrimWords && !trimLf) {
+    if (
+      shouldConfirmInteriorTrimFootage({
+        facts: args.scopeFacts,
+        splitScopes: args.splitScopes,
+        isExteriorPainting,
+      }) &&
+      !trimLf
+    ) {
       missingConfirmations.push("Confirm exact trim / baseboard linear footage")
     }
   }
@@ -8145,6 +8167,8 @@ if (ENABLE_DETAILED_SERVER_LOGS) {
   })
 }
 
+const scopeFacts = buildRouteDisplayScopeFacts(scopeChange)
+
 const materialsList = buildMaterialsList({
   trade,
   scopeText: scopeChange, // use raw scope, not effectiveScopeChange
@@ -8167,6 +8191,7 @@ const areaScopeBreakdown = buildAreaScopeBreakdown({
   photoAnalysis,
   photoScopeAssist,
   complexityProfile,
+  scopeFacts,
 })
 
 // Paint scope normalization (so description matches dropdown)
@@ -8307,6 +8332,7 @@ const ctxPhotos: CtxPhoto[] | null =
 
   planIntelligence,
 
+  scopeFacts,
   materialsList,
   areaScopeBreakdown,
 

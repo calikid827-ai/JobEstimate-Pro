@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import { runEstimatorOrchestrator, type OrchestratorDeps } from "./orchestrator"
 import type {
   AIResponse,
@@ -254,6 +255,7 @@ function makeContext(overrides: Partial<EstimatorContext> = {}): EstimatorContex
     },
     photoEstimateDecision,
     planIntelligence: null,
+    scopeFacts: buildEstimatorScopeFacts("Paint walls."),
     materialsList: null,
     areaScopeBreakdown: {
       detectedArea: {
