@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator task: Phase 8C audit of remaining route-level `materialsList.items` generation for raw scope parsing. This must be audit/planning only first because item generation is customer-visible and higher risk than confirmation notes.
+1. Next active smart-estimator task: Phase 8D audit of remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. This must be audit/planning only first because prompts and `result.text` must not change without a scoped review.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Current next active smart-estimator priority is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Those migrations have since advanced through Phase 7; broader route-level X-Ray / confirmation construction remains a Phase 8 audit target.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Current next active smart-estimator priority is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -398,7 +398,7 @@ Done note:
 - Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
-- Current next active smart-estimator priority is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing. Materials item generation is customer-visible and higher risk, so it should be audit/planning only before any implementation. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. Prompts and `result.text` must not change without audit first. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics EstimatorScopeFacts migration
 
@@ -447,7 +447,7 @@ Done note:
 - Public route/API response shape was preserved.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 6/6, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only route diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Current next active smart-estimator priority is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration is complete below. Current next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics EstimatorScopeFacts migration
 
@@ -474,7 +474,35 @@ Done note:
 - Combined materials note now uses `trueMixedTrades` instead of only `splitScopes.length`.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This confirmItems/notes-only backend materials diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Next active smart-estimator priority is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing. Item generation still has raw scope parsing in some branches, but it is customer-visible and higher risk, so Phase 8C must be audit/planning only before any implementation. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Current next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+
+#### Item: Phase 8C materialsList.items conditional item gate EstimatorScopeFacts migration
+
+- Problem: After Phase 8B, selected customer-visible `materialsList.items` conditional item gates still used raw scope parsing even though confirmItems/notes had moved to shared facts.
+- Why it matters: Material item rows are customer-visible, so they should avoid boundary-only false positives while preserving existing labels, base packages, and contractor expectations.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Completed the smallest safe Phase 8C migration by using EstimatorScopeFacts-aware gates only for selected conditional item triggers.
+- Exact files/components involved: `app/api/generate/route.ts`, `app/api/generate/lib/estimator/routeDisplayDiagnostics.ts`, `app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts`.
+- What not to touch: Pricing formulas, backend pricing semantics, anchors, deterministic engines, `scopeSplitter` behavior, route/API response shape, `MaterialsList` return shape, material labels, base trade consumables, anchor base packages, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, measured plan pricing eligibility, or broad route structure.
+- Tests or manual QA needed: Focused route display diagnostics tests plus adjacent EstimatorScopeFacts, missed-scope detector, Estimate Defense, orchestrator estimate-section, UI review-stack tests, TypeScript, and diff check.
+- Status: Done
+
+Done note:
+
+- `route.ts` now uses EstimatorScopeFacts-aware gates for selected `materialsList.items` conditional item triggers.
+- `routeDisplayDiagnostics.ts` now handles materials item gate helper logic.
+- `routeDisplayDiagnostics.test.ts` was updated and passes 20/20.
+- Conditional gates migrated: kitchen backsplash/flooring/paint/demo add-ons, kitchen refresh backsplash/flooring add-ons, flooring tile setting materials, drywall texture/primer items, electrical/plumbing parsed fixture/device counts, and carpentry parsed LF material quantity.
+- Material item trigger logic now prefers EstimatorScopeFacts-aware included material text instead of raw boundary text where safe.
+- Drywall texture/primer item decisions now respect `patchTextureIncluded` / `patchTextureExcluded`.
+- Electrical/plumbing fixture counts now parse boundary-filtered material item text.
+- Carpentry LF material quantity now parses boundary-filtered material item text.
+- `MaterialsList` shape and public route/API response shape were preserved.
+- Material labels, base trade consumables, and anchor base packages stayed unchanged.
+- Validation passed: `routeDisplayDiagnostics.test.ts` 20/20, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- This selected conditional-gates-only materials item migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `scopeSplitter` behavior, route/API response shape, `MaterialsList` shape, material labels, base trade consumables, anchor base packages, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
+- Next active smart-estimator priority is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. After materials diagnostics and item gates moved to shared facts, remaining route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not be changed without audit first. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 

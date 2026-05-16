@@ -1837,8 +1837,9 @@ Final decision:
 - Phase 7 EstimatorScopeFacts missedScopeDetector migration passes.
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
-- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
+- Phase 8C materials item gate migration is complete in a later entry.
+- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
+- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1880,9 +1881,10 @@ Architecture safety:
 Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
-- Phase 8C is next because `materialsList.items` generation may still parse raw scope independently, but item generation is customer-visible and higher risk than confirmation notes, so it needs audit/planning before implementation.
-- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
+- Phase 8C materials item gate migration is complete in a later entry.
+- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
+- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1923,7 +1925,50 @@ Architecture safety:
 
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
-- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
-- Phase 8C is next because item generation still has raw scope parsing in some branches, but it is customer-visible and higher risk, so it should be audit/planning only before any implementation.
-- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
+- Phase 8C materials item gate migration is complete in the next entry.
+- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
+- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 31 — Phase 8C EstimatorScopeFacts Materials Item Gate Migration
+
+Status: PASS
+
+Scope:
+- Phase 8C migrated selected route-level `materialsList.items` conditional item gates to EstimatorScopeFacts where safe.
+- `app/api/generate/route.ts` now uses EstimatorScopeFacts-aware gates for selected materialsList.items conditional item triggers.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.ts` was updated with materials item gate helper logic.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` was updated and now passes 20/20.
+- Conditional material item gates now use shared facts where safe for kitchen backsplash/flooring/paint/demo add-ons, kitchen refresh backsplash/flooring add-ons, flooring tile setting materials, drywall texture/primer items, electrical/plumbing parsed fixture/device counts, and carpentry parsed LF material quantity.
+- Material item trigger logic now prefers EstimatorScopeFacts-aware included material text instead of raw boundary text where safe.
+- Drywall texture/primer item decisions now respect `patchTextureIncluded` / `patchTextureExcluded`.
+- Electrical/plumbing fixture counts now parse boundary-filtered material item text.
+- Carpentry LF material quantity now parses boundary-filtered material item text.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 20/20.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/missedScopeDetector.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/estimateDefenseMode.test.ts` passed 7/7.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a selected conditional-gates-only customer-visible materials item migration.
+- It intentionally did not change MaterialsList shape, route/API response shape, material labels, base trade consumables, anchor base packages, pricing formulas, backend pricing semantics, anchors, deterministic engines, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
+
+Final decision:
+- Phase 8C EstimatorScopeFacts materials item gate migration passes.
+- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
+- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
