@@ -3,6 +3,10 @@ import type {
   TradeStack,
 } from "./types"
 import type { PlanIntelligence } from "../plans/types"
+import {
+  buildEstimatorScopeFacts,
+  type EstimatorScopeFacts,
+} from "../../../../app/lib/estimator-scope-facts"
 
 export type MissedScopeItem = {
   label: string
@@ -51,6 +55,9 @@ type DetectorContext = {
   trade: string
   scopeText: string
   scope: string
+  includedScope: string
+  boundaryScope: string
+  facts: EstimatorScopeFacts
   planIntelligence: PlanIntelligence | null
   photoScopeAssist: {
     missingScopeFlags: string[]
@@ -74,29 +81,7 @@ function normalizeLabel(value: string): string {
 }
 
 function hasScope(ctx: DetectorContext, pattern: RegExp): boolean {
-  return pattern.test(ctx.scope)
-}
-
-function scopeClauses(value: string): string[] {
-  return String(value || "")
-    .split(/(?<=[.!?;])\s+|\n+|\s+\b(?:and\s+)?(?=excludes?|excluding|excluded|does not include|does not cover|by others|without)\b/i)
-    .map((part) => part.trim())
-    .filter(Boolean)
-}
-
-function isExcludedPatchTextureContext(text: string): boolean {
-  return (
-    /\b(excludes?|excluded|excluding|not included|does not include|does not cover|by others|without)\b.{0,90}\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(text) ||
-    /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b.{0,90}\b(excluded|not included|does not include|does not cover|by others|schedule consideration|dry time|drying time)\b/i.test(text)
-  )
-}
-
-function hasIncludedPatchTextureSignal(scopeText: string): boolean {
-  return scopeClauses(scopeText).some(
-    (part) =>
-      /\b(texture|orange\s*peel|knockdown|skim\s*coat|patch|patching|repair|drywall\s*repair|drywall\s*patch|mudding|tape\s*and\s*mud)\b/i.test(part) &&
-      !isExcludedPatchTextureContext(part)
-  )
+  return pattern.test(ctx.includedScope)
 }
 
 function findPlanText(ctx: DetectorContext, pattern: RegExp): string | null {
@@ -133,11 +118,21 @@ function bathroomRemodelOmissionMode(ctx: DetectorContext): boolean {
   )
 }
 
-function detectJobType(args: DetectorArgs): JobType {
-  const scope = args.scopeText.toLowerCase()
+function detectJobType(args: DetectorArgs, facts: EstimatorScopeFacts): JobType {
+  const hasBoundaryContext =
+    facts.hasExclusionOrByOthersBoundary ||
+    facts.hasMaterialResponsibility ||
+    facts.coordinationTrades.length > 0 ||
+    facts.protectionTrades.length > 0 ||
+    facts.existingConditionTrades.length > 0
+  const scope = (
+    facts.includedWorkText ||
+    (!hasBoundaryContext ? args.scopeText : "")
+  ).toLowerCase()
   const rooms = args.planIntelligence?.detectedRooms || []
   const hasBathroom =
     /\bbath(room)?\b/.test(scope) ||
+    facts.includedTrades.includes("bathroom_tile") ||
     rooms.some((room: string) => /\bbath(room)?\b/i.test(room))
   const hasKitchen =
     /\bkitchen\b/.test(scope) ||
@@ -147,11 +142,16 @@ function detectJobType(args: DetectorArgs): JobType {
     return "tub_to_shower_conversion"
   }
 
-  if (/\bvanity\b/.test(scope) && /\b(replace|swap|swap out|remove and replace|install new)\b/.test(scope)) {
+  if (/\bvanit(?:y|ies)(?!\s+lights?)\b/.test(scope) && /\b(replace|swap|swap out|remove and replace|install new)\b/.test(scope)) {
     return "vanity_swap"
   }
 
-  if (hasBathroom && /\b(remodel|renovat|gut|demo|retile|new layout|replace|conversion)\b/.test(scope)) {
+  if (
+    hasBathroom &&
+    /\b(remodel|renovat|gut|demo|retile|new layout|replace|conversion|shower|tile|waterproof|grout)\b/.test(
+      scope
+    )
+  ) {
     return "bathroom_remodel"
   }
 
@@ -159,11 +159,15 @@ function detectJobType(args: DetectorArgs): JobType {
     return "kitchen_remodel"
   }
 
-  if (/\b(baseboard|baseboards|base board)\b/.test(scope) && /\b(install|replace|new)\b/.test(scope)) {
+  if (
+    facts.includedTrades.includes("carpentry") &&
+    (facts.baseboardReplacementRemovalContext ||
+      (/\b(baseboard|baseboards|base board)\b/.test(scope) && /\b(install|replace|new)\b/.test(scope)))
+  ) {
     return "baseboard_install"
   }
 
-  if (hasIncludedPatchTextureSignal(args.scopeText) && /\b(paint|prime|repaint)\b/.test(scope)) {
+  if (facts.patchTextureIncluded && /\b(paint|prime|repaint)\b/.test(scope)) {
     return "patch_and_paint"
   }
 
@@ -172,16 +176,21 @@ function detectJobType(args: DetectorArgs): JobType {
 
 function buildContext(args: DetectorArgs): DetectorContext {
   const plan = args.planIntelligence
+  const facts = buildEstimatorScopeFacts(args.scopeText)
+  const includedScope = (facts.includedWorkText || "").toLowerCase()
 
   return {
     trade: args.trade,
     scopeText: args.scopeText,
     scope: (args.scopeText || "").toLowerCase(),
+    includedScope,
+    boundaryScope: (facts.boundaryText || "").toLowerCase(),
+    facts,
     planIntelligence: plan,
     photoScopeAssist: args.photoScopeAssist,
     complexityProfile: args.complexityProfile,
     tradeStack: args.tradeStack,
-    jobType: detectJobType(args),
+    jobType: detectJobType(args, facts),
     planTexts: uniqStrings(
       [
         plan?.summary || "",
