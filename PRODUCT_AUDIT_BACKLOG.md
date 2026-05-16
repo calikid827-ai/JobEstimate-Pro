@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator task: Phase 7 audit of `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing, so Scope-to-Price X-Ray risk flags and confirmation items align with the shared facts layer.
+1. Next active smart-estimator task: Phase 8 audit of backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`, so route-level diagnostics align with the shared facts layer.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 8: audit backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -285,10 +285,10 @@ Done note:
 - Commit `b8d780f` added `app/app/lib/estimator-scope-facts.ts` and `app/app/lib/estimator-scope-facts.test.ts`.
 - The shared helper returns stable deterministic facts for raw/normalized scope text, clauses, included-work text, boundary text, included/excluded/coordination/protection/existing-condition trades, material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
 - `typed-scope-normalization.ts` now uses `buildEstimatorScopeFacts()` internally while preserving existing exported function names and return shape.
-- Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Scope-to-Price Consistency Review migrated in Phase 2.
+- Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Those migrations have since advanced through Phase 7; broader route-level X-Ray / confirmation construction remains a Phase 8 audit target.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 8: audit backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -398,18 +398,42 @@ Done note:
 - Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
-- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. `missedScopeDetector` is next because it still has local raw scope/job-type parsing and feeds Scope-to-Price X-Ray risk flags and confirmation items. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 8: audit backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`. Route-level X-Ray, confirmation items, area scope breakdown, and materials/diagnostic construction may still parse raw scope independently. Production Live Mode subscription verification remains the final pre-launch gate only.
 
-#### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics raw scope parsing audit
+#### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics EstimatorScopeFacts migration
 
-- Problem: `missedScopeDetector` still contains local raw scope and job-type parsing even after UI-side review guards and backend Estimate Defense moved onto EstimatorScopeFacts.
-- Why it matters: Missed-scope output feeds Scope-to-Price X-Ray risk flags and confirmation items, so raw boundary text can still create noisy backend diagnostics if not audited.
+- Problem: `missedScopeDetector` still contained local raw scope and job-type parsing even after UI-side review guards and backend Estimate Defense moved onto EstimatorScopeFacts.
+- Why it matters: Missed-scope output feeds Scope-to-Price X-Ray risk flags and confirmation items, so raw boundary text could still create noisy backend diagnostics if it stayed independent from shared scope facts.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit `app/api/generate/lib/estimator/missedScopeDetector.ts` and its route/orchestrator consumers for raw scope parsing, classify display-only vs behavior-affecting decisions, and recommend the smallest safe warning-only migration path before implementation.
-- Exact files/components likely involved: `app/api/generate/lib/estimator/missedScopeDetector.ts`, `app/api/generate/lib/estimator/missedScopeDetector.test.ts`, `app/api/generate/lib/estimator/orchestrator.ts`, and Scope-to-Price X-Ray risk/confirmation construction.
+- Recommended fix approach: Completed the warning-only Phase 7 migration by moving missed-scope included-work checks, job-type detection, patch/texture detection, baseboard context, and boundary-safe support checks onto `buildEstimatorScopeFacts()`.
+- Exact files/components involved: `app/api/generate/lib/estimator/missedScopeDetector.ts`, `app/api/generate/lib/estimator/missedScopeDetector.test.ts`.
 - What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation, `scopeSplitter`, pricing anchors, or deterministic engines.
-- Tests or manual QA needed: Audit first; then focused missed-scope detector regression tests only if a narrow implementation is warranted.
+- Tests or manual QA needed: Focused missed-scope detector regression tests plus adjacent EstimatorScopeFacts, Estimate Defense, and UI review-stack tests, TypeScript, and diff check.
+- Status: Done
+
+Done note:
+
+- `missedScopeDetector.ts` now consumes `buildEstimatorScopeFacts()`.
+- `missedScopeDetector.test.ts` was updated and passes 9/9.
+- The detector now builds EstimatorScopeFacts once per detector context.
+- Shared facts now drive included-work checks, job-type detection, patch/texture detection, baseboard replacement context, and boundary-safe missed-scope diagnostics.
+- Existing "has scope" checks read from `facts.includedWorkText` instead of raw boundary text where safe.
+- Boundary-only owner-supplied, by-others, protection-only, coordination-only, and existing/to-remain context no longer drives missed-scope support checks.
+- Public return shape and warning-only behavior were preserved.
+- Validation passed: `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- This warning-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, materials generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, measured plan pricing eligibility, or broad `route.ts` diagnostics.
+
+#### Item: Phase 8 backend route-level Scope-to-Price X-Ray / confirmation construction raw scope parsing audit
+
+- Problem: Route-level X-Ray, confirmation items, area scope breakdown, and materials/diagnostic construction may still parse raw scope independently after missedScopeDetector moved onto EstimatorScopeFacts.
+- Why it matters: `buildScopeXRay`, `buildAreaScopeBreakdown`, and adjacent route-level confirmation construction are highly visible estimator-trust surfaces. They should not reintroduce raw boundary text as included work after the shared facts migrations.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit backend route-level Scope-to-Price X-Ray / confirmation construction before implementation. Classify display-only diagnostics separately from pricing, anchor, deterministic engine, materials generation, and route-contract decisions. Recommend the smallest safe warning/diagnostic-only migration path if needed.
+- Exact files/components likely involved: `app/api/generate/route.ts` around `buildScopeXRay`, `buildAreaScopeBreakdown`, confirmation item construction, materials diagnostics, area scope breakdown, and Scope-to-Price X-Ray display diagnostics.
+- What not to touch: Pricing formulas, backend pricing semantics, anchors, deterministic engines, materials generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, measured plan pricing eligibility, or broad route refactors.
+- Tests or manual QA needed: Audit first; then focused backend route diagnostic tests only if a narrow implementation is warranted.
 - Status: Next active smart-estimator task
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup

@@ -1799,3 +1799,43 @@ Final decision:
 - Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
 - Next manual QA should happen after the Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 28 — Phase 7 EstimatorScopeFacts Backend Missed-Scope Diagnostics Migration
+
+Status: PASS
+
+Scope:
+- Phase 7 migrated `app/api/generate/lib/estimator/missedScopeDetector.ts` to consume `buildEstimatorScopeFacts()`.
+- `app/api/generate/lib/estimator/missedScopeDetector.test.ts` was updated with focused regression coverage and now passes 9/9.
+- missedScopeDetector now builds EstimatorScopeFacts once per detector context.
+- Job-type detection now prefers shared included-work facts instead of raw boundary text.
+- Existing "has scope" checks now read from `facts.includedWorkText` where safe.
+- Patch/texture detection now uses `patchTextureIncluded` instead of local raw clause parsing.
+- Baseboard job-type detection uses shared carpentry/baseboard replacement context.
+- Boundary-only owner-supplied, by-others, protection-only, coordination-only, and existing/to-remain context no longer drives missed-scope support checks.
+- Public return shape and warning-only behavior were preserved.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/missedScopeDetector.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/estimateDefenseMode.test.ts` passed 7/7.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a warning-only backend diagnostic migration.
+- It intentionally did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, materials generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, measured plan pricing eligibility, or broad `route.ts` diagnostics.
+
+Final decision:
+- Phase 7 EstimatorScopeFacts missedScopeDetector migration passes.
+- Next active smart-estimator task is Phase 8: audit backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`.
+- Phase 8 is next because route-level X-Ray, confirmation items, area scope breakdown, and materials/diagnostic construction may still parse raw scope independently.
+- Next manual QA should happen after the Phase 8 backend route-level X-Ray / confirmation construction audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
