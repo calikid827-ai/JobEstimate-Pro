@@ -1836,8 +1836,9 @@ Architecture safety:
 Final decision:
 - Phase 7 EstimatorScopeFacts missedScopeDetector migration passes.
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8B: audit `buildMaterialsList` confirmation items/notes and materials diagnostics for remaining raw scope parsing.
-- Next manual QA should happen after the Phase 8B materials diagnostics audit or after a focused backend verification pass.
+- Phase 8B materials diagnostics migration is complete in a later entry.
+- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
+- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1878,7 +1879,51 @@ Architecture safety:
 
 Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
-- Next active smart-estimator task is Phase 8B: audit `buildMaterialsList` confirmation items/notes and materials diagnostics for remaining raw scope parsing.
-- Phase 8B is next because materials confirmation items and materials diagnostics may still parse raw scope independently, while `materialsList.items` generation should not be changed yet because it is closer to customer-visible generated output and can affect user expectations.
-- Next manual QA should happen after the Phase 8B materials diagnostics audit or after a focused backend verification pass.
+- Phase 8B materials diagnostics migration is complete in the next entry.
+- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
+- Phase 8C is next because `materialsList.items` generation may still parse raw scope independently, but item generation is customer-visible and higher risk than confirmation notes, so it needs audit/planning before implementation.
+- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 30 — Phase 8B EstimatorScopeFacts Materials Diagnostics Migration
+
+Status: PASS
+
+Scope:
+- Phase 8B migrated `buildMaterialsList` confirmation items/notes and materials diagnostics to EstimatorScopeFacts where safe.
+- `app/api/generate/route.ts` now passes `scopeFacts` into `buildMaterialsList`.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.ts` was updated with materials diagnostics helper logic.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` was updated and now passes 14/14.
+- `materialsList.confirmItems` are now filtered with EstimatorScopeFacts where safe.
+- `materialsList.notes` now use EstimatorScopeFacts where safe.
+- Flooring transition confirmation now drops "trim footage" when shared facts show existing baseboards / flooring protection context.
+- Combined materials note now uses `trueMixedTrades` instead of only `splitScopes.length`.
+- ConfirmItems/notes now use shared facts for excluded patch/texture/drywall context, by-others plumbing/electrical context, owner/customer-supplied fixture/material boundary context, flooring protection / existing-to-remain context, tile trim vs carpentry/base trim context, and true mixed materials note gating.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 14/14.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/missedScopeDetector.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/estimateDefenseMode.test.ts` passed 7/7.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a confirmItems/notes-only backend materials diagnostics migration.
+- It intentionally did not change `materialsList.items` generation, pricing formulas, backend pricing semantics, anchors, deterministic engines, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
+- MaterialsList return shape and route/API response shape were preserved.
+
+Final decision:
+- Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
+- Current next active smart-estimator task is Phase 8C: audit remaining route-level `materialsList.items` generation for raw scope parsing.
+- Phase 8C is next because item generation still has raw scope parsing in some branches, but it is customer-visible and higher risk, so it should be audit/planning only before any implementation.
+- Next manual QA should happen after the Phase 8C materialsList.items generation audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
