@@ -1835,7 +1835,50 @@ Architecture safety:
 
 Final decision:
 - Phase 7 EstimatorScopeFacts missedScopeDetector migration passes.
-- Next active smart-estimator task is Phase 8: audit backend route-level Scope-to-Price X-Ray / confirmation construction, especially `buildScopeXRay` and `buildAreaScopeBreakdown`.
-- Phase 8 is next because route-level X-Ray, confirmation items, area scope breakdown, and materials/diagnostic construction may still parse raw scope independently.
-- Next manual QA should happen after the Phase 8 backend route-level X-Ray / confirmation construction audit or after a focused backend verification pass.
+- Phase 8A route-level display diagnostics migration is complete in the next entry.
+- Current next active smart-estimator task is Phase 8B: audit `buildMaterialsList` confirmation items/notes and materials diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after the Phase 8B materials diagnostics audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 29 — Phase 8A EstimatorScopeFacts Route-Level Display Diagnostics Migration
+
+Status: PASS
+
+Scope:
+- Phase 8A migrated route-level display-only Scope-to-Price X-Ray / area confirmation diagnostics to EstimatorScopeFacts where safe.
+- `app/api/generate/route.ts` now builds EstimatorScopeFacts once for `scopeChange`.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.ts` was added.
+- `app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` was added and passes 6/6.
+- `app/api/generate/lib/estimator/orchestrator.ts` now passes `scopeFacts` through internal estimator context to X-Ray construction.
+- `app/api/generate/lib/estimator/types.ts` now includes `scopeFacts` on the internal estimator context.
+- `app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` was updated for the new context field.
+- `buildScopeXRay` now uses shared facts for true mixed trade risk support, patch/texture confirmation, and baseboard/trim LF confirmation.
+- `buildAreaScopeBreakdown` now uses shared facts for demo/removal driver suppression, surface prep / patch driver detection, tile-trim vs carpentry-trim distinction, baseboard replacement/removal context, and trim/baseboard missing confirmation.
+- Public route/API response shape was preserved.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 6/6.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/missedScopeDetector.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/estimateDefenseMode.test.ts` passed 7/7.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a display-only backend diagnostics migration.
+- It intentionally did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
+
+Final decision:
+- Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
+- Next active smart-estimator task is Phase 8B: audit `buildMaterialsList` confirmation items/notes and materials diagnostics for remaining raw scope parsing.
+- Phase 8B is next because materials confirmation items and materials diagnostics may still parse raw scope independently, while `materialsList.items` generation should not be changed yet because it is closer to customer-visible generated output and can affect user expectations.
+- Next manual QA should happen after the Phase 8B materials diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
