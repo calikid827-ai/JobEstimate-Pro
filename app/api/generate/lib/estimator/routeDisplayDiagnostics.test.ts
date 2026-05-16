@@ -5,10 +5,18 @@ import {
   buildRouteDisplayScopeFacts,
   filterMaterialConfirmItems,
   flooringTransitionTrimConfirmation,
+  materialItemIncludedText,
+  shouldAddDrywallPrimerMaterial,
+  shouldAddDrywallTextureMaterial,
   shouldAddAreaDemoDriver,
   shouldAddAreaSurfacePrepDriver,
   shouldAddAreaTrimMaterialDriver,
   shouldAddCombinedMaterialsNote,
+  shouldAddFlooringTileSettingItems,
+  shouldAddIncludedDemoItems,
+  shouldAddKitchenBacksplashItems,
+  shouldAddKitchenFlooringItems,
+  shouldAddKitchenPaintItems,
   shouldConfirmInteriorTrimFootage,
   shouldConfirmPatchTextureExtent,
 } from "./routeDisplayDiagnostics"
@@ -221,4 +229,73 @@ test("materials confirmations preserve true plumbing and electrical fixture inst
     filterMaterialConfirmItems(["Confirm fixture finish level before buying."], electrical),
     ["Confirm fixture finish level before buying."]
   )
+})
+
+test("drywall material item gates ignore painting by others but preserve included primer", () => {
+  const byOthers = facts(
+    "Repair 6 drywall access patches in corridor walls. Level 4 finish only. Painting by others."
+  )
+  const includedPrime = facts("Patch drywall access holes, prime repairs, and paint walls.")
+
+  assert.equal(shouldAddDrywallPrimerMaterial(byOthers), false)
+  assert.equal(shouldAddDrywallTextureMaterial(byOthers), false)
+  assert.equal(shouldAddDrywallPrimerMaterial(includedPrime), true)
+})
+
+test("kitchen material item gates ignore flooring by others and preserve included flooring and backsplash", () => {
+  const flooringByOthers = facts(
+    "Kitchen cabinet refresh. Flooring by others. Backsplash by others. Painting by others."
+  )
+  const includedFlooring = facts(
+    "Kitchen remodel with install LVP flooring, backsplash tile, and paint walls."
+  )
+
+  assert.equal(shouldAddKitchenFlooringItems(flooringByOthers), false)
+  assert.equal(shouldAddKitchenBacksplashItems(flooringByOthers), false)
+  assert.equal(shouldAddKitchenPaintItems(flooringByOthers), false)
+  assert.equal(shouldAddKitchenFlooringItems(includedFlooring), true)
+  assert.equal(shouldAddKitchenBacksplashItems(includedFlooring), true)
+  assert.equal(shouldAddKitchenPaintItems(includedFlooring), true)
+})
+
+test("flooring tile material gate ignores excluded tile and preserves true tile flooring", () => {
+  const excludedTile = facts("Install LVP flooring. Tile by others.")
+  const trueTile = facts("Install porcelain tile flooring.")
+
+  assert.equal(shouldAddFlooringTileSettingItems(excludedTile), false)
+  assert.equal(shouldAddFlooringTileSettingItems(trueTile), true)
+})
+
+test("material item included text keeps owner-supplied fixtures as boundary unless install is included", () => {
+  const ownerSuppliedOnly = facts("Owner-supplied light fixtures.")
+  const includedElectrical = facts("Electrical rough-in for 4 vanity lights and 2 GFCI outlets.")
+  const plumbingByOthers = facts("Install new vanity. Plumbing by others.")
+  const includedPlumbing = facts("Replace 2 toilets and 1 faucet.")
+
+  assert.equal(/\bfixtures?\b/i.test(materialItemIncludedText(ownerSuppliedOnly)), false)
+  assert.equal(/\bgfci outlets?\b/i.test(materialItemIncludedText(includedElectrical)), true)
+  assert.equal(/\bplumbing\b/i.test(materialItemIncludedText(plumbingByOthers)), false)
+  assert.equal(/\bfaucet\b/i.test(materialItemIncludedText(includedPlumbing)), true)
+})
+
+test("baseboard material item gates use included text and avoid existing-to-remain quantities", () => {
+  const existingBaseboards = facts("Existing baseboards to remain. Flooring protection only.")
+  const replaceBaseboards = facts("Replace 120 LF of baseboards in hallway.")
+
+  assert.equal(/\b120\s*lf\b/i.test(materialItemIncludedText(existingBaseboards)), false)
+  assert.equal(/\b120\s*lf\b/i.test(materialItemIncludedText(replaceBaseboards)), true)
+})
+
+test("included demo item gate ignores baseboard removal context and preserves true mixed demo", () => {
+  const baseboards = facts("Replace baseboards with removal of existing baseboards.")
+  const trueMixed = facts(
+    "Demo bathroom finishes, rough-in electrical and plumbing, install shower tile, flooring, baseboards, and paint walls."
+  )
+
+  assert.equal(shouldAddIncludedDemoItems(baseboards), false)
+  assert.equal(shouldAddIncludedDemoItems(trueMixed), true)
+  assert.equal(shouldAddCombinedMaterialsNote({ facts: trueMixed, splitScopes: [
+    { trade: "demolition", scope: "Demo bathroom finishes" },
+    { trade: "plumbing", scope: "rough-in plumbing" },
+  ] }), true)
 })

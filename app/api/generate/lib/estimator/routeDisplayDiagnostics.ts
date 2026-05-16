@@ -78,6 +78,66 @@ export function shouldAddAreaTrimMaterialDriver(args: {
   return hasIncludedInteriorTrimScope(args.facts)
 }
 
+export function materialItemIncludedText(facts: EstimatorScopeFacts) {
+  return facts.clauses
+    .filter(
+      (clause) =>
+        clause.includedWork ||
+        (!clause.excludedByOthers &&
+          !clause.protectionOnly &&
+          !clause.coordinationOnly &&
+          !clause.existingCondition &&
+          !clause.ownerSupplied &&
+          !clause.customerSupplied &&
+          !clause.contractorSupplied &&
+          !clause.permitInspection)
+    )
+    .map((clause) => clause.text)
+    .join(" ")
+}
+
+export function shouldAddKitchenBacksplashItems(facts: EstimatorScopeFacts) {
+  return /\b(backsplash|tile)\b/i.test(materialItemIncludedText(facts))
+}
+
+export function shouldAddKitchenFlooringItems(facts: EstimatorScopeFacts) {
+  return (
+    facts.includedTrades.includes("flooring") ||
+    /\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|tile floor)\b/i.test(
+      materialItemIncludedText(facts)
+    )
+  )
+}
+
+export function shouldAddKitchenPaintItems(facts: EstimatorScopeFacts) {
+  return (
+    facts.includedTrades.includes("painting") ||
+    /\b(paint|painting|prime|primer)\b/i.test(materialItemIncludedText(facts))
+  )
+}
+
+export function shouldAddIncludedDemoItems(facts: EstimatorScopeFacts) {
+  if (facts.baseboardReplacementRemovalContext) return false
+  return /\b(demo|demolition|tear\s*out|remove)\b/i.test(materialItemIncludedText(facts))
+}
+
+export function shouldAddFlooringTileSettingItems(facts: EstimatorScopeFacts) {
+  return (
+    facts.includedTrades.includes("flooring") &&
+    /\b(tile|porcelain|ceramic)\b/i.test(materialItemIncludedText(facts))
+  )
+}
+
+export function shouldAddDrywallTextureMaterial(facts: EstimatorScopeFacts) {
+  if (facts.patchTextureExcluded && !facts.patchTextureIncluded) return false
+  return /\b(texture|orange\s*peel|knockdown)\b/i.test(materialItemIncludedText(facts))
+}
+
+export function shouldAddDrywallPrimerMaterial(facts: EstimatorScopeFacts) {
+  if (facts.patchTextureExcluded && !facts.patchTextureIncluded) return false
+  return /\b(prime|primer|paint)\b/i.test(materialItemIncludedText(facts))
+}
+
 function includesAnyTrade(facts: EstimatorScopeFacts, trades: EstimatorScopeTrade[]) {
   return trades.some((trade) => facts.includedTrades.includes(trade))
 }

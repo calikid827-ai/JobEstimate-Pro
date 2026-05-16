@@ -67,12 +67,20 @@ import {
   buildRouteDisplayScopeFacts,
   filterMaterialConfirmItems,
   flooringTransitionTrimConfirmation,
+  materialItemIncludedText,
   shouldAddCombinedMaterialsNote,
   shouldAddAreaDemoDriver,
   shouldAddAreaSurfacePrepDriver,
+  shouldAddDrywallPrimerMaterial,
+  shouldAddDrywallTextureMaterial,
+  shouldAddFlooringTileSettingItems,
   shouldAddAreaTrimMaterialDriver,
   shouldConfirmInteriorTrimFootage,
   shouldConfirmPatchTextureExtent,
+  shouldAddIncludedDemoItems,
+  shouldAddKitchenBacksplashItems,
+  shouldAddKitchenFlooringItems,
+  shouldAddKitchenPaintItems,
 } from "./lib/estimator/routeDisplayDiagnostics"
 import type { EstimatorScopeFacts } from "../../app/lib/estimator-scope-facts"
 import { deriveSelectedPdfUploadOrNull } from "./lib/plans/pdfSelect"
@@ -625,8 +633,7 @@ function buildMaterialsList(args: {
   const notes: string[] = []
 
   const s = (args.scopeText || "").toLowerCase()
-  const includedScopeText = getIncludedScopeText(args.scopeText || "")
-  const included = includedScopeText.toLowerCase()
+  const included = materialItemIncludedText(args.scopeFacts).toLowerCase()
 
   const addItem = (
     label: string,
@@ -667,16 +674,16 @@ function buildMaterialsList(args: {
   addItem("Countertop material", "allowance", "material", "medium")
   addItem("Sink / faucet set", "allowance", "material", "medium")
 
-  if (/\b(backsplash|tile)\b/.test(s)) {
+  if (shouldAddKitchenBacksplashItems(args.scopeFacts)) {
     addItem("Backsplash tile", "allowance", "material", "medium")
     addItem("Thinset / mortar", "allowance", "material", "medium")
     addItem("Grout", "allowance", "material", "medium")
   }
 
-  if (/\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|tile floor)\b/.test(s)) {
+  if (shouldAddKitchenFlooringItems(args.scopeFacts)) {
     addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
 
-    if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+    if (shouldAddFlooringTileSettingItems(args.scopeFacts)) {
       addItem("Thinset / mortar", "allowance", "material", "medium")
       addItem("Grout", "allowance", "material", "medium")
     } else {
@@ -686,11 +693,11 @@ function buildMaterialsList(args: {
     addItem("Transitions / reducers", "allowance", "hardware", "medium")
   }
 
-  if (/\b(paint|painting|prime|primer)\b/.test(s)) {
+  if (shouldAddKitchenPaintItems(args.scopeFacts)) {
     addItem("Primer / paint", "allowance", "material", "medium")
   }
 
-  if (/\b(demo|demolition|tear\s*out|remove)\b/.test(s)) {
+  if (shouldAddIncludedDemoItems(args.scopeFacts)) {
     addItem("Demo bags / disposal supplies", "1 lot", "consumable", "high")
     addItem("Dust containment materials", "1 lot", "protection", "high")
   }
@@ -745,7 +752,7 @@ if (args.anchorId === "flooring_only_v1") {
 
   addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
 
-  if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+  if (shouldAddFlooringTileSettingItems(args.scopeFacts)) {
     addItem("Thinset / mortar", "allowance", "material", "medium")
     addItem("Grout", "allowance", "material", "medium")
   } else {
@@ -767,13 +774,13 @@ if (args.anchorId === "kitchen_refresh_v1") {
   addItem("Countertop allowance", "allowance", "material", "medium")
   addItem("Sink / faucet set", "allowance", "material", "medium")
 
-  if (/\b(backsplash|tile)\b/.test(s)) {
+  if (shouldAddKitchenBacksplashItems(args.scopeFacts)) {
     addItem("Backsplash tile", "allowance", "material", "medium")
     addItem("Thinset / mortar", "allowance", "material", "medium")
     addItem("Grout", "allowance", "material", "medium")
   }
 
-  if (/\b(floor|flooring|lvp|vinyl plank|laminate|hardwood|tile floor)\b/.test(s)) {
+  if (shouldAddKitchenFlooringItems(args.scopeFacts)) {
     addItem("Flooring material", `~${Math.ceil(sqft * 1.1)} sqft`, "material", "high")
     addItem("Underlayment", `~${Math.ceil(sqft)} sqft`, "material", "medium")
     addItem("Transitions / reducers", "allowance", "hardware", "medium")
@@ -937,7 +944,7 @@ if (args.anchorId === "kitchen_refresh_v1") {
     addItem("Transitions / reducers", "allowance", "hardware", "medium")
     addItem("Floor protection", "1 lot", "protection", "high")
 
-    if (/\b(tile|porcelain|ceramic)\b/.test(s)) {
+    if (shouldAddFlooringTileSettingItems(args.scopeFacts)) {
       addItem("Thinset / mortar", "allowance", "material", "medium")
       addItem("Grout", "allowance", "material", "medium")
       addItem("Spacers / wedges", "1 lot", "consumable", "medium")
@@ -950,17 +957,17 @@ if (args.anchorId === "kitchen_refresh_v1") {
     addItem("Drywall tape", "1 lot", "consumable", "high")
     addItem("Sanding supplies", "1 lot", "consumable", "high")
 
-    if (/\b(texture|orange\s*peel|knockdown)\b/.test(s)) {
+    if (shouldAddDrywallTextureMaterial(args.scopeFacts)) {
       addItem("Texture material", "allowance", "material", "medium")
     }
 
-    if (/\b(prime|primer|paint)\b/.test(s)) {
+    if (shouldAddDrywallPrimerMaterial(args.scopeFacts)) {
       addItem("Primer", "allowance", "material", "medium")
     }
   }
 
   if (args.trade === "electrical") {
-    const breakdown = parseElectricalDeviceBreakdown(args.scopeText)
+    const breakdown = parseElectricalDeviceBreakdown(included)
     if (breakdown?.total) {
       addItem("Electrical devices / fixtures", `${breakdown.total} total`, "material", "high")
     }
@@ -970,7 +977,7 @@ if (args.anchorId === "kitchen_refresh_v1") {
   }
 
   if (args.trade === "plumbing" && args.anchorId !== "bathroom_remodel_v1") {
-    const breakdown = parsePlumbingFixtureBreakdown(args.scopeText)
+    const breakdown = parsePlumbingFixtureBreakdown(included)
     if (breakdown?.total) {
       addItem("Plumbing fixture supplies", `${breakdown.total} fixture set(s)`, "material", "high")
     }
@@ -983,7 +990,7 @@ if (args.anchorId === "kitchen_refresh_v1") {
     addItem("Fasteners / adhesive / shims", "1 lot", "hardware", "medium")
     addItem("Surface protection", "1 lot", "protection", "medium")
 
-    const lf = parseLinearFt(args.scopeText)
+    const lf = parseLinearFt(included)
     if (lf && lf > 0) {
       addItem("Trim / base material", `~${lf} LF`, "material", "high")
     }
