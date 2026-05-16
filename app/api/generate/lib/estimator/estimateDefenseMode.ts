@@ -1,4 +1,8 @@
 import type { PlanIntelligence } from "../plans/types"
+import {
+  buildEstimatorScopeFacts,
+  type EstimatorScopeFacts,
+} from "../../../../app/lib/estimator-scope-facts"
 import type { MissedScopeDetector } from "./missedScopeDetector"
 import type { ProfitLeakDetector } from "./profitLeakDetector"
 import type {
@@ -57,8 +61,8 @@ function getWordCount(value: string): number {
     .filter(Boolean).length
 }
 
-function isBathroomRemodel(args: DetectorArgs): boolean {
-  const scope = (args.scopeText || "").toLowerCase()
+function isBathroomRemodel(args: DetectorArgs, facts: EstimatorScopeFacts): boolean {
+  const scope = (facts.includedWorkText || args.scopeText || "").toLowerCase()
   const planBlob = [
     args.planIntelligence?.summary || "",
     ...(args.planIntelligence?.detectedRooms || []),
@@ -75,8 +79,8 @@ function isBathroomRemodel(args: DetectorArgs): boolean {
   )
 }
 
-function isWetAreaWork(args: DetectorArgs): boolean {
-  const scope = (args.scopeText || "").toLowerCase()
+function isWetAreaWork(args: DetectorArgs, facts: EstimatorScopeFacts): boolean {
+  const scope = (facts.includedWorkText || args.scopeText || "").toLowerCase()
   const planBlob = [
     args.planIntelligence?.summary || "",
     ...(args.planIntelligence?.notes || []),
@@ -87,6 +91,18 @@ function isWetAreaWork(args: DetectorArgs): boolean {
 
   return /\b(shower|tub|tile|wet area|pan|drain|waterproof)\b/.test(
     `${scope} ${planBlob}`
+  )
+}
+
+function resolveDefenseTrades(args: DetectorArgs, facts: EstimatorScopeFacts): string[] {
+  const factTrades = facts.includedTrades.map((trade) =>
+    trade === "bathroom_tile" ? "tile" : trade
+  )
+  const stackTrades = args.tradeStack?.trades || []
+
+  return uniqStrings(
+    factTrades.length > 0 ? factTrades : stackTrades,
+    4
   )
 }
 
@@ -129,6 +145,8 @@ function getAllowanceSignals(args: DetectorArgs): string[] {
 export function buildEstimateDefenseMode(
   args: DetectorArgs
 ): EstimateDefenseMode | null {
+  const facts = buildEstimatorScopeFacts(args.scopeText)
+  const defenseTrades = resolveDefenseTrades(args, facts)
   const markup = Number(args.pricing.markup || 0)
   const total = Number(args.pricing.total || 0)
   const labor = Number(args.pricing.labor || 0)
@@ -138,14 +156,14 @@ export function buildEstimateDefenseMode(
   const crewDays = Number(args.schedule.crewDays || 0)
   const lowConfidence = Number(args.priceGuard.confidence || 0) <= 62
   const shortScope = getWordCount(args.scopeText || "") > 0 && getWordCount(args.scopeText || "") <= 12
-  const bathroomRemodel = isBathroomRemodel(args)
-  const wetAreaWork = isWetAreaWork(args)
-  const multiTrade = !!args.tradeStack?.isMultiTrade
+  const bathroomRemodel = isBathroomRemodel(args, facts)
+  const wetAreaWork = isWetAreaWork(args, facts)
+  const multiTrade = facts.trueMixedTrades || defenseTrades.length >= 2
   const qtyWeak = hasLowQuantitySupport(args)
   const likelyLeaks = args.profitLeakDetector?.likelyProfitLeaks || []
   const missedLikely = args.missedScopeDetector?.likelyMissingScope || []
   const allowanceNotes = getAllowanceSignals(args)
-  const topTradeList = (args.tradeStack?.trades || []).slice(0, 3).join(", ")
+  const topTradeList = defenseTrades.slice(0, 3).join(", ")
   const fixtureSignal = uniqStrings(
     [
       ...(args.planIntelligence?.analyses || []).flatMap((analysis) =>
@@ -190,7 +208,7 @@ export function buildEstimateDefenseMode(
           .map((item) => item.label.toLowerCase())
           .join(" and ")} being confirmed.`
       : null,
-    wetAreaWork && !/\bwaterproof|pan|drain\b/i.test(args.scopeText)
+    wetAreaWork && !/\bwaterproof|pan|drain\b/i.test(facts.includedWorkText || args.scopeText)
       ? "Waterproofing assemblies, pan work, drain work, and concealed corrections should not be over-promised unless they are explicitly included."
       : null,
     shortScope
