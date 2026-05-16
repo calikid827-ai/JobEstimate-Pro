@@ -1583,7 +1583,7 @@ Acceptable remaining notes:
 
 Final decision:
 - Remaining real-world QA false-positive cleanup across Cases 4, 6, 7, and 8 passes.
-- Next active smart-estimator task should continue EstimatorScopeFacts architecture work. Phases 1, 2, 3, and 4 are now complete, so the current next task is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator.
+- Next active smart-estimator task should continue EstimatorScopeFacts architecture work. Phases 1 through 5 are now complete, so the current next task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1616,8 +1616,9 @@ Final decision:
 - Phase 2 Scope-to-Price Consistency Review migration is complete.
 - Phase 3 Customer Scope Drift migration is complete.
 - Phase 4 Schedule Sequencing Review migration is complete.
-- Next active smart-estimator task is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator.
-- Next manual QA should happen after the Phase 5 PriceGuard Review aggregator migration/audit or after a focused migration verification pass.
+- Phase 5 PriceGuard Review aggregator migration/audit is complete.
+- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next manual QA should happen after the Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1653,8 +1654,9 @@ Final decision:
 - Phase 2 EstimatorScopeFacts Scope-to-Price migration passes.
 - Phase 3 Customer Scope Drift migration is complete.
 - Phase 4 Schedule Sequencing Review migration is complete.
-- Next active smart-estimator task is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator.
-- Next manual QA should happen after Phase 5 PriceGuard Review aggregator migration/audit or after a focused migration verification pass.
+- Phase 5 PriceGuard Review aggregator migration/audit is complete.
+- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1687,8 +1689,9 @@ Architecture safety:
 Final decision:
 - Phase 3 EstimatorScopeFacts Customer Scope Drift migration passes.
 - Phase 4 Schedule Sequencing Review migration is complete.
-- Next active smart-estimator task is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator.
-- Next manual QA should happen after Phase 5 PriceGuard Review aggregator migration/audit or after a focused migration verification pass.
+- Phase 5 PriceGuard Review aggregator migration/audit is complete.
+- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1721,6 +1724,40 @@ Architecture safety:
 
 Final decision:
 - Phase 4 EstimatorScopeFacts Schedule Sequencing migration passes.
-- Next active smart-estimator task is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator.
-- Next manual QA should happen after Phase 5 PriceGuard Review aggregator migration/audit or after a focused migration verification pass.
+- Phase 5 PriceGuard Review aggregator migration/audit is complete.
+- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 26 — Phase 5 EstimatorScopeFacts PriceGuard Review Aggregator Migration
+
+Status: PASS
+
+Scope:
+- Phase 5 migrated/audited `app/app/lib/priceguard-review.ts` to consume `buildEstimatorScopeFacts()` where safe at the aggregator layer.
+- `app/app/lib/priceguard-review.test.ts` was updated with focused regression coverage and now has 17 passing tests.
+- PriceGuard Review now uses shared facts for General Renovation wallcovering-only trade resolution, material responsibility / material boundary checks, exclusion boundary checks, permit boundary checks, and primer/sealer-after-patching confirm-item suppression through `patchTextureIncluded` / `patchTextureExcluded`.
+- Boundary-aware review behavior is covered for electrical, bathroom/tile, and true mixed renovation controls.
+- Public behavior was preserved: same exported function names, same `PriceGuardReview` return shape, same warning-only fields, no customer text mutation, and no layout/cap changes.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a UI-side warning-only architecture migration.
+- It intentionally did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, child guard behavior, Customer Scope Drift behavior, Scope-to-Price Consistency Review behavior, Schedule Sequencing behavior, backend route diagnostics, `scopeSplitter` behavior, or materials generation behavior.
+
+Final decision:
+- Phase 5 EstimatorScopeFacts PriceGuard Review aggregator migration passes.
+- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.

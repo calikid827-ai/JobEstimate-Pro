@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator task: Phase 5 EstimatorScopeFacts migration/audit for PriceGuard Review as the UI-side aggregator, so the main estimator review surface shares the same included-work / boundary-context facts layer before backend route diagnostics.
+1. Next active smart-estimator task: Phase 6 audit of backend route diagnostics / Estimate Defense for remaining raw scope parsing, so backend estimator diagnostics align with the shared facts layer now used by the UI-side review stack.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Next active smart-estimator priority is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Scope-to-Price Consistency Review migrated in Phase 2.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Next active smart-estimator priority is Phase 5: migrate/audit PriceGuard Review as the UI-side aggregator. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -364,6 +364,28 @@ Done note:
 - Exact files/components likely involved: `app/app/lib/priceguard-review.ts`, `app/app/lib/priceguard-review.test.ts`, with adjacent EstimatorScopeFacts, Scope-to-Price, Customer Scope Drift, and Schedule Sequencing tests for regression coverage.
 - What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, backend route diagnostics, `scopeSplitter`, materials generation, missedScopeDetector, pricing prep, or Estimate Defense.
 - Tests or manual QA needed: Existing PriceGuard Review and scope-quality tests plus EstimatorScopeFacts, Scope-to-Price, Customer Scope Drift, Schedule Sequencing, TypeScript, diff check, and focused manual QA after migration.
+- Status: Done
+
+Done note:
+
+- `priceguard-review.ts` now consumes `buildEstimatorScopeFacts()` where safe at the aggregator layer.
+- `priceguard-review.test.ts` now has 17 passing tests with focused regression coverage.
+- PriceGuard Review now uses shared facts for General Renovation wallcovering-only trade resolution, material responsibility / material boundary checks, exclusion boundary checks, permit boundary checks, and primer/sealer-after-patching confirm-item suppression through `patchTextureIncluded` / `patchTextureExcluded`.
+- Boundary-aware review behavior is covered for electrical, bathroom/tile, and true mixed renovation controls.
+- Public behavior was preserved: same exported function names, same `PriceGuardReview` return shape, same warning-only fields, no customer text mutation, and no layout/cap changes.
+- Validation passed: `estimator-scope-facts.test.ts` 9/9, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- This UI-side warning-only architecture migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, child guard behavior, Customer Scope Drift behavior, Scope-to-Price Consistency Review behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, materials generation behavior, or backend route diagnostics.
+
+#### Item: Phase 6 backend route diagnostics / Estimate Defense raw scope parsing audit
+
+- Problem: The UI-side review stack now consumes EstimatorScopeFacts, but backend route diagnostics likely still contain route-level raw scope parsing for trade-stack, complexity, schedule, materials, Scope-to-Price X-Ray, Estimate Defense, and other diagnostics.
+- Why it matters: Backend diagnostics are visible estimator-trust surfaces. They should not reintroduce false included-work signals after the UI-side guards have converged on shared scope facts.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit `app/api/generate/route.ts` and related diagnostic helpers for raw scope parsing, classify which decisions are display-only vs pricing-affecting, and recommend the smallest safe migration path. Do not implement pricing or backend semantic changes during the audit unless a later task explicitly scopes a narrow fix.
+- Exact files/components likely involved: `app/api/generate/route.ts`, backend Estimate Defense helpers, materials/diagnostic construction, Scope-to-Price X-Ray construction, trade-stack/complexity/schedule diagnostic logic, and any route-level helpers that classify included vs boundary context.
+- What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, UI-side migrated guards, `scopeSplitter`, materials generation, missedScopeDetector, pricing prep, or Estimate Defense behavior unless a later implementation task scopes a safe warning/diagnostic-only change.
+- Tests or manual QA needed: Audit map first; then focused backend/route tests only if a later implementation task is clearly warranted.
 - Status: Next active smart-estimator task
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
