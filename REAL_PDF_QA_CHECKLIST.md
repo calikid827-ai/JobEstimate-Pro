@@ -1583,7 +1583,7 @@ Acceptable remaining notes:
 
 Final decision:
 - Remaining real-world QA false-positive cleanup across Cases 4, 6, 7, and 8 passes.
-- Next active smart-estimator task should continue EstimatorScopeFacts architecture work. Phases 1 through 5 are now complete, so the current next task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
+- Next active smart-estimator task should continue EstimatorScopeFacts architecture work. Phases 1 through 6 are now complete, so the current next task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1617,8 +1617,8 @@ Final decision:
 - Phase 3 Customer Scope Drift migration is complete.
 - Phase 4 Schedule Sequencing Review migration is complete.
 - Phase 5 PriceGuard Review aggregator migration/audit is complete.
-- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
-- Next manual QA should happen after the Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after the Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1655,8 +1655,8 @@ Final decision:
 - Phase 3 Customer Scope Drift migration is complete.
 - Phase 4 Schedule Sequencing Review migration is complete.
 - Phase 5 PriceGuard Review aggregator migration/audit is complete.
-- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
-- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1690,8 +1690,8 @@ Final decision:
 - Phase 3 EstimatorScopeFacts Customer Scope Drift migration passes.
 - Phase 4 Schedule Sequencing Review migration is complete.
 - Phase 5 PriceGuard Review aggregator migration/audit is complete.
-- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
-- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1725,8 +1725,8 @@ Architecture safety:
 Final decision:
 - Phase 4 EstimatorScopeFacts Schedule Sequencing migration passes.
 - Phase 5 PriceGuard Review aggregator migration/audit is complete.
-- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
-- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1758,6 +1758,44 @@ Architecture safety:
 
 Final decision:
 - Phase 5 EstimatorScopeFacts PriceGuard Review aggregator migration passes.
-- Next active smart-estimator task is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing.
-- Next manual QA should happen after Phase 6 backend route diagnostics / Estimate Defense audit or after a focused backend verification pass.
+- Phase 6 backend Estimate Defense migration is complete.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after the Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 27 — Phase 6 EstimatorScopeFacts Backend Estimate Defense Migration
+
+Status: PASS
+
+Scope:
+- Phase 6 migrated `app/api/generate/lib/estimator/estimateDefenseMode.ts` to consume `buildEstimatorScopeFacts()`.
+- `app/api/generate/lib/estimator/estimateDefenseMode.test.ts` was added with focused regression coverage and now passes 7/7.
+- Estimate Defense now uses EstimatorScopeFacts for display-only included-work and boundary-context diagnostics.
+- Bathroom/wet-area defense now reads included-work text instead of raw scope text.
+- Multi-trade defense now uses shared included-trade facts before falling back to trade stack.
+- Exclusion-note waterproofing checks use included-work text, so by-others/excluded context is less likely to create defense noise.
+- Regression coverage includes Case 1 Painting exclusions, Case 4 Electrical, Case 6 Bathroom/Tile, Case 7 Wallcovering, Case 8 Carpentry, true mixed renovation, and true bathroom remodel.
+- Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, no customer text mutation, and no route contract changes.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/estimateDefenseMode.test.ts` passed 7/7.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/priceguard-review.test.ts` passed 17/17.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/scope-price-consistency-review.test.ts` passed 18/18.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/customer-scope-drift.test.ts` passed 71/71.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/schedule-sequencing-review.test.ts` passed 14/14.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a display-only backend diagnostic migration.
+- It intentionally did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
+
+Final decision:
+- Phase 6 EstimatorScopeFacts backend Estimate Defense migration passes.
+- Next active smart-estimator task is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing.
+- Next manual QA should happen after the Phase 7 missed-scope diagnostics audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.

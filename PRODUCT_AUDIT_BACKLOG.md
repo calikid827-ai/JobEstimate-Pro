@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator task: Phase 6 audit of backend route diagnostics / Estimate Defense for remaining raw scope parsing, so backend estimator diagnostics align with the shared facts layer now used by the UI-side review stack.
+1. Next active smart-estimator task: Phase 7 audit of `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing, so Scope-to-Price X-Ray risk flags and confirmation items align with the shared facts layer.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Next active smart-estimator priority is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Scope-to-Price Consistency Review migrated in Phase 2.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Next active smart-estimator priority is Phase 6: audit backend route diagnostics / Estimate Defense for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -376,16 +376,40 @@ Done note:
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This UI-side warning-only architecture migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, child guard behavior, Customer Scope Drift behavior, Scope-to-Price Consistency Review behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, materials generation behavior, or backend route diagnostics.
 
-#### Item: Phase 6 backend route diagnostics / Estimate Defense raw scope parsing audit
+#### Item: Phase 6 backend Estimate Defense migration to EstimatorScopeFacts
 
 - Problem: The UI-side review stack now consumes EstimatorScopeFacts, but backend route diagnostics likely still contain route-level raw scope parsing for trade-stack, complexity, schedule, materials, Scope-to-Price X-Ray, Estimate Defense, and other diagnostics.
 - Why it matters: Backend diagnostics are visible estimator-trust surfaces. They should not reintroduce false included-work signals after the UI-side guards have converged on shared scope facts.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit `app/api/generate/route.ts` and related diagnostic helpers for raw scope parsing, classify which decisions are display-only vs pricing-affecting, and recommend the smallest safe migration path. Do not implement pricing or backend semantic changes during the audit unless a later task explicitly scopes a narrow fix.
-- Exact files/components likely involved: `app/api/generate/route.ts`, backend Estimate Defense helpers, materials/diagnostic construction, Scope-to-Price X-Ray construction, trade-stack/complexity/schedule diagnostic logic, and any route-level helpers that classify included vs boundary context.
+- Recommended fix approach: Completed the smallest safe backend Phase 6 by migrating display-only Estimate Defense decisions to `buildEstimatorScopeFacts()` while leaving route contracts, pricing, anchors, deterministic engines, materials generation, and `scopeSplitter` behavior untouched.
+- Exact files/components involved: `app/api/generate/lib/estimator/estimateDefenseMode.ts`, `app/api/generate/lib/estimator/estimateDefenseMode.test.ts`.
 - What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, saved data shapes, Generate payload shape, API route contracts, layouts, Customer Output Readiness caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, UI-side migrated guards, `scopeSplitter`, materials generation, missedScopeDetector, pricing prep, or Estimate Defense behavior unless a later implementation task scopes a safe warning/diagnostic-only change.
-- Tests or manual QA needed: Audit map first; then focused backend/route tests only if a later implementation task is clearly warranted.
+- Tests or manual QA needed: Focused Estimate Defense regression tests plus adjacent EstimatorScopeFacts and UI review-stack tests, TypeScript, and diff check.
+- Status: Done
+
+Done note:
+
+- `estimateDefenseMode.ts` now consumes `buildEstimatorScopeFacts()`.
+- `estimateDefenseMode.test.ts` was added and passes 7/7.
+- Estimate Defense now uses shared facts for included trades, bathroom/wet-area context, true mixed trades, and boundary-safe waterproofing/exclusion checks.
+- Bathroom/wet-area defense reads included-work text instead of raw scope text.
+- Multi-trade defense uses shared included-trade facts before falling back to trade stack.
+- Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
+- Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
+- Next active smart-estimator priority is Phase 7: audit `missedScopeDetector` / backend missed-scope diagnostics for remaining raw scope parsing. `missedScopeDetector` is next because it still has local raw scope/job-type parsing and feeds Scope-to-Price X-Ray risk flags and confirmation items. Production Live Mode subscription verification remains the final pre-launch gate only.
+
+#### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics raw scope parsing audit
+
+- Problem: `missedScopeDetector` still contains local raw scope and job-type parsing even after UI-side review guards and backend Estimate Defense moved onto EstimatorScopeFacts.
+- Why it matters: Missed-scope output feeds Scope-to-Price X-Ray risk flags and confirmation items, so raw boundary text can still create noisy backend diagnostics if not audited.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Audit `app/api/generate/lib/estimator/missedScopeDetector.ts` and its route/orchestrator consumers for raw scope parsing, classify display-only vs behavior-affecting decisions, and recommend the smallest safe warning-only migration path before implementation.
+- Exact files/components likely involved: `app/api/generate/lib/estimator/missedScopeDetector.ts`, `app/api/generate/lib/estimator/missedScopeDetector.test.ts`, `app/api/generate/lib/estimator/orchestrator.ts`, and Scope-to-Price X-Ray risk/confirmation construction.
+- What not to touch: Pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation, `scopeSplitter`, pricing anchors, or deterministic engines.
+- Tests or manual QA needed: Audit first; then focused missed-scope detector regression tests only if a narrow implementation is warranted.
 - Status: Next active smart-estimator task
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
