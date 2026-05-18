@@ -61,10 +61,9 @@ function tradeStack(overrides: Partial<RoutePromptTradeStack> = {}): RoutePrompt
   }
 }
 
-test("Case 1 painting exclusions: raw scope signal still flags dry time, but route phase inference does not add patch sequencing", () => {
+test("Case 1 painting exclusions: excluded drywall skim texture wording does not create dry-time signal or patch sequencing", () => {
   assert.deepEqual(detectScopeSignals(scopes.paintingExclusions), {
-    needsReturnVisit: true,
-    reason: "Dry time required before finishing work",
+    needsReturnVisit: false,
   })
 
   const phase = inferPhaseVisitsFromSignals({
@@ -109,10 +108,9 @@ test("true patch-and-paint keeps patch dry-time and drywall return characterizat
   assert.ok(calendar.rationale.includes("drywall dry/return"))
 })
 
-test("Case 4 electrical: by-others drywall still trips raw dry-time signal; rough-in phase remains characterized", () => {
+test("Case 4 electrical: by-others drywall does not create dry-time signal while rough-in phase remains characterized", () => {
   assert.deepEqual(detectScopeSignals(scopes.electrical), {
-    needsReturnVisit: true,
-    reason: "Dry time required before finishing work",
+    needsReturnVisit: false,
   })
 
   const phase = inferPhaseVisitsFromSignals({

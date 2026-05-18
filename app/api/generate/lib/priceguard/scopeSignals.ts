@@ -1,10 +1,13 @@
+import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
+
 export interface ScopeSignals {
   needsReturnVisit: boolean
   reason?: string
 }
 
 export function detectScopeSignals(scope: string): ScopeSignals {
-  const text = scope.toLowerCase()
+  const facts = buildEstimatorScopeFacts(scope)
+  const text = facts.includedWorkText.toLowerCase()
 
   // keywords that typically require drying or sequencing
   const drySignals = [
