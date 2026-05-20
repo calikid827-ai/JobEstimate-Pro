@@ -241,6 +241,7 @@ export function estimateCalendarDaysRange(args: {
   tradeStack: RoutePromptTradeStack | null
   scopeText: string
   includedScopeText?: string
+  scopeFacts?: EstimatorScopeFacts | null
   workDaysPerWeek: 5 | 6 | 7
 }): { minDays: number; maxDays: number; rationale: string[] } {
   const crewDays = Math.max(0.5, Number(args.crewDays || 0))
@@ -300,7 +301,10 @@ export function estimateCalendarDaysRange(args: {
 
   if (stack?.isMultiTrade || cp?.multiTrade) {
     maxWorkdays += 2
-    rationale.push("multi-trade coordination")
+
+    if (!args.scopeFacts || args.scopeFacts.trueMixedTrades) {
+      rationale.push("multi-trade coordination")
+    }
   }
 
   if (cp?.class === "complex") maxWorkdays += 1

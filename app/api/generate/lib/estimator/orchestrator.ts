@@ -69,6 +69,7 @@ export type OrchestratorDeps = {
   trade: string
   tradeStack: TradeStack | null
   scopeText: string
+  scopeFacts?: EstimatorScopeFacts | null
   workDaysPerWeek: 5 | 6 | 7
   photoImpact?: PhotoPricingImpact | null
   scopeSignals?: ScopeSignals | null
@@ -511,6 +512,7 @@ export async function runEstimatorOrchestrator(args: {
     trade: ctx.trade,
     tradeStack: ctx.tradeStack,
     scopeText: ctx.scopeChange,
+    scopeFacts: ctx.scopeFacts,
     workDaysPerWeek: ctx.workDaysPerWeek,
     photoImpact: ctx.photoImpact,
     scopeSignals: ctx.scopeSignals,

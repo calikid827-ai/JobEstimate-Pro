@@ -1490,6 +1490,7 @@ function buildScheduleBlock(args: {
   trade: string
   tradeStack: EstimatorTradeStack | null
   scopeText: string
+  scopeFacts?: EstimatorScopeFacts | null
   workDaysPerWeek: 5 | 6 | 7
   photoImpact?: EstimatorPhotoPricingImpact | null
   scopeSignals?: EstimatorScopeSignals | null
@@ -1519,6 +1520,7 @@ if (args.scopeSignals?.needsReturnVisit && crewDays !== null && crewDays < 2) {
         trade: args.trade,
         tradeStack: args.tradeStack,
         scopeText: args.scopeText,
+        scopeFacts: args.scopeFacts ?? null,
         workDaysPerWeek: sched,
       })
     : null

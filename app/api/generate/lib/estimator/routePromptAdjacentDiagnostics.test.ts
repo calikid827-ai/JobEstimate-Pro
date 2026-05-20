@@ -128,6 +128,44 @@ test("Case 4 electrical: by-others drywall does not create dry-time signal while
   })
 })
 
+test("painting exclusions suppress polluted upstream multi-trade schedule rationale when facts show painting only", () => {
+  const calendar = estimateCalendarDaysRange({
+    crewDays: 2,
+    cp: complexity({ class: "medium", multiTrade: true }),
+    trade: "painting",
+    tradeStack: tradeStack({
+      primaryTrade: "painting",
+      trades: ["painting", "drywall", "carpentry"],
+      isMultiTrade: true,
+    }),
+    scopeText: scopes.paintingExclusions,
+    scopeFacts: scopeFacts(scopes.paintingExclusions),
+    workDaysPerWeek: 5,
+  })
+
+  assert.ok(!calendar.rationale.includes("multi-trade coordination"))
+})
+
+test("electrical by-others drywall and painting suppress polluted upstream multi-trade schedule rationale", () => {
+  const calendar = estimateCalendarDaysRange({
+    crewDays: 2,
+    cp: complexity({ class: "complex", multiTrade: true, multiPhase: true, permitLikely: true }),
+    trade: "electrical",
+    tradeStack: tradeStack({
+      primaryTrade: "electrical",
+      trades: ["electrical", "drywall", "painting", "carpentry"],
+      activities: ["rough-in"],
+      isMultiTrade: true,
+    }),
+    scopeText: scopes.electrical,
+    scopeFacts: scopeFacts(scopes.electrical),
+    workDaysPerWeek: 5,
+  })
+
+  assert.ok(!calendar.rationale.includes("multi-trade coordination"))
+  assert.ok(calendar.rationale.includes("permit/inspection scheduling"))
+})
+
 test("appendTradeCoordinationSentence does not append drywall/carpentry coordination from painting exclusions", () => {
   const description = appendTradeCoordinationSentence(
     "This Estimate covers painting.",
@@ -272,6 +310,7 @@ test("true mixed renovation keeps multi-phase and coordination characterization"
       isMultiTrade: true,
     }),
     scopeText: scopes.trueMixed,
+    scopeFacts: scopeFacts(scopes.trueMixed),
     workDaysPerWeek: 5,
   })
   assert.ok(calendar.rationale.includes("multi-trade coordination"))
@@ -306,6 +345,23 @@ test("appendTradeCoordinationSentence does not duplicate existing coordination l
     description,
     "This Estimate includes coordination across electrical and plumbing activities."
   )
+})
+
+test("estimateCalendarDaysRange remains backward-compatible without scope facts", () => {
+  const calendar = estimateCalendarDaysRange({
+    crewDays: 2,
+    cp: complexity({ class: "medium", multiTrade: true }),
+    trade: "painting",
+    tradeStack: tradeStack({
+      primaryTrade: "painting",
+      trades: ["painting", "drywall"],
+      isMultiTrade: true,
+    }),
+    scopeText: scopes.paintingExclusions,
+    workDaysPerWeek: 5,
+  })
+
+  assert.ok(calendar.rationale.includes("multi-trade coordination"))
 })
 
 test("appendPermitCoordinationSentence appends permit coordination when complexity says permit likely", () => {
