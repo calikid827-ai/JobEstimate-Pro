@@ -53,7 +53,7 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Added as deterministic text-only architecture groundwork for the estimator brain.
   - Centralizes raw/normalized scope text, clause-level included work, boundary text, included/excluded/coordination/protection/existing-condition trades, owner/customer/contractor-supplied material responsibility, patch/texture context, tile trim context, wallcovering prep context, baseboard replacement/removal context, and true mixed-trade facts.
   - `typed-scope-normalization.ts` consumes `buildEstimatorScopeFacts()` first while preserving its existing public function names and return shape.
-  - Scope-to-Price Consistency Review, Customer Scope Drift, Schedule Sequencing Review, PriceGuard Review, backend Estimate Defense, backend missedScopeDetector, route-level display-only Scope-to-Price X-Ray / area confirmation diagnostics, `buildMaterialsList` confirmItems/notes, and selected `materialsList.items` conditional gates now consume EstimatorScopeFacts where safe. Remaining route-level customer-facing diagnostics, prompt-adjacent scope summaries, broader route diagnostics, `scopeSplitter`, and pricing prep are not fully migrated/audited yet.
+  - Scope-to-Price Consistency Review, Customer Scope Drift, Schedule Sequencing Review, PriceGuard Review, backend Estimate Defense, backend missedScopeDetector, route-level display-only Scope-to-Price X-Ray / area confirmation diagnostics, `buildMaterialsList` confirmItems/notes, selected `materialsList.items` conditional gates, and customer-facing trade coordination append gating now consume EstimatorScopeFacts where safe. Remaining prompt-adjacent route logic where `tradeStack` or complexity can influence schedule/rationale text, broader route diagnostics, `scopeSplitter`, and pricing prep are not fully migrated/audited yet.
 - UI-side typed scope normalization for pre-generate scope-quality review:
   - Splits typed scope into clauses.
   - Classifies included work, excluded/by-others work, protection-only language, coordination-only language, existing conditions, material responsibility, permit responsibility, and quantity/location signals.
@@ -76,8 +76,9 @@ The product is already broad. The highest-risk areas are not missing core featur
 - Route-level display-only Scope-to-Price X-Ray / area confirmation diagnostics now consume EstimatorScopeFacts where safe. `route.ts` builds facts once for `scopeChange`; `buildScopeXRay` uses shared facts for true mixed trade risk support, patch/texture confirmation, and baseboard/trim LF confirmation; `buildAreaScopeBreakdown` uses shared facts for demo/removal driver suppression, surface prep / patch driver detection, tile-trim vs carpentry-trim distinction, baseboard replacement/removal context, and trim/baseboard missing confirmation. Public route/API response shape remains unchanged.
 - Backend materials diagnostics now consume EstimatorScopeFacts where safe for `buildMaterialsList` confirmItems/notes. `route.ts` passes `scopeFacts` into `buildMaterialsList`, and route display diagnostics helper logic filters confirmation items and notes for excluded patch/texture/drywall context, by-others plumbing/electrical context, owner/customer-supplied fixture/material boundaries, flooring protection and existing-to-remain context, tile trim vs carpentry/base trim context, and true mixed materials note gating.
 - Selected route-level `materialsList.items` conditional gates now use EstimatorScopeFacts where safe. The migrated gates cover kitchen backsplash/flooring/paint/demo add-ons, kitchen refresh backsplash/flooring add-ons, flooring tile setting materials, drywall texture/primer items, electrical/plumbing parsed fixture/device counts, and carpentry parsed LF material quantity. MaterialsList shape, route/API response shape, material labels, base trade consumables, and anchor base packages stayed unchanged.
-- The UI-side estimator stack plus backend Estimate Defense, missedScopeDetector, route-level display diagnostics, materials diagnostics, and selected materials item gates now have EstimatorScopeFacts coverage across typed-scope normalization, Scope-to-Price Consistency Review, Customer Scope Drift, Schedule Sequencing Review, PriceGuard Review, display-only Estimate Defense diagnostics, warning-only missed-scope diagnostics, display-only X-Ray / area confirmation diagnostics, materials confirmItems/notes, and selected customer-visible item gates where safe.
-- Remaining route-level customer-facing diagnostics, prompt-adjacent scope summaries, broader route diagnostics, `scopeSplitter`, and pricing prep are not fully migrated/audited to EstimatorScopeFacts yet. Customer-Facing Scope / `result.text` remains preserved and was not broadly rewritten.
+- Customer-facing trade coordination append text now uses EstimatorScopeFacts where safe. Finalization passes `scopeFacts` into the append helper, appended coordination trades are filtered against included trades, boundary-only trade-stack entries no longer imply contractor coordination responsibility, true mixed renovation coordination remains, and duplicate coordination sentences are still avoided.
+- The UI-side estimator stack plus backend Estimate Defense, missedScopeDetector, route-level display diagnostics, materials diagnostics, selected materials item gates, and customer-facing coordination append gating now have EstimatorScopeFacts coverage across typed-scope normalization, Scope-to-Price Consistency Review, Customer Scope Drift, Schedule Sequencing Review, PriceGuard Review, display-only Estimate Defense diagnostics, warning-only missed-scope diagnostics, display-only X-Ray / area confirmation diagnostics, materials confirmItems/notes, selected customer-visible item gates, and coordination text gating where safe.
+- Remaining prompt-adjacent route logic where `tradeStack` or complexity can influence schedule/rationale text, broader route diagnostics, `scopeSplitter`, and pricing prep are not fully migrated/audited to EstimatorScopeFacts yet. Customer-Facing Scope / `result.text` remains preserved and was not broadly rewritten.
 - Paint scope controls for walls, walls plus ceilings, and full interior.
 - Photo upload and photo metadata:
   - Up to configured photo limit
@@ -212,7 +213,7 @@ The product is already broad. The highest-risk areas are not missing core featur
 
 - `POST /api/webhook`
   - Validates Stripe webhook signatures.
-  - Dedupes events through Supabase.
+  - Uses retry-safe Supabase event dedupe: events are recorded as processed only after entitlement activation/update succeeds, failed entitlement writes remain retryable, and duplicate processed events return idempotently.
   - Handles subscription lifecycle events for checkout completion, subscription created/updated/deleted, invoice paid, and invoice payment failed.
   - Writes subscription status/period fields without resetting usage count.
 
@@ -547,7 +548,7 @@ Implemented:
 - Stripe subscription checkout session creation.
 - Monthly Pro price environment wiring through `STRIPE_PRO_MONTHLY_PRICE_ID`.
 - Stripe webhook verification.
-- Webhook event dedupe.
+- Retry-safe webhook event dedupe.
 - Supabase entitlement activation and subscription status/period updates.
 - Subscription-aware entitlement lookup by email.
 - Free limit of 3 generations.
@@ -585,7 +586,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active smart-estimator task: Phase 8D audit of remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing. This should be audit/planning only first because prompts and `result.text` must not change without a scoped review.
+- Next active smart-estimator task: Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text. Prompts, `effectiveScopeChange`, `result.text`, and route/API shape should not change without a scoped review.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -626,7 +627,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries as Phase 8D of the shared scope-understanding architecture, without changing prompts or `result.text` until the raw-scope risk is mapped.
+1. Audit remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text as the next Phase 8D follow-up, without changing prompts, `effectiveScopeChange`, `result.text`, or route/API shape until the raw-scope risk is mapped.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.

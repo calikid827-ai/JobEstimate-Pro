@@ -1838,8 +1838,8 @@ Final decision:
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
-- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
+- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1882,9 +1882,9 @@ Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
-- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
+- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1926,9 +1926,9 @@ Architecture safety:
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
 - Phase 8C materials item gate migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
-- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
+- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1968,7 +1968,39 @@ Architecture safety:
 
 Final decision:
 - Phase 8C EstimatorScopeFacts materials item gate migration passes.
-- Current next active smart-estimator task is Phase 8D: audit remaining route-level customer-facing diagnostics / prompt-adjacent scope summaries for raw scope parsing.
-- Phase 8D is next because route-level customer-facing diagnostics and prompt-adjacent scope summaries may still parse raw scope independently, but prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D customer-facing diagnostics / prompt-adjacent scope summaries audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
+- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 32 — Phase 8D-2 EstimatorScopeFacts Coordination Text Gate
+
+Status: PASS
+
+Scope:
+- Phase 8D-2 gated customer-facing trade coordination append text with EstimatorScopeFacts.
+- `appendTradeCoordinationSentence()` now accepts optional scope facts and filters appended coordination trades against included trades when facts are available.
+- Finalization passes `ctx.scopeFacts` into the coordination append helper.
+- False coordination text from excluded, by-others, protection-only, coordination-only, existing/to-remain, owner/customer-supplied material-only, or boundary-only trade-stack entries is suppressed.
+- True mixed renovation coordination remains preserved.
+- Duplicate coordination sentence protection remains in place.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePromptAdjacentDiagnostics.test.ts` passed 11/11.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/priceguard/scopeSignals.test.ts` passed 4/4.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a narrow customer-facing coordination text safety gate.
+- It intentionally did not change prompts, `effectiveScopeChange`, route/API response shape, pricing formulas, schedule logic, materials generation, `scopeSplitter`, deterministic engines, docs, or global `detectTradeStack` behavior.
+
+Final decision:
+- Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
+- Next active smart-estimator task is a Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
