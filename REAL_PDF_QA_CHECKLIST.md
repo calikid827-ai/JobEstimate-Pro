@@ -1838,8 +1838,8 @@ Final decision:
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
-- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
+- Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1882,9 +1882,9 @@ Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
-- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
+- Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1926,9 +1926,9 @@ Architecture safety:
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
 - Phase 8C materials item gate migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
-- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
+- Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -1968,9 +1968,9 @@ Architecture safety:
 
 Final decision:
 - Phase 8C EstimatorScopeFacts materials item gate migration passes.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
-- Phase 8D follow-up is next because customer-facing coordination append text is now gated, but adjacent route logic can still influence schedule/rationale text; prompts and `result.text` must not change without audit first.
-- Next manual QA should happen after the Phase 8D follow-up prompt-adjacent route logic audit or after a focused backend verification pass.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
+- Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2002,5 +2002,37 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active smart-estimator task is a Phase 8D follow-up audit of remaining prompt-adjacent route logic where `tradeStack` or complexity can still influence schedule/rationale text.
+- Next active smart-estimator task is a Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 33 — Phase 8D-3 EstimatorScopeFacts Schedule Rationale Gate
+
+Status: PASS
+
+Scope:
+- Phase 8D-3 gated schedule/rationale multi-trade text with EstimatorScopeFacts.
+- `estimateCalendarDaysRange()` now accepts optional scope facts.
+- `buildScheduleBlock()` accepts optional scope facts.
+- Route/orchestrator plumbing passes `ctx.scopeFacts` into schedule construction.
+- `multi-trade coordination` schedule/rationale text is now added only when facts are absent for backward compatibility or `scopeFacts.trueMixedTrades` is true.
+- Polluted upstream `tradeStack.isMultiTrade` or `complexityProfile.multiTrade` no longer creates false multi-trade rationale when shared facts show a single included trade.
+- True mixed renovation still preserves multi-trade rationale.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePromptAdjacentDiagnostics.test.ts` passed 14/14.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 2/2.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a narrow schedule/rationale text safety gate.
+- It intentionally did not change prompts, `effectiveScopeChange`, route/API response shape, pricing formulas, schedule math, materials generation, `scopeSplitter`, deterministic engines, docs, or global `detectTradeStack` behavior.
+
+Final decision:
+- Phase 8D-3 EstimatorScopeFacts schedule rationale gate passes.
+- Next active smart-estimator task is a Phase 8D follow-up audit of remaining prompt-adjacent or diagnostic text paths that still use raw scope, `tradeStack`, or `complexityProfile`.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
