@@ -19,6 +19,7 @@ import {
   shouldAddKitchenPaintItems,
   shouldConfirmInteriorTrimFootage,
   shouldConfirmPatchTextureExtent,
+  shouldShowTrueMixedTradeDiagnostic,
 } from "./routeDisplayDiagnostics"
 
 function facts(scope: string) {
@@ -110,6 +111,7 @@ test("true mixed renovation still produces mixed diagnostic support", () => {
   )
 
   assert.equal(scopeFacts.trueMixedTrades, true)
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), true)
   assert.equal(shouldAddAreaDemoDriver(scopeFacts), true)
   assert.equal(
     shouldConfirmInteriorTrimFootage({
@@ -119,6 +121,51 @@ test("true mixed renovation still produces mixed diagnostic support", () => {
     }),
     true
   )
+})
+
+test("multi-trade diagnostic gate suppresses painting exclusion boundary trades", () => {
+  const scopeFacts = facts(
+    "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry."
+  )
+
+  assert.equal(scopeFacts.trueMixedTrades, false)
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
+})
+
+test("multi-trade diagnostic gate suppresses electrical by-others trades", () => {
+  const scopeFacts = facts(
+    "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures. Include permit/inspection coordination, access through open walls, cleanup, and customer approval."
+  )
+
+  assert.equal(scopeFacts.includedTrades.includes("electrical"), true)
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
+})
+
+test("multi-trade diagnostic gate suppresses bathroom tile by-others plumbing and glass", () => {
+  const scopeFacts = facts(
+    "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval."
+  )
+
+  assert.equal(scopeFacts.tileTrimContext, true)
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
+})
+
+test("multi-trade diagnostic gate suppresses wallcovering-only by-others trades", () => {
+  const scopeFacts = facts(
+    "Install wallcovering in lobby walls with wall prep and primer included. Painting, electrical, and furniture moving by others. Owner-supplied wallcovering. Include layout, pattern match, adhesive, cleanup, protection, and customer approval."
+  )
+
+  assert.deepEqual(scopeFacts.includedTrades, ["wallcovering"])
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
+})
+
+test("multi-trade diagnostic gate suppresses carpentry protection and by-others trades", () => {
+  const scopeFacts = facts(
+    "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain. Include caulk/fill prep for painter, cleanup, and customer approval."
+  )
+
+  assert.equal(scopeFacts.baseboardReplacementRemovalContext, true)
+  assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
 })
 
 test("materials confirmations suppress patch primer notes when patch texture is excluded", () => {

@@ -81,6 +81,7 @@ import {
   shouldAddKitchenBacksplashItems,
   shouldAddKitchenFlooringItems,
   shouldAddKitchenPaintItems,
+  shouldShowTrueMixedTradeDiagnostic,
 } from "./lib/estimator/routeDisplayDiagnostics"
 import {
   appendExecutionPlanSentence,
@@ -1193,7 +1194,7 @@ if (args.quantityInputs.photoWallSqft) {
       ...(args.complexityProfile?.permitLikely
         ? ["Permit/inspection coordination may affect cost and timing."]
         : []),
-      ...(args.tradeStack?.isMultiTrade || args.scopeFacts.trueMixedTrades
+      ...(shouldShowTrueMixedTradeDiagnostic(args.scopeFacts)
         ? ["Multiple trades require coordination and sequencing."]
         : []),
     ])
@@ -1418,7 +1419,7 @@ function buildAreaScopeBreakdown(args: {
     scheduleDrivers.push("Multi-phase sequencing likely")
   }
 
-  if (args.complexityProfile?.multiTrade) {
+  if (shouldShowTrueMixedTradeDiagnostic(args.scopeFacts)) {
     scheduleDrivers.push("Multi-trade coordination likely")
   }
 

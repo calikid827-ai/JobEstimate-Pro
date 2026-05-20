@@ -222,3 +222,7 @@ export function shouldAddCombinedMaterialsNote(args: {
 }) {
   return args.facts.trueMixedTrades && args.splitScopes.length > 1
 }
+
+export function shouldShowTrueMixedTradeDiagnostic(facts: EstimatorScopeFacts) {
+  return facts.trueMixedTrades
+}
