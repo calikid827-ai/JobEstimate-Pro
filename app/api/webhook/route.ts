@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server.js"
 import Stripe from "stripe"
 import { createClient } from "@supabase/supabase-js"
 import { isSupportedStripeWebhookEvent } from "./webhook-events"
@@ -17,6 +17,11 @@ if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY missi
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+type WebhookDeps = {
+  stripe: Pick<Stripe, "customers" | "subscriptions">
+  supabase: typeof supabase
+}
 
 type EntitlementPatch = {
   email: string
@@ -72,15 +77,15 @@ function getSubscriptionId(value: unknown) {
   return null
 }
 
-async function getCustomerEmail(customerId: string | null) {
+async function getCustomerEmail(customerId: string | null, deps: WebhookDeps = { stripe, supabase }) {
   if (!customerId) return ""
-  const customer = await stripe.customers.retrieve(customerId)
+  const customer = await deps.stripe.customers.retrieve(customerId)
   if (!customer || (customer as any).deleted === true) return ""
   return normalizeEmail(typeof (customer as any).email === "string" ? (customer as any).email : "")
 }
 
-async function upsertEntitlement(patch: EntitlementPatch) {
-  const { error } = await supabase
+async function upsertEntitlement(patch: EntitlementPatch, deps: WebhookDeps = { stripe, supabase }) {
+  const { error } = await deps.supabase
     .from("entitlements")
     .upsert(patch, { onConflict: "email" })
 
@@ -120,12 +125,12 @@ function buildSubscriptionPatch(args: {
   }
 }
 
-async function upsertSubscription(subscription: Stripe.Subscription, fallbackEmail = "") {
+async function upsertSubscription(subscription: Stripe.Subscription, fallbackEmail = "", deps: WebhookDeps = { stripe, supabase }) {
   const customerId = getCustomerId(subscription.customer)
   const metadataEmail = normalizeEmail(
     typeof subscription.metadata?.email === "string" ? subscription.metadata.email : fallbackEmail
   )
-  const email = metadataEmail || (await getCustomerEmail(customerId))
+  const email = metadataEmail || (await getCustomerEmail(customerId, deps))
 
   if (!email) return null
 
@@ -140,13 +145,118 @@ async function upsertSubscription(subscription: Stripe.Subscription, fallbackEma
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: subscription.canceled_at,
       trialEnd: subscription.trial_end,
-    })
+    }),
+    deps
   )
 }
 
-async function upsertSubscriptionById(subscriptionId: string, fallbackEmail = "") {
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-  return upsertSubscription(subscription, fallbackEmail)
+async function upsertSubscriptionById(subscriptionId: string, fallbackEmail = "", deps: WebhookDeps = { stripe, supabase }) {
+  const subscription = await deps.stripe.subscriptions.retrieve(subscriptionId)
+  return upsertSubscription(subscription, fallbackEmail, deps)
+}
+
+function isDuplicateEventError(error: unknown) {
+  const msg = (error as any)?.message || ""
+  const code = (error as any)?.code || ""
+  return code === "23505" || /duplicate key|unique/i.test(msg)
+}
+
+async function hasProcessedStripeWebhookEvent(eventId: string, deps: WebhookDeps = { stripe, supabase }) {
+  const { data, error } = await deps.supabase
+    .from("stripe_webhook_events")
+    .select("event_id")
+    .eq("event_id", eventId)
+    .maybeSingle()
+
+  return {
+    processed: Boolean(data?.event_id),
+    error,
+  }
+}
+
+async function recordProcessedStripeWebhookEvent(event: Stripe.Event, deps: WebhookDeps = { stripe, supabase }) {
+  const { error } = await deps.supabase
+    .from("stripe_webhook_events")
+    .insert({ event_id: event.id, type: event.type })
+
+  return error
+}
+
+async function processSupportedStripeWebhookEvent(event: Stripe.Event, deps: WebhookDeps = { stripe, supabase }) {
+  let dbError: unknown = null
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session
+    const rawEmail = session.customer_details?.email ?? session.customer_email ?? session.metadata?.email
+    const email = rawEmail ? normalizeEmail(rawEmail) : ""
+    const subscriptionId = getSubscriptionId(session.subscription)
+    const customerId = getCustomerId(session.customer)
+
+    if (subscriptionId) {
+      dbError = await upsertSubscriptionById(subscriptionId, email, deps)
+    } else if (email) {
+      // Backward-compatible one-time/manual checkout handling. Do not reset usage_count.
+      dbError = await upsertEntitlement({
+        email,
+        plan: "legacy_beta",
+        subscription_status: "legacy_active",
+        stripe_customer_id: customerId,
+        stripe_subscription_id: null,
+        current_period_start: null,
+        current_period_end: null,
+        cancel_at_period_end: false,
+        canceled_at: null,
+        trial_end: null,
+        active: true,
+        updated_at: new Date().toISOString(),
+      }, deps)
+    }
+  } else if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
+    dbError = await upsertSubscription(event.data.object as Stripe.Subscription, "", deps)
+  } else if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+    const invoice = event.data.object as Stripe.Invoice
+    const subscriptionId = getSubscriptionId((invoice as any).subscription)
+    const email =
+      normalizeEmail(typeof invoice.customer_email === "string" ? invoice.customer_email : "") ||
+      normalizeEmail(typeof (invoice as any).customer_details?.email === "string" ? (invoice as any).customer_details.email : "")
+
+    if (subscriptionId) {
+      dbError = await upsertSubscriptionById(subscriptionId, email, deps)
+    }
+  }
+
+  return dbError
+}
+
+export async function handleSupportedStripeWebhookEvent(event: Stripe.Event, deps: WebhookDeps = { stripe, supabase }) {
+  const processed = await hasProcessedStripeWebhookEvent(event.id, deps)
+  if (processed.error) {
+    return NextResponse.json({ error: "Webhook dedupe lookup failed" }, { status: 500 })
+  }
+
+  if (processed.processed) {
+    return NextResponse.json({ received: true })
+  }
+
+  const dbError = await processSupportedStripeWebhookEvent(event, deps)
+  if (dbError) {
+    return NextResponse.json({ error: "DB write failed" }, { status: 500 })
+  }
+
+  const recordError = await recordProcessedStripeWebhookEvent(event, deps)
+  if (recordError) {
+    if (isDuplicateEventError(recordError)) {
+      return NextResponse.json({ received: true })
+    }
+
+    return NextResponse.json({ error: "Webhook dedupe write failed" }, { status: 500 })
+  }
+
+  return NextResponse.json({ received: true })
 }
 
 export async function POST(req: Request) {
@@ -166,77 +276,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, ignored: true })
   }
 
-  // -----------------------------
-  // Idempotency / dedupe (Stripe may retry same event)
-  // -----------------------------
-  const { error: dedupeErr } = await supabase
-    .from("stripe_webhook_events")
-    .insert({ event_id: event.id, type: event.type })
-
-  // If event_id already exists, we've processed it — exit successfully
-  if (dedupeErr) {
-    const msg = (dedupeErr as any)?.message || ""
-    const code = (dedupeErr as any)?.code || ""
-
-    // Postgres unique violation (duplicate primary key)
-    // Supabase often uses code "23505" for unique violation
-    if (code === "23505" || /duplicate key|unique/i.test(msg)) {
-      return NextResponse.json({ received: true })
-    }
-
-    // Otherwise, fail so Stripe retries (safe)
-    return NextResponse.json({ error: "Webhook dedupe write failed" }, { status: 500 })
-  }
-
-  let dbError: unknown = null
-
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session
-    const rawEmail = session.customer_details?.email ?? session.customer_email ?? session.metadata?.email
-    const email = rawEmail ? normalizeEmail(rawEmail) : ""
-    const subscriptionId = getSubscriptionId(session.subscription)
-    const customerId = getCustomerId(session.customer)
-
-    if (subscriptionId) {
-      dbError = await upsertSubscriptionById(subscriptionId, email)
-    } else if (email) {
-      // Backward-compatible one-time/manual checkout handling. Do not reset usage_count.
-      dbError = await upsertEntitlement({
-        email,
-        plan: "legacy_beta",
-        subscription_status: "legacy_active",
-        stripe_customer_id: customerId,
-        stripe_subscription_id: null,
-        current_period_start: null,
-        current_period_end: null,
-        cancel_at_period_end: false,
-        canceled_at: null,
-        trial_end: null,
-        active: true,
-        updated_at: new Date().toISOString(),
-      })
-    }
-  } else if (
-    event.type === "customer.subscription.created" ||
-    event.type === "customer.subscription.updated" ||
-    event.type === "customer.subscription.deleted"
-  ) {
-    dbError = await upsertSubscription(event.data.object as Stripe.Subscription)
-  } else if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
-    const invoice = event.data.object as Stripe.Invoice
-    const subscriptionId = getSubscriptionId((invoice as any).subscription)
-    const email =
-      normalizeEmail(typeof invoice.customer_email === "string" ? invoice.customer_email : "") ||
-      normalizeEmail(typeof (invoice as any).customer_details?.email === "string" ? (invoice as any).customer_details.email : "")
-
-    if (subscriptionId) {
-      dbError = await upsertSubscriptionById(subscriptionId, email)
-    }
-  }
-
-  if (dbError) {
-    return NextResponse.json({ error: "DB write failed" }, { status: 500 })
-  }
-
-  return NextResponse.json({ received: true })
+  return handleSupportedStripeWebhookEvent(event)
 }
