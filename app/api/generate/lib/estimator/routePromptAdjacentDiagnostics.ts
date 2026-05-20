@@ -1,4 +1,8 @@
 import { getIncludedScopeText } from "../priceguard/scopeSplitter"
+import type {
+  EstimatorScopeFacts,
+  EstimatorScopeTrade,
+} from "../../../../app/lib/estimator-scope-facts"
 
 export type RoutePromptComplexityProfile = {
   class: "simple" | "medium" | "complex" | "remodel"
@@ -30,6 +34,55 @@ export type RoutePromptTradeStack = {
   activities: string[]
   signals: string[]
   isMultiTrade: boolean
+}
+
+function normalizeTradeForScopeFacts(trade: string): EstimatorScopeTrade | null {
+  const value = String(trade || "").trim().toLowerCase().replace(/[_-]+/g, " ")
+  if (!value) return null
+
+  if (/\bpaint(ing)?\b/.test(value)) return "painting"
+  if (/\bdrywall\b|\bpatch(ing)?\b|\btexture\b|\bskim\b/.test(value)) return "drywall"
+  if (/\bfloor(ing)?\b|\blvp\b|\bvinyl\b|\blaminate\b|\bhardwood\b|\bcarpet\b/.test(value)) return "flooring"
+  if (/\belectrical\b|\belectric\b|\boutlet\b|\bgfci\b|\blight\b|\bfixture\b/.test(value)) return "electrical"
+  if (/\bplumb(ing)?\b|\bfaucet\b|\btoilet\b|\bdrain\b|\bsupply\b/.test(value)) return "plumbing"
+  if (/\bbath(room)?\b|\btile\b|\bshower\b|\bwaterproof\b|\bgrout\b/.test(value)) return "bathroom_tile"
+  if (/\bwall\s*covering\b|\bwallcovering\b|\bwallpaper\b/.test(value)) return "wallcovering"
+  if (/\bcarpent(ry|er)\b|\bbaseboard\b|\btrim\b|\bcasing\b|\bcrown\b|\bmillwork\b/.test(value)) return "carpentry"
+  if (/\bdemo(lition)?\b|\btear\s*out\b|\bremoval\b/.test(value)) return "demolition"
+  if (/\bglass\b|\bshower\s*door\b|\benclosure\b/.test(value)) return "glass"
+  if (/\bfurniture\b/.test(value)) return "furniture_moving"
+
+  return null
+}
+
+function includedCoordinationTrades(
+  stack: RoutePromptTradeStack,
+  facts: EstimatorScopeFacts | null | undefined
+): string[] {
+  const stackTrades = stack.trades
+    .filter(Boolean)
+    .filter((trade) => trade !== stack.primaryTrade)
+
+  if (!facts) return stackTrades.slice(0, 3)
+
+  const included = new Set(facts.includedTrades)
+  const includedStackTrades = stackTrades.filter((trade) => {
+    const normalized = normalizeTradeForScopeFacts(trade)
+    return !!normalized && included.has(normalized)
+  })
+
+  const primaryTrade = normalizeTradeForScopeFacts(stack.primaryTrade)
+  const primaryIncluded = !!primaryTrade && included.has(primaryTrade)
+  const includedTradeCount = new Set([
+    ...(primaryIncluded ? [primaryTrade] : []),
+    ...includedStackTrades
+      .map((trade) => normalizeTradeForScopeFacts(trade))
+      .filter((trade): trade is EstimatorScopeTrade => !!trade),
+  ]).size
+
+  if (!facts.trueMixedTrades && includedTradeCount < 2) return []
+
+  return includedStackTrades.slice(0, 3)
 }
 
 export function cleanupDocumentTypeLead(text: string) {
@@ -267,7 +320,11 @@ export function estimateCalendarDaysRange(args: {
   return { minDays, maxDays: Math.max(minDays, maxDays), rationale }
 }
 
-export function appendTradeCoordinationSentence(desc: string, stack: RoutePromptTradeStack | null): string {
+export function appendTradeCoordinationSentence(
+  desc: string,
+  stack: RoutePromptTradeStack | null,
+  scopeFacts?: EstimatorScopeFacts | null
+): string {
   let d = (desc || "").trim()
   if (!d) return d
 
@@ -280,10 +337,7 @@ export function appendTradeCoordinationSentence(desc: string, stack: RoutePrompt
 
   if (alreadyMentionsCoordination) return d
 
-  const list = stack.trades
-    .filter(Boolean)
-    .filter((t) => t !== stack.primaryTrade)
-    .slice(0, 3)
+  const list = includedCoordinationTrades(stack, scopeFacts)
 
   if (list.length === 0) return d
 

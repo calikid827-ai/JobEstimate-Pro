@@ -9,6 +9,7 @@ import type {
   PricingOwnerDecision,
   TradeStack,
 } from "./types"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 
 export type BasisFinalizeHelpers = {
   normalizeBasisSafe: (basis: EstimateBasis | null) => EstimateBasis | null
@@ -109,7 +110,11 @@ export type DescriptionFinalizeHelpers = {
     tradeStack?: TradeStack | null
     workDaysPerWeek?: 5 | 6 | 7
   }) => string
-  appendTradeCoordinationSentence: (description: string, stack: TradeStack | null) => string
+  appendTradeCoordinationSentence: (
+    description: string,
+    stack: TradeStack | null,
+    scopeFacts?: EstimatorScopeFacts | null
+  ) => string
   appendPermitCoordinationSentence: (
     description: string,
     cp: ComplexityProfile | null
@@ -338,6 +343,7 @@ export async function finalizeDescription(args: {
   scopeText: string
   complexity: ComplexityProfile | null
   tradeStack: TradeStack | null
+  scopeFacts?: EstimatorScopeFacts | null
   basis: EstimateBasis | null
   workDaysPerWeek: 5 | 6 | 7
   helpers: DescriptionFinalizeHelpers
@@ -366,7 +372,11 @@ export async function finalizeDescription(args: {
     workDaysPerWeek: args.workDaysPerWeek,
   })
 
-  description = appendTradeCoordinationSentence(description, args.tradeStack)
+  description = appendTradeCoordinationSentence(
+    description,
+    args.tradeStack,
+    args.scopeFacts ?? null
+  )
   description = appendPermitCoordinationSentence(description, args.complexity)
 
   description = await polishDescriptionWith4o({
@@ -376,8 +386,12 @@ export async function finalizeDescription(args: {
   })
 
   if (args.tradeStack) {
-  description = appendTradeCoordinationSentence(description, args.tradeStack)
-}
+    description = appendTradeCoordinationSentence(
+      description,
+      args.tradeStack,
+      args.scopeFacts ?? null
+    )
+  }
 
   return syncDescriptionLeadToDocumentType(
     description,

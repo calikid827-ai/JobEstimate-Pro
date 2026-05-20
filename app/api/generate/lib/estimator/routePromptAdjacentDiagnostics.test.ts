@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
+import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import { detectScopeSignals } from "../priceguard/scopeSignals"
 import {
   appendExecutionPlanSentence,
@@ -59,6 +60,10 @@ function tradeStack(overrides: Partial<RoutePromptTradeStack> = {}): RoutePrompt
     isMultiTrade: false,
     ...overrides,
   }
+}
+
+function scopeFacts(scope: string) {
+  return buildEstimatorScopeFacts(scope)
 }
 
 test("Case 1 painting exclusions: excluded drywall skim texture wording does not create dry-time signal or patch sequencing", () => {
@@ -123,21 +128,39 @@ test("Case 4 electrical: by-others drywall does not create dry-time signal while
   })
 })
 
-test("appendTradeCoordinationSentence currently trusts a supplied multi-trade stack", () => {
+test("appendTradeCoordinationSentence does not append drywall/carpentry coordination from painting exclusions", () => {
+  const description = appendTradeCoordinationSentence(
+    "This Estimate covers painting.",
+    tradeStack({
+      primaryTrade: "painting",
+      trades: ["painting", "drywall", "carpentry"],
+      activities: ["paint"],
+      isMultiTrade: true,
+    }),
+    scopeFacts(scopes.paintingExclusions)
+  )
+
+  assert.doesNotMatch(description, /coordination across drywall|coordination across carpentry/i)
+  assert.equal(description, "This Estimate covers painting.")
+})
+
+test("Case 4 electrical: append helper ignores carpentry/plumbing stack entries unsupported by included facts", () => {
   const description = appendTradeCoordinationSentence(
     "This Estimate covers electrical work.",
     tradeStack({
       primaryTrade: "electrical",
-      trades: ["electrical", "carpentry"],
+      trades: ["electrical", "carpentry", "plumbing"],
       activities: ["rough-in"],
       isMultiTrade: true,
-    })
+    }),
+    scopeFacts(scopes.electrical)
   )
 
-  assert.match(description, /coordination across carpentry activities/i)
+  assert.doesNotMatch(description, /coordination across carpentry|coordination across plumbing/i)
+  assert.equal(description, "This Estimate covers electrical work.")
 })
 
-test("Case 6 bathroom tile keeps wet-area sequencing while plumbing by others is not itself filtered at append helper level", () => {
+test("Case 6 bathroom tile keeps wet-area sequencing while plumbing/glass by others do not append coordination", () => {
   const phase = inferPhaseVisitsFromSignals({
     scopeText: scopes.bathroomTile,
     cp: null,
@@ -151,15 +174,17 @@ test("Case 6 bathroom tile keeps wet-area sequencing while plumbing by others is
     "This Estimate covers shower waterproofing and tile.",
     tradeStack({
       primaryTrade: "tile",
-      trades: ["tile", "plumbing"],
+      trades: ["tile", "plumbing", "glass"],
       activities: ["waterproofing"],
       isMultiTrade: true,
-    })
+    }),
+    scopeFacts(scopes.bathroomTile)
   )
-  assert.match(description, /coordination across plumbing activities/i)
+  assert.doesNotMatch(description, /coordination across plumbing|coordination across glass/i)
+  assert.equal(description, "This Estimate covers shower waterproofing and tile.")
 })
 
-test("Case 7 wallcovering-only scope does not create bathroom tile demo rough-in phase noise", () => {
+test("Case 7 wallcovering-only scope does not create bathroom tile demo rough-in phase or by-others coordination noise", () => {
   assert.deepEqual(detectScopeSignals(scopes.wallcovering), {
     needsReturnVisit: false,
   })
@@ -169,6 +194,19 @@ test("Case 7 wallcovering-only scope does not create bathroom tile demo rough-in
     cp: null,
   })
   assert.deepEqual(phase, { visits: 1, phases: [] })
+
+  const description = appendTradeCoordinationSentence(
+    "This Estimate covers wallcovering.",
+    tradeStack({
+      primaryTrade: "wallcovering",
+      trades: ["wallcovering", "painting", "electrical", "furniture moving"],
+      activities: ["layout"],
+      isMultiTrade: true,
+    }),
+    scopeFacts(scopes.wallcovering)
+  )
+  assert.doesNotMatch(description, /coordination across painting|coordination across electrical|furniture/i)
+  assert.equal(description, "This Estimate covers wallcovering.")
 })
 
 test("Case 8 baseboard replacement does not create unrelated demo flooring or painting phase text", () => {
@@ -193,6 +231,19 @@ test("Case 8 baseboard replacement does not create unrelated demo flooring or pa
     workDaysPerWeek: 5,
   })
   assert.doesNotMatch(description, /demolition\/removal|flooring-paint|drywall/i)
+
+  const coordination = appendTradeCoordinationSentence(
+    "This Estimate covers baseboard replacement.",
+    tradeStack({
+      primaryTrade: "carpentry",
+      trades: ["carpentry", "flooring", "painting"],
+      activities: ["baseboard replacement"],
+      isMultiTrade: true,
+    }),
+    scopeFacts(scopes.carpentry)
+  )
+  assert.doesNotMatch(coordination, /coordination across flooring|coordination across painting/i)
+  assert.equal(coordination, "This Estimate covers baseboard replacement.")
 })
 
 test("true mixed renovation keeps multi-phase and coordination characterization", () => {
@@ -225,6 +276,36 @@ test("true mixed renovation keeps multi-phase and coordination characterization"
   })
   assert.ok(calendar.rationale.includes("multi-trade coordination"))
   assert.ok(calendar.rationale.includes("multiple return trips"))
+
+  const description = appendTradeCoordinationSentence(
+    "This Estimate covers the renovation scope.",
+    tradeStack({
+      primaryTrade: "general renovation",
+      trades: ["electrical", "plumbing", "drywall", "flooring", "carpentry", "painting"],
+      activities: ["demolition", "rough-in"],
+      isMultiTrade: true,
+    }),
+    scopeFacts(scopes.trueMixed)
+  )
+  assert.match(description, /coordination across electrical, plumbing activities/i)
+})
+
+test("appendTradeCoordinationSentence does not duplicate existing coordination language", () => {
+  const description = appendTradeCoordinationSentence(
+    "This Estimate includes coordination across electrical and plumbing activities.",
+    tradeStack({
+      primaryTrade: "general renovation",
+      trades: ["electrical", "plumbing", "drywall"],
+      activities: ["rough-in"],
+      isMultiTrade: true,
+    }),
+    scopeFacts(scopes.trueMixed)
+  )
+
+  assert.equal(
+    description,
+    "This Estimate includes coordination across electrical and plumbing activities."
+  )
 })
 
 test("appendPermitCoordinationSentence appends permit coordination when complexity says permit likely", () => {

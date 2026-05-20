@@ -499,6 +499,7 @@ export async function runEstimatorOrchestrator(args: {
   scopeText: ctx.enrichedScopeText,
   complexity: ctx.complexityProfile,
   tradeStack: ctx.tradeStack,
+  scopeFacts: ctx.scopeFacts,
   basis: finalBasis,
   workDaysPerWeek: ctx.workDaysPerWeek,
   helpers: deps.description,
