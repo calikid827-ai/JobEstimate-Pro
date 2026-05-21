@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
+import { buildTradeQuantityCandidateGates } from "../plans/tradeQuantityCandidateGates"
 import { runEstimatorOrchestrator, type OrchestratorDeps } from "./orchestrator"
 import type {
   AIResponse,
@@ -13,6 +14,7 @@ import type {
   PhotoEstimateDecision,
   PhotoPacketScore,
   PhotoPricingImpact,
+  PhotoAnalysis,
   PriceGuardReport,
   Pricing,
   ScheduleBlock,
@@ -20,6 +22,8 @@ import type {
   ScopeXRay,
   TradeStack,
 } from "./types"
+import type { EvidenceAuthorityReadback } from "./evidenceAuthority"
+import type { PlanIntelligence, PlanTradeQuantityCandidate } from "../plans/types"
 
 function makePricing(pricing: Partial<Pricing>): Pricing {
   return {
@@ -93,6 +97,172 @@ const photoEstimateDecision: PhotoEstimateDecision = {
   missingInputs: [],
   reasons: [],
   blockers: [],
+}
+
+function makePhotoAnalysis(): PhotoAnalysis {
+  return {
+    summary: "Photos show painted drywall walls with minor prep.",
+    observations: ["Visible wall patching and furniture protection needs."],
+    detectedConditions: ["minor wall damage"],
+    jobSummary: {
+      probableArea: "interior_room",
+      detectedTrades: ["painting"],
+      detectedRoomTypes: ["bedroom"],
+      detectedMaterials: ["drywall"],
+      detectedConditions: ["minor wall damage"],
+      detectedFixtures: [],
+      detectedAccessIssues: [],
+      detectedDemoNeeds: [],
+      complexityFlags: [],
+      mergedQuantities: {
+        doors: 2,
+        windows: null,
+        vanities: null,
+        toilets: null,
+        sinks: null,
+        outlets: null,
+        switches: null,
+        recessedLights: null,
+        cabinets: null,
+        appliances: null,
+        wallSqft: 380,
+        ceilingSqft: null,
+        floorSqft: null,
+        trimLf: null,
+      },
+      quantitySources: {
+        wallSqft: "reference_scaled",
+        ceilingSqft: null,
+        floorSqft: null,
+        trimLf: null,
+      },
+      exteriorSummary: {
+        isExterior: false,
+        stories: null,
+        substrate: null,
+        access: null,
+        trimComplexity: null,
+        prepLevel: null,
+        garageDoors: null,
+        entryDoors: null,
+        windows: null,
+        bodyWallSqft: null,
+      },
+      pricingDrivers: [],
+      missingViews: [],
+      confidenceScore: 76,
+    },
+  }
+}
+
+function makePlanCandidate(
+  overrides: Partial<PlanTradeQuantityCandidate> = {}
+): PlanTradeQuantityCandidate {
+  return {
+    candidateKey: "door-schedule-count",
+    trade: "carpentry",
+    category: "door schedule count candidates",
+    quantity: 12,
+    unit: "doors",
+    quantityStatus: "count_only",
+    confidence: 82,
+    sourceType: "schedule_table",
+    sourceRefs: [
+      {
+        pageNumber: 2,
+        sourcePageNumber: 5,
+        sheetNumber: "A6.1",
+        sheetTitle: "Door Schedule",
+        rowIndex: 1,
+        sourceTableIndex: 0,
+      },
+    ],
+    assumptions: ["Explicit quantity/count column summed to 12."],
+    warnings: ["Candidate only - not measured takeoff support."],
+    eligibleForPricing: false,
+    ...overrides,
+  }
+}
+
+function makePlanIntelligence(
+  candidates: PlanTradeQuantityCandidate[] = [makePlanCandidate()]
+): PlanIntelligence {
+  return {
+    ok: true,
+    uploadsCount: 1,
+    pagesCount: 2,
+    indexedPagesCount: 2,
+    selectedPagesCount: 2,
+    skippedPagesCount: 0,
+    sheetIndex: [
+      {
+        uploadId: "upload-1",
+        uploadName: "plans.pdf",
+        pageNumber: 1,
+        sourcePageNumber: 1,
+        pageLabel: "1",
+        sheetNumber: "A1.1",
+        sheetTitle: "Floor Plan",
+        discipline: "architectural",
+        confidence: 80,
+        revision: null,
+        selectedForAnalysis: true,
+        renderedFromPdf: true,
+        renderedImageAvailable: true,
+        classification: {
+          sheetRole: "floor_plan",
+          discipline: "architectural",
+          confidence: 80,
+          method: "deterministic",
+          signals: ["Floor plan"],
+          warnings: [],
+        },
+      },
+    ],
+    analyses: [],
+    takeoff: {
+      floorSqft: null,
+      wallSqft: null,
+      ceilingSqft: null,
+      trimLf: null,
+      doorCount: null,
+      windowCount: null,
+      deviceCount: null,
+      fixtureCount: null,
+      roomCount: null,
+      sourceNotes: [],
+    },
+    scopeAssist: {
+      missingScopeFlags: [],
+      suggestedAdditions: [],
+      conflicts: [],
+    },
+    evidence: {
+      summaryRefs: [
+        {
+          uploadId: "upload-1",
+          uploadName: "plans.pdf",
+          sourcePageNumber: 1,
+          pageNumber: 1,
+          sheetNumber: "A1.1",
+          sheetTitle: "Floor Plan",
+          excerpt: "Guestroom floor plan",
+          confidence: 80,
+        },
+      ],
+      quantityRefs: [],
+      riskRefs: [],
+    },
+    detectedTrades: ["painting"],
+    detectedRooms: ["guest room"],
+    extractedTables: [],
+    roomFinishMatrices: [],
+    repeatedRoomPackages: [],
+    tradeQuantityCandidates: candidates,
+    tradeQuantityCandidateGates: buildTradeQuantityCandidateGates(candidates),
+    summary: "Plan readback summary.",
+    confidenceScore: 78,
+  }
 }
 
 function makeSchedule(): ScheduleBlock {
@@ -564,4 +734,89 @@ test("orchestrator passes scope facts into estimate explanation builder", async 
 
   assert.equal(receivedTrueMixedTrades, false)
   assert.deepEqual(receivedIncludedTrades, ["painting"])
+})
+
+test("orchestrator builds evidence authority internally without returning it in payload", async () => {
+  let readback: EvidenceAuthorityReadback | undefined
+  const pricing = makePricing({ labor: 1200, materials: 400, subs: 200, markup: 20, total: 2160 })
+  const basis = makeBasis({
+    units: ["sqft"],
+    quantities: { sqft: 420 },
+    crewDays: 2,
+  })
+
+  const payload = await runEstimatorOrchestrator({
+    ctx: makeContext({
+      scopeChange:
+        "Paint 2 bedrooms and 4 doors, 420 sqft. Excludes drywall repair, flooring by others, owner-supplied paint, and protect existing cabinets only.",
+      enrichedScopeText:
+        "Paint 2 bedrooms and 4 doors, 420 sqft. Excludes drywall repair, flooring by others, owner-supplied paint, and protect existing cabinets only.",
+      scopeFacts: buildEstimatorScopeFacts(
+        "Paint 2 bedrooms and 4 doors, 420 sqft. Excludes drywall repair, flooring by others, owner-supplied paint, and protect existing cabinets only."
+      ),
+      quantityInputs: {
+        userMeasuredSqft: 420,
+        parsedSqft: 420,
+        photoWallSqft: 380,
+        photoCeilingSqft: null,
+        photoFloorSqft: null,
+        photoWallSqftSource: "reference_scaled",
+        effectiveFloorSqft: null,
+        effectiveWallSqft: 420,
+        effectivePaintSqft: 420,
+      },
+      photoAnalysis: makePhotoAnalysis(),
+      planIntelligence: makePlanIntelligence(),
+      paintingDet: {
+        pricing,
+        okForVerified: true,
+        verifiedSource: "painting_engine_v1_verified",
+        source: "painting_engine_v1",
+        estimateBasis: basis,
+      },
+    }),
+    aiDraft,
+    deps: makeDeps(),
+    includeDebugEstimateBasis: false,
+    onEvidenceAuthorityReadback: (value) => {
+      readback = value
+    },
+  })
+
+  assert.equal(payload.pricing.total, 2160)
+  assert.equal(payload.pricingSource, "deterministic")
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "evidenceAuthorityReadback"), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "evidenceAuthority"), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(payload, "estimateBasis"), false)
+  const capturedReadback = readback
+  assert.ok(capturedReadback)
+
+  const included = capturedReadback.items.find((item) => item.id === "typed-scope:included")
+  const boundary = capturedReadback.items.find((item) => item.id === "typed-scope:boundary")
+  const userSqft = capturedReadback.items.find((item) => item.id === "quantity:user:measured_sqft")
+  const parsedSqft = capturedReadback.items.find((item) => item.id === "quantity:parsed:parsed_sqft")
+  const deterministicSqft = capturedReadback.items.find(
+    (item) => item.id === "deterministic-estimate-basis:sqft"
+  )
+  const photoObservation = capturedReadback.items.find((item) => item.id === "photo:observations")
+  const photoWallSqft = capturedReadback.items.find((item) => item.id === "photo:quantity:wallSqft")
+  const planCandidate = capturedReadback.items.find(
+    (item) => item.id === "plan:quantity-candidate:door-schedule-count"
+  )
+
+  assert.equal(included?.authority, "pricing_authoritative")
+  assert.equal(included?.pricingAuthoritative, true)
+  assert.equal(boundary?.authority, "excluded_or_boundary_context")
+  assert.equal(boundary?.pricingAuthoritative, false)
+  assert.equal(userSqft?.authority, "user_confirmed_quantity")
+  assert.equal(parsedSqft?.authority, "parsed_typed_quantity")
+  assert.equal(deterministicSqft?.authority, "deterministic_pricing_basis")
+  assert.equal(photoObservation?.authority, "review_only")
+  assert.equal(photoObservation?.pricingAuthoritative, false)
+  assert.equal(photoWallSqft?.source, "photo_reference_scaled_quantity")
+  assert.equal(photoWallSqft?.authority, "review_only")
+  assert.equal(photoWallSqft?.pricingAuthoritative, false)
+  assert.equal(planCandidate?.authority, "future_measured_takeoff_candidate")
+  assert.equal(planCandidate?.pricingAuthoritative, false)
+  assert.equal(planCandidate?.pricingEligibleNow, false)
 })

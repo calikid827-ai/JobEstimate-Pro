@@ -37,6 +37,11 @@ import {
   type DescriptionFinalizeHelpers,
   type PricingFinalizeHelpers,
 } from "./finalize"
+import {
+  buildEvidenceAuthorityReadback,
+  type EvidenceAuthorityQuantity,
+  type EvidenceAuthorityReadback,
+} from "./evidenceAuthority"
 import type {
   AIResponse,
   EstimatorContext,
@@ -285,6 +290,7 @@ export async function runEstimatorOrchestrator(args: {
   aiDraft: AIResponse
   deps: OrchestratorDeps
   includeDebugEstimateBasis?: boolean
+  onEvidenceAuthorityReadback?: (readback: EvidenceAuthorityReadback) => void
   engineDebug?: {
     flooring?: Record<string, unknown> | null
     electrical?: Record<string, unknown> | null
@@ -494,6 +500,41 @@ export async function runEstimatorOrchestrator(args: {
   const estimateRows = buildEstimateRows(estimateSections)
   const estimateEmbeddedBurdens =
     buildEstimateEmbeddedBurdens(estimateSections)
+
+  const userQuantities: EvidenceAuthorityQuantity[] = []
+  const parsedQuantities: EvidenceAuthorityQuantity[] = []
+
+  if (typeof ctx.quantityInputs.userMeasuredSqft === "number" && ctx.quantityInputs.userMeasuredSqft > 0) {
+    userQuantities.push({
+      key: "measured_sqft",
+      label: "User confirmed square footage",
+      value: ctx.quantityInputs.userMeasuredSqft,
+      unit: "sqft",
+      source: "user",
+    })
+  }
+
+  if (typeof ctx.quantityInputs.parsedSqft === "number" && ctx.quantityInputs.parsedSqft > 0) {
+    parsedQuantities.push({
+      key: "parsed_sqft",
+      label: "Parsed typed square footage",
+      value: ctx.quantityInputs.parsedSqft,
+      unit: "sqft",
+      source: "parsed",
+    })
+  }
+
+  const evidenceAuthorityReadback = buildEvidenceAuthorityReadback({
+    scopeFacts: ctx.scopeFacts,
+    userQuantities,
+    parsedQuantities,
+    estimateBasis: finalBasis,
+    photoAnalysis: ctx.photoAnalysis,
+    planIntelligence: ctx.planIntelligence,
+    pricingAuthoritativePhotoQuantityKeys: [],
+  })
+
+  args.onEvidenceAuthorityReadback?.(evidenceAuthorityReadback)
 
   const description = await finalizeDescription({
   draft,
