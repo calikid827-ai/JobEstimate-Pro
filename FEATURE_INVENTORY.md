@@ -534,12 +534,18 @@ Implemented:
   - Preserves required evidence, present evidence, blockers, warnings, and source provenance.
   - Estimator-facing Plan Review Summary counts for candidate gates reviewed, future candidates after review, blocked/review-only candidates, and pricing-eligible now.
   - Diagnostic-only behavior that does not drive pricing or quantity decisions.
+- Phase 9A Evidence Authority / Estimate Basis Readback helper:
+  - Internal/helper-level `buildEvidenceAuthorityReadback()` classifies estimate-supporting facts by source and authority.
+  - Covers typed included scope, typed boundary/exclusion scope, user quantities, parsed quantities, deterministic estimate basis, photo observations, photo quantity signals, plan sheet evidence, plan tables/finish schedules, repeated room packages, plan quantity candidates, and future measured plan quantities.
+  - Not wired into `/api/generate` and does not change route/API response shape, pricing, prompts, `result.text`, materials generation, deterministic engines, `scopeSplitter`, billing/auth, UI, or deployment.
+  - Plan quantity candidates remain non-pricing-authoritative, photo observations remain review-only, and photo quantities only become pricing-authoritative when explicitly marked as already-authoritative through an existing guarded path.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
 - Schedule, finish table, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate diagnostics are diagnostic-only and still conservative.
+- Evidence Authority readback is helper-level only; Phase 9B still needs the safest readback/display wiring before it benefits estimator-facing workflows.
 - Actual pricing handoff activation, SF/LF, and measured fixture/device counts remain limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
@@ -590,7 +596,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active product task: broader launch-readiness / regression audit before adding more estimator behavior changes. Phase 8D scope-boundary text/diagnostic cleanup is substantially complete. Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
+- Next active product task: Phase 9B should audit or implement the safest Evidence Authority readback/display wiring without changing pricing, prompts, `result.text`, route/API shape, or customer-facing output semantics unless explicitly scoped. Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -631,7 +637,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Run a broader launch-readiness / regression audit before adding more estimator behavior changes. Keep deferred photo pricing/policy-adjacent behavior changes out of scope unless explicitly approved after that review.
+1. Audit or implement Phase 9B Evidence Authority readback/display wiring while keeping pricing, prompts, `result.text`, route/API shape, and customer-facing output semantics unchanged unless explicitly scoped.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.

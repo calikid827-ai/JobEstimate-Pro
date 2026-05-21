@@ -2002,7 +2002,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active product task is broader launch-readiness / regression audit before adding more estimator behavior changes.
+- Next active product-intelligence task is now Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2204,5 +2204,5 @@ Final decision:
 - Phase 8D-6B EstimatorScopeFacts photo-estimate reason text gate passes.
 - Phase 8D scope-boundary text/diagnostic cleanup is substantially complete.
 - Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
-- Next active product task should be a broader launch-readiness / regression audit before adding more estimator behavior changes.
+- Next active product-intelligence task should be Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
