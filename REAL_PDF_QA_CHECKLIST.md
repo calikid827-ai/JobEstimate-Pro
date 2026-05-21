@@ -1838,7 +1838,7 @@ Final decision:
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
+- Phase 8D-6B photo-estimate decision reason-text gate is complete in Test Entry 38.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1882,8 +1882,8 @@ Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
-- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
+- Phase 8D-6B photo-estimate decision reason-text gate is complete in Test Entry 38.
+- Deferred photo behavior items remain pricing/policy-adjacent and should stay out of scope unless explicitly approved after launch-readiness review.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1926,8 +1926,8 @@ Architecture safety:
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
 - Phase 8C materials item gate migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
-- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
+- Phase 8D-6B photo-estimate decision reason-text gate is complete in Test Entry 38.
+- Deferred photo behavior items remain pricing/policy-adjacent and should stay out of scope unless explicitly approved after launch-readiness review.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1968,8 +1968,8 @@ Architecture safety:
 
 Final decision:
 - Phase 8C EstimatorScopeFacts materials item gate migration passes.
-- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
-- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
+- Phase 8D-6B photo-estimate decision reason-text gate is complete in Test Entry 38.
+- Deferred photo behavior items remain pricing/policy-adjacent and should stay out of scope unless explicitly approved after launch-readiness review.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -2002,7 +2002,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
+- Next active product task is broader launch-readiness / regression audit before adding more estimator behavior changes.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2169,6 +2169,40 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-6A photo-estimate decision characterization seam passes.
-- Next active smart-estimator task is deciding whether Phase 8D-6B should address photo-estimate decision behavior.
-- Any Phase 8D-6B implementation must be extra cautious because the path is pricing/policy-adjacent; do not change photo pricing behavior, `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricing policy, prompts, `effectiveScopeChange`, `result.text`, or route/API shape without a scoped review.
+- Phase 8D-6B photo-estimate decision reason-text gate is complete in the next entry.
+- Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 38 — Phase 8D-6B EstimatorScopeFacts Photo-Estimate Reason Text Gate
+
+Status: PASS
+
+Scope:
+- Phase 8D-6B gated the photo-estimate decision multi-trade reason text with EstimatorScopeFacts.
+- `buildPhotoEstimateDecision()` now accepts optional scope facts.
+- `route.ts` passes existing `scopeFacts` into the photo estimate decision.
+- `Multiple trades were detected, which increases pricing risk.` is only added when facts are absent for backward compatibility or `scopeFacts.trueMixedTrades` is true.
+- Boundary-only / polluted multi-trade stacks no longer create that reason text when shared facts show one included trade.
+- True mixed renovation and no-facts behavior still keep the reason.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePhotoEstimateDecision.test.ts` passed 12/12.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePromptAdjacentDiagnostics.test.ts` passed 14/14.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 28/28.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a reason-text-only cleanup.
+- It intentionally did not change photo pricing behavior, `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricingPolicy, `missingInputs`, `derivePhotoPricingImpact`, confidence penalty from `tradeStack.isMultiTrade`, measurement-heavy behavior, raw quantity parsing, prompts, `effectiveScopeChange`, `result.text`, route/API response shape, pricing formulas, materials generation, `scopeSplitter`, deterministic engines, docs, UI, payment/auth, `detectTradeStack`, or `buildComplexityProfile`.
+
+Final decision:
+- Phase 8D-6B EstimatorScopeFacts photo-estimate reason text gate passes.
+- Phase 8D scope-boundary text/diagnostic cleanup is substantially complete.
+- Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
+- Next active product task should be a broader launch-readiness / regression audit before adding more estimator behavior changes.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
