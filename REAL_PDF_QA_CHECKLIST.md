@@ -1838,7 +1838,7 @@ Final decision:
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
+- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1882,8 +1882,8 @@ Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
-- Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
+- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1926,8 +1926,8 @@ Architecture safety:
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
 - Phase 8C materials item gate migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
-- Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
+- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1968,8 +1968,8 @@ Architecture safety:
 
 Final decision:
 - Phase 8C EstimatorScopeFacts materials item gate migration passes.
-- Current next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
-- Phase 8D follow-up is next because coordination append text, schedule/rationale multi-trade text, and route display multi-trade diagnostics are now gated, but other diagnostic/text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
+- Current next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
+- Phase 8D has since characterized the photo-estimate decision path; future Phase 8D-6B work should be scoped carefully because photo decision behavior is pricing/policy-adjacent.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -2002,7 +2002,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
+- Next active smart-estimator task is Phase 8D-6B scoped decision on photo-estimate behavior.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2130,6 +2130,45 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-5A EstimatorScopeFacts profit leak diagnostics migration passes.
-- Next active smart-estimator task is Phase 8D follow-up audit of photo-estimate decision text / photo pricing behavior.
+- Phase 8D-6A photo-estimate decision characterization is complete in the next entry.
 - Do not change photo pricing behavior, `pricingAllowed`, blockers, confidence, pricing policy, prompts, `effectiveScopeChange`, `result.text`, or route/API shape without a scoped review.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 37 — Phase 8D-6A Photo-Estimate Decision Characterization Seam
+
+Status: PASS
+
+Scope:
+- Phase 8D-6A added characterization coverage for the photo-estimate decision path before any EstimatorScopeFacts migration or behavior change.
+- Pure photo-estimate decision helpers were extracted from `route.ts` into `routePhotoEstimateDecision.ts`.
+- `route.ts` now imports and calls the extracted helpers.
+- `routePhotoEstimateDecision.test.ts` was added and passes 9/9.
+- This was characterization/test-seam work only; no EstimatorScopeFacts gating or behavior fix was implemented.
+
+Current behavior characterized:
+- Polluted `tradeStack.isMultiTrade` still adds `Multiple trades were detected, which increases pricing risk.`
+- Polluted multi-trade signals can still force `measurements` into `missingInputs`.
+- Electrical owner-supplied fixture wording can count as usable electrical device quantity.
+- Plumbing `by others` fixture wording can count as usable plumbing fixture quantity.
+- Carpentry/baseboard LF is recognized, but polluted multi-trade stack can still block photo-only pricing through measurement-heavy logic.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePhotoEstimateDecision.test.ts` passed 9/9.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePromptAdjacentDiagnostics.test.ts` passed 14/14.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 28/28.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a behavior-preserving characterization seam.
+- It intentionally did not change photo pricing behavior, `derivePhotoPricingImpact`, `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricing policy, prompts, `effectiveScopeChange`, `result.text`, route/API response shape, pricing formulas, materials generation, `scopeSplitter`, deterministic engines, docs, UI, payment, or auth code.
+
+Final decision:
+- Phase 8D-6A photo-estimate decision characterization seam passes.
+- Next active smart-estimator task is deciding whether Phase 8D-6B should address photo-estimate decision behavior.
+- Any Phase 8D-6B implementation must be extra cautious because the path is pricing/policy-adjacent; do not change photo pricing behavior, `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricing policy, prompts, `effectiveScopeChange`, `result.text`, or route/API shape without a scoped review.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
