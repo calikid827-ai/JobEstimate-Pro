@@ -7359,6 +7359,7 @@ const quantityInputs = getRouteEffectiveQuantityInputs({
 
 const rooms = parseRoomCount(scopeChange)
 const doors = parseDoorCount(scopeChange)
+const scopeFacts = buildRouteDisplayScopeFacts(scopeChange)
 
 const photoEstimateDecision = buildRoutePhotoEstimateDecision({
   trade,
@@ -7372,6 +7373,7 @@ const photoEstimateDecision = buildRoutePhotoEstimateDecision({
   quantityInputs,
   complexityProfile,
   tradeStack,
+  scopeFacts,
 })
 
 if (
@@ -7871,8 +7873,6 @@ if (ENABLE_DETAILED_SERVER_LOGS) {
     scope: scopeChange,
   })
 }
-
-const scopeFacts = buildRouteDisplayScopeFacts(scopeChange)
 
 const materialsList = buildMaterialsList({
   trade,

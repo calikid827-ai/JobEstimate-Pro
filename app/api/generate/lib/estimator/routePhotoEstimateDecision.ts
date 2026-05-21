@@ -1,4 +1,5 @@
 import { parsePlumbingFixtureBreakdown } from "../priceguard/plumbingEngine"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import type {
   ComplexityProfile,
   MissingInputKey,
@@ -677,6 +678,7 @@ export function buildPhotoEstimateDecision(args: {
   quantityInputs: PhotoQuantityInputs
   complexityProfile: ComplexityProfile | null
   tradeStack: TradeStack | null
+  scopeFacts?: EstimatorScopeFacts | null
 }): PhotoEstimateDecision {
   const reasons: string[] = []
   const blockers: string[] = []
@@ -765,7 +767,7 @@ export function buildPhotoEstimateDecision(args: {
     reasons.push(`Photo scope review found ${missingScopeFlags} missing scope/clarity flag(s).`)
   }
 
-  if (args.tradeStack?.isMultiTrade) {
+  if (args.tradeStack?.isMultiTrade && (!args.scopeFacts || args.scopeFacts.trueMixedTrades)) {
     reasons.push("Multiple trades were detected, which increases pricing risk.")
   }
 

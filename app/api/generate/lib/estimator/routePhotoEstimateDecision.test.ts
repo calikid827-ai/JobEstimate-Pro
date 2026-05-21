@@ -1,6 +1,7 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
+import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import {
   buildPhotoEstimateDecision,
   buildPhotoMissingInputs,
@@ -15,6 +16,7 @@ import type {
   TradeStack,
 } from "./types"
 import type { RoutePhotoInput } from "./routePhotoEstimateDecision"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 
 const fullPhotos: RoutePhotoInput[] = [
   { name: "overview.jpg", dataUrl: "data:image/jpeg;base64,AA==", shotType: "overview", roomTag: "room" },
@@ -124,6 +126,7 @@ function decide(args: {
   analysis?: PhotoAnalysis | null
   complexityProfile?: ComplexityProfile | null
   stack?: TradeStack | null
+  scopeFacts?: EstimatorScopeFacts | null
 }) {
   const photos = args.photos ?? fullPhotos
   const analysis = args.analysis === undefined ? photoAnalysis() : args.analysis
@@ -151,7 +154,20 @@ function decide(args: {
     quantityInputs,
     complexityProfile: args.complexityProfile ?? null,
     tradeStack: args.stack ?? null,
+    scopeFacts: args.scopeFacts,
   })
+}
+
+function policySnapshot(decision: ReturnType<typeof decide>) {
+  return {
+    pricingAllowed: decision.pricingAllowed,
+    blockers: decision.blockers,
+    confidence: decision.confidence,
+    confidenceBand: decision.confidenceBand,
+    estimateMode: decision.estimateMode,
+    pricingPolicy: decision.pricingPolicy,
+    missingInputs: decision.missingInputs,
+  }
 }
 
 test("characterizes painting exclusions with polluted multi-trade stack", () => {
@@ -265,6 +281,119 @@ test("characterizes true mixed renovation as multi-trade and measurement-require
   assert.equal(decision.pricingPolicy, "block")
   assert.ok(decision.reasons.includes("Multiple trades were detected, which increases pricing risk."))
   assert.ok(decision.reasons.includes("Remodel-level scope increases hidden-condition risk."))
+})
+
+test("gates polluted multi-trade reason with scope facts while preserving policy outputs", () => {
+  const cases = [
+    {
+      name: "painting exclusions",
+      trade: "painting",
+      scopeText:
+        "Paint walls only, 500 sqft. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+      complexityProfile: complexity({ class: "medium", multiTrade: true }),
+      stack: tradeStack({
+        trades: ["painting", "drywall", "electrical", "plumbing", "flooring", "carpentry"],
+        isMultiTrade: true,
+      }),
+    },
+    {
+      name: "electrical by-others",
+      trade: "electrical",
+      scopeText:
+        "Electrical rough-in for 2 vanity light fixtures and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied fixtures.",
+      stack: tradeStack({
+        primaryTrade: "electrical",
+        trades: ["electrical", "drywall", "painting", "carpentry", "plumbing"],
+        isMultiTrade: true,
+      }),
+    },
+    {
+      name: "bathroom tile by-others",
+      trade: "general renovation",
+      scopeText:
+        "Waterproof shower walls, install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures.",
+      complexityProfile: complexity({ class: "remodel", multiTrade: true }),
+      stack: tradeStack({
+        primaryTrade: "tile",
+        trades: ["tile", "plumbing", "glass"],
+        isMultiTrade: true,
+      }),
+    },
+    {
+      name: "wallcovering by-others",
+      trade: "general renovation",
+      scopeText:
+        "Install owner-supplied wallcovering with wall prep and primer. Painting, electrical, and furniture moving by others.",
+      stack: tradeStack({
+        primaryTrade: "wallcovering",
+        trades: ["wallcovering", "painting", "electrical"],
+        isMultiTrade: true,
+      }),
+    },
+    {
+      name: "carpentry protection by-others",
+      trade: "carpentry",
+      scopeText:
+        "Replace 120 LF baseboards. Painting by others. Flooring protection only. Existing flooring to remain.",
+      stack: tradeStack({
+        primaryTrade: "carpentry",
+        trades: ["carpentry", "painting", "flooring"],
+        isMultiTrade: true,
+      }),
+    },
+  ]
+
+  for (const item of cases) {
+    const legacy = decide(item)
+    const gated = decide({
+      ...item,
+      scopeFacts: buildEstimatorScopeFacts(item.scopeText),
+    })
+
+    assert.ok(
+      legacy.reasons.includes("Multiple trades were detected, which increases pricing risk."),
+      item.name
+    )
+    assert.equal(
+      gated.reasons.includes("Multiple trades were detected, which increases pricing risk."),
+      false,
+      item.name
+    )
+    assert.deepEqual(policySnapshot(gated), policySnapshot(legacy), item.name)
+  }
+})
+
+test("preserves true mixed renovation multi-trade reason with scope facts", () => {
+  const scopeText =
+    "Demo, electrical rough-in, plumbing rough-in, drywall, flooring, baseboards, and painting."
+
+  const decision = decide({
+    trade: "general renovation",
+    scopeText,
+    complexityProfile: complexity({ class: "remodel", multiTrade: true, hasDemo: true }),
+    stack: tradeStack({
+      primaryTrade: "general renovation",
+      trades: ["demolition", "electrical", "plumbing", "drywall", "flooring", "carpentry", "painting"],
+      isMultiTrade: true,
+    }),
+    scopeFacts: buildEstimatorScopeFacts(scopeText),
+  })
+
+  assert.ok(decision.reasons.includes("Multiple trades were detected, which increases pricing risk."))
+})
+
+test("preserves no-facts backward-compatible multi-trade reason", () => {
+  const decision = decide({
+    trade: "painting",
+    scopeText:
+      "Paint walls only, 500 sqft. Excludes drywall repair, electrical, plumbing, flooring, and carpentry.",
+    stack: tradeStack({
+      trades: ["painting", "drywall", "electrical", "plumbing", "flooring", "carpentry"],
+      isMultiTrade: true,
+    }),
+  })
+
+  assert.ok(decision.reasons.includes("Multiple trades were detected, which increases pricing risk."))
 })
 
 test("characterizes simple photo-friendly painting as photo-only allowed", () => {
