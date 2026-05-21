@@ -1,4 +1,5 @@
 import type { PlanIntelligence } from "../plans/types"
+import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import type {
   ComplexityProfile,
   EstimateBasis,
@@ -37,6 +38,7 @@ type DetectorArgs = {
   }
   schedule: ScheduleBlock
   scopeText: string
+  scopeFacts?: EstimatorScopeFacts | null
 }
 
 type Candidate = ProfitLeakItem & {
@@ -77,7 +79,7 @@ function maybeCandidate(args: {
 }
 
 function isBathroomRemodel(args: DetectorArgs): boolean {
-  const scope = args.scopeText.toLowerCase()
+  const scope = (args.scopeFacts?.includedWorkText || args.scopeText).toLowerCase()
   const planRooms = args.planIntelligence?.detectedRooms || []
   const hasBathroom =
     /\bbath(room)?\b/.test(scope) ||
@@ -90,7 +92,7 @@ function isBathroomRemodel(args: DetectorArgs): boolean {
 }
 
 function isWetAreaRemodel(args: DetectorArgs): boolean {
-  const scope = args.scopeText.toLowerCase()
+  const scope = (args.scopeFacts?.includedWorkText || args.scopeText).toLowerCase()
   const planBlob = [
     args.planIntelligence?.summary || "",
     ...(args.planIntelligence?.notes || []),
@@ -111,6 +113,23 @@ function hasExplicitDemo(scope: string): boolean {
 
 function hasExplicitProtection(scope: string): boolean {
   return /\bprotect|protection|mask|masking|containment|cleanup\b/.test(scope)
+}
+
+function getIncludedScopeForProfitReview(args: DetectorArgs): string {
+  return (args.scopeFacts?.includedWorkText || args.scopeText || "").toLowerCase()
+}
+
+function hasTrueMixedTradeProfitRisk(args: DetectorArgs): boolean {
+  if (args.scopeFacts) return args.scopeFacts.trueMixedTrades
+  return !!args.tradeStack?.isMultiTrade
+}
+
+function hasExplicitProtectionForProfitReview(args: DetectorArgs): boolean {
+  if (!args.scopeFacts) return hasExplicitProtection((args.scopeText || "").toLowerCase())
+  return (
+    hasExplicitProtection(getIncludedScopeForProfitReview(args)) ||
+    args.scopeFacts.protectionTrades.length > 0
+  )
 }
 
 function hasLowQuantitySupport(args: DetectorArgs): boolean {
@@ -217,7 +236,7 @@ function suppressOverlappingReviews(
 
 function getAuditCandidates(args: DetectorArgs): Candidate[] {
   const out: Candidate[] = []
-  const scope = (args.scopeText || "").toLowerCase()
+  const scope = getIncludedScopeForProfitReview(args)
   const markup = Number(args.pricing.markup || 0)
   const total = Number(args.pricing.total || 0)
   const base = Number(args.pricing.labor || 0) + Number(args.pricing.materials || 0) + Number(args.pricing.subs || 0)
@@ -232,9 +251,10 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
   const wetAreaRemodel = isWetAreaRemodel(args)
   const quantityWeak = hasLowQuantitySupport(args)
   const shortScope = isShortWrittenScope(args.scopeText || "")
+  const trueMixedTradeRisk = hasTrueMixedTradeProfitRisk(args)
   const remodelCoordinationPressure =
     complexity?.class === "remodel" &&
-    (bathroomRemodel || wetAreaRemodel || !!args.tradeStack?.isMultiTrade || shortScope)
+    (bathroomRemodel || wetAreaRemodel || trueMixedTradeRisk || shortScope)
   const weakMobilizationForRemodel =
     mobilization < Math.max(350, Number(complexity?.minMobilization || 0) * 0.7)
 
@@ -251,10 +271,10 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
         "Complexity profile classified this as remodel work.",
         shortScope ? "Written scope is short for the amount of implied remodel work." : null,
         wetAreaRemodel ? "Wet-area remodel signals are present." : null,
-        args.tradeStack?.isMultiTrade ? "Trade stack indicates multi-trade coordination." : null,
+        trueMixedTradeRisk ? "Trade stack indicates multi-trade coordination." : null,
       ]),
       confidence:
-        wetAreaRemodel || args.tradeStack?.isMultiTrade
+        wetAreaRemodel || trueMixedTradeRisk
           ? 92
           : bathroomRemodel || shortScope
             ? 88
@@ -277,14 +297,16 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
     if (candidate) out.push(candidate)
   }
 
-  if (args.tradeStack?.isMultiTrade && markup <= 20 && !args.priceGuardVerified) {
+  if (trueMixedTradeRisk && markup <= 20 && !args.priceGuardVerified) {
     const candidate = maybeCandidate({
       kind: "likely",
       label: "Coordination burden looks under-carried",
       reason: "This estimate is carrying multi-trade sequencing, supervision, and callback exposure without much coordination room in the margin.",
       evidence: collectEvidence([
         `Markup is ${markup}%.`,
-        `Trade stack includes: ${(args.tradeStack.trades || []).slice(0, 4).join(", ")}.`,
+        args.tradeStack?.trades?.length
+          ? `Trade stack includes: ${args.tradeStack.trades.slice(0, 4).join(", ")}.`
+          : "Shared scope facts indicate true mixed-trade coordination.",
         "Pricing is not verified deterministic.",
         shortScope ? "Written scope is short for the coordination load implied." : null,
       ]),
@@ -295,7 +317,7 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
 
   if (
     wetAreaRemodel &&
-    !hasExplicitProtection(scope) &&
+    !hasExplicitProtectionForProfitReview(args) &&
     mobilization < Math.max(450, Number(complexity?.minMobilization || 0))
   ) {
     const candidate = maybeCandidate({
@@ -352,7 +374,7 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
     if (candidate) out.push(candidate)
   }
 
-  if (lowConfidence && quantityWeak && (complexity?.class === "remodel" || args.tradeStack?.isMultiTrade)) {
+  if (lowConfidence && quantityWeak && (complexity?.class === "remodel" || trueMixedTradeRisk)) {
     const candidate = maybeCandidate({
       kind: "review",
       label: "Quantity support is thin for this remodel carry",
@@ -361,7 +383,7 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
         `PriceGuard confidence is ${args.priceGuard.confidence}.`,
         quantityWeak ? "Quantity/takeoff support is thin." : null,
         complexity?.class === "remodel" ? "Complexity profile classified this as remodel work." : null,
-        args.tradeStack?.isMultiTrade ? "Trade stack indicates multi-trade coordination." : null,
+        trueMixedTradeRisk ? "Trade stack indicates multi-trade coordination." : null,
       ]),
       confidence: 78,
       severity: "medium",
@@ -416,7 +438,7 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
 
   if (
     base > 0 &&
-    args.tradeStack?.isMultiTrade &&
+    trueMixedTradeRisk &&
     markup <= 20 &&
     total < base * 1.18
   ) {
@@ -427,7 +449,9 @@ function getAuditCandidates(args: DetectorArgs): Candidate[] {
       evidence: collectEvidence([
         `Base cost is about $${Math.round(base)} with total about $${Math.round(total)}.`,
         `Markup is ${markup}%.`,
-        `Trade stack includes: ${(args.tradeStack.trades || []).slice(0, 4).join(", ")}.`,
+        args.tradeStack?.trades?.length
+          ? `Trade stack includes: ${args.tradeStack.trades.slice(0, 4).join(", ")}.`
+          : "Shared scope facts indicate true mixed-trade coordination.",
       ]),
       confidence: 73,
       severity: "medium",

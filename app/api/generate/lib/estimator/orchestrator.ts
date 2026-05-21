@@ -629,6 +629,7 @@ if (ctx.planIntelligence?.ok) {
     photoScopeAssist: ctx.photoScopeAssist,
     schedule,
     scopeText: ctx.scopeChange,
+    scopeFacts: ctx.scopeFacts,
   })
 
   const estimateDefenseMode = buildEstimateDefenseMode({
