@@ -58,6 +58,7 @@ import type {
   SplitScopeItem as EstimatorSplitScopeItem,
   TradeStack as EstimatorTradeStack,
 } from "./lib/estimator/types"
+import type { EvidenceAuthorityReadback } from "./lib/estimator/evidenceAuthority"
 import { splitScopeByTrade, isMultiTradeScope, getIncludedScopeText } from "./lib/priceguard/scopeSplitter"
 import {
   runEstimatorOrchestrator,
@@ -7081,6 +7082,7 @@ const bodyKey =
     : ""
 
 const requestId = headerKey || bodyKey || crypto.randomUUID()
+const debugMode = wantsDebug(req)
 
 // Only cache if client actually provided an idempotency key
 const cacheEligible = !!(headerKey || bodyKey)
@@ -7112,7 +7114,7 @@ const workDaysPerWeek = clampWorkDaysPerWeek(body.workDaysPerWeek)
   // -----------------------------
 // IDEMPOTENCY REPLAY (FULL RESPONSE)
 // -----------------------------
-if (cacheEligible && requestId && normalizedEmail) {
+if (!debugMode && cacheEligible && requestId && normalizedEmail) {
   const cached = await tryGetCachedResult({ email: normalizedEmail, requestId })
   if (cached) return NextResponse.json(cached)
 }
@@ -8623,6 +8625,8 @@ const deps = {
   buildEstimateExplanation,
 } satisfies OrchestratorDeps
 
+let evidenceAuthorityReadback: EvidenceAuthorityReadback | null = null
+
 const payload = await runEstimatorOrchestrator({
   ctx,
   aiDraft: {
@@ -8633,7 +8637,12 @@ const payload = await runEstimatorOrchestrator({
     estimateBasis: normalized.estimateBasis ?? null,
   },
   deps,
-  includeDebugEstimateBasis: wantsDebug(req),
+  includeDebugEstimateBasis: debugMode,
+  onEvidenceAuthorityReadback: debugMode
+    ? (readback) => {
+        evidenceAuthorityReadback = readback
+      }
+    : undefined,
   engineDebug: {
     flooring: flooringDet
       ? {
@@ -8674,11 +8683,19 @@ const payload = await runEstimatorOrchestrator({
   },
 })
 
+const responsePayload =
+  debugMode && evidenceAuthorityReadback
+    ? {
+        ...payload,
+        evidenceAuthorityReadback,
+      }
+    : payload
+
 return await respondAndCache({
   email: normalizedEmail,
   requestId,
-  payload,
-  cache: cacheEligible,
+  payload: responsePayload,
+  cache: cacheEligible && !debugMode,
 })
 
   } catch (err) {

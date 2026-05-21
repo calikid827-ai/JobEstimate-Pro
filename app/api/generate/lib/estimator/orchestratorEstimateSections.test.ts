@@ -791,6 +791,17 @@ test("orchestrator builds evidence authority internally without returning it in 
   const capturedReadback = readback
   assert.ok(capturedReadback)
 
+  const debugResponsePayload = {
+    ...payload,
+    evidenceAuthorityReadback: capturedReadback,
+  }
+  assert.equal(debugResponsePayload.pricing.total, payload.pricing.total)
+  assert.equal(debugResponsePayload.pricingSource, payload.pricingSource)
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(debugResponsePayload, "evidenceAuthorityReadback"),
+    true
+  )
+
   const included = capturedReadback.items.find((item) => item.id === "typed-scope:included")
   const boundary = capturedReadback.items.find((item) => item.id === "typed-scope:boundary")
   const userSqft = capturedReadback.items.find((item) => item.id === "quantity:user:measured_sqft")
