@@ -2002,7 +2002,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active product-intelligence task is now Phase 9B-display audit/planning for how to expose Evidence Authority readback safely. Broad display wiring should wait because exposing it would intentionally change response, saved estimate, and UI shape.
+- Next active product-intelligence task is now Phase 9B-estimator-display audit/planning for how to expose Evidence Authority readback beyond debug safely. Normal API, saved estimate, UI, or PDF/customer-output exposure should wait because exposing it would intentionally change response, saved estimate, and UI shape.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2204,5 +2204,5 @@ Final decision:
 - Phase 8D-6B EstimatorScopeFacts photo-estimate reason text gate passes.
 - Phase 8D scope-boundary text/diagnostic cleanup is substantially complete.
 - Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
-- Next active product-intelligence task should be Phase 9B-display audit/planning for how to expose Evidence Authority readback safely. Broad display wiring should wait because exposing it would intentionally change response, saved estimate, and UI shape.
+- Next active product-intelligence task should be Phase 9B-estimator-display audit/planning for how to expose Evidence Authority readback beyond debug safely. Normal API, saved estimate, UI, or PDF/customer-output exposure should wait because exposing it would intentionally change response, saved estimate, and UI shape.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
