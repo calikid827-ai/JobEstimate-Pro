@@ -92,6 +92,13 @@ import {
   inferPhaseVisitsFromSignals,
   syncDescriptionLeadToDocumentType,
 } from "./lib/estimator/routePromptAdjacentDiagnostics"
+import {
+  buildPhotoEstimateDecision as buildRoutePhotoEstimateDecision,
+  buildPhotoScopeAssist as buildRoutePhotoScopeAssist,
+  derivePhotoPricingImpact as deriveRoutePhotoPricingImpact,
+  getEffectiveQuantityInputs as getRouteEffectiveQuantityInputs,
+  scorePhotoPacket as scoreRoutePhotoPacket,
+} from "./lib/estimator/routePhotoEstimateDecision"
 import type { EstimatorScopeFacts } from "../../app/lib/estimator-scope-facts"
 import { deriveSelectedPdfUploadOrNull } from "./lib/plans/pdfSelect"
 import { runPlanIntelligence } from "./lib/plans/orchestrator"
@@ -7330,21 +7337,21 @@ const photoAnalysis =
       })
     : null
 
-const photoPacketScore = scorePhotoPacket(photos ?? [])    
+const photoPacketScore = scoreRoutePhotoPacket(photos ?? [])
 
-const photoImpact = derivePhotoPricingImpact({
+const photoImpact = deriveRoutePhotoPricingImpact({
   analysis: photoAnalysis,
   trade,
   scopeText: scopeChange,
 })
 
-const photoScopeAssist = buildPhotoScopeAssist({
+const photoScopeAssist = buildRoutePhotoScopeAssist({
   photoAnalysis,
   scopeText: scopeChange,
   trade,
 })
 
-const quantityInputs = getEffectiveQuantityInputs({
+const quantityInputs = getRouteEffectiveQuantityInputs({
   measurements,
   scopeText: scopeChange,
   photoAnalysis,
@@ -7353,7 +7360,7 @@ const quantityInputs = getEffectiveQuantityInputs({
 const rooms = parseRoomCount(scopeChange)
 const doors = parseDoorCount(scopeChange)
 
-const photoEstimateDecision = buildPhotoEstimateDecision({
+const photoEstimateDecision = buildRoutePhotoEstimateDecision({
   trade,
   scopeText: scopeChange,
   rooms,
