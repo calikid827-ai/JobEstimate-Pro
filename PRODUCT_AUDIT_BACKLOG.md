@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active task: Phase 9B Evidence Authority readback/display wiring audit or implementation, kept pricing-safe and readback-only unless explicitly scoped otherwise.
+1. Next active task: Phase 9B-display audit/planning for safely exposing Evidence Authority readback. Do not implement broad UI/API/display wiring until response, saved estimate, and UI shape changes are explicitly scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Current next active task is Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active task is Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Those migrations have since advanced through Phase 7; broader route-level X-Ray / confirmation construction remains a Phase 8 audit target.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Current next active task is Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active task is Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -398,7 +398,7 @@ Done note:
 - Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
-- Current next active task is Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise. Prompts, `effectiveScopeChange`, `result.text`, photo pricing behavior, and route/API shape must not change without a scoped review. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active task is Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped. Prompts, `effectiveScopeChange`, `result.text`, photo pricing behavior, and route/API shape must not change without a scoped review. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics EstimatorScopeFacts migration
 
@@ -447,7 +447,7 @@ Done note:
 - Public route/API response shape was preserved.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 6/6, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only route diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active task is Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active task is Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics EstimatorScopeFacts migration
 
@@ -474,7 +474,7 @@ Done note:
 - Combined materials note now uses `trueMixedTrades` instead of only `splitScopes.length`.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This confirmItems/notes-only backend materials diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active task is Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active task is Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8C materialsList.items conditional item gate EstimatorScopeFacts migration
 
@@ -660,7 +660,7 @@ Done note:
 - This was reason-text-only. It did not change `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricingPolicy, `missingInputs`, `derivePhotoPricingImpact`, photo pricing behavior, confidence penalty from `tradeStack.isMultiTrade`, measurement-heavy behavior, raw quantity parsing, prompts, `effectiveScopeChange`, `result.text`, route/API shape, pricing formulas, materials generation, `scopeSplitter`, deterministic engines, docs, UI, payment/auth, `detectTradeStack`, or `buildComplexityProfile`.
 - Validation passed: `routePhotoEstimateDecision.test.ts` 12/12, `routePromptAdjacentDiagnostics.test.ts` 14/14, `routeDisplayDiagnostics.test.ts` 28/28, `estimator-scope-facts.test.ts` 9/9, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - Deferred photo behavior items remain: polluted multi-trade signals can still affect the confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged. These are pricing/policy-adjacent and should stay deferred unless explicitly scoped after launch-readiness review.
-- Phase 8D scope-boundary text/diagnostic cleanup is substantially complete. Next active task should be Phase 9B Evidence Authority readback/display wiring, kept pricing-safe and readback-only unless explicitly scoped otherwise.
+- Phase 8D scope-boundary text/diagnostic cleanup is substantially complete. Next active task should be Phase 9B-display audit/planning for safely exposing Evidence Authority readback; broad UI/API/display wiring should wait until response, saved estimate, and UI shape changes are explicitly scoped.
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 
@@ -954,14 +954,34 @@ Done note:
 
 #### Item: Phase 9B Evidence Authority readback/display wiring
 
-- Problem: The Phase 9A classifier exists, but no runtime or UI readback surface consumes it yet.
+- Problem: Phase 9B-internal now builds Evidence Authority inside the orchestrator, but no runtime payload or UI readback surface exposes it yet.
 - Why it matters: Contractors need a trustworthy estimate-basis story before plan/photo evidence can safely influence measured takeoff or pricing.
 - Risk level: Medium
 - Priority: P1
-- Recommended fix approach: Audit or implement the safest internal readback/display wiring for Evidence Authority without changing pricing, prompts, `result.text`, route/API shape, or customer-facing output semantics unless explicitly scoped.
-- Exact files/components likely involved: Evidence Authority helper, estimator diagnostics/readback surfaces, and possibly app display components in a later scoped UI pass.
+- Recommended fix approach: Completed internal orchestration wiring only. `buildEvidenceAuthorityReadback()` is built inside `runEstimatorOrchestrator()` after final estimate basis finalization/section setup, using `ctx.scopeFacts`, user/parsed sqft from `ctx.quantityInputs`, `finalBasis`, `ctx.photoAnalysis`, and `ctx.planIntelligence`. It remains internal only and is observable only through optional internal/test callback `onEvidenceAuthorityReadback`.
+- Exact files/components involved: `app/api/generate/lib/estimator/orchestrator.ts`, `app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts`.
 - What not to touch: Pricing formulas, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, route/API shape, materials generation, deterministic engines, `scopeSplitter`, plan pricing eligibility, billing/auth, deployment, or customer-facing output semantics unless explicitly scoped.
-- Tests or manual QA needed: Evidence authority tests, adjacent scope/photo/plan gate tests, TypeScript, diff check, and focused manual readback QA if a display surface is touched.
+- Tests or manual QA needed: Completed with evidence authority tests, orchestrator tests, EstimatorScopeFacts tests, photo decision tests, plan candidate gate tests, estimator review tests, `npx tsc --noEmit`, and `git diff --check`.
+- Status: Done
+
+Done note:
+
+- Evidence Authority is not returned in `/api/generate`; `EstimatorPayload` was not changed and `route.ts` was not changed.
+- Route/API response shape, saved estimate shape, PDF/customer output, UI, pricing totals, `pricingSource`, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, and deployment behavior were unchanged.
+- Plan quantity candidates remain non-pricing-authoritative.
+- Photo observations remain review-only.
+- Photo quantities are not newly pricing-authoritative because the orchestrator passes `pricingAuthoritativePhotoQuantityKeys: []`.
+
+#### Item: Phase 9B-display Evidence Authority exposure audit
+
+- Problem: Evidence Authority now exists internally, but exposing it would intentionally change API response, saved estimate, and UI assumptions.
+- Why it matters: The app needs an estimator-facing evidence-basis story, but shape changes should be deliberate and regression-tested.
+- Risk level: Medium
+- Priority: P1
+- Recommended fix approach: Run an audit/planning pass first. Decide whether Evidence Authority belongs in a debug-only payload, a new diagnostics field, an existing estimator diagnostics surface, or a later customer-safe display. Do not change pricing, prompts, `result.text`, customer-facing output semantics, or plan/photo pricing authority.
+- Exact files/components likely involved: `app/api/generate/lib/estimator/types.ts`, `app/api/generate/lib/estimator/orchestrator.ts`, `app/api/generate/route.ts`, app result diagnostics, saved estimate normalization, and PDF/customer-output surfaces only if explicitly scoped.
+- What not to touch: Pricing formulas, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, plan pricing eligibility, billing/auth, deployment, or customer-facing output semantics unless explicitly scoped.
+- Tests or manual QA needed: Response-shape regression, saved estimate normalization checks, Evidence Authority tests, orchestrator tests, estimator diagnostics tests, TypeScript, diff check, and focused manual UI/PDF QA if display is touched.
 - Status: Not started
 
 ## Future Advanced Estimator Features

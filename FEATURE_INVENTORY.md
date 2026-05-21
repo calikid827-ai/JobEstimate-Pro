@@ -539,13 +539,18 @@ Implemented:
   - Covers typed included scope, typed boundary/exclusion scope, user quantities, parsed quantities, deterministic estimate basis, photo observations, photo quantity signals, plan sheet evidence, plan tables/finish schedules, repeated room packages, plan quantity candidates, and future measured plan quantities.
   - Not wired into `/api/generate` and does not change route/API response shape, pricing, prompts, `result.text`, materials generation, deterministic engines, `scopeSplitter`, billing/auth, UI, or deployment.
   - Plan quantity candidates remain non-pricing-authoritative, photo observations remain review-only, and photo quantities only become pricing-authoritative when explicitly marked as already-authoritative through an existing guarded path.
+- Phase 9B-internal Evidence Authority orchestration wiring:
+  - `buildEvidenceAuthorityReadback()` is built inside `runEstimatorOrchestrator()` after final estimate basis finalization/section setup.
+  - Uses `ctx.scopeFacts`, user/parsed sqft from `ctx.quantityInputs`, `finalBasis`, `ctx.photoAnalysis`, and `ctx.planIntelligence`.
+  - Internal only through optional internal/test callback `onEvidenceAuthorityReadback`; not returned in `/api/generate`, not added to `EstimatorPayload`, and not wired into route, UI, saved estimates, PDFs, or customer output.
+  - Does not change route/API response shape, saved estimate shape, pricing totals, `pricingSource`, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, UI, or deployment.
 
 Known weaknesses:
 
 - Hard quantity extraction is still mostly heuristic.
 - Evidence-strength readback is readiness/customer-facing evidence messaging, not true full takeoff measurement.
 - Schedule, finish table, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate diagnostics are diagnostic-only and still conservative.
-- Evidence Authority readback is helper-level only; Phase 9B still needs the safest readback/display wiring before it benefits estimator-facing workflows.
+- Evidence Authority readback is internal-only; Phase 9B-display still needs an explicit exposure plan because showing it would intentionally change response, saved estimate, and UI shape.
 - Actual pricing handoff activation, SF/LF, and measured fixture/device counts remain limited.
 - PDF render failure can degrade analysis to indexed/text/filename-level support.
 - Estimate PDFs include a compact customer-safe plan evidence/readiness summary, but this is not a full measured takeoff.
@@ -596,7 +601,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active product task: Phase 9B should audit or implement the safest Evidence Authority readback/display wiring without changing pricing, prompts, `result.text`, route/API shape, or customer-facing output semantics unless explicitly scoped. Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
+- Next active product task: Phase 9B-display audit/planning for how to expose Evidence Authority readback safely. Do not implement broad UI/API/display wiring until response, saved estimate, and UI shape changes are explicitly scoped. Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -637,7 +642,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Audit or implement Phase 9B Evidence Authority readback/display wiring while keeping pricing, prompts, `result.text`, route/API shape, and customer-facing output semantics unchanged unless explicitly scoped.
+1. Audit Phase 9B-display options for safely exposing Evidence Authority readback before implementing UI/API wiring, since exposure would intentionally change response, saved estimate, and UI shape.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.
