@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-estimator task: Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Do not change prompts, `effectiveScopeChange`, `result.text`, pricing policy, or route/API shape without a scoped review.
+1. Next active smart-estimator task: Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Do not change prompts, `effectiveScopeChange`, `result.text`, pricing policy, photo pricing behavior, or route/API shape without a scoped review.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Those migrations have since advanced through Phase 7; broader route-level X-Ray / confirmation construction remains a Phase 8 audit target.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -398,7 +398,7 @@ Done note:
 - Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
-- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Prompts and `result.text` must not change without audit first. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Prompts and `result.text` must not change without audit first. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics EstimatorScopeFacts migration
 
@@ -447,7 +447,7 @@ Done note:
 - Public route/API response shape was preserved.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 6/6, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only route diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, and Phase 8D-4A route display diagnostics gating are complete below. Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, and Phase 8D-4B estimate explanation gating are complete below. Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics EstimatorScopeFacts migration
 
@@ -474,7 +474,7 @@ Done note:
 - Combined materials note now uses `trueMixedTrades` instead of only `splitScopes.length`.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This confirmItems/notes-only backend materials diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, and Phase 8D-4A route display diagnostics gating are complete below. Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, and Phase 8D-4B estimate explanation gating are complete below. Current next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8C materialsList.items conditional item gate EstimatorScopeFacts migration
 
@@ -568,7 +568,29 @@ Done note:
 - True mixed renovation diagnostics remain preserved.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 25/25, `routePromptAdjacentDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This was a display-only diagnostic safety gate. It did not change prompts, `effectiveScopeChange`, `result.text`, route/API shape, pricing, materials generation, `scopeSplitter`, deterministic engines, docs, `detectTradeStack`, `buildEstimateExplanation`, `buildPhotoEstimateDecision`, or `profitLeakDetector`.
-- Next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8D-4B estimate explanation multi-trade gating is complete in the next item.
+
+#### Item: Phase 8D-4B estimate explanation multi-trade text safety gate
+
+- Problem: After Phase 8D-4A, `buildEstimateExplanation()` could still add `Multiple trades require sequencing and coordination.` from upstream `complexityProfile.multiTrade` even when shared facts showed only one included trade.
+- Why it matters: Diagnostic estimate explanation text should not imply multi-trade sequencing when extra trades appear only in excluded, by-others, protection-only, coordination-only, existing/to-remain, owner/customer-supplied material-only, or boundary-only context.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a narrow diagnostic estimate-explanation gate. `buildEstimateExplanation()` now receives optional EstimatorScopeFacts through the orchestrator and only adds the multi-trade explanation when facts are absent for backward compatibility or `scopeFacts.trueMixedTrades` is true.
+- Exact files/components involved: `app/api/generate/route.ts`, `app/api/generate/lib/estimator/orchestrator.ts`, `app/api/generate/lib/estimator/routeDisplayDiagnostics.ts`, `app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts`, `app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts`.
+- What not to touch: Prompts, `effectiveScopeChange`, `result.text`, route/API response shape, pricing policy/formulas, materials generation, `scopeSplitter`, deterministic engines, docs, `detectTradeStack`, `buildComplexityProfile`, `buildPhotoEstimateDecision`, or `profitLeakDetector`.
+- Tests or manual QA needed: Focused route display diagnostics tests plus adjacent prompt-adjacent diagnostics, orchestrator estimate-section, EstimatorScopeFacts, UI review-stack tests, TypeScript, and diff check.
+- Status: Done
+
+Done note:
+
+- `buildEstimateExplanation()` now receives optional scope facts.
+- The diagnostic estimate explanation text `Multiple trades require sequencing and coordination.` is only added when facts are absent for backward compatibility or `scopeFacts.trueMixedTrades` is true.
+- Polluted upstream `complexityProfile.multiTrade` no longer creates this false explanation for single-included-trade scopes.
+- True mixed renovation explanation remains preserved.
+- Validation passed: `orchestratorEstimateSections.test.ts` 3/3, `routeDisplayDiagnostics.test.ts` 28/28, `routePromptAdjacentDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- This was a diagnostic estimate-explanation text safety gate. It did not change prompts, `effectiveScopeChange`, `result.text`, route/API shape, pricing policy/formulas, materials generation, `scopeSplitter`, deterministic engines, docs, `detectTradeStack`, `buildComplexityProfile`, `buildPhotoEstimateDecision`, or `profitLeakDetector`.
+- Next active smart-estimator priority is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 

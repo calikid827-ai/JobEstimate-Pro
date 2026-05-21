@@ -1838,7 +1838,7 @@ Final decision:
 - Phase 8A route-level display diagnostics migration is complete in the next entry.
 - Phase 8B materials diagnostics migration is complete in a later entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
@@ -1882,7 +1882,7 @@ Final decision:
 - Phase 8A EstimatorScopeFacts route-level display diagnostics migration passes.
 - Phase 8B materials diagnostics migration is complete in the next entry.
 - Phase 8C materials item gate migration is complete in a later entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
@@ -1926,7 +1926,7 @@ Architecture safety:
 Final decision:
 - Phase 8B EstimatorScopeFacts materials diagnostics migration passes.
 - Phase 8C materials item gate migration is complete in the next entry.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Phase 8D follow-up is next because coordination append text and schedule/rationale multi-trade text are now gated, but other prompt-adjacent or diagnostic text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
@@ -1968,7 +1968,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8C EstimatorScopeFacts materials item gate migration passes.
-- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Current next active smart-estimator task is Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Phase 8D follow-up is next because coordination append text, schedule/rationale multi-trade text, and route display multi-trade diagnostics are now gated, but other diagnostic/text paths may still use raw scope, `tradeStack`, or `complexityProfile`; prompts and `result.text` must not change without audit first.
 - Next manual QA should happen after the remaining Phase 8D prompt-adjacent / diagnostic text audit or after a focused backend verification pass.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
@@ -2002,7 +2002,7 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-2 EstimatorScopeFacts coordination text gate passes.
-- Next active smart-estimator task is a Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Next active smart-estimator task is a Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
 
 ---
@@ -2065,5 +2065,36 @@ Architecture safety:
 
 Final decision:
 - Phase 8D-4A EstimatorScopeFacts route display multi-trade diagnostics gate passes.
-- Next active smart-estimator task is a Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `buildEstimateExplanation`, `profitLeakDetector`, and photo-estimate decision text.
+- Phase 8D-4B estimate explanation multi-trade gating is complete in the next entry.
+- Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 35 — Phase 8D-4B EstimatorScopeFacts Estimate Explanation Multi-Trade Gate
+
+Status: PASS
+
+Scope:
+- Phase 8D-4B gated diagnostic estimate explanation multi-trade text with EstimatorScopeFacts.
+- `buildEstimateExplanation()` now receives optional scope facts through the orchestrator.
+- `Multiple trades require sequencing and coordination.` is only added when facts are absent for backward compatibility or `scopeFacts.trueMixedTrades` is true.
+- Polluted upstream `complexityProfile.multiTrade` no longer creates this false explanation for single-included-trade scopes.
+- True mixed renovation explanation remains preserved.
+
+Validation:
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/orchestratorEstimateSections.test.ts` passed 3/3.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routeDisplayDiagnostics.test.ts` passed 28/28.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/estimator/routePromptAdjacentDiagnostics.test.ts` passed 14/14.
+- `node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/app/lib/estimator-scope-facts.test.ts` passed 9/9.
+- `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` passed 41/41.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+
+Architecture safety:
+- This was a diagnostic estimate-explanation text safety gate.
+- It intentionally did not change prompts, `effectiveScopeChange`, `result.text`, route/API response shape, pricing policy/formulas, materials generation, `scopeSplitter`, deterministic engines, docs, `detectTradeStack`, `buildComplexityProfile`, `buildPhotoEstimateDecision`, or `profitLeakDetector`.
+
+Final decision:
+- Phase 8D-4B EstimatorScopeFacts estimate explanation multi-trade gate passes.
+- Next active smart-estimator task is a Phase 8D follow-up audit of remaining diagnostic/text paths that still use raw scope, `tradeStack`, or `complexityProfile`, especially `profitLeakDetector` and photo-estimate decision text.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
