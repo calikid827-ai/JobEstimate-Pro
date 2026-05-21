@@ -226,3 +226,7 @@ export function shouldAddCombinedMaterialsNote(args: {
 export function shouldShowTrueMixedTradeDiagnostic(facts: EstimatorScopeFacts) {
   return facts.trueMixedTrades
 }
+
+export function shouldShowMultiTradeExplanation(facts?: EstimatorScopeFacts | null) {
+  return !facts || shouldShowTrueMixedTradeDiagnostic(facts)
+}

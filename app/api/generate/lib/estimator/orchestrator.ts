@@ -136,6 +136,7 @@ export type OrchestratorDeps = {
   scopeSignals?: ScopeSignals | null
   complexityProfile: ComplexityProfile | null
   priceGuard: PriceGuardReport
+  scopeFacts?: EstimatorScopeFacts | null
   }) => EstimateExplanation
 }
 
@@ -580,6 +581,7 @@ if (ctx.planIntelligence?.ok) {
     scopeSignals: ctx.scopeSignals,
     complexityProfile: ctx.complexityProfile,
     priceGuard,
+    scopeFacts: ctx.scopeFacts,
   })
 
   const scopeXRay = deps.buildScopeXRay({

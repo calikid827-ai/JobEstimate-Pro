@@ -541,3 +541,27 @@ test("orchestrator payload exposes combined structured estimateSections when mul
     4260
   )
 })
+
+test("orchestrator passes scope facts into estimate explanation builder", async () => {
+  let receivedTrueMixedTrades: boolean | null = null
+  let receivedIncludedTrades: string[] = []
+  const deps = makeDeps()
+  deps.buildEstimateExplanation = (args) => {
+    receivedTrueMixedTrades = args.scopeFacts?.trueMixedTrades ?? null
+    receivedIncludedTrades = args.scopeFacts?.includedTrades ?? []
+    return makeExplanation()
+  }
+
+  await runEstimatorOrchestrator({
+    ctx: makeContext({
+      scopeChange: "Paint walls. Flooring protection only.",
+      scopeFacts: buildEstimatorScopeFacts("Paint walls. Flooring protection only."),
+    }),
+    aiDraft,
+    deps,
+    includeDebugEstimateBasis: false,
+  })
+
+  assert.equal(receivedTrueMixedTrades, false)
+  assert.deepEqual(receivedIncludedTrades, ["painting"])
+})

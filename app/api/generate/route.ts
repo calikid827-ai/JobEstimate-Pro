@@ -82,6 +82,7 @@ import {
   shouldAddKitchenFlooringItems,
   shouldAddKitchenPaintItems,
   shouldShowTrueMixedTradeDiagnostic,
+  shouldShowMultiTradeExplanation,
 } from "./lib/estimator/routeDisplayDiagnostics"
 import {
   appendExecutionPlanSentence,
@@ -3786,6 +3787,7 @@ function buildEstimateExplanation(args: {
   scopeSignals?: EstimatorScopeSignals | null
   complexityProfile: EstimatorComplexityProfile | null
   priceGuard: EstimatorPriceGuardReport
+  scopeFacts?: EstimatorScopeFacts | null
 }): EstimatorEstimateExplanation {
   const priceReasons: string[] = []
   const scheduleReasons: string[] = []
@@ -3829,7 +3831,10 @@ function buildEstimateExplanation(args: {
     scheduleReasons.push("Permit/inspection coordination may extend total duration.")
   }
 
-  if (args.complexityProfile?.multiTrade) {
+  if (
+    args.complexityProfile?.multiTrade &&
+    shouldShowMultiTradeExplanation(args.scopeFacts)
+  ) {
     scheduleReasons.push("Multiple trades require sequencing and coordination.")
   }
 

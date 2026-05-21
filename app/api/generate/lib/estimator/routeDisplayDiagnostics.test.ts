@@ -19,6 +19,7 @@ import {
   shouldAddKitchenPaintItems,
   shouldConfirmInteriorTrimFootage,
   shouldConfirmPatchTextureExtent,
+  shouldShowMultiTradeExplanation,
   shouldShowTrueMixedTradeDiagnostic,
 } from "./routeDisplayDiagnostics"
 
@@ -166,6 +167,34 @@ test("multi-trade diagnostic gate suppresses carpentry protection and by-others 
 
   assert.equal(scopeFacts.baseboardReplacementRemovalContext, true)
   assert.equal(shouldShowTrueMixedTradeDiagnostic(scopeFacts), false)
+})
+
+test("estimate explanation multi-trade gate stays backward-compatible without facts", () => {
+  assert.equal(shouldShowMultiTradeExplanation(), true)
+  assert.equal(shouldShowMultiTradeExplanation(null), true)
+})
+
+test("estimate explanation multi-trade gate suppresses boundary-only trade mentions", () => {
+  const cases = [
+    "Paint walls only in living room and hallway. Two coats, contractor-supplied paint, masking, floor protection, cleanup, and customer approval. Excludes drywall repair, skim coat, texture matching, trim, ceiling paint, electrical, plumbing, flooring, and carpentry.",
+    "Electrical rough-in for 4 vanity lights and 2 GFCI outlets. Drywall patching and painting by others. Owner-supplied light fixtures. Include permit/inspection coordination, access through open walls, cleanup, and customer approval.",
+    "Waterproof shower walls and install tile, grout, and trim. Plumbing by others. Glass by others. Owner-supplied tile and fixtures. Include demo, cement board/backer, membrane, cleanup, protection, and customer approval.",
+    "Install wallcovering in lobby walls with wall prep and primer included. Painting, electrical, and furniture moving by others. Owner-supplied wallcovering. Include layout, pattern match, adhesive, cleanup, protection, and customer approval.",
+    "Replace 120 LF of baseboards in hallway. Painting by others. Flooring protection only. Existing flooring to remain. Include caulk/fill prep for painter, cleanup, and customer approval.",
+  ]
+
+  for (const scope of cases) {
+    assert.equal(shouldShowMultiTradeExplanation(facts(scope)), false)
+  }
+})
+
+test("estimate explanation multi-trade gate preserves true mixed renovation", () => {
+  const scopeFacts = facts(
+    "Demo bathroom finishes, rough-in electrical and plumbing, install shower tile, flooring, baseboards, and paint walls."
+  )
+
+  assert.equal(scopeFacts.trueMixedTrades, true)
+  assert.equal(shouldShowMultiTradeExplanation(scopeFacts), true)
 })
 
 test("materials confirmations suppress patch primer notes when patch texture is excluded", () => {
