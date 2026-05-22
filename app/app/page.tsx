@@ -620,6 +620,23 @@ type CustomerOutputReadinessItem = {
   details?: string[]
 }
 
+type EstimatorReviewSummaryTone = "good" | "warning" | "danger" | "neutral"
+
+type EstimatorReviewSummarySection = {
+  title: string
+  status: string
+  tone: EstimatorReviewSummaryTone
+  items: string[]
+}
+
+type EstimatorReviewSummary = {
+  headline: string
+  status: "ready" | "needs_review"
+  tone: EstimatorReviewSummaryTone
+  summary: string
+  sections: EstimatorReviewSummarySection[]
+}
+
 const normalizePlanStrings = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.map((x: unknown) => String(x).trim()).filter(Boolean)
@@ -3656,6 +3673,195 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
   planIntelligence,
   priceGuardReview,
   schedule,
+])
+
+const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
+  if (!result) return null
+
+  const cleanList = (values: Array<string | null | undefined>, max = 3) => {
+    const seen = new Set<string>()
+    const out: string[] = []
+
+    for (const raw of values) {
+      if (out.length >= max) break
+      const value = String(raw || "").replace(/\s+/g, " ").trim()
+      const key = value.toLowerCase()
+      if (!value || seen.has(key)) continue
+      seen.add(key)
+      out.push(value)
+    }
+
+    return out
+  }
+
+  const readinessNeedsReview = customerOutputReadinessItems.length > 0
+  const priceGuardNeedsReview = !!priceGuardReview && priceGuardReview.level !== "strong"
+  const profitNeedsReview =
+    profitProtection?.status === "danger" ||
+    profitProtection?.status === "warning" ||
+    (priceGuardReview?.contractorRiskNotes.length || 0) > 0
+  const planEvidence = planIntelligence?.evidenceStrength ?? null
+  const planNeedsReview =
+    !!planEvidence &&
+    (planEvidence.level === "review_only" ||
+      planEvidence.confirmationNeeded ||
+      planEvidence.hardQuantityCount === 0)
+  const photoHasReviewNotes =
+    !!photoAnalysis ||
+    !!photoScopeAssist?.missingScopeFlags.length ||
+    !!photoScopeAssist?.suggestedAdditions.length
+
+  const needsReview =
+    readinessNeedsReview ||
+    priceGuardNeedsReview ||
+    profitNeedsReview ||
+    planNeedsReview
+
+  const pricingBasisItems = cleanList(
+    [
+      `Pricing source: ${pricingSource}`,
+      priceGuard?.status ? `PriceGuard status: ${priceGuard.status}` : null,
+      priceGuardVerified ? "PriceGuard deterministic safeguards are verified." : null,
+      scopeXRay?.pricingMethod?.detSource
+        ? `Engine: ${scopeXRay.pricingMethod.detSource}`
+        : null,
+      scopeXRay?.pricingMethod?.anchorId
+        ? `Anchor: ${scopeXRay.pricingMethod.anchorId}`
+        : null,
+    ],
+    4
+  )
+
+  const scopeWarningItems = cleanList(
+    [
+      ...customerOutputReadinessItems
+        .filter((item) =>
+          /scope|unsupported|customer-ready/i.test(`${item.label} ${item.message}`)
+        )
+        .flatMap((item) => [item.message, ...(item.details || [])]),
+      ...(priceGuardReview?.missedScopeWarnings || []),
+      ...(priceGuardReview?.scopeClarityWarnings || []),
+    ],
+    3
+  )
+
+  const exclusionItems = cleanList(
+    [
+      ...customerOutputReadinessItems
+        .filter((item) => /exclusion|assumption|boundary/i.test(`${item.label} ${item.message}`))
+        .flatMap((item) => item.details || [item.message]),
+      ...(priceGuardReview?.suggestedExclusions || []),
+      ...(estimateDefenseMode?.exclusionNotes || []),
+    ],
+    3
+  )
+
+  const confirmationItems = cleanList(
+    [
+      ...customerOutputReadinessItems.flatMap((item) => item.details || [item.message]),
+      ...(materialsList?.confirmItems || []),
+      ...(areaScopeBreakdown?.missingConfirmations || []),
+    ],
+    4
+  )
+
+  const planPhotoItems = cleanList(
+    [
+      planEvidence
+        ? `Plan status: ${planEvidence.label}. ${planEvidence.summary || ""}`
+        : null,
+      planNeedsReview
+        ? "Plan-derived quantities remain review-only until confirmed."
+        : null,
+      photoAnalysis?.summary
+        ? `Photo notes: ${photoAnalysis.summary}`
+        : null,
+      ...(photoScopeAssist?.missingScopeFlags || []),
+      ...(photoScopeAssist?.suggestedAdditions || []),
+    ],
+    4
+  )
+
+  const profitItems = cleanList(
+    [
+      profitProtection
+        ? `Margin status: ${profitProtection.status.replace(/_/g, " ")} (${profitProtection.grossMarginPct}% gross margin).`
+        : null,
+      ...(profitProtection?.warnings || []),
+      ...(priceGuardReview?.contractorRiskNotes || []),
+    ],
+    3
+  )
+
+  const sections: EstimatorReviewSummarySection[] = [
+    {
+      title: "Pricing Basis",
+      status: priceGuardVerified || pricingSource === "deterministic" ? "Supported" : "Review",
+      tone: priceGuardVerified || pricingSource === "deterministic" ? "good" : "warning",
+      items: pricingBasisItems,
+    },
+    {
+      title: "Scope Warnings",
+      status: scopeWarningItems.length ? "Needs review" : "Clear",
+      tone: scopeWarningItems.length ? "warning" : "good",
+      items: scopeWarningItems.length ? scopeWarningItems : ["No major scope-warning items are surfaced in the compact review."],
+    },
+    {
+      title: "Excluded / By Others",
+      status: exclusionItems.length ? "Review boundaries" : "No major items",
+      tone: exclusionItems.length ? "warning" : "neutral",
+      items: exclusionItems.length ? exclusionItems : ["No major exclusion or by-others items are surfaced in the compact review."],
+    },
+    {
+      title: "Confirmations Needed",
+      status: confirmationItems.length ? "Confirm" : "Low",
+      tone: confirmationItems.length ? "warning" : "good",
+      items: confirmationItems.length ? confirmationItems : ["No major confirmation items are surfaced in the compact review."],
+    },
+    {
+      title: "Photo / Plan Notes",
+      status: planNeedsReview || photoHasReviewNotes ? "Review support" : "No added notes",
+      tone: planNeedsReview ? "warning" : photoHasReviewNotes ? "neutral" : "good",
+      items: planPhotoItems.length ? planPhotoItems : ["No photo or plan review notes are surfaced in the compact review."],
+    },
+    {
+      title: "Profit / Margin Checks",
+      status: profitNeedsReview ? "Needs review" : "Clear",
+      tone: profitProtection?.status === "danger" ? "danger" : profitNeedsReview ? "warning" : "good",
+      items: profitItems.length ? profitItems : ["No major margin or profit-risk items are surfaced in the compact review."],
+    },
+    {
+      title: "Advanced Details",
+      status: "Available below",
+      tone: "neutral",
+      items: ["Full PriceGuard Review, Plan Review Summary, line-item detail, and Estimator Diagnostics remain available below."],
+    },
+  ]
+
+  return {
+    headline: needsReview ? "Needs estimator review" : "Looks ready to send",
+    status: needsReview ? "needs_review" : "ready",
+    tone: needsReview ? "warning" : "good",
+    summary: needsReview
+      ? "Review the highlighted scope, evidence, confirmation, or margin items before sending."
+      : "No major compact review blockers are surfaced. Detailed diagnostics are still available below.",
+    sections,
+  }
+}, [
+  result,
+  customerOutputReadinessItems,
+  priceGuardReview,
+  pricingSource,
+  priceGuard,
+  priceGuardVerified,
+  planIntelligence,
+  photoAnalysis,
+  photoScopeAssist,
+  profitProtection,
+  scopeXRay,
+  estimateDefenseMode,
+  materialsList,
+  areaScopeBreakdown,
 ])
 
 function applySuggestedPrice() {
@@ -12740,6 +12946,141 @@ function CustomerOutputReadinessPanel({
   )
 }
 
+function EstimatorReviewSummaryPanel({
+  summary,
+}: {
+  summary: EstimatorReviewSummary | null
+}) {
+  if (!summary) return null
+
+  const toneStyle = (tone: EstimatorReviewSummaryTone) => {
+    if (tone === "danger") {
+      return { border: "#fecaca", bg: "#fef2f2", color: "#991b1b" }
+    }
+
+    if (tone === "warning") {
+      return { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
+    }
+
+    if (tone === "good") {
+      return { border: "#bbf7d0", bg: "#f0fdf4", color: "#166534" }
+    }
+
+    return { border: "#e5e7eb", bg: "#f9fafb", color: "#374151" }
+  }
+  const headerTone = toneStyle(summary.tone)
+
+  return (
+    <details
+      data-no-print
+      open={summary.status === "needs_review"}
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: `1px solid ${headerTone.border}`,
+        borderRadius: 14,
+        background: headerTone.bg,
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+          color: "#111827",
+        }}
+      >
+        Estimator Review Summary
+        <span
+          style={{
+            marginLeft: 8,
+            padding: "2px 7px",
+            border: `1px solid ${headerTone.border}`,
+            borderRadius: 999,
+            background: "#fff",
+            color: headerTone.color,
+            fontSize: 11,
+            fontWeight: 900,
+            verticalAlign: "middle",
+          }}
+        >
+          {summary.headline}
+        </span>
+      </summary>
+
+      <p style={{ margin: "8px 0 0", fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+        {summary.summary}
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+          gap: 8,
+          marginTop: 10,
+        }}
+      >
+        {summary.sections.map((section) => {
+          const sectionTone = toneStyle(section.tone)
+
+          return (
+            <div
+              key={`estimator-review-summary-${section.title}`}
+              style={{
+                padding: 10,
+                border: `1px solid ${sectionTone.border}`,
+                borderRadius: 8,
+                background: "#fff",
+                minWidth: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
+                  {section.title}
+                </div>
+                <div
+                  style={{
+                    flexShrink: 0,
+                    padding: "1px 6px",
+                    border: `1px solid ${sectionTone.border}`,
+                    borderRadius: 999,
+                    background: sectionTone.bg,
+                    color: sectionTone.color,
+                    fontSize: 10,
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {section.status}
+                </div>
+              </div>
+
+              <ul style={{ margin: "7px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
+                {section.items.slice(0, 4).map((item, index) => (
+                  <li
+                    key={`estimator-review-summary-${section.title}-${index}`}
+                    style={{ fontSize: 12, color: "#4b5563" }}
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
+      </div>
+    </details>
+  )
+}
+
   // -------------------------
   // UI
   // -------------------------
@@ -13436,6 +13777,8 @@ function CustomerOutputReadinessPanel({
         </details>
       </>
     )}
+
+    <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
 
     <details
       data-no-print
