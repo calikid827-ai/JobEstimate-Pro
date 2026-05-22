@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are Smart Questions V1 polish / visual QA, Smart Questions V2 pricing-authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid pricing-authoritative changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are Smart Questions V2 pricing-authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, plan-to-scope reconciliation audit, or mobile/browser visual QA for the polished Smart Questions panel. Avoid pricing-authoritative changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1020,11 +1020,15 @@ Deferred note:
 Done note:
 
 - Smart Questions panel is estimator-only and `data-no-print`.
+- Smart Questions V1 polish is complete in commit `Polish smart questions review panel`: the panel now appears after `EstimatorReviewSummaryPanel` inside the generated-result estimator review flow and no longer appears before the result.
+- The panel is now labeled `Quick Clarifications`, remains compact/collapsible and `data-no-print`, hides when there are no questions, opens only for unanswered high-priority questions, and collapses when all visible questions are answered.
+- Contractor-facing copy now states that confirmations are saved for this on-screen review only; price, proposal text, PDFs, and saved estimates are unchanged; and answered items are estimator notes only with price unchanged.
 - Confirmed answer authority labels include `user_confirmed_quantity`, `scope_boundary_confirmation`, `materials_confirmation`, `schedule_confirmation`, `review_only`, and `needs_followup`.
 - All confirmed answers keep `pricingEligibleNow: false`; there are no pricing-authoritative confirmed answers in V1.
 - Answers are not sent to `/api/generate`, not saved to estimate history/localStorage history, and not included in PDFs/customer output.
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 - No backend/API/saved/PDF/pricing/prompt/result/materials/deterministic/billing behavior changed.
+- Smart Questions polish validation passed with Smart Questions tests, `npx tsc --noEmit`, and `git diff --check`; no browser/mobile visual QA was run.
 
 ## Future Advanced Estimator Features
 
