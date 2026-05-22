@@ -103,6 +103,13 @@ import { compareEstimateToHistory } from "./lib/price-guard"
 import { checkScopeQuality } from "./lib/scope-quality-check"
 import { buildPriceGuardReview } from "./lib/priceguard-review"
 import { buildCustomerScopeReviewGuard } from "./lib/customer-scope-drift"
+import {
+  buildConfirmedClarification,
+  buildSmartQuestions,
+  type ConfirmedClarification,
+  type ConfirmedClarificationAnswer,
+  type SmartQuestion,
+} from "./lib/smart-questions"
 import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
@@ -2815,6 +2822,9 @@ const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
 const [planIntelligence, setPlanIntelligence] = useState<PlanIntelligence>(null)
+const [confirmedClarifications, setConfirmedClarifications] = useState<
+  Record<string, ConfirmedClarification>
+>({})
 const [estimateSkeletonHandoff, setEstimateSkeletonHandoff] =
   useState<PlanEstimateSkeletonHandoff>(null)
 const [estimateStructureConsumption, setEstimateStructureConsumption] =
@@ -3863,6 +3873,64 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
   materialsList,
   areaScopeBreakdown,
 ])
+
+const smartQuestions = useMemo(
+  () =>
+    buildSmartQuestions({
+      selectedTrade: trade,
+      scopeText: scopeChange,
+      scopeQualityWarnings: scopeQuality.warnings,
+      priceGuardReview,
+      customerOutputReadinessItems,
+      materialsConfirmItems: materialsList?.confirmItems || [],
+      areaMissingConfirmations: areaScopeBreakdown?.missingConfirmations || [],
+      scopeXRayNeedsConfirmation: scopeXRay?.needsConfirmation || [],
+      photoScopeAssist,
+      planEvidenceStrength: planIntelligence?.evidenceStrength || null,
+      limit: 3,
+    }),
+  [
+    trade,
+    scopeChange,
+    scopeQuality.warnings,
+    priceGuardReview,
+    customerOutputReadinessItems,
+    materialsList,
+    areaScopeBreakdown,
+    scopeXRay,
+    photoScopeAssist,
+    planIntelligence,
+  ]
+)
+
+const smartQuestionAnswers = useMemo(() => {
+  const visibleQuestionIds = new Set(smartQuestions.map((question) => question.id))
+  return smartQuestions
+    .map((question) => confirmedClarifications[question.id])
+    .filter(
+      (answer): answer is ConfirmedClarification =>
+        !!answer && visibleQuestionIds.has(answer.questionId)
+    )
+}, [smartQuestions, confirmedClarifications])
+
+function confirmSmartQuestionAnswer(
+  question: SmartQuestion,
+  answer: ConfirmedClarificationAnswer
+) {
+  const clarification = buildConfirmedClarification({ question, answer })
+  setConfirmedClarifications((prev) => ({
+    ...prev,
+    [question.id]: clarification,
+  }))
+}
+
+function clearSmartQuestionAnswer(questionId: string) {
+  setConfirmedClarifications((prev) => {
+    const next = { ...prev }
+    delete next[questionId]
+    return next
+  })
+}
 
 function applySuggestedPrice() {
   const targetPrice = Number(smartSuggestedPrice || 0)
@@ -13081,6 +13149,284 @@ function EstimatorReviewSummaryPanel({
   )
 }
 
+function SmartQuestionsPanel({
+  questions,
+  answers,
+  onConfirm,
+  onClear,
+}: {
+  questions: SmartQuestion[]
+  answers: ConfirmedClarification[]
+  onConfirm: (question: SmartQuestion, answer: ConfirmedClarificationAnswer) => void
+  onClear: (questionId: string) => void
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [units, setUnits] = useState<
+    Record<string, "sqft" | "linear_ft" | "each" | "rooms" | "days">
+  >({})
+  const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]))
+
+  if (!questions.length) return null
+
+  const setDraft = (questionId: string, value: string) => {
+    setDrafts((prev) => ({ ...prev, [questionId]: value }))
+  }
+  const setUnit = (
+    questionId: string,
+    value: "sqft" | "linear_ft" | "each" | "rooms" | "days"
+  ) => {
+    setUnits((prev) => ({ ...prev, [questionId]: value }))
+  }
+  const formatAnswer = (answer: ConfirmedClarification) => {
+    if (answer.answer.type === "yes_no") return answer.answer.value ? "Yes" : "No"
+    if (answer.answer.type === "number_unit") {
+      return `${answer.answer.value.toLocaleString()} ${answer.answer.unit.replace(/_/g, " ")}`
+    }
+    return answer.answer.value
+  }
+
+  return (
+    <section
+      data-no-print
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #bfdbfe",
+        borderRadius: 14,
+        background: "#eff6ff",
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#1d4ed8" }}>
+        Smart Questions
+      </div>
+      <div style={{ marginTop: 3, fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
+        Answering these stores local estimator confirmations only. V1 answers do not change pricing,
+        generated text, PDFs, or saved estimates.
+      </div>
+
+      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+        {questions.map((question) => {
+          const confirmed = answerByQuestion.get(question.id)
+          const draft = drafts[question.id] || ""
+          const unit = units[question.id] || "sqft"
+
+          return (
+            <div
+              key={question.id}
+              style={{
+                padding: 10,
+                border: "1px solid #dbeafe",
+                borderRadius: 8,
+                background: "#fff",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
+                {question.prompt}
+              </div>
+              {question.helpText && (
+                <div style={{ marginTop: 3, fontSize: 11, color: "#6b7280", lineHeight: 1.4 }}>
+                  {question.helpText}
+                </div>
+              )}
+
+              {confirmed ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    marginTop: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: "2px 7px",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: 999,
+                      background: "#f0fdf4",
+                      color: "#166534",
+                      fontSize: 11,
+                      fontWeight: 900,
+                    }}
+                  >
+                    Confirmed: {formatAnswer(confirmed)}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#4b5563" }}>
+                    {confirmed.authority.replace(/_/g, " ")}; not pricing eligible in V1
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onClear(question.id)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      color: "#374151",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginTop: 8 }}>
+                  {question.answerType === "yes_no" && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => onConfirm(question, { type: "yes_no", value: true })}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #bfdbfe",
+                          background: "#eff6ff",
+                          color: "#1d4ed8",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onConfirm(question, { type: "yes_no", value: false })}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          color: "#374151",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                        }}
+                      >
+                        No
+                      </button>
+                    </div>
+                  )}
+
+                  {question.answerType === "single_choice" && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <select
+                        value={draft}
+                        onChange={(event) => setDraft(question.id, event.target.value)}
+                        style={{
+                          flex: "1 1 180px",
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                        }}
+                      >
+                        <option value="">Choose one</option>
+                        {(question.options || []).map((option) => (
+                          <option key={`${question.id}-${option}`} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!draft}
+                        onClick={() =>
+                          onConfirm(question, { type: "single_choice", value: draft })
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #bfdbfe",
+                          background: draft ? "#eff6ff" : "#f3f4f6",
+                          color: draft ? "#1d4ed8" : "#9ca3af",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: draft ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  )}
+
+                  {question.answerType === "number_unit" && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <input
+                        type="number"
+                        min="0"
+                        value={draft}
+                        onChange={(event) => setDraft(question.id, event.target.value)}
+                        placeholder="Quantity"
+                        style={{
+                          flex: "1 1 120px",
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                        }}
+                      />
+                      <select
+                        value={unit}
+                        onChange={(event) =>
+                          setUnit(
+                            question.id,
+                            event.target.value as "sqft" | "linear_ft" | "each" | "rooms" | "days"
+                          )
+                        }
+                        style={{
+                          flex: "1 1 120px",
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                        }}
+                      >
+                        <option value="sqft">sqft</option>
+                        <option value="linear_ft">linear ft</option>
+                        <option value="each">each</option>
+                        <option value="rooms">rooms</option>
+                        <option value="days">days</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={!(Number(draft) > 0)}
+                        onClick={() =>
+                          onConfirm(question, {
+                            type: "number_unit",
+                            value: Number(draft),
+                            unit,
+                          })
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #bfdbfe",
+                          background: Number(draft) > 0 ? "#eff6ff" : "#f3f4f6",
+                          color: Number(draft) > 0 ? "#1d4ed8" : "#9ca3af",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          cursor: Number(draft) > 0 ? "pointer" : "not-allowed",
+                        }}
+                      >
+                        Confirm
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
   // -------------------------
   // UI
   // -------------------------
@@ -13518,6 +13864,13 @@ function EstimatorReviewSummaryPanel({
   generate={generate}
   loading={loading}
   status={status}
+/>
+
+<SmartQuestionsPanel
+  questions={smartQuestions}
+  answers={smartQuestionAnswers}
+  onConfirm={confirmSmartQuestionAnswer}
+  onClear={clearSmartQuestionAnswer}
 />
 
 {loading && (
