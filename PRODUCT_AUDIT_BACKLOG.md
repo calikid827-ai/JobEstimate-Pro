@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are voice-to-scope draft, company intelligence / saved-estimate learning audit, camera measuring prototype audit, or plan-to-scope reconciliation. Avoid pricing-authoritative changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are Smart Questions V1 polish / visual QA, Smart Questions V2 pricing-authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid pricing-authoritative changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1004,6 +1004,27 @@ Done note:
 - Status: Deferred after UX audit
 Deferred note:
 - After the diagnostics UX audit, Evidence Authority should remain internal/debug-only for now. The Estimator Review Summary was implemented instead to reduce review-panel overwhelm without exposing another normal UI/saved/PDF data shape.
+
+#### Item: Smart Questions V1 + Confirmed Answers V2-lite
+
+- Problem: The estimator already surfaces many review warnings and confirmations, but contractors benefit from a short set of high-value clarification questions instead of reading every diagnostic panel.
+- Why it matters: Smart Questions make the estimator feel more interactive while keeping typed scope as the required scope-control anchor.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a UI/client-only first pass. `buildSmartQuestions()` generates up to 3 deduped trade-specific questions from existing client-side signals only: selected trade, typed scope, scopeQuality warnings, PriceGuard Review, Customer Output Readiness, materials confirm items, area missing confirmations, Scope X-Ray confirmations, photo scope assist, and plan evidence strength. Confirmed Answers / Confirmed Clarifications are local React state only.
+- Exact files/components involved: `app/app/lib/smart-questions.ts`, `app/app/lib/smart-questions.test.ts`, `app/app/page.tsx`.
+- What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, or Evidence Authority normal UI exposure.
+- Tests or manual QA needed: Completed with Smart Questions tests, scope-quality and PriceGuard review tests, `npx tsc --noEmit`, and `git diff --check`. Known note: no browser/visual QA was run during verification.
+- Status: Done
+
+Done note:
+
+- Smart Questions panel is estimator-only and `data-no-print`.
+- Confirmed answer authority labels include `user_confirmed_quantity`, `scope_boundary_confirmation`, `materials_confirmation`, `schedule_confirmation`, `review_only`, and `needs_followup`.
+- All confirmed answers keep `pricingEligibleNow: false`; there are no pricing-authoritative confirmed answers in V1.
+- Answers are not sent to `/api/generate`, not saved to estimate history/localStorage history, and not included in PDFs/customer output.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+- No backend/API/saved/PDF/pricing/prompt/result/materials/deterministic/billing behavior changed.
 
 ## Future Advanced Estimator Features
 
