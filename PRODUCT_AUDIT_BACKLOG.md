@@ -1001,7 +1001,9 @@ Done note:
 - Exact files/components likely involved: `app/api/generate/lib/estimator/types.ts`, `app/api/generate/lib/estimator/orchestrator.ts`, `app/api/generate/route.ts`, app result diagnostics, saved estimate normalization, and PDF/customer-output surfaces only if explicitly scoped.
 - What not to touch: Pricing formulas, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, plan pricing eligibility, billing/auth, deployment, or customer-facing output semantics unless explicitly scoped.
 - Tests or manual QA needed: Response-shape regression, saved estimate normalization checks, Evidence Authority tests, orchestrator tests, estimator diagnostics tests, TypeScript, diff check, and focused manual UI/PDF QA if display is touched.
-- Status: Not started
+- Status: Deferred after UX audit
+Deferred note:
+- After the diagnostics UX audit, Evidence Authority should remain internal/debug-only for now. The Estimator Review Summary was implemented instead to reduce review-panel overwhelm without exposing another normal UI/saved/PDF data shape.
 
 ## Future Advanced Estimator Features
 
