@@ -133,7 +133,8 @@ The product is already broad. The highest-risk areas are not missing core featur
   - Details are deduped across readiness items, capped at 2 per item, and the panel remains capped at 6 items so it stays a compact pre-send checklist rather than duplicating full PriceGuard Review, Plan Review Summary, or Estimator Diagnostics.
   - Warning-only AI Scope Protection can send capped supporting details into Customer Output Readiness so contractors see 1-2 useful review reasons before Pricing/PDF without hiding or rewriting Customer-Facing Scope.
   - Unsupported electrical drift now stays visible in Customer Output Readiness when real electrical work is promised but only coordination/review support exists.
-- Generated estimate result hierarchy now prioritizes the primary send workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. Unsupported trade drift warnings remain visible above Customer-Facing Scope when present. Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available in collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
+- Estimator Review Summary provides a compact estimator-only, `data-no-print` summary above `Estimator review details`. It organizes existing client-side review signals into Ready/Needs Review, Pricing Basis, Scope Warnings, Excluded / By Others, Confirmations Needed, Photo / Plan Notes, Profit / Margin Checks, and Advanced Details available below. This was UI/client-only, does not expose Evidence Authority, and does not change backend behavior, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, prompts, `result.text`, materials generation, deterministic engines, billing/auth, or deployment.
+- Generated estimate result hierarchy now prioritizes the primary send workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule. Unsupported trade drift warnings remain visible above Customer-Facing Scope when present. Estimator Review Summary now provides a compact review bridge above the full PriceGuard Review, Plan Review Summary, and Line Item Detail inside collapsed `Estimator review details`, while AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
 - Tax controls.
 - Deposit controls.
 - Schedule display and schedule editing.
@@ -598,7 +599,7 @@ Known gaps:
 - Shared invoice creation logic is centralized through `buildInvoiceFromEstimate()` and used by `/app`, same-device approval fallback, and server approval invoice creation.
 - PDF HTML generation is large, duplicated, and brittle because output still depends on browser print windows.
 - LocalStorage writes are partially centralized through `app/app/lib/local-persistence.ts` for safe page-level paths; some component and fallback-route persistence remains localStorage-first.
-- Advanced analysis UI is powerful but dense.
+- Advanced analysis UI is powerful but dense; the Estimator Review Summary now reduces top-level review overwhelm by summarizing existing client-side signals while keeping full details available below.
 - Plan intelligence is represented in PDFs through customer-safe plan review and compact evidence/readiness summary. Estimate/invoice PDF visual hierarchy polish is complete for the current browser print-window launch pass; server-side PDFs remain future work unless browser output becomes a blocker.
 - Recently inspected generate-route and app debug/customer-detail logs are development-gated; a full repo-wide log audit is not guaranteed complete.
 - Several helper functions are unused or partially wired.
@@ -607,7 +608,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active product task: Phase 9B-estimator-display audit/planning for how to expose Evidence Authority readback beyond debug safely. Do not expose it in normal API responses, saved estimates, UI, or PDFs/customer output until response, saved estimate, and UI shape changes are explicitly scoped. Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
+- Next active smart-upgrade direction: optional intelligence-layer upgrades should build around typed scope as the required scope-control anchor. Good next audit/implementation candidates are voice-to-scope draft, company intelligence / saved-estimate learning audit, camera measuring prototype audit, or plan-to-scope reconciliation. Avoid pricing-authoritative changes unless explicitly scoped. Evidence Authority should remain internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -648,7 +649,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Audit Phase 9B-estimator-display options for safely exposing Evidence Authority readback beyond debug before implementing UI/API wiring, since normal exposure would intentionally change response, saved estimate, and UI shape.
+1. Audit or implement the next optional intelligence layer around typed scope as the required scope-control anchor, such as voice-to-scope draft, company intelligence / saved-estimate learning, camera measuring prototype, or plan-to-scope reconciliation. Keep Evidence Authority internal/debug-only unless normal API/saved/UI/PDF exposure is separately scoped.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.
