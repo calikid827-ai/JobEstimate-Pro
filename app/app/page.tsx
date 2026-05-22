@@ -13168,6 +13168,18 @@ function SmartQuestionsPanel({
 
   if (!questions.length) return null
 
+  const unansweredQuestions = questions.filter((question) => !answerByQuestion.has(question.id))
+  const answeredCount = questions.length - unansweredQuestions.length
+  const hasUnansweredHighPriority = unansweredQuestions.some(
+    (question) => question.priority === "high"
+  )
+  const summaryLabel =
+    unansweredQuestions.length > 0
+      ? `${unansweredQuestions.length} optional clarification${
+          unansweredQuestions.length === 1 ? "" : "s"
+        }`
+      : "All clarifications answered"
+
   const setDraft = (questionId: string, value: string) => {
     setDrafts((prev) => ({ ...prev, [questionId]: value }))
   }
@@ -13186,8 +13198,9 @@ function SmartQuestionsPanel({
   }
 
   return (
-    <section
+    <details
       data-no-print
+      open={hasUnansweredHighPriority && unansweredQuestions.length > 0}
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -13197,12 +13210,35 @@ function SmartQuestionsPanel({
         background: "#eff6ff",
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 900, color: "#1d4ed8" }}>
-        Smart Questions
-      </div>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: 14,
+          fontWeight: 900,
+          color: "#111827",
+        }}
+      >
+        Quick Clarifications
+        <span
+          style={{
+            marginLeft: 8,
+            padding: "2px 7px",
+            border: "1px solid #bfdbfe",
+            borderRadius: 999,
+            background: "#fff",
+            color: "#1d4ed8",
+            fontSize: 11,
+            fontWeight: 900,
+            verticalAlign: "middle",
+          }}
+        >
+          {summaryLabel}
+        </span>
+      </summary>
       <div style={{ marginTop: 3, fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
-        Answering these stores local estimator confirmations only. V1 answers do not change pricing,
-        generated text, PDFs, or saved estimates.
+        Saved for this on-screen review only. Price, proposal text, PDFs, and saved estimates
+        are unchanged.
+        {answeredCount > 0 ? ` ${answeredCount} answered.` : ""}
       </div>
 
       <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
@@ -13254,7 +13290,7 @@ function SmartQuestionsPanel({
                     Confirmed: {formatAnswer(confirmed)}
                   </span>
                   <span style={{ fontSize: 11, color: "#4b5563" }}>
-                    {confirmed.authority.replace(/_/g, " ")}; not pricing eligible in V1
+                    {confirmed.authority.replace(/_/g, " ")}. Estimator note only — price unchanged.
                   </span>
                   <button
                     type="button"
@@ -13423,7 +13459,7 @@ function SmartQuestionsPanel({
           )
         })}
       </div>
-    </section>
+    </details>
   )
 }
 
@@ -13866,13 +13902,6 @@ function SmartQuestionsPanel({
   status={status}
 />
 
-<SmartQuestionsPanel
-  questions={smartQuestions}
-  answers={smartQuestionAnswers}
-  onConfirm={confirmSmartQuestionAnswer}
-  onClear={clearSmartQuestionAnswer}
-/>
-
 {loading && (
   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
     Generating professional document…
@@ -14132,6 +14161,13 @@ function SmartQuestionsPanel({
     )}
 
     <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
+
+    <SmartQuestionsPanel
+      questions={smartQuestions}
+      answers={smartQuestionAnswers}
+      onConfirm={confirmSmartQuestionAnswer}
+      onClear={clearSmartQuestionAnswer}
+    />
 
     <details
       data-no-print

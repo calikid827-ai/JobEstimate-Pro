@@ -209,7 +209,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
       trade,
       category: "quantity",
       prompt: `What is the confirmed ${label.toLowerCase()} quantity for this scope?`,
-      helpText: "Use the best confirmed count or measurement you trust. This stays local review data in V1.",
+      helpText: "Use the best confirmed count or measurement you trust. This stays on this screen for estimator review only.",
       source: hasAny(reviewBlob, [/\bquantity|quantities|measured|square footage|sqft|linear footage|lf\b/])
         ? "scope_xray"
         : "trade_default",
@@ -229,7 +229,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
       trade,
       category: "materials_responsibility",
       prompt: "Who is responsible for supplying the main materials or fixtures?",
-      helpText: "This confirms responsibility only; it does not change pricing in V1.",
+      helpText: "This confirms responsibility for review only; the price is unchanged.",
       source: hasAny(reviewBlob, [/\bconfirm.*material|material.*confirm|fixture|allowance|selection\b/])
         ? "materials_confirm_items"
         : "trade_default",
@@ -265,7 +265,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
       trade,
       category: "demo_prep",
       prompt: "Is demo, prep, repair, or substrate correction included beyond the written scope?",
-      helpText: "Condition and prep answers stay review-only in V1 unless later explicitly scoped.",
+      helpText: "Condition and prep answers stay estimator-review notes unless the written scope is updated.",
       source: "priceguard_review",
       answerType: "yes_no",
       priority: "medium",
@@ -314,7 +314,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
       trade,
       category: "photo_plan_review",
       prompt: "Have the plan-supported quantities and scope limits been confirmed by the estimator?",
-      helpText: "Plan signals stay review-only in V1.",
+      helpText: "Plan signals stay estimator-review notes here.",
       source: "plan_intelligence",
       answerType: "yes_no",
       priority: "medium",
@@ -351,7 +351,7 @@ export function buildConfirmedClarification(args: {
   answer: ConfirmedClarificationAnswer
   answeredAt?: number
 }): ConfirmedClarification {
-  const notes: string[] = ["Smart Questions V1 keeps all answers out of pricing until a later scoped pricing-authority pass."]
+  const notes: string[] = ["Smart Questions keeps all answers out of pricing until a later scoped pricing-authority pass."]
   const answeredAt = args.answeredAt ?? Date.now()
   let authority: ConfirmedClarificationAuthority = "review_only"
 
