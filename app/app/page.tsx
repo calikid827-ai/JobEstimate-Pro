@@ -642,6 +642,7 @@ type EstimatorReviewSummary = {
   tone: EstimatorReviewSummaryTone
   summary: string
   sections: EstimatorReviewSummarySection[]
+  footer: string
 }
 
 const normalizePlanStrings = (value: unknown): string[] =>
@@ -3688,21 +3689,34 @@ const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =
 const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
   if (!result) return null
 
-  const cleanList = (values: Array<string | null | undefined>, max = 3) => {
+  const compactSummaryItemKeys = new Set<string>()
+  const itemKey = (value: string) => value.toLowerCase()
+  const cleanList = (
+    values: Array<string | null | undefined>,
+    max = 2,
+    options: { globalDedupe?: boolean } = {}
+  ) => {
     const seen = new Set<string>()
     const out: string[] = []
 
     for (const raw of values) {
       if (out.length >= max) break
       const value = String(raw || "").replace(/\s+/g, " ").trim()
-      const key = value.toLowerCase()
-      if (!value || seen.has(key)) continue
+      const key = itemKey(value)
+      if (!value || seen.has(key) || (options.globalDedupe && compactSummaryItemKeys.has(key))) {
+        continue
+      }
       seen.add(key)
+      if (options.globalDedupe) compactSummaryItemKeys.add(key)
       out.push(value)
     }
 
     return out
   }
+  const hasTheme = (values: string[], pattern: RegExp) =>
+    values.some((value) => pattern.test(value))
+  const measurementOrSurfacePattern = /\b(measur|quantity|quantities|square|sq\s*ft|sqft|footage|area|rooms?|surfaces?|walls?|ceilings?|trim|doors?)\b/i
+  const boundaryPattern = /\b(assumption|exclusion|excluded|exclude|by others|boundary|not included|owner|customer supplied|supplied)\b/i
 
   const readinessNeedsReview = customerOutputReadinessItems.length > 0
   const priceGuardNeedsReview = !!priceGuardReview && priceGuardReview.level !== "strong"
@@ -3727,19 +3741,13 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
     profitNeedsReview ||
     planNeedsReview
 
+  const priceGuardLabel = priceGuard?.status
+    ? `PriceGuard: ${String(priceGuard.status).replace(/_/g, " ")}`
+    : null
   const pricingBasisItems = cleanList(
-    [
-      `Pricing source: ${pricingSource}`,
-      priceGuard?.status ? `PriceGuard status: ${priceGuard.status}` : null,
-      priceGuardVerified ? "PriceGuard deterministic safeguards are verified." : null,
-      scopeXRay?.pricingMethod?.detSource
-        ? `Engine: ${scopeXRay.pricingMethod.detSource}`
-        : null,
-      scopeXRay?.pricingMethod?.anchorId
-        ? `Anchor: ${scopeXRay.pricingMethod.anchorId}`
-        : null,
-    ],
-    4
+    [`Pricing source: ${String(pricingSource || "unknown").replace(/_/g, " ")}${priceGuardLabel ? ` · ${priceGuardLabel}` : ""}`],
+    1,
+    { globalDedupe: true }
   )
 
   const scopeWarningItems = cleanList(
@@ -3752,7 +3760,8 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
       ...(priceGuardReview?.missedScopeWarnings || []),
       ...(priceGuardReview?.scopeClarityWarnings || []),
     ],
-    3
+    2,
+    { globalDedupe: true }
   )
 
   const exclusionItems = cleanList(
@@ -3763,16 +3772,25 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
       ...(priceGuardReview?.suggestedExclusions || []),
       ...(estimateDefenseMode?.exclusionNotes || []),
     ],
-    3
+    2,
+    { globalDedupe: true }
   )
 
+  const scopeAlreadyCoversMeasurement = hasTheme(scopeWarningItems, measurementOrSurfacePattern)
+  const boundaryAlreadyShown = exclusionItems.length > 0
   const confirmationItems = cleanList(
     [
       ...customerOutputReadinessItems.flatMap((item) => item.details || [item.message]),
       ...(materialsList?.confirmItems || []),
       ...(areaScopeBreakdown?.missingConfirmations || []),
-    ],
-    4
+    ].filter((item) => {
+      const text = String(item || "")
+      if (scopeAlreadyCoversMeasurement && measurementOrSurfacePattern.test(text)) return false
+      if (boundaryAlreadyShown && boundaryPattern.test(text)) return false
+      return true
+    }),
+    2,
+    { globalDedupe: true }
   )
 
   const planPhotoItems = cleanList(
@@ -3789,18 +3807,23 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
       ...(photoScopeAssist?.missingScopeFlags || []),
       ...(photoScopeAssist?.suggestedAdditions || []),
     ],
-    4
+    2,
+    { globalDedupe: true }
   )
 
+  const strongestProfitWarning =
+    profitProtection?.warnings?.[0] ||
+    priceGuardReview?.contractorRiskNotes?.[0] ||
+    null
   const profitItems = cleanList(
     [
-      profitProtection
-        ? `Margin status: ${profitProtection.status.replace(/_/g, " ")} (${profitProtection.grossMarginPct}% gross margin).`
-        : null,
-      ...(profitProtection?.warnings || []),
-      ...(priceGuardReview?.contractorRiskNotes || []),
+      strongestProfitWarning ||
+        (profitProtection
+          ? `Margin status: ${profitProtection.status.replace(/_/g, " ")} (${profitProtection.grossMarginPct}% gross margin).`
+          : null),
     ],
-    3
+    1,
+    { globalDedupe: true }
   )
 
   const sections: EstimatorReviewSummarySection[] = [
@@ -3810,43 +3833,47 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
       tone: priceGuardVerified || pricingSource === "deterministic" ? "good" : "warning",
       items: pricingBasisItems,
     },
-    {
-      title: "Scope Warnings",
-      status: scopeWarningItems.length ? "Needs review" : "Clear",
-      tone: scopeWarningItems.length ? "warning" : "good",
-      items: scopeWarningItems.length ? scopeWarningItems : ["No major scope-warning items are surfaced in the compact review."],
-    },
-    {
-      title: "Excluded / By Others",
-      status: exclusionItems.length ? "Review boundaries" : "No major items",
-      tone: exclusionItems.length ? "warning" : "neutral",
-      items: exclusionItems.length ? exclusionItems : ["No major exclusion or by-others items are surfaced in the compact review."],
-    },
-    {
-      title: "Confirmations Needed",
-      status: confirmationItems.length ? "Confirm" : "Low",
-      tone: confirmationItems.length ? "warning" : "good",
-      items: confirmationItems.length ? confirmationItems : ["No major confirmation items are surfaced in the compact review."],
-    },
-    {
-      title: "Photo / Plan Notes",
-      status: planNeedsReview || photoHasReviewNotes ? "Review support" : "No added notes",
-      tone: planNeedsReview ? "warning" : photoHasReviewNotes ? "neutral" : "good",
-      items: planPhotoItems.length ? planPhotoItems : ["No photo or plan review notes are surfaced in the compact review."],
-    },
-    {
-      title: "Profit / Margin Checks",
-      status: profitNeedsReview ? "Needs review" : "Clear",
-      tone: profitProtection?.status === "danger" ? "danger" : profitNeedsReview ? "warning" : "good",
-      items: profitItems.length ? profitItems : ["No major margin or profit-risk items are surfaced in the compact review."],
-    },
-    {
-      title: "Advanced Details",
-      status: "Available below",
-      tone: "neutral",
-      items: ["Full PriceGuard Review, Plan Review Summary, line-item detail, and Estimator Diagnostics remain available below."],
-    },
   ]
+  if (scopeWarningItems.length) {
+    sections.push({
+      title: "Scope Warnings",
+      status: "Needs review",
+      tone: "warning",
+      items: scopeWarningItems,
+    })
+  }
+  if (exclusionItems.length) {
+    sections.push({
+      title: "Excluded / By Others",
+      status: "Review boundaries",
+      tone: "warning",
+      items: exclusionItems,
+    })
+  }
+  if (confirmationItems.length) {
+    sections.push({
+      title: "Confirmations Needed",
+      status: "Confirm",
+      tone: "warning",
+      items: confirmationItems,
+    })
+  }
+  if (planPhotoItems.length) {
+    sections.push({
+      title: "Photo / Plan Notes",
+      status: planNeedsReview || photoHasReviewNotes ? "Review support" : "Notes",
+      tone: planNeedsReview ? "warning" : photoHasReviewNotes ? "neutral" : "good",
+      items: planPhotoItems,
+    })
+  }
+  if (profitItems.length && profitNeedsReview) {
+    sections.push({
+      title: "Profit / Margin Checks",
+      status: "Needs review",
+      tone: profitProtection?.status === "danger" ? "danger" : "warning",
+      items: profitItems,
+    })
+  }
 
   return {
     headline: needsReview ? "Needs estimator review" : "Looks ready to send",
@@ -3856,6 +3883,8 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
       ? "Review the highlighted scope, evidence, confirmation, or margin items before sending."
       : "No major compact review blockers are surfaced. Detailed diagnostics are still available below.",
     sections,
+    footer:
+      "Full PriceGuard Review, Customer Output Readiness, line-item detail, and Estimator Diagnostics are available below.",
   }
 }, [
   result,
@@ -13156,7 +13185,7 @@ function EstimatorReviewSummaryPanel({
               </div>
 
               <ul style={{ margin: "7px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
-                {section.items.slice(0, 4).map((item, index) => (
+                {section.items.slice(0, 2).map((item, index) => (
                   <li
                     key={`estimator-review-summary-${section.title}-${index}`}
                     style={{ fontSize: 12, color: "#4b5563" }}
@@ -13168,6 +13197,10 @@ function EstimatorReviewSummaryPanel({
             </div>
           )
         })}
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+        {summary.footer}
       </div>
     </details>
   )
