@@ -8611,6 +8611,7 @@ function ScopeXRayCard({
 
   return (
     <details
+      data-no-print
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -8619,7 +8620,6 @@ function ScopeXRayCard({
         borderRadius: 14,
         background: "#fff",
       }}
-      open
     >
       <summary
         style={{
@@ -9250,6 +9250,7 @@ function MaterialsListCard({
 
   return (
     <details
+      data-no-print
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -9258,7 +9259,6 @@ function MaterialsListCard({
         borderRadius: 14,
         background: "#fff",
       }}
-      open
     >
       <summary
         style={{
@@ -9349,6 +9349,7 @@ const missingConfirmations = areaScopeBreakdown.missingConfirmations ?? []
 
   return (
     <details
+      data-no-print
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -9357,7 +9358,6 @@ const missingConfirmations = areaScopeBreakdown.missingConfirmations ?? []
         borderRadius: 14,
         background: "#fff",
       }}
-      open
     >
       <summary
         style={{
@@ -9538,6 +9538,7 @@ function ProfitProtectionCard({
 
   return (
     <details
+      data-no-print
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -9546,7 +9547,6 @@ function ProfitProtectionCard({
         borderRadius: 14,
         background: "#fff",
       }}
-      open
     >
       <summary
         style={{
@@ -10626,6 +10626,7 @@ function AdvancedAnalysisSection({
 
   return (
     <details
+      data-no-print
       style={{
         marginTop: 14,
         marginBottom: 14,
@@ -12953,28 +12954,51 @@ function CustomerOutputReadinessPanel({
 }) {
   if (!items.length) return null
 
+  const hasCriticalScopeDrift = items.some((item) =>
+    /unsupported trade wording/i.test(item.label)
+  )
+
   return (
-    <section
+    <details
       data-no-print
+      open={hasCriticalScopeDrift}
       style={{
         marginTop: 14,
         marginBottom: 14,
-        padding: 14,
+        padding: 12,
         border: "1px solid #fed7aa",
         borderRadius: 12,
         background: "#fff7ed",
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 900, color: "#92400e" }}>
-        Review before sending
-      </div>
-      <h3 style={{ margin: "3px 0 0", fontSize: 17, color: "#111827" }}>
-        Customer Output Readiness
-      </h3>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 14,
+          color: "#111827",
+        }}
+      >
+        Customer Output Readiness details
+        <span
+          style={{
+            marginLeft: 8,
+            padding: "2px 7px",
+            border: "1px solid #fed7aa",
+            borderRadius: 999,
+            background: "#fff",
+            color: "#92400e",
+            fontSize: 11,
+            fontWeight: 900,
+            verticalAlign: "middle",
+          }}
+        >
+          {items.length} {items.length === 1 ? "item" : "items"}
+        </span>
+      </summary>
       <p style={{ margin: "6px 0 0", fontSize: 13, color: "#4b5563", lineHeight: 1.5 }}>
-        Before sending or downloading, review these estimator-only items. They do not
-        change pricing automatically, but they may affect whether the customer-facing
-        scope, assumptions, exclusions, or schedule are ready to send.
+        Estimator-only source details already summarized above. Price, proposal text,
+        PDFs, and saved estimates are unchanged.
       </p>
 
       <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
@@ -13010,7 +13034,7 @@ function CustomerOutputReadinessPanel({
           </div>
         ))}
       </div>
-    </section>
+    </details>
   )
 }
 
@@ -13178,7 +13202,7 @@ function SmartQuestionsPanel({
       ? `${unansweredQuestions.length} optional clarification${
           unansweredQuestions.length === 1 ? "" : "s"
         }`
-      : "All clarifications answered"
+      : "Clarifications answered on this screen — price unchanged"
 
   const setDraft = (questionId: string, value: string) => {
     setDrafts((prev) => ({ ...prev, [questionId]: value }))
@@ -14092,8 +14116,6 @@ function SmartQuestionsPanel({
       </div>
     )}
 
-    <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
-
     <PricingSummarySection
       pricing={pricing}
       setPricing={setPricing}
@@ -14168,6 +14190,8 @@ function SmartQuestionsPanel({
       onConfirm={confirmSmartQuestionAnswer}
       onClear={clearSmartQuestionAnswer}
     />
+
+    <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
 
     <details
       data-no-print
