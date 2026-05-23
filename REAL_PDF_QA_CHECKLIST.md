@@ -2206,3 +2206,34 @@ Final decision:
 - Deferred photo behavior items remain pricing/policy-adjacent: polluted multi-trade signals can still affect confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged.
 - Next active product-intelligence direction should be optional intelligence-layer work around typed scope as the required scope-control anchor. Normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait because exposing it would intentionally change response, saved estimate, and UI shape.
 - Production Live Mode subscription verification remains the final pre-launch gate only.
+
+---
+
+# Test Entry 39 — UI-Only Estimator Review Noise Reduction Status
+
+Status: CODE-CHECKED; browser/mobile visual QA still needed
+
+Scope:
+- `EstimatorReviewSummaryPanel` is now the primary estimator review hub.
+- `CustomerOutputReadinessPanel` moved below Estimator Review Summary and Quick Clarifications.
+- Customer Output Readiness is now compact/collapsed by default, but still auto-opens for critical unsupported trade/scope drift.
+- Quick Clarifications remains under the estimator review flow and shows `Clarifications answered on this screen — price unchanged` when answered.
+- Estimator review details remain available below.
+- PriceGuard Review remains inside collapsed estimator review details.
+- Estimator Diagnostics remains collapsed.
+- Nested diagnostics such as Scope-to-Price X-Ray, Materials List, Area Scope Breakdown, and Profit Protection are collapsed by default.
+- Relevant estimator-only review/diagnostic panels remain `data-no-print`.
+
+Validation:
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- No browser/mobile visual QA was run for this entry.
+
+Architecture safety:
+- This was UI/client-only and reduced duplicate review messaging without removing safety checks.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, or deployment.
+- Smart Questions answers remain local-only, are not sent to `/api/generate`, are not saved to history/localStorage, are not included in PDFs/customer output, and remain non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Next QA:
+- Run browser/mobile visual QA for the reduced Estimator Review flow, especially simple typed-only estimates and plan/photo-assisted estimates.
