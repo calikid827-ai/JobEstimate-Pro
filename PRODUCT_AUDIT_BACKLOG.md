@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are Smart Questions V2 pricing-authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, plan-to-scope reconciliation audit, or mobile/browser visual QA for the polished Smart Questions panel. Avoid pricing-authoritative changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are Smart Questions V2B server/API authority audit only, Smart Questions V2B client-only authority-status readback, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, plan-to-scope reconciliation audit, or mobile/browser visual QA. Avoid actual pricing-authoritative behavior unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1029,6 +1029,29 @@ Done note:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 - No backend/API/saved/PDF/pricing/prompt/result/materials/deterministic/billing behavior changed.
 - Smart Questions polish validation passed with Smart Questions tests, `npx tsc --noEmit`, and `git diff --check`; no browser/mobile visual QA was run.
+
+#### Item: Smart Questions V2A authority-gate helper
+
+- Problem: Confirmed answers need a future authority gate before any answer can safely influence pricing, especially when typed scope contains exclusions or by-others boundaries.
+- Why it matters: The app needs to distinguish future pricing candidates from review-only confirmations without changing current pricing behavior.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a pure helper/test pass. `classifySmartQuestionAuthority()` classifies confirmed answers into future-only statuses: `eligible_pricing_candidate`, `review_only`, `rejected_boundary_conflict`, `needs_followup`, and `stale_scope`.
+- Exact files/components involved: `app/app/lib/smart-questions.ts`, `app/app/lib/smart-questions.test.ts`.
+- What not to touch: Runtime UI wiring, `/api/generate`, saved estimate/history shape, localStorage history, PDFs/customer output, backend pricing, Evidence Authority normal UI, pricing, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, billing/auth, or deployment.
+- Tests or manual QA needed: Completed with Smart Questions tests 11/11, scope-quality and PriceGuard review tests 41/41, `npx tsc --noEmit`, and `git diff --check`.
+- Status: Done
+
+Done note:
+
+- The helper is classification-only and is not wired into runtime UI, `/api/generate`, saved estimates, localStorage history, PDFs/customer output, backend pricing, or normal Evidence Authority UI.
+- `eligible_pricing_candidate` is future-only and is not current pricing authority.
+- The helper always returns `pricingAuthoritative: false` and `pricingEligibleNow: false`; `ConfirmedClarification` still keeps `pricingEligibleNow: false`.
+- No confirmed answer affects pricing yet.
+- Positive numeric quantity answers tied to current included typed scope can classify as `eligible_pricing_candidate` for future use only.
+- Excluded, by-others, owner/customer-supplied, protection-only, coordination-only, existing-to-remain, stale, ambiguous/short-text, material, schedule, demo/prep, permit, and photo/plan answers remain non-pricing-authoritative.
+- EstimatorScopeFacts is used only for classification/boundary checks and does not change existing scope behavior.
+- No runtime/UI/API/saved/PDF/pricing/prompt/result/materials/deterministic/billing behavior changed.
 
 ## Future Advanced Estimator Features
 
