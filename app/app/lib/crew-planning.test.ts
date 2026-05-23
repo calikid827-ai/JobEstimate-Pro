@@ -1,0 +1,122 @@
+import test from "node:test"
+import assert from "node:assert/strict"
+
+import { buildCrewPlanningReadback } from "./crew-planning"
+import type { Schedule } from "./types"
+
+const schedule = (overrides: Partial<Schedule> = {}): Schedule => ({
+  crewDays: 4,
+  visits: 1,
+  calendarDays: { min: 2, max: 4 },
+  workDaysPerWeek: 5,
+  rationale: ["Normal production sequence."],
+  ...overrides,
+})
+
+test("calculates crew-size options from crewDays", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms",
+    schedule: schedule({ crewDays: 4 }),
+  })
+
+  assert.equal(plan.crewDayBasis, 4)
+  assert.equal(plan.recommendedCrewSize, 3)
+  assert.deepEqual(
+    plan.options.map((option) => [option.label, option.crewSize, option.estimatedWorkDays]),
+    [
+      ["Small crew", 2, 2],
+      ["Standard crew", 3, 2],
+      ["Push schedule", 5, 1],
+    ]
+  )
+})
+
+test("output is estimator-only and never pricing authority", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms",
+    schedule: schedule(),
+    pricingLabor: 1200,
+  })
+
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+  assert.ok(plan.basis.some((item) => /not a labor-hour change/i.test(item)))
+})
+
+test("missing schedule is handled safely", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms",
+    schedule: null,
+  })
+
+  assert.equal(plan.crewDayBasis, null)
+  assert.equal(plan.durationRange, null)
+  assert.equal(plan.options.every((option) => option.estimatedWorkDays === null), true)
+  assert.ok(plan.basis.some((item) => /not confirmed/i.test(item)))
+})
+
+test("simple one-visit scope does not auto-open as a scheduling risk", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms",
+    schedule: schedule({ crewDays: 1, visits: 1, rationale: [] }),
+  })
+
+  assert.equal(plan.hasSchedulingRisks, false)
+  assert.ok(plan.risks.some((item) => /Confirm access/i.test(item)))
+})
+
+test("return-trip dry-time and access risks are included when present", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms",
+    schedule: schedule({
+      visits: 2,
+      rationale: ["Dry time between coats may require a return visit."],
+    }),
+    areaScopeBreakdown: {
+      detectedArea: { floorSqft: null, wallSqft: null, paintSqft: null, trimLf: null },
+      allowances: {
+        prepDemo: [],
+        protectionSetup: [],
+        materialsDrivers: [],
+        scheduleDrivers: ["Occupied access may slow production."],
+      },
+      missingConfirmations: [],
+    },
+    scopeSignals: { needsReturnVisit: true, reason: "Multiple visits likely." },
+  })
+
+  assert.equal(plan.hasSchedulingRisks, true)
+  assert.ok(plan.risks.some((item) => /Return trip|multi-visit/i.test(item)))
+  assert.ok(plan.risks.some((item) => /Dry time|cure time|coat sequencing/i.test(item)))
+  assert.ok(plan.bottlenecks.some((item) => /Access|staging|occupied/i.test(item)))
+})
+
+test("hotel multi-unit scope produces rolling-production planning notes", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint hotel guest rooms on floors 2-4, 60 units, corridors by others.",
+    schedule: schedule({ crewDays: 30, visits: 10, calendarDays: { min: 10, max: 20 } }),
+  })
+
+  assert.equal(plan.recommendedCrewSize, 6)
+  assert.ok(plan.sequence.some((item) => /rolling production/i.test(item)))
+  assert.ok(plan.bottlenecks.some((item) => /room-release|Repeated rooms|material staging/i.test(item)))
+  assert.ok(plan.risks.some((item) => /planning support only/i.test(item)))
+})
+
+test("boundary by-others exclusion language stays risk review-only", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms, drywall repairs by others, owner supplied paint.",
+    schedule: schedule({ crewDays: 2 }),
+  })
+
+  assert.ok(plan.risks.some((item) => /Boundary|review-only/i.test(item)))
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})

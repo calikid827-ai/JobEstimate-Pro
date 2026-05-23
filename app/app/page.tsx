@@ -104,6 +104,10 @@ import { checkScopeQuality } from "./lib/scope-quality-check"
 import { buildPriceGuardReview } from "./lib/priceguard-review"
 import { buildCustomerScopeReviewGuard } from "./lib/customer-scope-drift"
 import {
+  buildCrewPlanningReadback,
+  type CrewPlanningReadback,
+} from "./lib/crew-planning"
+import {
   buildConfirmedClarification,
   buildSmartQuestions,
   type ConfirmedClarification,
@@ -3931,6 +3935,35 @@ const smartQuestions = useMemo(
     planIntelligence,
   ]
 )
+
+const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
+  if (!result) return null
+
+  return buildCrewPlanningReadback({
+    selectedTrade: trade,
+    scopeText: scopeChange,
+    schedule,
+    pricingLabor: pricing.labor,
+    estimateRows,
+    estimateSections,
+    scopeXRay,
+    areaScopeBreakdown,
+    priceGuardReview,
+    scopeSignals,
+  })
+}, [
+  result,
+  trade,
+  scopeChange,
+  schedule,
+  pricing.labor,
+  estimateRows,
+  estimateSections,
+  scopeXRay,
+  areaScopeBreakdown,
+  priceGuardReview,
+  scopeSignals,
+])
 
 const smartQuestionAnswers = useMemo(() => {
   const visibleQuestionIds = new Set(smartQuestions.map((question) => question.id))
@@ -8468,6 +8501,158 @@ function ScheduleBlock({ schedule }: { schedule?: Schedule | null }) {
         </div>
       )}
     </div>
+  )
+}
+
+function CrewPlanningPanel({
+  plan,
+}: {
+  plan: CrewPlanningReadback | null
+}) {
+  if (!plan) return null
+
+  const formatWorkDays = (days: number | null) =>
+    days == null ? "Needs schedule" : `${days} work day${days === 1 ? "" : "s"}`
+
+  const recommendedLabel =
+    plan.recommendedCrewSize != null
+      ? `${plan.recommendedCrewSize} worker${plan.recommendedCrewSize === 1 ? "" : "s"}`
+      : "Needs schedule"
+
+  return (
+    <details
+      data-no-print
+      open={plan.hasSchedulingRisks}
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 12,
+        border: "1px solid #bfdbfe",
+        borderRadius: 14,
+        background: "#eff6ff",
+      }}
+    >
+      <summary
+        style={{
+          cursor: "pointer",
+          fontWeight: 900,
+          fontSize: 15,
+          color: "#111827",
+        }}
+      >
+        Crew Planning
+        <span
+          style={{
+            marginLeft: 8,
+            padding: "2px 7px",
+            border: "1px solid #bfdbfe",
+            borderRadius: 999,
+            background: "#fff",
+            color: "#1d4ed8",
+            fontSize: 11,
+            fontWeight: 900,
+            verticalAlign: "middle",
+          }}
+        >
+          Planning only
+        </span>
+      </summary>
+
+      <p style={{ margin: "6px 0 0", fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
+        Estimator-only crew guidance. Price, proposal text, PDFs, and saved estimates are unchanged.
+      </p>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: 8,
+          marginTop: 10,
+        }}
+      >
+        <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 800 }}>Recommended Crew</div>
+          <div style={{ marginTop: 3, fontSize: 15, fontWeight: 900, color: "#111827" }}>
+            {recommendedLabel}
+          </div>
+        </div>
+        <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 800 }}>Crew-Day Basis</div>
+          <div style={{ marginTop: 3, fontSize: 15, fontWeight: 900, color: "#111827" }}>
+            {plan.crewDayBasis != null ? `${plan.crewDayBasis} crew-day${plan.crewDayBasis === 1 ? "" : "s"}` : "Needs schedule"}
+          </div>
+        </div>
+        <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 800 }}>Duration</div>
+          <div style={{ marginTop: 3, fontSize: 15, fontWeight: 900, color: "#111827" }}>
+            {plan.durationRange ?? "Needs schedule"}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+        {plan.options.map((option) => (
+          <div
+            key={`crew-planning-${option.label}`}
+            style={{
+              padding: 10,
+              border: "1px solid #dbeafe",
+              borderRadius: 8,
+              background: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>
+                {option.label}: {option.crewSize} worker{option.crewSize === 1 ? "" : "s"}
+              </div>
+              <div style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 900 }}>
+                {formatWorkDays(option.estimatedWorkDays)}
+              </div>
+            </div>
+            {option.notes.length > 0 && (
+              <div style={{ marginTop: 4, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+                {option.notes[0]}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 10,
+          marginTop: 10,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Work Sequence</div>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.5, color: "#4b5563" }}>
+            {plan.sequence.slice(0, 4).map((item, index) => (
+              <li key={`crew-sequence-${index}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+
+        {(plan.bottlenecks.length > 0 || plan.risks.length > 0) && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Bottlenecks / Risks</div>
+            <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.5, color: "#4b5563" }}>
+              {[...plan.bottlenecks, ...plan.risks].slice(0, 4).map((item, index) => (
+                <li key={`crew-risk-${index}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {plan.basis.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+          Basis: {plan.basis.slice(0, 2).join(" ")}
+        </div>
+      )}
+    </details>
   )
 }
 
@@ -14214,6 +14399,8 @@ function SmartQuestionsPanel({
         </details>
       </>
     )}
+
+    <CrewPlanningPanel plan={crewPlanningReadback} />
 
     <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
 
