@@ -1,4 +1,4 @@
-import { buildEstimatorScopeFacts } from "./estimator-scope-facts"
+import { buildEstimatorScopeFacts, type EstimatorScopeTrade } from "./estimator-scope-facts"
 
 export type SmartQuestionCategory =
   | "quantity"
@@ -65,6 +65,27 @@ export type ConfirmedClarification = {
   notes: string[]
 }
 
+export type SmartQuestionAuthorityGateStatus =
+  | "eligible_pricing_candidate"
+  | "review_only"
+  | "rejected_boundary_conflict"
+  | "needs_followup"
+  | "stale_scope"
+
+export type SmartQuestionAuthorityGateResult = {
+  status: SmartQuestionAuthorityGateStatus
+  pricingAuthoritative: false
+  pricingEligibleNow: false
+  reasons: string[]
+}
+
+export type ClassifySmartQuestionAuthorityArgs = {
+  clarification: ConfirmedClarification
+  question: SmartQuestion
+  currentScopeText: string
+  scopeSnapshotText?: string | null
+}
+
 type ReadinessItem = {
   label: string
   message: string
@@ -114,6 +135,41 @@ function normalize(value: unknown): string {
 
 function hasAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text))
+}
+
+function sameNormalizedText(a: string | null | undefined, b: string | null | undefined): boolean {
+  return normalize(a) === normalize(b)
+}
+
+function gateResult(
+  status: SmartQuestionAuthorityGateStatus,
+  reasons: string[]
+): SmartQuestionAuthorityGateResult {
+  return {
+    status,
+    pricingAuthoritative: false,
+    pricingEligibleNow: false,
+    reasons,
+  }
+}
+
+function toEstimatorScopeTrade(trade: string): EstimatorScopeTrade | null {
+  switch (trade) {
+    case "painting":
+    case "drywall":
+    case "flooring":
+    case "electrical":
+    case "plumbing":
+    case "bathroom_tile":
+    case "wallcovering":
+    case "carpentry":
+    case "demolition":
+    case "glass":
+    case "furniture_moving":
+      return trade
+    default:
+      return null
+  }
 }
 
 function tradeLabel(trade: string): string {
@@ -385,4 +441,78 @@ export function buildConfirmedClarification(args: {
     sourceQuestion: args.question.prompt,
     notes,
   }
+}
+
+export function classifySmartQuestionAuthority(
+  args: ClassifySmartQuestionAuthorityArgs
+): SmartQuestionAuthorityGateResult {
+  const { clarification, question } = args
+
+  if (
+    args.scopeSnapshotText != null &&
+    !sameNormalizedText(args.scopeSnapshotText, args.currentScopeText)
+  ) {
+    return gateResult("stale_scope", [
+      "The typed scope changed after this clarification was answered.",
+    ])
+  }
+
+  if (clarification.answer.type === "short_text") {
+    return gateResult("needs_followup", [
+      "Short-text clarifications need estimator review before any future pricing authority.",
+    ])
+  }
+
+  if (clarification.authority === "needs_followup") {
+    return gateResult("needs_followup", [
+      "This clarification was marked as needing follow-up.",
+    ])
+  }
+
+  if (question.category !== "quantity" || clarification.answer.type !== "number_unit") {
+    return gateResult("review_only", [
+      "Only explicit numeric quantity clarifications can become future pricing candidates.",
+    ])
+  }
+
+  if (!Number.isFinite(clarification.answer.value) || clarification.answer.value <= 0) {
+    return gateResult("needs_followup", [
+      "Quantity clarifications must use a positive numeric value.",
+    ])
+  }
+
+  const scopeFacts = buildEstimatorScopeFacts(args.currentScopeText)
+  const trade = toEstimatorScopeTrade(question.trade)
+  if (!trade) {
+    return gateResult("review_only", [
+      "This clarification trade is not specific enough for future pricing authority.",
+    ])
+  }
+
+  const included = scopeFacts.includedTrades.includes(trade)
+  const boundaryOnly =
+    scopeFacts.excludedTrades.includes(trade) ||
+    scopeFacts.protectionTrades.includes(trade) ||
+    scopeFacts.coordinationTrades.includes(trade) ||
+    scopeFacts.existingConditionTrades.includes(trade)
+  const boundaryText = normalize(scopeFacts.boundaryText)
+  const ownerOrCustomerSupplied = /\b(owner|customer)\s*-?\s*supplied\b|\bby owner\b|\bowner to provide\b|\bcustomer to provide\b/.test(
+    boundaryText
+  )
+
+  if (boundaryOnly || ownerOrCustomerSupplied) {
+    return gateResult("rejected_boundary_conflict", [
+      "The typed scope contains exclusion, by-others, owner-supplied, protection-only, coordination-only, or existing-to-remain boundary context.",
+    ])
+  }
+
+  if (!included || !scopeFacts.hasIncludedWork) {
+    return gateResult("review_only", [
+      "The typed scope does not include matching work for this clarification.",
+    ])
+  }
+
+  return gateResult("eligible_pricing_candidate", [
+    "Positive numeric quantity is tied to currently included typed scope.",
+  ])
 }

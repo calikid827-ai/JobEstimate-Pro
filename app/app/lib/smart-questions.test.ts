@@ -4,11 +4,38 @@ import assert from "node:assert/strict"
 import {
   buildConfirmedClarification,
   buildSmartQuestions,
+  classifySmartQuestionAuthority,
   type SmartQuestion,
 } from "./smart-questions"
 
 function questionByCategory(questions: SmartQuestion[], category: string) {
   return questions.find((question) => question.category === category)
+}
+
+function makeQuestion(overrides: Partial<SmartQuestion> = {}): SmartQuestion {
+  return {
+    id: "smart-question:painting:quantity",
+    trade: "painting",
+    category: "quantity",
+    prompt: "What is the confirmed painting quantity?",
+    source: "trade_default",
+    answerType: "number_unit",
+    priority: "high",
+    canAffectPricingIfConfirmed: false,
+    dedupeKey: "quantity",
+    ...overrides,
+  }
+}
+
+function answerQuestion(
+  question: SmartQuestion,
+  answer: Parameters<typeof buildConfirmedClarification>[0]["answer"]
+) {
+  return buildConfirmedClarification({
+    question,
+    answer,
+    answeredAt: 1,
+  })
 }
 
 test("buildSmartQuestions caps and dedupes high-value questions", () => {
@@ -128,4 +155,141 @@ test("boundary and ambiguous answers never become pricing-eligible", () => {
 
   assert.equal(ambiguousAnswer.authority, "needs_followup")
   assert.equal(ambiguousAnswer.pricingEligibleNow, false)
+})
+
+test("authority gate allows positive numeric quantity for current included scope as future candidate only", () => {
+  const question = makeQuestion()
+  const clarification = answerQuestion(question, { type: "number_unit", value: 1200, unit: "sqft" })
+  const gate = classifySmartQuestionAuthority({
+    question,
+    clarification,
+    currentScopeText: "Paint office walls.",
+    scopeSnapshotText: "Paint office walls.",
+  })
+
+  assert.equal(gate.status, "eligible_pricing_candidate")
+  assert.equal(gate.pricingAuthoritative, false)
+  assert.equal(gate.pricingEligibleNow, false)
+  assert.equal(clarification.pricingEligibleNow, false)
+})
+
+test("authority gate rejects numeric quantity when the related trade is boundary-only", () => {
+  const question = makeQuestion({
+    id: "smart-question:drywall:quantity",
+    trade: "drywall",
+    prompt: "What is the confirmed drywall quantity?",
+  })
+  const clarification = answerQuestion(question, { type: "number_unit", value: 300, unit: "sqft" })
+  const gate = classifySmartQuestionAuthority({
+    question,
+    clarification,
+    currentScopeText: "Paint office walls. Drywall by others.",
+    scopeSnapshotText: "Paint office walls. Drywall by others.",
+  })
+
+  assert.equal(gate.status, "rejected_boundary_conflict")
+  assert.equal(gate.pricingAuthoritative, false)
+  assert.equal(gate.pricingEligibleNow, false)
+})
+
+test("authority gate keeps boundary and material confirmations review-only", () => {
+  const boundaryQuestion = makeQuestion({
+    category: "scope_boundary",
+    answerType: "yes_no",
+    prompt: "Are exclusions still correct?",
+    source: "customer_output_readiness",
+    dedupeKey: "scope_boundary",
+  })
+  const materialQuestion = makeQuestion({
+    category: "materials_responsibility",
+    answerType: "single_choice",
+    prompt: "Who supplies materials?",
+    source: "materials_confirm_items",
+    dedupeKey: "materials_responsibility",
+  })
+
+  const boundaryGate = classifySmartQuestionAuthority({
+    question: boundaryQuestion,
+    clarification: answerQuestion(boundaryQuestion, { type: "yes_no", value: true }),
+    currentScopeText: "Paint office walls. Flooring by others.",
+    scopeSnapshotText: "Paint office walls. Flooring by others.",
+  })
+  const materialGate = classifySmartQuestionAuthority({
+    question: materialQuestion,
+    clarification: answerQuestion(materialQuestion, {
+      type: "single_choice",
+      value: "Contractor supplied",
+    }),
+    currentScopeText: "Install flooring.",
+    scopeSnapshotText: "Install flooring.",
+  })
+
+  assert.equal(boundaryGate.status, "review_only")
+  assert.equal(materialGate.status, "review_only")
+  assert.equal(boundaryGate.pricingEligibleNow, false)
+  assert.equal(materialGate.pricingEligibleNow, false)
+})
+
+test("authority gate keeps schedule demo prep permit and photo plan answers review-only", () => {
+  const categories: Array<SmartQuestion["category"]> = [
+    "schedule",
+    "demo_prep",
+    "permit_inspection",
+    "photo_plan_review",
+  ]
+
+  for (const category of categories) {
+    const question = makeQuestion({
+      category,
+      answerType: "yes_no",
+      prompt: `Confirm ${category}`,
+      dedupeKey: category,
+      source: category === "photo_plan_review" ? "plan_intelligence" : "priceguard_review",
+    })
+    const gate = classifySmartQuestionAuthority({
+      question,
+      clarification: answerQuestion(question, { type: "yes_no", value: true }),
+      currentScopeText: "Paint office walls.",
+      scopeSnapshotText: "Paint office walls.",
+    })
+
+    assert.equal(gate.status, "review_only")
+    assert.equal(gate.pricingEligibleNow, false)
+  }
+})
+
+test("authority gate marks ambiguous short text as needs followup", () => {
+  const question = makeQuestion({
+    category: "demo_prep",
+    answerType: "short_text",
+    prompt: "What prep is included?",
+    dedupeKey: "demo_prep",
+  })
+  const clarification = answerQuestion(question, { type: "short_text", value: "as needed" })
+  const gate = classifySmartQuestionAuthority({
+    question,
+    clarification,
+    currentScopeText: "Paint office walls.",
+    scopeSnapshotText: "Paint office walls.",
+  })
+
+  assert.equal(gate.status, "needs_followup")
+  assert.equal(gate.pricingEligibleNow, false)
+  assert.equal(clarification.pricingEligibleNow, false)
+})
+
+test("authority gate rejects stale scope snapshots before considering pricing candidacy", () => {
+  const question = makeQuestion()
+  const clarification = answerQuestion(question, { type: "number_unit", value: 1200, unit: "sqft" })
+  const gate = classifySmartQuestionAuthority({
+    question,
+    clarification,
+    currentScopeText: "Paint office walls. Drywall by others.",
+    scopeSnapshotText: "Paint office walls.",
+  })
+
+  assert.equal(gate.status, "stale_scope")
+  assert.equal(gate.pricingAuthoritative, false)
+  assert.equal(gate.pricingEligibleNow, false)
+  assert.equal(clarification.pricingEligibleNow, false)
 })
