@@ -2209,12 +2209,20 @@ Final decision:
 
 ---
 
-# Test Entry 39 — UI-Only Estimator Review Noise Reduction Status
+# Test Entry 39 — UI-Only Estimator Review Noise Reduction And Compactness Status
 
 Status: CODE-CHECKED; browser/mobile visual QA still needed
 
 Scope:
 - `EstimatorReviewSummaryPanel` is now the primary estimator review hub.
+- Estimator Review Summary is more compact and less repetitive.
+- Photo / Plan Notes hides when there are no photo/plan notes.
+- Excluded / By Others hides when there are no boundary/exclusion items.
+- Advanced Details is now a footer line instead of a full card.
+- Visible bullets are capped to 2 per summary section.
+- Summary-level exact-text dedupe reduces repeated bullets across cards.
+- Confirmations Needed avoids repeating measurement/surface and boundary/exclusion warnings already shown elsewhere.
+- Profit / Margin Checks shows only the strongest margin/risk item in the compact summary.
 - `CustomerOutputReadinessPanel` moved below Estimator Review Summary and Quick Clarifications.
 - Customer Output Readiness is now compact/collapsed by default, but still auto-opens for critical unsupported trade/scope drift.
 - Quick Clarifications remains under the estimator review flow and shows `Clarifications answered on this screen — price unchanged` when answered.
@@ -2236,4 +2244,4 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for the reduced Estimator Review flow, especially simple typed-only estimates and plan/photo-assisted estimates.
+- Run browser/mobile visual QA for the reduced and compact Estimator Review flow, especially simple typed-only estimates and plan/photo-assisted estimates.
