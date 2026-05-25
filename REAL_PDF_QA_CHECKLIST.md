@@ -2308,3 +2308,32 @@ Architecture safety:
 
 Next QA:
 - Run browser/mobile visual QA for the post-polish simple painting scope, Crew Planning visit-aware copy, and reduced/compact Estimator Review flow.
+
+---
+
+# Test Entry 42 — Crew Planning Multi-Trade Clarity Polish Status
+
+Status: CODE-CHECKED; browser/mobile visual QA still needed
+
+Scope:
+- Crew Planning now includes `planningNotes` in its client-side readback.
+- Typed multi-trade scopes such as `Paint 3 bedrooms and install flooring.` and `Paint 3 bedrooms and replace outlets.` show a compact estimator-only planning note: `Typed scope includes multiple trades. Crew plan is planning guidance only; confirm sequencing, access, and trade boundaries.`
+- The note appears only inside the estimator-only, `data-no-print` Crew Planning panel.
+- Protection-only floor wording such as protect floors with drop cloths, floor protection, flooring protected with drop cloths, and drop cloths over flooring does not trigger the multi-trade note.
+- General Renovation plus painting-heavy typed scope still uses the painting sequence when there is no real second trade.
+- Crew Planning remains client-only, estimator-only, `data-no-print`, not sent to `/api/generate`, not saved to history/localStorage, not included in PDFs/customer output, and `affectsPricing: false`.
+
+Validation:
+- Crew Planning tests passed 14/14.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- No browser/mobile visual QA was run after this polish.
+
+Architecture safety:
+- This was UI/client-only.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, or deployment.
+- Smart Questions remain local-only and non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Next QA:
+- Run browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, including simple painting, floor protection language, typed multi-trade scopes, dry-time/return-trip scopes, and hotel/multi-unit rolling-production language.
