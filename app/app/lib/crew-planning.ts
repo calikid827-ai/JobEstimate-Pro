@@ -75,14 +75,20 @@ function detectHotelMultiUnit(scopeText: string): boolean {
 
 function detectTrade(selectedTrade: BuildCrewPlanningReadbackArgs["selectedTrade"], scopeText: string): string {
   const selected = normalize(selectedTrade)
-  if (selected) return selected
   const text = normalize(scopeText)
-  if (/\bpaint|primer|coats?\b/.test(text)) return "painting"
-  if (/\bdrywall|sheetrock|patch|texture\b/.test(text)) return "drywall"
-  if (/\bfloor|lvp|tile|carpet|laminate\b/.test(text)) return "flooring"
-  if (/\belectrical|outlet|switch|fixture|lighting\b/.test(text)) return "electrical"
-  if (/\bplumbing|toilet|sink|faucet|drain\b/.test(text)) return "plumbing"
-  return "general"
+  const inferFromScope = () => {
+    if (/\bpaint|painting|painter|primer|prime|coats?\b/.test(text)) return "painting"
+    if (/\bdrywall|sheetrock|patch|texture\b/.test(text)) return "drywall"
+    if (/\bfloor|lvp|tile|carpet|laminate\b/.test(text)) return "flooring"
+    if (/\belectrical|outlet|switch|fixture|lighting\b/.test(text)) return "electrical"
+    if (/\bplumbing|toilet|sink|faucet|drain\b/.test(text)) return "plumbing"
+    return "general"
+  }
+  if (selected === "general" || selected === "general renovation" || selected === "general_renovation") {
+    return inferFromScope()
+  }
+  if (selected) return selected
+  return inferFromScope()
 }
 
 function recommendedCrewSize(args: {
@@ -105,6 +111,9 @@ function buildDurationRange(schedule?: Schedule | null): string | null {
   }
   if (schedule?.crewDays != null) {
     return `${schedule.crewDays} crew-day${schedule.crewDays === 1 ? "" : "s"}`
+  }
+  if (schedule?.visits != null && Number(schedule.visits) > 0) {
+    return `${schedule.visits} visit${schedule.visits === 1 ? "" : "s"} shown; work days need confirmation`
   }
   return null
 }

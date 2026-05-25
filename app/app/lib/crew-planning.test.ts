@@ -58,6 +58,32 @@ test("missing schedule is handled safely", () => {
   assert.ok(plan.basis.some((item) => /not confirmed/i.test(item)))
 })
 
+test("missing crewDays with visits keeps visit-aware duration copy", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+    schedule: schedule({ crewDays: null, visits: 2, calendarDays: null }),
+  })
+
+  assert.equal(plan.crewDayBasis, null)
+  assert.equal(plan.durationRange, "2 visits shown; work days need confirmation")
+  assert.equal(plan.options.every((option) => option.estimatedWorkDays === null), true)
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
+test("general renovation selected trade infers painting sequence from painting-heavy typed scope", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+    schedule: schedule({ crewDays: null, visits: 2, calendarDays: null }),
+  })
+
+  assert.ok(plan.sequence.some((item) => /paint supply|Paint, clean up/i.test(item)))
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
 test("simple one-visit scope does not auto-open as a scheduling risk", () => {
   const plan = buildCrewPlanningReadback({
     selectedTrade: "painting",

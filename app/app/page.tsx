@@ -8512,12 +8512,12 @@ function CrewPlanningPanel({
   if (!plan) return null
 
   const formatWorkDays = (days: number | null) =>
-    days == null ? "Needs schedule" : `${days} work day${days === 1 ? "" : "s"}`
+    days == null ? "Work days need confirmation" : `${days} work day${days === 1 ? "" : "s"}`
 
   const recommendedLabel =
     plan.recommendedCrewSize != null
       ? `${plan.recommendedCrewSize} worker${plan.recommendedCrewSize === 1 ? "" : "s"}`
-      : "Needs schedule"
+      : "Not estimated yet"
 
   return (
     <details
@@ -8579,13 +8579,13 @@ function CrewPlanningPanel({
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
           <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 800 }}>Crew-Day Basis</div>
           <div style={{ marginTop: 3, fontSize: 15, fontWeight: 900, color: "#111827" }}>
-            {plan.crewDayBasis != null ? `${plan.crewDayBasis} crew-day${plan.crewDayBasis === 1 ? "" : "s"}` : "Needs schedule"}
+            {plan.crewDayBasis != null ? `${plan.crewDayBasis} crew-day${plan.crewDayBasis === 1 ? "" : "s"}` : "Not estimated yet"}
           </div>
         </div>
         <div style={{ padding: 10, border: "1px solid #dbeafe", borderRadius: 8, background: "#fff" }}>
           <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 800 }}>Duration</div>
           <div style={{ marginTop: 3, fontSize: 15, fontWeight: 900, color: "#111827" }}>
-            {plan.durationRange ?? "Needs schedule"}
+            {plan.durationRange ?? "Work days need confirmation"}
           </div>
         </div>
       </div>

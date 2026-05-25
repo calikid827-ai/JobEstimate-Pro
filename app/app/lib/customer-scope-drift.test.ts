@@ -470,6 +470,30 @@ test("does not warn when plumbing scope mentions flooring protection only", () =
   )
 })
 
+test("does not warn when painting scope says flooring will be protected with drop cloths", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+      resultText:
+        "Customer-facing scope includes painting bedroom walls. Furniture and flooring will be protected with drop cloths before painting.",
+    }),
+    null
+  )
+})
+
+test("does not warn when painting scope says protect floors with drop cloths", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "painting",
+      writtenScope: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+      resultText:
+        "Customer-facing scope includes painting bedroom walls, covering adjacent finishes, and protect floors with drop cloths.",
+    }),
+    null
+  )
+})
+
 test("does not warn when plumbing scope mentions no electrical interference only", () => {
   assert.equal(
     warning({
@@ -666,6 +690,17 @@ test("true flooring repair still warns when unsupported", () => {
       selectedTrade: "plumbing",
       writtenScope: "Replace toilet and faucet.",
       resultText: "Customer-facing scope includes flooring repair at the vanity area.",
+    }) || "",
+    /flooring/
+  )
+})
+
+test("true flooring installation still warns when unsupported after protection cleanup", () => {
+  assert.match(
+    warning({
+      selectedTrade: "painting",
+      writtenScope: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+      resultText: "Customer-facing scope includes install flooring in the bedrooms after painting.",
     }) || "",
     /flooring/
   )
