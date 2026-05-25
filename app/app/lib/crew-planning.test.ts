@@ -84,6 +84,21 @@ test("general renovation selected trade infers painting sequence from painting-h
   assert.equal(plan.affectsPricing, false)
 })
 
+test("residential floor protection language does not trigger hotel multi-unit planning", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint 3 bedrooms. Walls only. Protect floors with drop cloths. Minor patching. Two coats.",
+    schedule: schedule({ crewDays: 1, visits: 1, rationale: [], calendarDays: null }),
+  })
+
+  assert.notEqual(plan.recommendedCrewSize, 6)
+  assert.ok(plan.sequence.some((item) => /Protect floors\/furniture/i.test(item)))
+  assert.equal(plan.sequence.some((item) => /rolling production|room\/unit release|punch follow-up/i.test(item)), false)
+  assert.equal(plan.hasSchedulingRisks, false)
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
 test("simple one-visit scope does not auto-open as a scheduling risk", () => {
   const plan = buildCrewPlanningReadback({
     selectedTrade: "painting",
@@ -133,6 +148,34 @@ test("hotel multi-unit scope produces rolling-production planning notes", () => 
   assert.ok(plan.sequence.some((item) => /rolling production/i.test(item)))
   assert.ok(plan.bottlenecks.some((item) => /room-release|Repeated rooms|material staging/i.test(item)))
   assert.ok(plan.risks.some((item) => /planning support only/i.test(item)))
+})
+
+test("floor-by-floor production still triggers hotel multi-unit planning", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 60 guest rooms with rolling floor-by-floor production.",
+    schedule: schedule({ crewDays: 30, visits: 10, calendarDays: { min: 10, max: 20 } }),
+  })
+
+  assert.equal(plan.recommendedCrewSize, 6)
+  assert.ok(plan.sequence.some((item) => /rolling production/i.test(item)))
+  assert.ok(plan.bottlenecks.some((item) => /Repeated rooms|room-release|material staging/i.test(item)))
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
+test("rooms released by GC still triggers hotel multi-unit planning", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint guest rooms as rooms released by GC.",
+    schedule: schedule({ crewDays: 12, visits: 6, calendarDays: { min: 6, max: 12 } }),
+  })
+
+  assert.equal(plan.recommendedCrewSize, 6)
+  assert.ok(plan.sequence.some((item) => /room\/unit release/i.test(item)))
+  assert.ok(plan.risks.some((item) => /planning support only/i.test(item)))
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
 })
 
 test("boundary by-others exclusion language stays risk review-only", () => {

@@ -68,7 +68,7 @@ function ceilDays(crewDays: number | null, crewSize: number): number | null {
 }
 
 function detectHotelMultiUnit(scopeText: string): boolean {
-  return /\b(hotel|motel|multi[-\s]?unit|units?|guest\s*rooms?|rooms?\s*\d+|corridors?|floors?|floor\s+\d+|occupied\s+rooms?|room release|unit stack)\b/i.test(
+  return /\b(hotel|motel|multi[-\s]?unit|units?|guest\s*rooms?|corridors?|floor[-\s]?by[-\s]?floor|floors?\s+\d+(?:\s*[-–]\s*\d+)?|room\s+release|rooms?\s+released|occupied\s+rooms?|unit stack)\b/i.test(
     scopeText
   )
 }
