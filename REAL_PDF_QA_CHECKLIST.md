@@ -2276,4 +2276,35 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for simple one-visit scopes, dry-time/return-trip scopes, access/staging risk scopes, and hotel/multi-unit rolling-production language.
+- Run browser/mobile visual QA for simple one-visit scopes, the post-polish painting scope `Paint 3 bedrooms. Walls only. Minor patching. Two coats.`, dry-time/return-trip scopes, access/staging risk scopes, and hotel/multi-unit rolling-production language.
+
+---
+
+# Test Entry 41 — Flooring Protection And Crew Planning Display Polish Status
+
+Status: CODE-CHECKED; browser/mobile visual QA still needed
+
+Scope:
+- Customer Scope Drift now treats protection-only flooring wording as protection context instead of unsupported flooring scope.
+- Covered phrases include flooring will be protected, flooring protected with drop cloths, protect floors with drop cloths, covered floors, and drop cloths over flooring.
+- True unsupported flooring work still warns for install, replace, repair, remove, level, underlayment, and flooring demolition.
+- Customer Output Readiness no longer auto-opens from protection-only flooring wording because the unsupported-trade item is no longer created.
+- Crew Planning now infers painting when selected trade is General Renovation but typed scope is painting-heavy.
+- Crew Planning missing crew-day/duration labels now use `Not estimated yet`, `2 visits shown; work days need confirmation`, and `Work days need confirmation`.
+- Crew Planning remains client-only, estimator-only, `data-no-print`, not sent to `/api/generate`, not saved to history/localStorage, not included in PDFs/customer output, and `affectsPricing: false`.
+
+Validation:
+- Crew Planning tests passed 9/9.
+- Customer Scope Drift tests passed 74/74.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- No browser/mobile visual QA was run after this polish.
+
+Architecture safety:
+- This was UI/client-only.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, or deployment.
+- Smart Questions remain local-only and non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Next QA:
+- Run browser/mobile visual QA for the post-polish simple painting scope, Crew Planning visit-aware copy, and reduced/compact Estimator Review flow.

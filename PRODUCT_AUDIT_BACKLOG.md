@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V1 polish audit, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V1 polish audit after real-device QA, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1106,7 +1106,7 @@ Done note:
 - Recommended fix approach: Completed a client-only first pass. `buildCrewPlanningReadback()` derives planning guidance from existing client-side data only and powers an estimator-only `data-no-print` Crew Planning panel after Estimated Schedule / schedule editor and before `EstimatorReviewSummaryPanel`.
 - Exact files/components involved: `app/app/lib/crew-planning.ts`, `app/app/lib/crew-planning.test.ts`, `app/app/page.tsx`.
 - What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
-- Tests or manual QA needed: Completed with Crew Planning tests 7/7, `npx tsc --noEmit`, and `git diff --check`. Known note: no browser/mobile visual QA was run.
+- Tests or manual QA needed: Completed with Crew Planning tests 7/7 for V1, then Crew Planning tests 9/9 and Customer Scope Drift tests 74/74 for the focused flooring-protection / Crew Planning display polish. `npx tsc --noEmit` and `git diff --check` passed. Known note: no browser/mobile visual QA was run after the polish.
 - Status: Done
 
 Done note:
@@ -1116,8 +1116,27 @@ Done note:
 - The readback includes `recommendedCrewSize`, `crewDayBasis`, `durationRange`, Small crew / Standard crew / Push schedule options, `sequence`, `bottlenecks`, `risks`, `basis`, `estimatorOnly`, `affectsPricing`, and `hasSchedulingRisks`.
 - Simple scopes such as “Paint 3 bedrooms” receive contractor-friendly prep/paint/cleanup planning plus review-only risks for access, materials, surfaces, and quantities.
 - Hotel/multi-unit language receives rolling-production, room-release, material-staging, prep/finish/punch sequencing, and planning-only repeated-room risk.
+- Focused polish in commit `Polish crew planning and flooring protection review` added painting inference when selected trade is General Renovation but typed scope is painting-heavy, and replaced repeated missing-schedule copy with “Not estimated yet,” “2 visits shown; work days need confirmation,” and “Work days need confirmation.”
 - Crew Planning is not sent to `/api/generate`, not saved to estimate history/localStorage history, and not included in PDFs/customer output.
 - No backend/API/saved/PDF/pricing/`pricingSource`/pricing-owner/labor-total/prompt/`result.text`/materials/deterministic/billing behavior changed.
+- Smart Questions remain local-only and non-pricing-authoritative; Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+#### Item: Flooring protection false-positive polish
+
+- Problem: Visual QA for `Paint 3 bedrooms. Walls only. Minor patching. Two coats.` found Customer-Facing Scope wording about flooring being protected with drop cloths was treated as unsupported flooring work.
+- Why it matters: Protection-only language should not make a simple painting estimate feel like unsupported flooring scope or auto-open Customer Output Readiness.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a UI/client-only Customer Scope Drift polish. Protection-only phrases such as flooring will be protected, flooring protected with drop cloths, protect floors with drop cloths, covered floors, and drop cloths over flooring no longer create unsupported flooring drift. True unsupported flooring work still warns for install, replace, repair, remove, level, underlayment, and flooring demolition.
+- Exact files/components involved: `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`, `app/app/lib/crew-planning.ts`, `app/app/lib/crew-planning.test.ts`, `app/app/page.tsx`.
+- What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
+- Tests or manual QA needed: Completed with Customer Scope Drift tests 74/74, Crew Planning tests 9/9, `npx tsc --noEmit`, and `git diff --check`. Known note: no browser/mobile visual QA was run after this polish.
+- Status: Done
+
+Done note:
+
+- Customer Output Readiness no longer auto-opens from protection-only flooring wording because the unsupported-trade item is no longer created.
+- This was UI/client-only and did not change backend/API/saved/PDF/pricing/prompt/`result.text`/materials/deterministic/billing behavior.
 - Smart Questions remain local-only and non-pricing-authoritative; Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 #### Item: Full crew scheduling/calendar
