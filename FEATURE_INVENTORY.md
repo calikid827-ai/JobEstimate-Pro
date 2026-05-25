@@ -354,6 +354,7 @@ Large in-page cards in `app/app/page.tsx`:
 - Customer Output Readiness.
 - Pricing summary / PDF actions.
 - Schedule block/editor.
+- Crew Planning panel.
 - Estimator review details, containing PriceGuard Review, Plan Review Summary, and line-item detail.
 - Review insights card.
 - Materials list card.
@@ -609,7 +610,7 @@ Known gaps:
 
 ## Recommended Next Features
 
-- Next active smart-upgrade direction: browser/mobile visual QA for the reduced and compact Estimator Review flow, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor. Avoid actual pricing-authoritative behavior unless explicitly scoped, and keep Evidence Authority internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+- Next active smart-upgrade direction: browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V1 polish audit, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped, and keep Evidence Authority internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -650,7 +651,7 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Upgrades
 
-1. Polish or audit the next optional intelligence layer around typed scope as the required scope-control anchor: browser/mobile visual QA for the reduced and compact Estimator Review flow, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning, camera measuring prototype, voice-to-scope draft, or plan-to-scope reconciliation. Keep Evidence Authority internal/debug-only unless normal API/saved/UI/PDF exposure is separately scoped.
+1. Polish or audit the next optional intelligence layer around typed scope as the required scope-control anchor: browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V1 polish audit, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning, camera measuring prototype, voice-to-scope draft, or plan-to-scope reconciliation. Keep Evidence Authority internal/debug-only unless normal API/saved/UI/PDF exposure is separately scoped, and avoid pricing/labor-total changes unless explicitly scoped.
 2. Run focused QA for Saved Estimates and Invoices empty states, selected-job filtering context, mobile layout, and existing actions.
 3. Plan upload guidance and fallback-message QA for selected pages, weak evidence, and degraded PDF/rendering cases.
 4. Keep further PriceGuard Review and Customer Scope Drift improvements narrow and deterministic if new QA finds over-warning or unclear copy.

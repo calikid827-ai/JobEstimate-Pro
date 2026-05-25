@@ -2244,4 +2244,36 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for the reduced and compact Estimator Review flow, especially simple typed-only estimates and plan/photo-assisted estimates.
+- Run browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, especially simple typed-only estimates, scheduling-risk scopes, hotel/multi-unit language, and plan/photo-assisted estimates.
+
+---
+
+# Test Entry 40 — Crew Planning V1 Client-Only Status
+
+Status: CODE-CHECKED; browser/mobile visual QA still needed
+
+Scope:
+- Crew Planning V1 is implemented as an estimator-only, `data-no-print` panel.
+- The panel appears after Estimated Schedule / schedule editor and before `EstimatorReviewSummaryPanel`.
+- It uses existing client-side data only and is planning guidance only.
+- It is collapsed by default for simple one-visit scopes.
+- It auto-opens only for real scheduling risks: return trip, dry/cure/coat sequencing, access/staging or occupied-space constraints, multi-visit schedules, and hotel/multi-unit rolling production.
+- Crew Planning output includes `recommendedCrewSize`, `crewDayBasis`, `durationRange`, Small crew / Standard crew / Push schedule options, `sequence`, `bottlenecks`, `risks`, `basis`, `estimatorOnly: true`, `affectsPricing: false`, and `hasSchedulingRisks`.
+- Simple scopes like `Paint 3 bedrooms` receive contractor-friendly prep/paint/cleanup planning and review-only risks around access, materials, surfaces, and quantities.
+- Hotel/multi-unit language receives rolling-production, room-release, material-staging, prep/finish/punch sequencing, and planning-only repeated-room risk.
+
+Validation:
+- Crew Planning tests passed 7/7.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- No browser/mobile visual QA was run for this entry.
+
+Architecture safety:
+- This was UI/client-only and estimator-only.
+- Crew Planning is not sent to `/api/generate`, not saved to history/localStorage, and not included in PDFs/customer output.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, or deployment.
+- Smart Questions remain local-only and non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Next QA:
+- Run browser/mobile visual QA for simple one-visit scopes, dry-time/return-trip scopes, access/staging risk scopes, and hotel/multi-unit rolling-production language.

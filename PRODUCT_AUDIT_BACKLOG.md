@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA for the reduced and compact Estimator Review flow, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative behavior unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V1 polish audit, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1096,6 +1096,29 @@ Done note:
 - Status: Deferred
 
 ### Scheduling
+
+#### Item: Crew Planning V1 client-only panel
+
+- Problem: The existing schedule was useful at proposal level, but contractors also need quick crew-size, work-sequence, and scheduling-risk guidance without changing pricing or customer-facing output.
+- Why it matters: Crew planning makes the estimate feel more useful to project managers while keeping typed scope as the scope-control anchor and keeping schedule guidance estimator-only.
+- Risk level: Low
+- Priority: P1
+- Recommended fix approach: Completed a client-only first pass. `buildCrewPlanningReadback()` derives planning guidance from existing client-side data only and powers an estimator-only `data-no-print` Crew Planning panel after Estimated Schedule / schedule editor and before `EstimatorReviewSummaryPanel`.
+- Exact files/components involved: `app/app/lib/crew-planning.ts`, `app/app/lib/crew-planning.test.ts`, `app/app/page.tsx`.
+- What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
+- Tests or manual QA needed: Completed with Crew Planning tests 7/7, `npx tsc --noEmit`, and `git diff --check`. Known note: no browser/mobile visual QA was run.
+- Status: Done
+
+Done note:
+
+- Crew Planning is estimator-only, `data-no-print`, planning guidance only, and always reports `estimatorOnly: true` and `affectsPricing: false`.
+- The panel is collapsed for simple one-visit scopes and auto-opens only for real scheduling risks: return trips, dry/cure/coat sequencing, access/staging or occupied-space constraints, multi-visit schedules, and hotel/multi-unit rolling production.
+- The readback includes `recommendedCrewSize`, `crewDayBasis`, `durationRange`, Small crew / Standard crew / Push schedule options, `sequence`, `bottlenecks`, `risks`, `basis`, `estimatorOnly`, `affectsPricing`, and `hasSchedulingRisks`.
+- Simple scopes such as “Paint 3 bedrooms” receive contractor-friendly prep/paint/cleanup planning plus review-only risks for access, materials, surfaces, and quantities.
+- Hotel/multi-unit language receives rolling-production, room-release, material-staging, prep/finish/punch sequencing, and planning-only repeated-room risk.
+- Crew Planning is not sent to `/api/generate`, not saved to estimate history/localStorage history, and not included in PDFs/customer output.
+- No backend/API/saved/PDF/pricing/`pricingSource`/pricing-owner/labor-total/prompt/`result.text`/materials/deterministic/billing behavior changed.
+- Smart Questions remain local-only and non-pricing-authoritative; Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 #### Item: Full crew scheduling/calendar
 
