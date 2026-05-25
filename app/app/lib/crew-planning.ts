@@ -26,6 +26,7 @@ export type CrewPlanningReadback = {
   bottlenecks: string[]
   risks: string[]
   basis: string[]
+  planningNotes: string[]
   estimatorOnly: true
   affectsPricing: false
   hasSchedulingRisks: boolean
@@ -71,6 +72,42 @@ function detectHotelMultiUnit(scopeText: string): boolean {
   return /\b(hotel|motel|multi[-\s]?unit|units?|guest\s*rooms?|corridors?|floor[-\s]?by[-\s]?floor|floors?\s+\d+(?:\s*[-–]\s*\d+)?|room\s+release|rooms?\s+released|occupied\s+rooms?|unit stack)\b/i.test(
     scopeText
   )
+}
+
+function stripProtectionOnlyFlooringContext(scopeText: string): string {
+  return clean(scopeText).replace(
+    /\b(protect(?:s|ed|ing|ion)?|cover(?:ed|ing)?|drop\s+cloths?|floor\s+protection)\b.{0,80}\b(flooring|floors?|floor)\b|\b(flooring|floors?|floor)\b.{0,80}\b(protect(?:s|ed|ing|ion)?|cover(?:ed|ing)?|drop\s+cloths?|floor\s+protection)\b/gi,
+    " "
+  )
+}
+
+function detectTypedTradeCategories(scopeText: string): string[] {
+  const text = normalize(stripProtectionOnlyFlooringContext(scopeText))
+  const trades: string[] = []
+  const add = (trade: string, pattern: RegExp) => {
+    if (pattern.test(text) && !trades.includes(trade)) trades.push(trade)
+  }
+
+  add("painting", /\bpaint|painting|painter|primer|prime|coats?\b/)
+  add(
+    "flooring",
+    /\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|level(?:ing)?)\s+(?:\w+\s+){0,3}(flooring|floors?|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b|\b(flooring|floors?|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\s+(?:\w+\s+){0,3}(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|level(?:ing)?)\b|\bflooring\s+demo(?:lition)?\b|\bdemo(?:lition)?\s+of\s+flooring\b|\bunderlayment|transitions?\b/
+  )
+  add("electrical", /\b(electrical|outlets?|receptacles?|switches?|light\s+fixtures?|electrical\s+fixtures?|lighting|wiring|circuits?|breakers?)\b/)
+  add("drywall", /\b(drywall|sheetrock|skim\s+coat|texture\s+match|orange\s+peel|knockdown|finish\s+level|level\s+[345])\b/)
+  add("bathroom/tile", /\b(tile|tiling|grout|waterproofing|waterproof|backer\s*board|cement\s*board|shower\s+pan|bathroom)\b/)
+  add("plumbing", /\b(plumbing|plumber|toilets?|faucets?|sinks?|drains?|supply\s+lines?|water\s+lines?|valves?)\b/)
+
+  return trades
+}
+
+function buildPlanningNotes(scopeText: string): string[] {
+  const trades = detectTypedTradeCategories(scopeText)
+  if (trades.length < 2) return []
+
+  return [
+    "Typed scope includes multiple trades. Crew plan is planning guidance only; confirm sequencing, access, and trade boundaries.",
+  ]
 }
 
 function detectTrade(selectedTrade: BuildCrewPlanningReadbackArgs["selectedTrade"], scopeText: string): string {
@@ -215,6 +252,7 @@ export function buildCrewPlanningReadback(
   const bottlenecks: string[] = []
   const risks: string[] = []
   const basis: string[] = []
+  const planningNotes = buildPlanningNotes(scopeText)
   let hasSchedulingRisks = false
 
   if (crewDayBasis != null) addUnique(basis, `Uses existing schedule basis of ${crewDayBasis} crew-day${crewDayBasis === 1 ? "" : "s"}.`, 5)
@@ -260,6 +298,7 @@ export function buildCrewPlanningReadback(
     bottlenecks,
     risks,
     basis,
+    planningNotes,
     estimatorOnly: true,
     affectsPricing: false,
     hasSchedulingRisks,

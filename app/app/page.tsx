@@ -8562,6 +8562,24 @@ function CrewPlanningPanel({
         Estimator-only crew guidance. Price, proposal text, PDFs, and saved estimates are unchanged.
       </p>
 
+      {plan.planningNotes.length > 0 && (
+        <div
+          style={{
+            marginTop: 10,
+            padding: 10,
+            border: "1px solid #bfdbfe",
+            borderRadius: 8,
+            background: "#fff",
+            fontSize: 12,
+            color: "#1e3a8a",
+            lineHeight: 1.45,
+            fontWeight: 800,
+          }}
+        >
+          {plan.planningNotes[0]}
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",

@@ -80,6 +80,7 @@ test("general renovation selected trade infers painting sequence from painting-h
   })
 
   assert.ok(plan.sequence.some((item) => /paint supply|Paint, clean up/i.test(item)))
+  assert.deepEqual(plan.planningNotes, [])
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
@@ -95,6 +96,31 @@ test("residential floor protection language does not trigger hotel multi-unit pl
   assert.ok(plan.sequence.some((item) => /Protect floors\/furniture/i.test(item)))
   assert.equal(plan.sequence.some((item) => /rolling production|room\/unit release|punch follow-up/i.test(item)), false)
   assert.equal(plan.hasSchedulingRisks, false)
+  assert.deepEqual(plan.planningNotes, [])
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
+test("painting and flooring typed scope produces a multi-trade planning note", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint 3 bedrooms and install flooring.",
+    schedule: schedule({ crewDays: 2, visits: 1, calendarDays: null }),
+  })
+
+  assert.ok(plan.planningNotes.some((item) => /multiple trades/i.test(item)))
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+})
+
+test("painting and electrical typed scope produces a multi-trade planning note", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint 3 bedrooms and replace outlets.",
+    schedule: schedule({ crewDays: 2, visits: 1, calendarDays: null }),
+  })
+
+  assert.ok(plan.planningNotes.some((item) => /multiple trades/i.test(item)))
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
