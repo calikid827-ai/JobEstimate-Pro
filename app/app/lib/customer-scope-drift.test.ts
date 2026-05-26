@@ -568,6 +568,55 @@ test("does not warn when plumbing scope avoids existing electrical wiring", () =
   )
 })
 
+test("does not warn for painting masking context around outlets and switches", () => {
+  const contextOnlyPhrases = [
+    "Customer-facing scope includes painting walls with masking tape applied to trim, outlets, and switches.",
+    "Customer-facing scope includes painting walls and mask outlets and switches before painting.",
+    "Customer-facing scope includes painting walls and protect outlets and switches.",
+    "Customer-facing scope includes painting walls and cover outlets and switches.",
+    "Customer-facing scope includes painting walls, remove and reinstall outlet covers for painting only.",
+    "Customer-facing scope includes painting walls. Electrical fixtures to remain.",
+  ]
+
+  for (const resultText of contextOnlyPhrases) {
+    assert.equal(
+      warning({
+        selectedTrade: "painting",
+        writtenScope: "Paint 3 bedrooms. Walls only. Two coats. Return next day for second coat if needed.",
+        resultText,
+      }),
+      null,
+      resultText
+    )
+  }
+})
+
+test("true electrical work still warns from painting scope", () => {
+  const trueElectricalPhrases = [
+    "Customer-facing scope includes painting walls and replace outlets.",
+    "Customer-facing scope includes painting walls and install outlets.",
+    "Customer-facing scope includes painting walls and move switches.",
+    "Customer-facing scope includes painting walls and repair wiring.",
+    "Customer-facing scope includes painting walls and electrical rough-in.",
+    "Customer-facing scope includes painting walls and run new wire.",
+    "Customer-facing scope includes painting walls and add circuit.",
+    "Customer-facing scope includes painting walls and panel work.",
+    "Customer-facing scope includes painting walls and install light fixtures.",
+  ]
+
+  for (const resultText of trueElectricalPhrases) {
+    assert.match(
+      warning({
+        selectedTrade: "painting",
+        writtenScope: "Paint 3 bedrooms. Walls only. Two coats. Return next day for second coat if needed.",
+        resultText,
+      }) || "",
+      /electrical/,
+      resultText
+    )
+  }
+})
+
 test("does not warn when electrical scope references drywall and paint as subsequent work by others", () => {
   assert.equal(
     warning({
