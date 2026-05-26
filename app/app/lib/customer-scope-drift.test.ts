@@ -582,6 +582,16 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Cover plates removed/reinstalled for painting only.",
     "Customer-facing scope includes painting walls. Switch covers removed/reinstalled for painting only.",
     "Customer-facing scope includes painting walls. Electrical fixtures to remain.",
+    "Customer-facing scope includes painting walls. Electrical devices will be masked and protected.",
+    "Customer-facing scope includes painting walls. Electrical devices masked and protected for painting.",
+    "Customer-facing scope includes painting walls. Electrical components protected for painting.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is confined to the removal and reinstallation of outlet covers only.",
+    "Customer-facing scope includes painting walls. Electrical coordination limited to outlet cover removal and reinstallation only.",
+    "Customer-facing scope includes painting walls. No rewiring or device replacement involved.",
+    "Customer-facing scope includes painting walls. No electrical rewiring.",
+    "Customer-facing scope includes painting walls. No device replacement.",
+    "Customer-facing scope includes painting walls. No electrical work beyond outlet cover removal/reinstallation for painting only.",
+    "Paint 3 bedrooms. Walls only. Remove and reinstall outlet covers for painting only. Two coats.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
@@ -608,6 +618,9 @@ test("true electrical work still warns from painting scope", () => {
     "Customer-facing scope includes painting walls and add circuit.",
     "Customer-facing scope includes painting walls and panel work.",
     "Customer-facing scope includes painting walls and install light fixtures.",
+    "Customer-facing scope includes painting walls and replace switches.",
+    "Customer-facing scope includes painting walls and install switches.",
+    "Customer-facing scope includes painting walls and device replacement is included.",
   ]
 
   for (const resultText of trueElectricalPhrases) {
