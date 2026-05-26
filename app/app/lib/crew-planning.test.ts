@@ -125,6 +125,47 @@ test("painting and electrical typed scope produces a multi-trade planning note",
   assert.equal(plan.affectsPricing, false)
 })
 
+test("cover-plate painting prep does not produce a multi-trade planning note", () => {
+  const scopes = [
+    "Paint 3 bedrooms. Walls only. Remove and reinstall outlet covers for painting only. Two coats.",
+    "Paint 3 bedrooms. Cover plates removed/reinstalled for painting only.",
+  ]
+
+  for (const scopeText of scopes) {
+    const plan = buildCrewPlanningReadback({
+      selectedTrade: "general_renovation",
+      scopeText,
+      schedule: schedule({ crewDays: 1, visits: 1, calendarDays: null }),
+    })
+
+    assert.deepEqual(plan.planningNotes, [], scopeText)
+    assert.ok(plan.sequence.some((item) => /Protect floors\/furniture|Paint, clean up/i.test(item)), scopeText)
+    assert.equal(plan.estimatorOnly, true)
+    assert.equal(plan.affectsPricing, false)
+  }
+})
+
+test("true electrical typed scope still produces a multi-trade planning note", () => {
+  const scopes = [
+    "Paint 3 bedrooms and replace outlets.",
+    "Paint 3 bedrooms and install outlets.",
+    "Paint 3 bedrooms and move switches.",
+    "Paint 3 bedrooms and install light fixtures.",
+  ]
+
+  for (const scopeText of scopes) {
+    const plan = buildCrewPlanningReadback({
+      selectedTrade: "general_renovation",
+      scopeText,
+      schedule: schedule({ crewDays: 2, visits: 1, calendarDays: null }),
+    })
+
+    assert.ok(plan.planningNotes.some((item) => /multiple trades/i.test(item)), scopeText)
+    assert.equal(plan.estimatorOnly, true)
+    assert.equal(plan.affectsPricing, false)
+  }
+})
+
 test("simple one-visit scope does not auto-open as a scheduling risk", () => {
   const plan = buildCrewPlanningReadback({
     selectedTrade: "painting",

@@ -575,6 +575,12 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls and protect outlets and switches.",
     "Customer-facing scope includes painting walls and cover outlets and switches.",
     "Customer-facing scope includes painting walls, remove and reinstall outlet covers for painting only.",
+    "Customer-facing scope includes painting walls, remove/reinstall outlet covers for painting only.",
+    "Customer-facing scope includes painting walls, remove and reinstall switch covers for painting only.",
+    "Customer-facing scope includes painting walls, remove and reinstall cover plates for painting only.",
+    "Customer-facing scope includes painting walls. Outlet covers removed and reinstalled for painting only.",
+    "Customer-facing scope includes painting walls. Cover plates removed/reinstalled for painting only.",
+    "Customer-facing scope includes painting walls. Switch covers removed/reinstalled for painting only.",
     "Customer-facing scope includes painting walls. Electrical fixtures to remain.",
   ]
 

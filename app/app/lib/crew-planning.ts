@@ -81,8 +81,15 @@ function stripProtectionOnlyFlooringContext(scopeText: string): string {
   )
 }
 
+function stripPaintingElectricalPrepContext(scopeText: string): string {
+  return clean(scopeText).replace(
+    /\b(mask(?:ed|ing)?(?:\s+tape)?|protect(?:s|ed|ing|ion)?|cover(?:s|ed|ing)?|tape)\b.{0,100}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?|outlets?|switches?|electrical\s+fixtures?|light\s+fixtures?)\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?|outlets?|switches?|electrical\s+fixtures?|light\s+fixtures?)\b.{0,100}\b(mask(?:ed|ing)?|protect(?:ed|ing|ion)?|cover(?:ed|ing)?|tape|to\s+remain|remain)\b|\b(remov(?:e|ed|al)?|removal)\b.{0,40}\b(reinstall(?:ed|ation|ing)?|reinstallation)\b.{0,80}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,120}\b(paint|painting|painted)\b|\b(remov(?:e|ed|al)?|removal)\b\s*\/\s*\b(reinstall(?:ed|ation|ing)?|reinstallation)\b.{0,80}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,120}\b(paint|painting|painted)\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,80}\b(remov(?:e|ed|al)?|removal|reinstall(?:ed|ation|ing)?|reinstallation)\b.{0,80}\b(reinstall(?:ed|ation|ing)?|reinstallation|remov(?:e|ed|al)?|removal)\b.{0,120}\b(paint|painting|painted)\b/gi,
+    " "
+  )
+}
+
 function detectTypedTradeCategories(scopeText: string): string[] {
-  const text = normalize(stripProtectionOnlyFlooringContext(scopeText))
+  const text = normalize(stripPaintingElectricalPrepContext(stripProtectionOnlyFlooringContext(scopeText)))
   const trades: string[] = []
   const add = (trade: string, pattern: RegExp) => {
     if (pattern.test(text) && !trades.includes(trade)) trades.push(trade)
