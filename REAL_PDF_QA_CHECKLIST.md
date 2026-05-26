@@ -2337,3 +2337,30 @@ Architecture safety:
 
 Next QA:
 - Run browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, including simple painting, floor protection language, typed multi-trade scopes, dry-time/return-trip scopes, and hotel/multi-unit rolling-production language.
+
+---
+
+# Test Entry 43 — Customer Scope Drift Electrical Masking Polish Status
+
+Status: CODE-CHECKED; follow-up Playwright screenshot QA still needed
+
+Scope:
+- Customer Scope Drift now treats painting-prep outlet/switch masking language as context-only.
+- Covered phrases include masking tape applied to trim/outlets/switches, mask outlets and switches before painting, protect outlets and switches, cover outlets and switches, remove and reinstall outlet covers for painting only, and electrical fixtures to remain.
+- These phrases no longer create unsupported electrical drift or auto-open Customer Output Readiness because the `Unsupported trade wording` item is not created.
+- True unsupported electrical work still warns for replace outlets, install outlets, move switches, repair wiring, electrical rough-in, run new wire, add circuit, panel work, and install light fixtures.
+
+Validation:
+- Customer Scope Drift tests passed 76/76.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- No follow-up Playwright screenshot QA was run after this polish.
+
+Architecture safety:
+- This was UI/client review-only.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, or deployment.
+- Smart Questions remain local-only and non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Next QA:
+- Run follow-up Playwright browser/mobile QA for the dry-time painting scenario and the reduced/compact Estimator Review flow.
