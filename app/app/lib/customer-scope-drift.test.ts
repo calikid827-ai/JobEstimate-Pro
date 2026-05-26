@@ -587,6 +587,16 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Electrical components protected for painting.",
     "Customer-facing scope includes painting walls. Coordination with the electrical trade is confined to the removal and reinstallation of outlet covers only.",
     "Customer-facing scope includes painting walls. Electrical coordination limited to outlet cover removal and reinstallation only.",
+    "Customer-facing scope includes painting walls. All electrical outlet covers will be removed and reinstalled for painting only.",
+    "Customer-facing scope includes painting walls. Electrical outlet covers removed/reinstalled for painting only.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is required to manage outlet covers without causing damage to wiring or devices.",
+    "Customer-facing scope includes painting walls. Electrical trade coordination to manage outlet covers only.",
+    "Customer-facing scope includes painting walls. Outlet covers removed/reinstalled without disturbing wiring or devices.",
+    "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without electrical work.",
+    "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without rewiring or device replacement.",
+    "Customer-facing scope includes painting walls. No damage to wiring or devices.",
+    "Customer-facing scope includes painting walls. Wiring or devices to remain untouched.",
+    "Customer-facing scope includes painting walls. Devices and wiring remain existing/to remain.",
     "Customer-facing scope includes painting walls. No rewiring or device replacement involved.",
     "Customer-facing scope includes painting walls. No electrical rewiring.",
     "Customer-facing scope includes painting walls. No device replacement.",
@@ -621,6 +631,7 @@ test("true electrical work still warns from painting scope", () => {
     "Customer-facing scope includes painting walls and replace switches.",
     "Customer-facing scope includes painting walls and install switches.",
     "Customer-facing scope includes painting walls and device replacement is included.",
+    "Customer-facing scope includes painting walls and wiring repair is included.",
   ]
 
   for (const resultText of trueElectricalPhrases) {
