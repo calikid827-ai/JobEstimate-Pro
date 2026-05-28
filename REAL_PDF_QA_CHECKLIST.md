@@ -2340,21 +2340,22 @@ Next QA:
 
 ---
 
-# Test Entry 43 — Customer Scope Drift Electrical Masking Polish Status
+# Test Entry 43 — Customer Scope Drift Final Context-Wording Polish Status
 
-Status: CODE-CHECKED; follow-up Playwright screenshot QA still needed
+Status: PASSED
 
 Scope:
-- Customer Scope Drift now treats painting-prep outlet/switch masking language as context-only.
-- Covered phrases include masking tape applied to trim/outlets/switches, mask outlets and switches before painting, protect outlets and switches, cover outlets and switches, remove and reinstall outlet covers for painting only, and electrical fixtures to remain.
-- These phrases no longer create unsupported electrical drift or auto-open Customer Output Readiness because the `Unsupported trade wording` item is not created.
-- True unsupported electrical work still warns for replace outlets, install outlets, move switches, repair wiring, electrical rough-in, run new wire, add circuit, panel work, and install light fixtures.
+- Customer Scope Drift now treats painting-context flooring masking/protection, outlet/switch masking, cover-plate/outlet-cover prep, generated outlet-cover coordination, safe removal/reinstallation, wiring/device/circuit unaffected language, and outlet-cover handling to prevent interference with existing wiring as context-only.
+- These phrases no longer create unsupported flooring/electrical drift or auto-open Customer Output Readiness because the `Unsupported trade wording` item is not created.
+- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep.
+- True flooring work and true electrical/circuit work still surface clearly.
 
 Validation:
-- Customer Scope Drift tests passed 76/76.
+- Customer Scope Drift tests passed 77/77.
 - `npx tsc --noEmit` passed.
 - `git diff --check` passed.
-- No follow-up Playwright screenshot QA was run after this polish.
+- Final desktop/mobile Playwright screenshot QA passed with `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-wiring-interference-final-qa`.
+- Dry-time painting, flooring protection/masking, outlet/switch masking, cover-plate painting prep, true flooring control, and true electrical control passed on desktop and iPhone.
 
 Architecture safety:
 - This was UI/client review-only.
@@ -2363,4 +2364,4 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run follow-up Playwright browser/mobile QA for the dry-time painting scenario and the reduced/compact Estimator Review flow.
+- Next safe options: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor; avoid actual pricing/labor-total changes unless explicitly scoped.

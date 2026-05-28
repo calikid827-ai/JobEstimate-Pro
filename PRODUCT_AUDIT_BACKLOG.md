@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are follow-up Playwright browser/mobile QA for the dry-time painting scenario, browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, Smart Questions V2B client-only authority-status readback, Smart Questions V2B server/API authority audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -1131,7 +1131,7 @@ Done note:
 - Recommended fix approach: Completed a UI/client-only Customer Scope Drift polish. Protection-only phrases such as flooring will be protected, flooring protected with drop cloths, protect floors with drop cloths, covered floors, and drop cloths over flooring no longer create unsupported flooring drift. True unsupported flooring work still warns for install, replace, repair, remove, level, underlayment, and flooring demolition.
 - Exact files/components involved: `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`, `app/app/lib/crew-planning.ts`, `app/app/lib/crew-planning.test.ts`, `app/app/page.tsx`.
 - What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
-- Tests or manual QA needed: Completed with Customer Scope Drift tests 74/74, Crew Planning tests 9/9, `npx tsc --noEmit`, and `git diff --check`. Known note: no browser/mobile visual QA was run after this polish.
+- Tests or manual QA needed: Completed with Customer Scope Drift tests 74/74, Crew Planning tests 9/9, `npx tsc --noEmit`, and `git diff --check`; later final desktop/mobile Playwright QA also passed for flooring protection/masking behavior.
 - Status: Done
 
 Done note:
@@ -1139,21 +1139,22 @@ Done note:
 - Customer Output Readiness no longer auto-opens from protection-only flooring wording because the unsupported-trade item is no longer created.
 - This was UI/client-only and did not change backend/API/saved/PDF/pricing/prompt/`result.text`/materials/deterministic/billing behavior.
 
-#### Item: Customer Scope Drift electrical masking polish
+#### Item: Customer Scope Drift final context-wording polish
 
 - Problem: Playwright visual QA for `Paint 3 bedrooms. Walls only. Two coats. Return next day for second coat if needed.` found generated Customer-Facing Scope text such as `masking tape applied to trim, outlets, and switches` was treated as unsupported electrical work.
-- Why it matters: Painting-prep masking around outlets/switches should not make a painting-only estimate auto-open Customer Output Readiness or imply unsupported electrical scope.
+- Why it matters: Painting-prep masking/protection around flooring, outlets/switches, and outlet-cover handling should not make a painting-only estimate auto-open Customer Output Readiness or imply unsupported flooring/electrical scope.
 - Risk level: Low
 - Priority: P1
-- Recommended fix approach: Completed a UI/client review-only Customer Scope Drift polish. Painting-context outlet/switch masking, cover-plate, and fixtures-to-remain wording no longer creates unsupported electrical drift. True unsupported electrical work still warns for replace/install outlets, move switches, repair wiring, electrical rough-in, run new wire, add circuit, panel work, and install light fixtures.
+- Recommended fix approach: Completed a UI/client review-only Customer Scope Drift polish. Painting-context flooring masking/protection, outlet/switch masking, cover-plate/outlet-cover prep, generated outlet-cover coordination, safe removal/reinstallation, wiring/device/circuit unaffected language, and outlet-cover handling to prevent interference with existing wiring no longer create unsupported drift or auto-open Customer Output Readiness. True flooring work and true electrical/circuit work still surface clearly.
 - Exact files/components involved: `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`.
 - What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
-- Tests or manual QA needed: Completed with Customer Scope Drift tests 76/76, `npx tsc --noEmit`, and `git diff --check`. Known note: no follow-up Playwright screenshot QA was run after this polish.
+- Tests or manual QA needed: Completed with Customer Scope Drift tests 77/77, `npx tsc --noEmit`, `git diff --check`, and final desktop/mobile Playwright screenshot QA using `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-wiring-interference-final-qa`.
 - Status: Done
 
 Done note:
 
-- Customer Output Readiness no longer auto-opens for context-only outlet/switch masking because the unsupported-trade item is no longer created.
+- Customer Output Readiness no longer auto-opens for context-only floor/flooring masking/protection, outlet/switch masking, or cover-plate/outlet-cover prep because the unsupported-trade item is no longer created.
+- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep and still shows it for true typed multi-trade work.
 - This was UI/client review-only and did not change backend/API/saved/PDF/pricing/prompt/`result.text`/materials/deterministic/billing behavior.
 - Smart Questions remain local-only and non-pricing-authoritative; Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
