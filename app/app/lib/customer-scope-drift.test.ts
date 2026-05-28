@@ -494,6 +494,29 @@ test("does not warn when painting scope says protect floors with drop cloths", (
   )
 })
 
+test("does not warn for painting-context flooring masking and protection", () => {
+  const contextOnlyPhrases = [
+    "Customer-facing scope includes painting walls with masking flooring to prevent overspray or drips.",
+    "Customer-facing scope includes painting walls with flooring masked and protected from overspray.",
+    "Customer-facing scope includes painting walls and protect flooring from paint drips.",
+    "Customer-facing scope includes painting walls and protect floors from overspray.",
+    "Customer-facing scope includes painting walls with floors covered to prevent paint drips.",
+    "Customer-facing scope includes painting walls with drop cloths over flooring to prevent overspray.",
+  ]
+
+  for (const resultText of contextOnlyPhrases) {
+    assert.equal(
+      warning({
+        selectedTrade: "painting",
+        writtenScope: "Paint 3 bedrooms. Walls only. Two coats. Return next day for second coat if needed.",
+        resultText,
+      }),
+      null,
+      resultText
+    )
+  }
+})
+
 test("does not warn when plumbing scope mentions no electrical interference only", () => {
   assert.equal(
     warning({
@@ -616,6 +639,13 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Outlet cover removal/reinstallation without affecting wiring or devices.",
     "Customer-facing scope includes painting walls. Wiring or devices are not affected.",
     "Customer-facing scope includes painting walls. Wiring/devices remain unaffected.",
+    "Customer-facing scope includes painting walls. Safely remove and reinstall outlet covers without disrupting circuits.",
+    "Customer-facing scope includes painting walls. Outlet covers removed/reinstalled without disrupting circuits.",
+    "Customer-facing scope includes painting walls. Outlet cover removal/reinstallation without disrupting circuits.",
+    "Customer-facing scope includes painting walls. Cover plates removed and reinstalled without disrupting circuits.",
+    "Customer-facing scope includes painting walls. Switch covers removed/reinstalled without disrupting circuits.",
+    "Customer-facing scope includes painting walls. Circuits remain unaffected during outlet cover removal/reinstallation.",
+    "Customer-facing scope includes painting walls. Without affecting or disrupting circuits during outlet cover handling.",
     "Customer-facing scope includes painting walls. Outlet covers removed/reinstalled without disturbing wiring or devices.",
     "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without electrical work.",
     "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without rewiring or device replacement.",
@@ -657,6 +687,8 @@ test("true electrical work still warns from painting scope", () => {
     "Customer-facing scope includes painting walls and install switches.",
     "Customer-facing scope includes painting walls and device replacement is included.",
     "Customer-facing scope includes painting walls and wiring repair is included.",
+    "Customer-facing scope includes painting walls and circuit work is included.",
+    "Customer-facing scope includes painting walls and circuit repair is included.",
   ]
 
   for (const resultText of trueElectricalPhrases) {
