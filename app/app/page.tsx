@@ -8636,6 +8636,45 @@ function CrewPlanningPanel({
         ))}
       </div>
 
+      {plan.dailyPlan.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>Daily Work Plan</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+            Planning guidance only. Confirm with the crew lead before scheduling.
+          </div>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+            {plan.dailyPlan.slice(0, 3).map((item) => (
+              <div
+                key={`crew-daily-plan-${item.label}`}
+                style={{
+                  padding: 10,
+                  border: "1px solid #dbeafe",
+                  borderRadius: 8,
+                  background: "#fff",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: "#1d4ed8", fontWeight: 900 }}>
+                    {item.crewSize != null ? `${item.crewSize} worker${item.crewSize === 1 ? "" : "s"}` : "Crew TBD"}
+                  </div>
+                </div>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.45, color: "#4b5563" }}>
+                  {item.tasks.slice(0, 4).map((task, index) => (
+                    <li key={`crew-daily-task-${item.label}-${index}`}>{task}</li>
+                  ))}
+                </ul>
+                {[...item.reminders, ...item.risks].length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
+                    {[...item.reminders, ...item.risks].slice(0, 2).join(" ")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",

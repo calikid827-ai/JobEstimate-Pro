@@ -13,6 +13,13 @@ const schedule = (overrides: Partial<Schedule> = {}): Schedule => ({
   ...overrides,
 })
 
+function assertDailyPlanGuidanceOnly(plan: ReturnType<typeof buildCrewPlanningReadback>) {
+  assert.equal(plan.dailyPlan.length > 0, true)
+  assert.equal(plan.dailyPlan.every((item) => item.guidanceOnly === true), true)
+  assert.equal(plan.estimatorOnly, true)
+  assert.equal(plan.affectsPricing, false)
+}
+
 test("calculates crew-size options from crewDays", () => {
   const plan = buildCrewPlanningReadback({
     selectedTrade: "painting",
@@ -55,7 +62,28 @@ test("missing schedule is handled safely", () => {
   assert.equal(plan.crewDayBasis, null)
   assert.equal(plan.durationRange, null)
   assert.equal(plan.options.every((option) => option.estimatedWorkDays === null), true)
+  assert.equal(plan.dailyPlan.length, 1)
+  assert.equal(plan.dailyPlan[0].label, "Day 1")
+  assert.equal(plan.dailyPlanConfidence, "placeholder")
+  assertDailyPlanGuidanceOnly(plan)
   assert.ok(plan.basis.some((item) => /not confirmed/i.test(item)))
+})
+
+test("simple painting creates a Day 1 daily work plan", () => {
+  const plan = buildCrewPlanningReadback({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+    schedule: schedule({ crewDays: 1, visits: 1, rationale: [], calendarDays: null }),
+  })
+
+  assert.equal(plan.dailyPlan.length, 1)
+  assert.match(plan.dailyPlan[0].label, /Day 1|Visit 1/)
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /Confirm rooms|included surfaces|paint supply/i.test(item)))
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /Protect floors\/furniture/i.test(item)))
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /prep|patching|spot prime/i.test(item)))
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /Paint, clean up|walk/i.test(item)))
+  assert.deepEqual(plan.planningNotes, [])
+  assertDailyPlanGuidanceOnly(plan)
 })
 
 test("missing crewDays with visits keeps visit-aware duration copy", () => {
@@ -68,6 +96,11 @@ test("missing crewDays with visits keeps visit-aware duration copy", () => {
   assert.equal(plan.crewDayBasis, null)
   assert.equal(plan.durationRange, "2 visits shown; work days need confirmation")
   assert.equal(plan.options.every((option) => option.estimatedWorkDays === null), true)
+  assert.equal(plan.dailyPlan.length, 2)
+  assert.equal(plan.dailyPlan[0].label, "Visit 1")
+  assert.equal(plan.dailyPlan[1].label, "Visit 2")
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /first coat/i.test(item)))
+  assert.ok(plan.dailyPlan[1].tasks.some((item) => /second coat/i.test(item)))
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
@@ -94,9 +127,11 @@ test("residential floor protection language does not trigger hotel multi-unit pl
 
   assert.notEqual(plan.recommendedCrewSize, 6)
   assert.ok(plan.sequence.some((item) => /Protect floors\/furniture/i.test(item)))
+  assert.ok(plan.dailyPlan[0].tasks.some((item) => /Protect floors\/furniture/i.test(item)))
   assert.equal(plan.sequence.some((item) => /rolling production|room\/unit release|punch follow-up/i.test(item)), false)
   assert.equal(plan.hasSchedulingRisks, false)
   assert.deepEqual(plan.planningNotes, [])
+  assertDailyPlanGuidanceOnly(plan)
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
@@ -109,6 +144,8 @@ test("painting and flooring typed scope produces a multi-trade planning note", (
   })
 
   assert.ok(plan.planningNotes.some((item) => /multiple trades/i.test(item)))
+  assert.ok(plan.dailyPlan.some((item) => item.reminders.some((reminder) => /trade boundaries/i.test(reminder))))
+  assert.ok(plan.dailyPlan.some((item) => item.risks.some((risk) => /sequencing review/i.test(risk))))
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
@@ -121,6 +158,8 @@ test("painting and electrical typed scope produces a multi-trade planning note",
   })
 
   assert.ok(plan.planningNotes.some((item) => /multiple trades/i.test(item)))
+  assert.ok(plan.dailyPlan.some((item) => item.reminders.some((reminder) => /trade boundaries/i.test(reminder))))
+  assert.ok(plan.dailyPlan.some((item) => item.risks.some((risk) => /sequencing review/i.test(risk))))
   assert.equal(plan.estimatorOnly, true)
   assert.equal(plan.affectsPricing, false)
 })
@@ -215,6 +254,36 @@ test("hotel multi-unit scope produces rolling-production planning notes", () => 
   assert.ok(plan.sequence.some((item) => /rolling production/i.test(item)))
   assert.ok(plan.bottlenecks.some((item) => /room-release|Repeated rooms|material staging/i.test(item)))
   assert.ok(plan.risks.some((item) => /planning support only/i.test(item)))
+  assert.equal(plan.dailyPlan.length, 3)
+  assert.ok(plan.dailyPlan.some((item) => /Release|Staging/i.test(item.label)))
+  assert.ok(plan.dailyPlan.some((item) => /Rolling Production/i.test(item.label)))
+  assert.ok(plan.dailyPlan.some((item) => /Punch|Release/i.test(item.label)))
+  assert.ok(plan.dailyPlan.some((item) => item.tasks.some((task) => /room\/floor release/i.test(task))))
+  assertDailyPlanGuidanceOnly(plan)
+})
+
+test("every daily plan item stays guidance-only", () => {
+  const scenarios = [
+    {
+      selectedTrade: "painting",
+      scopeText: "Paint 3 bedrooms. Walls only. Two coats. Return next day for second coat if needed.",
+      schedule: schedule({ crewDays: null, visits: 2, calendarDays: null }),
+    },
+    {
+      selectedTrade: "general_renovation",
+      scopeText: "Paint 3 bedrooms and install flooring.",
+      schedule: schedule({ crewDays: 2, visits: 1, calendarDays: null }),
+    },
+    {
+      selectedTrade: "painting",
+      scopeText: "Paint 60 hotel guest rooms, walls only, rolling floor-by-floor production, rooms released by GC.",
+      schedule: schedule({ crewDays: 30, visits: 10, calendarDays: { min: 10, max: 20 } }),
+    },
+  ]
+
+  for (const scenario of scenarios) {
+    assertDailyPlanGuidanceOnly(buildCrewPlanningReadback(scenario))
+  }
 })
 
 test("floor-by-floor production still triggers hotel multi-unit planning", () => {

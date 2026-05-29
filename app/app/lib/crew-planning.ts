@@ -17,11 +17,23 @@ export type CrewPlanOption = {
   notes: string[]
 }
 
+export type CrewDailyPlanItem = {
+  label: string
+  crewSize: number | null
+  tasks: string[]
+  reminders: string[]
+  risks: string[]
+  guidanceOnly: true
+}
+
 export type CrewPlanningReadback = {
   recommendedCrewSize: number | null
   crewDayBasis: number | null
   durationRange: string | null
   options: CrewPlanOption[]
+  dailyPlan: CrewDailyPlanItem[]
+  dailyPlanNotes: string[]
+  dailyPlanConfidence: "placeholder" | "schedule_based" | "risk_based"
   sequence: string[]
   bottlenecks: string[]
   risks: string[]
@@ -225,6 +237,158 @@ function buildSequence(trade: string, hotelMultiUnit: boolean): string[] {
   ]
 }
 
+function buildDailyPlan(args: {
+  trade: string
+  scopeText: string
+  schedule?: Schedule | null
+  recommendedCrewSize: number | null
+  hotelMultiUnit: boolean
+  planningNotes: string[]
+  riskText: string[]
+}): {
+  dailyPlan: CrewDailyPlanItem[]
+  dailyPlanNotes: string[]
+  dailyPlanConfidence: "placeholder" | "schedule_based" | "risk_based"
+} {
+  const text = normalize(args.scopeText)
+  const riskBlob = normalize(args.riskText.join(" "))
+  const hasReturnVisit =
+    /\b(return|next\s+day|second\s+coat|dry\s*time|drying|cure|curing)\b/.test(text) ||
+    /\b(return|multi[-\s]?visit|dry\s*time|drying|cure|curing|coat sequencing)\b/.test(riskBlob) ||
+    Number(args.schedule?.visits || 0) > 1
+  const crewSize = args.recommendedCrewSize
+  const notes = ["Daily plan is estimator guidance only; confirm with the crew lead and site conditions before scheduling."]
+  const confidence: "placeholder" | "schedule_based" | "risk_based" =
+    args.schedule?.crewDays != null || args.schedule?.visits != null
+      ? "schedule_based"
+      : args.riskText.length > 0
+        ? "risk_based"
+        : "placeholder"
+  const withTradeBoundaryReminder = (reminders: string[]) => {
+    if (args.planningNotes.length > 0) {
+      addUnique(reminders, "Typed scope includes multiple trades; confirm sequencing, access, and trade boundaries.", 5)
+    }
+    return reminders
+  }
+
+  if (args.hotelMultiUnit) {
+    return {
+      dailyPlan: [
+        {
+          label: "Release / Staging",
+          crewSize,
+          tasks: [
+            "Confirm room/floor release plan with GC or site lead.",
+            "Stage materials, protection, and access path before production starts.",
+          ],
+          reminders: ["Use rolling groups of rooms/areas; do not treat this as measured takeoff authority."],
+          risks: ["Room release, elevator access, staging, and occupied-space constraints can control production speed."],
+          guidanceOnly: true,
+        },
+        {
+          label: "Rolling Production",
+          crewSize,
+          tasks: [
+            "Run prep team ahead of finish team.",
+            "Complete paint/finish work by released room group or floor.",
+          ],
+          reminders: ["Track started, finished, and blocked rooms daily."],
+          risks: ["Dry time, access changes, or late room release can break the production rhythm."],
+          guidanceOnly: true,
+        },
+        {
+          label: "Punch / Release",
+          crewSize,
+          tasks: [
+            "Punch completed rooms or areas before release.",
+            "Clean up, remove protection, and document blocked follow-up items.",
+          ],
+          reminders: ["Confirm turnover expectations before releasing each group."],
+          risks: ["Punch follow-up can stack up if room groups are released too quickly."],
+          guidanceOnly: true,
+        },
+      ],
+      dailyPlanNotes: notes,
+      dailyPlanConfidence: confidence,
+    }
+  }
+
+  if (args.trade === "painting" && hasReturnVisit) {
+    return {
+      dailyPlan: [
+        {
+          label: "Visit 1",
+          crewSize,
+          tasks: [
+            "Confirm rooms, included surfaces, access, materials, and paint supply.",
+            "Protect floors/furniture and mask adjacent finishes.",
+            "Complete included prep, patching, spot prime, and first coat.",
+          ],
+          reminders: withTradeBoundaryReminder(["Confirm dry time before scheduling the return visit."]),
+          risks: ["Dry time or coat sequencing may create waiting time."],
+          guidanceOnly: true,
+        },
+        {
+          label: "Visit 2",
+          crewSize,
+          tasks: [
+            "Apply second coat after dry-time confirmation.",
+            "Complete touchups, cleanup, and walkthrough.",
+          ],
+          reminders: withTradeBoundaryReminder(["Confirm customer access before the return visit."]),
+          risks: ["Return-trip timing depends on site access and actual drying conditions."],
+          guidanceOnly: true,
+        },
+      ],
+      dailyPlanNotes: notes,
+      dailyPlanConfidence: confidence,
+    }
+  }
+
+  if (args.trade === "painting") {
+    return {
+      dailyPlan: [
+        {
+          label: args.schedule?.visits && args.schedule.visits > 1 ? "Visit 1" : "Day 1",
+          crewSize,
+          tasks: [
+            "Confirm rooms, included surfaces, access, materials, and paint supply.",
+            "Protect floors/furniture and mask adjacent finishes.",
+            "Complete included prep, patching, and spot prime as needed.",
+            "Paint, clean up, and walk the job before release.",
+          ],
+          reminders: withTradeBoundaryReminder(["Treat floor protection and masking as painting prep, not added trade scope."]),
+          risks: args.planningNotes.length > 0
+            ? ["Mixed typed scope needs estimator sequencing review before crew dispatch."]
+            : [],
+          guidanceOnly: true,
+        },
+      ],
+      dailyPlanNotes: notes,
+      dailyPlanConfidence: confidence,
+    }
+  }
+
+  return {
+    dailyPlan: [
+      {
+        label: args.schedule?.visits && args.schedule.visits > 1 ? "Visit 1" : "Planning Day",
+        crewSize,
+        tasks: [
+          "Confirm scope boundaries, access, materials, and site readiness.",
+          "Complete prep and protection before production work.",
+          "Perform included work, then clean up and document follow-up items.",
+        ],
+        reminders: withTradeBoundaryReminder(["Confirm this plan against the written scope before dispatch."]),
+        risks: args.planningNotes.length > 0 ? ["Mixed typed scope needs trade-boundary review."] : [],
+        guidanceOnly: true,
+      },
+    ],
+    dailyPlanNotes: notes,
+    dailyPlanConfidence: confidence,
+  }
+}
+
 function collectRiskText(args: BuildCrewPlanningReadbackArgs): string[] {
   return [
     ...(args.schedule?.rationale || []),
@@ -256,10 +420,19 @@ export function buildCrewPlanningReadback(
   })
   const riskText = collectRiskText(args)
   const riskBlob = normalize(riskText.join(" "))
+  const planningNotes = buildPlanningNotes(scopeText)
+  const dailyPlanReadback = buildDailyPlan({
+    trade,
+    scopeText,
+    schedule: args.schedule,
+    recommendedCrewSize: recommended,
+    hotelMultiUnit,
+    planningNotes,
+    riskText,
+  })
   const bottlenecks: string[] = []
   const risks: string[] = []
   const basis: string[] = []
-  const planningNotes = buildPlanningNotes(scopeText)
   let hasSchedulingRisks = false
 
   if (crewDayBasis != null) addUnique(basis, `Uses existing schedule basis of ${crewDayBasis} crew-day${crewDayBasis === 1 ? "" : "s"}.`, 5)
@@ -301,6 +474,9 @@ export function buildCrewPlanningReadback(
     crewDayBasis,
     durationRange: buildDurationRange(args.schedule),
     options: buildOptions(crewDayBasis, recommended),
+    dailyPlan: dailyPlanReadback.dailyPlan,
+    dailyPlanNotes: dailyPlanReadback.dailyPlanNotes,
+    dailyPlanConfidence: dailyPlanReadback.dailyPlanConfidence,
     sequence: buildSequence(trade, hotelMultiUnit),
     bottlenecks,
     risks,
