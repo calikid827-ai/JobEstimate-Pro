@@ -348,6 +348,10 @@ test("does not warn for drywall substrate context in painting output", () => {
     "Customer-facing scope includes coats applied over standard drywall surfaces.",
     "Customer-facing scope assumes standard drywall surfaces for painting.",
     "Customer-facing scope includes drywall and painting in three bedrooms with standard drywall surfaces.",
+    "Customer-facing scope includes light sanding and patching of minor imperfections on standard drywall surfaces to facilitate proper paint adhesion.",
+    "Customer-facing scope includes minor patching of wall imperfections on standard drywall surfaces to facilitate proper paint adhesion.",
+    "Customer-facing scope assumes the existing drywall is in good condition, without requiring extensive repairs or demolition.",
+    "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work includes surface preparation, which involves light sanding and patching of minor imperfections on standard drywall surfaces to facilitate proper paint adhesion. Prior to painting, all furniture and flooring in the bedrooms will be protected using drop cloths and masking materials. The scope explicitly excludes ceilings, trim, and doors. Paint materials will comprise a high-quality interior wall paint suitable for drywall, to be applied in two complete coats following appropriate drying intervals. This scope assumes normal access and that the existing drywall is in good condition, without requiring extensive repairs or demolition.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
@@ -712,6 +716,10 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Outlet cover handling to avoid interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet cover handling without interfering with wiring.",
     "Customer-facing scope includes painting walls. Prevent interference with existing wiring during outlet cover removal/reinstallation.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is necessary to safely remove and reinstall outlet covers without disrupting existing wiring or devices.",
+    "Customer-facing scope includes painting walls. Outlet covers safely removed and reinstalled without disrupting existing wiring or devices.",
+    "Customer-facing scope includes painting walls. The scope entails the removal and careful storage of all outlet covers in the specified rooms before painting, followed by their reinstallation upon completion.",
+    "Customer-facing scope includes painting walls. No electrical work beyond the handling of outlet covers.",
     "Customer-facing scope includes painting walls. Outlet covers removed/reinstalled without disturbing wiring or devices.",
     "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without electrical work.",
     "Customer-facing scope includes painting walls. Remove/reinstall outlet covers without rewiring or device replacement.",
@@ -723,6 +731,7 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. No device replacement.",
     "Customer-facing scope includes painting walls. No electrical work beyond outlet cover removal/reinstallation for painting only.",
     "Paint 3 bedrooms. Walls only. Remove and reinstall outlet covers for painting only. Two coats.",
+    "This Change Order / Estimate encompasses the preparation and painting of walls in three existing bedrooms. The scope entails the removal and careful storage of all outlet covers in the specified rooms before painting, followed by their reinstallation upon completion. Surface preparation will include light cleaning and minor patching of wall imperfections to facilitate proper paint adhesion. Two complete coats of interior wall paint will be applied to all wall surfaces within the three bedrooms, excluding ceilings, trim, doors, and closets. Protective masking and drop cloths will be utilized to protect existing flooring, furniture, and electrical fixtures throughout the process. Coordination with the electrical trade is necessary to safely remove and reinstall outlet covers without disrupting existing wiring or devices. Upon completion of the painting, the work area will be cleared of all debris, masking materials will be removed, and outlet covers will be reinstalled. This scope assumes normal access and that the existing wall finishes are in good condition, with no additional drywall repair or electrical work beyond the handling of outlet covers.",
   ]
 
   for (const resultText of contextOnlyPhrases) {

@@ -139,7 +139,7 @@ const TRADE_RULES: TradeRule[] = [
 ]
 
 const EXCLUDED_TRADE_PATTERN =
-  /\b(excludes?|excluded|excluding|does\s+not\s+cover|does\s+not\s+include|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
+  /\b(excludes?|excluded|excluding|does\s+not\s+cover|does\s+not\s+include|not\s+included|not\s+part\s+of|no\s+(?:work|scope|repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|no\s+additional\s+(?:drywall|sheetrock|gypsum|electrical|plumbing|flooring|carpentry|trim|baseboards?)\s+(?:work|scope|repair|repairs|replacement|installation|install)?|without\s+(?:repair|repairs|replacement|installation|install|paint|painting|electrical|plumbing|flooring|drywall|carpentry|trim|baseboards?|demo|demolition)|by\s+others|by\s+owner|owner\s+provided|owner\s+supplied|separate\s+contractor|separate\s+trade|NIC)\b/i
 
 const SUPPORTED_REMOVAL_TRADE_PATTERN =
   /\b(flooring|lvp|laminate|hardwood|carpet|tile|tiling|paint|painting|drywall|sheetrock|baseboards?|trim|carpentry|wallcovering|wallpaper)\b/i
@@ -195,6 +195,9 @@ const ELECTRICAL_COVER_PLATE_UNAFFECTED_CONTEXT_PATTERN =
 const ELECTRICAL_COVER_PLATE_LIMITED_HANDLING_CONTEXT_PATTERN =
   /\bcoordination\s+with\s+(?:the\s+)?electrical\s+trade\b.{0,120}\b(?:is\s+)?(?:limited\s+to|for|required\s+for)\b.{0,100}\b(outlet\s+cover|switch\s+cover|cover\s+plate)s?\s+handling\s+only\b|\belectrical\s+trade\s+coordination\b.{0,120}\b(?:is\s+)?limited\s+to\b.{0,120}\b(?:remov(?:ing|e|al)?|removal)\b.{0,80}\b(?:reinstall(?:ing|ation|ed)?|reinstallation)\b.{0,100}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,100}\bpainting\s+only\b|\belectrical\s+coordination\s+only\b.{0,120}\b(?:remov(?:ing|e|al)?|removal)\b.{0,80}\b(?:reinstall(?:ing|ation|ed)?|reinstallation)\b.{0,100}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,100}\bpainting\b|\b(outlet\s+cover|switch\s+cover|cover\s+plate)s?\s+handling\s+only\b.{0,120}\bno\s+(?:electrical\s+work|wiring|device|circuit)\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,80}\bhandled\s+only\b.{0,120}\bno\s+(?:electrical\s+work|wiring|device|circuit)\b/i
 
+const ELECTRICAL_COVER_PLATE_SAFE_HANDLING_CONTEXT_PATTERN =
+  /\b(?:coordination\s+with\s+(?:the\s+)?electrical\s+trade|electrical\s+trade\s+coordination)\b.{0,220}\b(?:safely\s+)?(?:remov(?:e|al|ing)|reinstall(?:ation|ing)?|handl(?:e|ed|ing))\b.{0,180}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,220}\bwithout\s+(?:disrupting|affecting|interfering\s+with|disturbing)\s+(?:existing\s+)?(?:wiring|devices?|circuits?)(?:\s+or\s+(?:wiring|devices?|circuits?))?\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,180}\b(?:safely\s+)?(?:remov(?:e|ed|al|ing)|reinstall(?:ed|ation|ing)?|handl(?:e|ed|ing))\b.{0,220}\bwithout\s+(?:disrupting|affecting|interfering\s+with|disturbing)\s+(?:existing\s+)?(?:wiring|devices?|circuits?)(?:\s+or\s+(?:wiring|devices?|circuits?))?\b|\bremoval\b.{0,80}\bstorage\b.{0,80}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,160}\b(?:before\s+painting|for\s+painting|paint(?:ing)?)\b.{0,160}\breinstallation\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,80}\bremoval\b.{0,120}\bstorage\b.{0,160}\b(?:before\s+painting|for\s+painting|paint(?:ing)?)\b.{0,160}\breinstallation\b|\bno\s+electrical\s+work\s+beyond\b.{0,120}\bhandl(?:e|ed|ing)\b.{0,80}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b/i
+
 const ELECTRICAL_TRUE_WORK_PATTERN =
   /\b(electrical\s+rough[- ]?in|rough[- ]?in\s+electrical|add\s+circuits?|run(?:ning)?\s+(?:new\s+)?wires?|panel\s+work|breaker\s+work|wiring\s+adjustments?|electrical\s+wiring\s+adjustments?|(?:electrical\s+)?wiring\s+to\s+(?:accommodate|align)|panel\s+(upgrade|replacement|replace|install(?:ation|ing)?|repair)|breaker\s+(replacement|replace|install(?:ation|ing)?|repair))\b|\b(disconnect(?:ing|ion)?|install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|run(?:ning)?|add(?:ing)?|mov(?:e|ed|ing)?|relocate|rewire|wire|adjust(?:ment|ing|s)?)\s+(?:new\s+)?(?:electrical\s+)?(wiring|wires?|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(disconnection|disconnecting|removal|replacement|reinstallation|reinstall|repair)\s+(?:and\s+(?:reinstallation|reinstalling|replacement|reinstall|repair)\s+)?of\s+(?:electrical\s+)?(wiring|wires?|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\b(relocation|adjustments?|verification)\s+of\s+(?:existing\s+)?(?:electrical\s+)?(wiring|wires?|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\s+(?:scope|tasks?|work)\s+includes\b.{0,120}\b(wiring|wires?|conduits?|devices?|outlets?|receptacles?|switches?|fixtures?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\b|\belectrical\b.{0,120}\b(relocation|adjustments?|patching)\s+of\s+(?:existing\s+)?(?:fixtures?|conduit\s+penetrations?|penetrations?)\b|\b(relocation|adjustments?|patching)\s+of\s+(?:existing\s+)?(?:fixtures?|conduit\s+penetrations?|penetrations?)\b.{0,120}\belectrical\b|\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|add(?:ing)?)\s+(?:new\s+)?electrical\s+fixtures?\b|\b(?:electrical\s+)?(wiring|wires?|conduits?|devices?|outlets?|receptacles?|switches?|light\s+fixtures?|lighting|circuits?|breakers?|panels?)\s+(disconnect(?:ing|ion)?|install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?|adjustments?|rough[- ]?in)\b|\belectrical\s+fixtures?\s+(install(?:ation|ing)?|replacement|replace|repair(?:ing|s)?|remove|removal|reinstall(?:ation|ing)?)\b/i
 
@@ -206,6 +209,9 @@ const DRYWALL_CONTEXT_ONLY_PATTERN =
 
 const DRYWALL_SUBSTRATE_CONTEXT_ONLY_PATTERN =
   /\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:paint|painting|painted|receive\s+paint|coats?|wall\s+painting)\b|\b(?:paint|painting|painted|coats?|wall\s+painting)\b.{0,120}\b(?:over\s+)?(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b|\bassum(?:e|es|ed|ing)\b.{0,80}\bstandard\s+(?:drywall|sheetrock|gypsum)\s+surfaces?\b|\b(?:drywall|sheetrock|gypsum)\b.{0,80}\b(?:and|\/)\s*paint(?:ing)?\b|\bpaint(?:ing)?\b.{0,80}\b(?:and|\/)\s*(?:drywall|sheetrock|gypsum)\b/i
+
+const DRYWALL_PAINT_PREP_CONTEXT_ONLY_PATTERN =
+  /\b(?:light|minor)\s+(?:sanding\s+and\s+)?patching\s+of\s+(?:minor\s+)?(?:wall\s+)?imperfections\b.{0,120}\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b|\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:light|minor)\s+(?:sanding\s+and\s+)?patching\s+of\s+(?:minor\s+)?(?:wall\s+)?imperfections\b|\bexisting\s+(?:drywall|sheetrock|gypsum)\b.{0,120}\bgood\s+condition\b.{0,120}\bwithout\s+requiring\s+extensive\s+repairs?\b/i
 
 const DRYWALL_TRUE_WORK_PATTERN =
   /\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|patch(?:ing|es)?|hang(?:ing)?|finish(?:ing)?|texture|demo(?:lition)?)\b.{0,80}\b(drywall|sheetrock|gypsum)\b|\b(drywall|sheetrock|gypsum)\b.{0,80}\b(install(?:ation|ing)?|replace(?:ment|ing)?|repair(?:ing|s)?|patch(?:ing|es)?|hang(?:ing)?|finish(?:ing)?|texture|demo(?:lition)?)\b/i
@@ -377,6 +383,9 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
   ) {
     return true
   }
+  if (rule.id === "drywall" && DRYWALL_PAINT_PREP_CONTEXT_ONLY_PATTERN.test(part)) {
+    return true
+  }
   if (
     rule.id === "drywall" &&
     SUBSEQUENT_TRADE_CONTEXT_PATTERN.test(part) &&
@@ -427,6 +436,7 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
     if (ELECTRICAL_COVER_PLATE_COORDINATION_CONTEXT_PATTERN.test(part)) return true
     if (ELECTRICAL_COVER_PLATE_UNAFFECTED_CONTEXT_PATTERN.test(part)) return true
     if (ELECTRICAL_COVER_PLATE_LIMITED_HANDLING_CONTEXT_PATTERN.test(part)) return true
+    if (ELECTRICAL_COVER_PLATE_SAFE_HANDLING_CONTEXT_PATTERN.test(part)) return true
     if (ELECTRICAL_MASKING_CONTEXT_ONLY_PATTERN.test(part) && !ELECTRICAL_TRUE_WORK_PATTERN.test(part)) return true
   }
 
