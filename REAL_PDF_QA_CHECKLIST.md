@@ -2250,7 +2250,7 @@ Next QA:
 
 # Test Entry 40 — Crew Planning V1 Client-Only Status
 
-Status: CODE-CHECKED; browser/mobile visual QA still needed
+Status: PASSED via later Crew Planning V2 desktop/mobile QA
 
 Scope:
 - Crew Planning V1 is implemented as an estimator-only, `data-no-print` panel.
@@ -2266,7 +2266,7 @@ Validation:
 - Crew Planning tests passed 7/7.
 - `npx tsc --noEmit` passed.
 - `git diff --check` passed.
-- No browser/mobile visual QA was run for this entry.
+- Later desktop/mobile Playwright QA passed for Crew Planning V2 daily work-plan scenarios; see Test Entry 44.
 
 Architecture safety:
 - This was UI/client-only and estimator-only.
@@ -2276,13 +2276,13 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for simple one-visit scopes, the post-polish painting scope `Paint 3 bedrooms. Walls only. Minor patching. Two coats.`, dry-time/return-trip scopes, access/staging risk scopes, and hotel/multi-unit rolling-production language.
+- See Test Entry 44 for final Crew Planning V2 desktop/mobile QA. Remaining safe option: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow.
 
 ---
 
 # Test Entry 41 — Flooring Protection And Crew Planning Display Polish Status
 
-Status: CODE-CHECKED; browser/mobile visual QA still needed
+Status: PASSED via later Crew Planning V2 desktop/mobile QA
 
 Scope:
 - Customer Scope Drift now treats protection-only flooring wording as protection context instead of unsupported flooring scope.
@@ -2298,7 +2298,7 @@ Validation:
 - Customer Scope Drift tests passed 74/74.
 - `npx tsc --noEmit` passed.
 - `git diff --check` passed.
-- No browser/mobile visual QA was run after this polish.
+- Later desktop/mobile Playwright QA passed for Crew Planning V2 daily work-plan scenarios; see Test Entry 44.
 
 Architecture safety:
 - This was UI/client-only.
@@ -2307,13 +2307,13 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for the post-polish simple painting scope, Crew Planning visit-aware copy, and reduced/compact Estimator Review flow.
+- See Test Entry 44 for final Crew Planning V2 desktop/mobile QA. Remaining safe option: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow.
 
 ---
 
 # Test Entry 42 — Crew Planning Multi-Trade Clarity Polish Status
 
-Status: CODE-CHECKED; browser/mobile visual QA still needed
+Status: PASSED via later Crew Planning V2 desktop/mobile QA
 
 Scope:
 - Crew Planning now includes `planningNotes` in its client-side readback.
@@ -2327,7 +2327,7 @@ Validation:
 - Crew Planning tests passed 14/14.
 - `npx tsc --noEmit` passed.
 - `git diff --check` passed.
-- No browser/mobile visual QA was run after this polish.
+- Later desktop/mobile Playwright QA passed for Crew Planning V2 daily work-plan scenarios; see Test Entry 44.
 
 Architecture safety:
 - This was UI/client-only.
@@ -2336,7 +2336,7 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Run browser/mobile visual QA for Crew Planning and the reduced/compact Estimator Review flow, including simple painting, floor protection language, typed multi-trade scopes, dry-time/return-trip scopes, and hotel/multi-unit rolling-production language.
+- See Test Entry 44 for final Crew Planning V2 desktop/mobile QA. Remaining safe option: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow.
 
 ---
 
@@ -2364,4 +2364,38 @@ Architecture safety:
 - Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 
 Next QA:
-- Next safe options: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning V2 daily work-plan audit only, Crew Planning hotel/multi-unit production board audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor; avoid actual pricing/labor-total changes unless explicitly scoped.
+- Next safe options: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning hotel/multi-unit production board audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor; avoid actual pricing/labor-total changes unless explicitly scoped.
+
+---
+
+# Test Entry 44 — Crew Planning V2 Daily Work-Plan Status
+
+Status: PASSED
+
+Scope:
+- Crew Planning V2 daily work-plan is complete in commit `Add crew planning daily work plan`.
+- Crew Planning now includes `dailyPlan`, `dailyPlanNotes`, and `dailyPlanConfidence`.
+- Each daily plan item includes `label`, `crewSize`, `tasks`, `reminders`, `risks`, and `guidanceOnly: true`.
+- Daily Work Plan renders inside the existing Crew Planning panel only, below crew options and above Work Sequence; no new top-level panel was added.
+- Crew Planning remains estimator-only, client-only, `data-no-print`, planning guidance only, and `affectsPricing: false`.
+- Daily Work Plan is not pricing-authoritative, not sent to `/api/generate`, not saved to estimate/history, and not included in PDFs/customer output.
+- Simple painting gets Day 1 / Visit 1 style guidance, dry-time painting gets Visit 1 / Visit 2 guidance, flooring protection stays painting-focused, true multi-trade and painting/electrical scopes get trade-boundary reminders, hotel/multi-unit gets rolling production cycle entries rather than room-level cards, and missing schedule returns a safe placeholder daily plan.
+
+Validation:
+- Crew Planning tests passed 18/18.
+- `npx tsc --noEmit` passed.
+- `git diff --check` passed.
+- Final desktop/mobile Playwright screenshot QA passed with `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-crew-planning-v2-daily-plan-qa/final-run-5`.
+- Simple painting, dry-time painting, flooring protection, true painting/flooring, painting/electrical, and hotel/multi-unit scenarios passed. Customer Output Readiness stayed collapsed for context-only protection/masking language, and true flooring/electrical work still surfaced clearly.
+
+Architecture safety:
+- This was UI/client-only and estimator-only.
+- It did not change backend routes, estimator runtime files, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, pricing, `pricingSource`, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, Customer Scope Drift, billing/auth, or deployment.
+- Smart Questions remain local-only and non-pricing-authoritative.
+- Evidence Authority remains internal/debug-only and was not exposed in normal UI.
+
+Known note:
+- Simple painting may show Visit 1 / Visit 2 when the generated schedule reports 2 visits even without explicit return-trip wording. It is readable but slightly less calm than a single Day 1 plan.
+
+Next QA:
+- Next safe options: browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning hotel/multi-unit production board audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Typed scope remains the required scope-control anchor; avoid actual pricing/labor-total changes unless explicitly scoped.
