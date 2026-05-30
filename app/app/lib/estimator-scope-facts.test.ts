@@ -21,6 +21,16 @@ test("Case 1 painting exclusions classify adjacent trades as boundary only", () 
   assert.equal(facts.trueMixedTrades, false)
 })
 
+test("flooring protection from overspray and paint drips stays boundary only", () => {
+  const facts = buildEstimatorScopeFacts(
+    "Paint 3 bedrooms. Walls only. Protect floors from overspray and paint drips. Two coats."
+  )
+
+  assert.deepEqual(facts.includedTrades, ["painting"])
+  assert.ok(facts.protectionTrades.includes("flooring"))
+  assert.equal(facts.trueMixedTrades, false)
+})
+
 test("true patch and paint includes drywall and painting", () => {
   const facts = buildEstimatorScopeFacts("Patch drywall access holes, prime repairs, and paint walls.")
 

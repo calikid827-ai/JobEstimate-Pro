@@ -337,6 +337,49 @@ test("warns for unsupported drywall drift", () => {
   )
 })
 
+test("does not warn for drywall substrate context in painting output", () => {
+  const contextOnlyPhrases = [
+    "Customer-facing scope includes painting standard drywall surfaces.",
+    "Customer-facing scope includes paint over standard drywall surfaces.",
+    "Customer-facing scope includes existing drywall surfaces to receive paint.",
+    "Customer-facing scope assumes standard drywall surfaces for painting.",
+  ]
+
+  for (const resultText of contextOnlyPhrases) {
+    assert.equal(
+      warning({
+        selectedTrade: "painting",
+        writtenScope: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+        resultText,
+      }),
+      null,
+      resultText
+    )
+  }
+})
+
+test("true drywall work still warns from painting scope", () => {
+  const trueDrywallPhrases = [
+    "Customer-facing scope includes painting walls and install drywall.",
+    "Customer-facing scope includes painting walls and replace drywall.",
+    "Customer-facing scope includes painting walls and repair drywall.",
+    "Customer-facing scope includes painting walls and patch drywall.",
+    "Customer-facing scope includes painting walls and repair standard drywall surfaces.",
+  ]
+
+  for (const resultText of trueDrywallPhrases) {
+    assert.match(
+      warning({
+        selectedTrade: "painting",
+        writtenScope: "Paint 3 bedrooms. Walls only. Minor patching. Two coats.",
+        resultText,
+      }) || "",
+      /drywall/,
+      resultText
+    )
+  }
+})
+
 test("does not warn for painting scope with minor nail-hole patching", () => {
   assert.equal(
     warning({
@@ -649,6 +692,10 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Coordination with the electrical trade is required to handle outlet covers safely and to prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Coordination with electrical trade to handle outlet covers safely and prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Electrical trade coordination to handle outlet covers safely and prevent interference with existing wiring.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is limited to outlet cover handling.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade for outlet cover handling only.",
+    "Customer-facing scope includes painting walls. Electrical trade coordination limited to removing and reinstalling outlet covers for painting only.",
+    "Customer-facing scope includes painting walls. Outlet cover handling only with no electrical work.",
     "Customer-facing scope includes painting walls. Handle outlet covers safely and prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled safely to prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled without interference with existing wiring.",

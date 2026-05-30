@@ -111,6 +111,28 @@ test("painting scope exclusion list does not become painting and drywall mixed s
   assert.doesNotMatch(text, /drywall/)
 })
 
+test("flooring protection with paint drips does not become typed mixed scope", () => {
+  const protectionScopes = [
+    "Paint 3 bedrooms. Walls only. Protect floors from overspray and paint drips. Two coats.",
+    "Paint 3 bedrooms. Walls only. Flooring protection only to prevent paint drips. Two coats.",
+  ]
+
+  for (const scopeText of protectionScopes) {
+    const review = buildScopePriceConsistencyReview({
+      selectedTrade: "painting",
+      scopeText,
+      scopeXRay: scopeXRay({
+        primaryTrade: "painting",
+        splitScopes: [{ trade: "painting", scope: "Paint bedroom walls only." }],
+      }),
+      materialsList: materials(["Paint", "Masking tape", "Drop cloths"]),
+      estimateSections: [section("painting")],
+    })
+
+    assert.doesNotMatch(reviewText(review), /multiple trades/, scopeText)
+  }
+})
+
 test("true painting plus LVP mixed scope remains accepted", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "general_renovation",

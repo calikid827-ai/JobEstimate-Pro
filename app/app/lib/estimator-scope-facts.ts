@@ -74,6 +74,12 @@ const EXCLUDED_BY_OTHERS_PATTERN =
 const PROTECTION_PATTERN =
   /\b(protect|protection|safeguard|cover|covered|mask|masking|drop cloth|adjacent finishes?)\b/
 
+const FLOOR_PROTECTION_PAINT_CONTEXT_PATTERN =
+  /\b(protect|protection|safeguard|cover|covered|mask|masking|drop cloths?)\b.{0,80}\b(floors?|flooring)\b.{0,80}\b(overspray|paint\s+drips?|drips?)\b|\b(floors?|flooring)\b.{0,80}\b(protect|protected|protection|covered|mask|masked|masking|drop cloths?)\b.{0,80}\b(overspray|paint\s+drips?|drips?)\b/i
+
+const FLOOR_TRUE_WORK_PATTERN =
+  /\b(install|replace|repair|remove|removal|level|underlayment|demo|demolition)\b.{0,80}\b(floors?|flooring|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b|\b(floors?|flooring|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b.{0,80}\b(install|replacement|replace|repair|remove|removal|level|underlayment|demo|demolition)\b/i
+
 const COORDINATION_PATTERN =
   /\b(coordinate|coordination|avoid interference|no interference|not interfere|work around|working around|around existing)\b/
 
@@ -128,6 +134,10 @@ function splitClauses(text: string): string[] {
 
 function hasAny(text: string, patterns: RegExp[]) {
   return patterns.some((pattern) => pattern.test(text))
+}
+
+function isFloorProtectionPaintContext(text: string) {
+  return FLOOR_PROTECTION_PAINT_CONTEXT_PATTERN.test(text) && !FLOOR_TRUE_WORK_PATTERN.test(text)
 }
 
 function detectTrades(text: string): EstimatorScopeTrade[] {
@@ -187,7 +197,7 @@ function classifyClause(text: string, boundaryCarry: boolean): EstimatorScopeFac
   const excludedByOthers = explicitExcludedByOthers || continuedExclusion
   const hasWorkVerb = WORK_VERB_PATTERN.test(text)
   const materialOnly = ownerSupplied || customerSupplied || contractorSupplied || ALLOWANCE_PATTERN.test(text)
-  const protectionOnly = protection && !hasWorkVerb && !excludedByOthers
+  const protectionOnly = protection && (!hasWorkVerb || isFloorProtectionPaintContext(text)) && !excludedByOthers
   const coordinationOnly = coordination && !hasWorkVerb && !excludedByOthers
   const existingCondition = existing && !hasWorkVerb && !excludedByOthers
   const trades = detectTrades(text)
