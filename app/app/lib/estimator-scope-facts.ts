@@ -80,6 +80,12 @@ const FLOOR_PROTECTION_PAINT_CONTEXT_PATTERN =
 const FLOOR_TRUE_WORK_PATTERN =
   /\b(install|replace|repair|remove|removal|level|underlayment|demo|demolition)\b.{0,80}\b(floors?|flooring|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b|\b(floors?|flooring|lvp|luxury\s+vinyl|laminate|hardwood|carpet)\b.{0,80}\b(install|replacement|replace|repair|remove|removal|level|underlayment|demo|demolition)\b/i
 
+const DRYWALL_SUBSTRATE_PAINT_CONTEXT_PATTERN =
+  /\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:paint|painting|painted|receive\s+paint|coats?)\b|\b(?:paint|painting|painted|coats?)\b.{0,120}\b(?:over\s+)?(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b/i
+
+const DRYWALL_TRUE_WORK_PATTERN =
+  /\b(install|replace|repair|patch|hang|finish|texture|demo|demolition)\b.{0,80}\b(drywall|sheetrock|gypsum)\b|\b(drywall|sheetrock|gypsum)\b.{0,80}\b(install|replacement|replace|repair|patch|hang|finish|texture|demo|demolition)\b/i
+
 const COORDINATION_PATTERN =
   /\b(coordinate|coordination|avoid interference|no interference|not interfere|work around|working around|around existing)\b/
 
@@ -142,6 +148,15 @@ function isFloorProtectionPaintContext(text: string) {
 
 function detectTrades(text: string): EstimatorScopeTrade[] {
   let trades = TRADE_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(({ trade }) => trade)
+
+  if (
+    trades.includes("drywall") &&
+    trades.includes("painting") &&
+    DRYWALL_SUBSTRATE_PAINT_CONTEXT_PATTERN.test(text) &&
+    !DRYWALL_TRUE_WORK_PATTERN.test(text)
+  ) {
+    trades = trades.filter((trade) => trade !== "drywall")
+  }
 
   if (
     trades.includes("bathroom_tile") &&

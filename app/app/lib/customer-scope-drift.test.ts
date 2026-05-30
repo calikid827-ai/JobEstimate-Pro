@@ -339,10 +339,15 @@ test("warns for unsupported drywall drift", () => {
 
 test("does not warn for drywall substrate context in painting output", () => {
   const contextOnlyPhrases = [
-    "Customer-facing scope includes painting standard drywall surfaces.",
     "Customer-facing scope includes paint over standard drywall surfaces.",
+    "Customer-facing scope includes painting over standard drywall surfaces.",
+    "Customer-facing scope includes standard drywall surfaces to receive paint.",
+    "Customer-facing scope includes painting standard drywall surfaces.",
     "Customer-facing scope includes existing drywall surfaces to receive paint.",
+    "Customer-facing scope includes paint standard drywall wall surfaces only.",
+    "Customer-facing scope includes coats applied over standard drywall surfaces.",
     "Customer-facing scope assumes standard drywall surfaces for painting.",
+    "Customer-facing scope includes drywall and painting in three bedrooms with standard drywall surfaces.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
@@ -694,8 +699,13 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Electrical trade coordination to handle outlet covers safely and prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Coordination with the electrical trade is limited to outlet cover handling.",
     "Customer-facing scope includes painting walls. Coordination with the electrical trade for outlet cover handling only.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is limited to outlet cover handling only.",
+    "Customer-facing scope includes painting walls. Coordination with the electrical trade is required for outlet cover handling only.",
     "Customer-facing scope includes painting walls. Electrical trade coordination limited to removing and reinstalling outlet covers for painting only.",
+    "Customer-facing scope includes painting walls. Electrical trade coordination is limited to outlet cover removal and reinstallation for painting only.",
     "Customer-facing scope includes painting walls. Outlet cover handling only with no electrical work.",
+    "Customer-facing scope includes painting walls. Outlet covers handled only for painting prep with no wiring, device, or circuit work.",
+    "Customer-facing scope includes painting walls. Electrical coordination only for removing and reinstalling outlet covers for painting.",
     "Customer-facing scope includes painting walls. Handle outlet covers safely and prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled safely to prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled without interference with existing wiring.",

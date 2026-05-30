@@ -133,6 +133,23 @@ test("flooring protection with paint drips does not become typed mixed scope", (
   }
 })
 
+test("drywall substrate wording does not become typed mixed scope", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms. Walls only. Paint over standard drywall surfaces. Two coats.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint bedroom walls only." }],
+    }),
+    materialsList: materials(["Paint", "Roller covers", "Masking tape"]),
+    estimateSections: [section("painting")],
+  })
+
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /multiple trades/)
+  assert.doesNotMatch(text, /drywall/)
+})
+
 test("true painting plus LVP mixed scope remains accepted", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "general_renovation",
