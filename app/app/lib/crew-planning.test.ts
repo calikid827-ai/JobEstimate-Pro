@@ -184,6 +184,25 @@ test("cover-plate painting prep does not produce a multi-trade planning note", (
   }
 })
 
+test("drywall substrate painting does not produce a multi-trade planning note", () => {
+  const scopes = [
+    "Paint 3 bedrooms. Walls only. Paint over standard drywall surfaces. Two coats.",
+    "Paint 3 bedrooms. Walls only. Light sanding and patching of minor drywall imperfections to facilitate proper paint adhesion.",
+  ]
+
+  for (const scopeText of scopes) {
+    const plan = buildCrewPlanningReadback({
+      selectedTrade: "general_renovation",
+      scopeText,
+      schedule: schedule({ crewDays: 1, visits: 1, calendarDays: null }),
+    })
+
+    assert.deepEqual(plan.planningNotes, [], scopeText)
+    assert.equal(plan.estimatorOnly, true)
+    assert.equal(plan.affectsPricing, false)
+  }
+})
+
 test("true electrical typed scope still produces a multi-trade planning note", () => {
   const scopes = [
     "Paint 3 bedrooms and replace outlets.",

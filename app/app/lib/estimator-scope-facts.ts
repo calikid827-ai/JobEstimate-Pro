@@ -83,8 +83,14 @@ const FLOOR_TRUE_WORK_PATTERN =
 const DRYWALL_SUBSTRATE_PAINT_CONTEXT_PATTERN =
   /\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:paint|painting|painted|receive\s+paint|coats?)\b|\b(?:paint|painting|painted|coats?)\b.{0,120}\b(?:over\s+)?(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b/i
 
+const DRYWALL_EXISTING_CONDITION_CONTEXT_PATTERN =
+  /\b(?:assumes?|existing|standard)\b.{0,80}\b(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,160}\b(?:without|no|not)\b.{0,80}\b(?:extensive\s+)?(?:demolition|repairs?|repair\s+work|replacement|major\s+repairs?)\b/i
+
 const DRYWALL_TRUE_WORK_PATTERN =
   /\b(install|replace|repair|patch|hang|finish|texture|demo|demolition)\b.{0,80}\b(drywall|sheetrock|gypsum)\b|\b(drywall|sheetrock|gypsum)\b.{0,80}\b(install|replacement|replace|repair|patch|hang|finish|texture|demo|demolition)\b/i
+
+const ELECTRICAL_COVER_HANDLING_PAINT_CONTEXT_PATTERN =
+  /\b(?:remove|removal|reinstall|reinstallation|removed|reinstalled|handling|handled)\b.{0,100}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,120}\b(?:painting|paint|painting\s+only|no\s+electrical\s+work|without\s+(?:wiring|device|circuit))\b|\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,100}\b(?:remove|removal|reinstall|reinstallation|removed|reinstalled|handling|handled)\b.{0,120}\b(?:painting|paint|painting\s+only|no\s+electrical\s+work|without\s+(?:wiring|device|circuit))\b|\bcoordination\s+with\s+(?:the\s+)?electrical\s+trade\b.{0,180}\b(outlet\s+covers?|switch\s+covers?|cover\s+plates?)\b.{0,160}\b(?:without|only|painting|paint)\b/i
 
 const COORDINATION_PATTERN =
   /\b(coordinate|coordination|avoid interference|no interference|not interfere|work around|working around|around existing)\b/
@@ -158,6 +164,14 @@ function detectTrades(text: string): EstimatorScopeTrade[] {
     trades = trades.filter((trade) => trade !== "drywall")
   }
 
+  if (trades.includes("drywall") && DRYWALL_EXISTING_CONDITION_CONTEXT_PATTERN.test(text)) {
+    trades = trades.filter((trade) => trade !== "drywall")
+  }
+
+  if (trades.includes("electrical") && ELECTRICAL_COVER_HANDLING_PAINT_CONTEXT_PATTERN.test(text)) {
+    trades = trades.filter((trade) => trade !== "electrical")
+  }
+
   if (
     trades.includes("bathroom_tile") &&
     /\b(tile\s+trim|edge\s+trim|trim\s+piece|trim\s+pieces|schluter|jolly|bullnose|trim)\b/.test(text) &&
@@ -216,6 +230,9 @@ function classifyClause(text: string, boundaryCarry: boolean): EstimatorScopeFac
   const coordinationOnly = coordination && !hasWorkVerb && !excludedByOthers
   const existingCondition = existing && !hasWorkVerb && !excludedByOthers
   const trades = detectTrades(text)
+  const contextOnly =
+    (DRYWALL_EXISTING_CONDITION_CONTEXT_PATTERN.test(text) && !trades.includes("drywall")) ||
+    ELECTRICAL_COVER_HANDLING_PAINT_CONTEXT_PATTERN.test(text)
 
   return {
     text,
@@ -225,7 +242,8 @@ function classifyClause(text: string, boundaryCarry: boolean): EstimatorScopeFac
       !protectionOnly &&
       !coordinationOnly &&
       !existingCondition &&
-      !materialOnly,
+      !materialOnly &&
+      !contextOnly,
     excludedByOthers,
     protectionOnly,
     coordinationOnly,

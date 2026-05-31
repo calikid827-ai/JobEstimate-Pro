@@ -100,8 +100,17 @@ function stripPaintingElectricalPrepContext(scopeText: string): string {
   )
 }
 
+function stripDrywallPaintingPrepContext(scopeText: string): string {
+  return clean(scopeText).replace(
+    /\b(?:paint|painting|coats?)\b.{0,120}\b(?:over\s+)?(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b|\b(?:standard|existing|paintable|previously\s+painted|prepared)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:paint|painting|painted|receive\s+paint|coats?)\b|\b(?:light\s+sanding\s+and\s+)?patching\s+(?:of\s+)?minor\s+(?:drywall|sheetrock|gypsum)\s+imperfections\b.{0,120}\b(?:paint\s+adhesion|painting|paint|coats?)\b|\b(?:assumes?|existing|standard)\b.{0,80}\b(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,160}\b(?:without|no|not)\b.{0,80}\b(?:extensive\s+)?(?:demolition|repairs?|repair\s+work|replacement|major\s+repairs?)\b/gi,
+    " "
+  )
+}
+
 function detectTypedTradeCategories(scopeText: string): string[] {
-  const text = normalize(stripPaintingElectricalPrepContext(stripProtectionOnlyFlooringContext(scopeText)))
+  const text = normalize(
+    stripDrywallPaintingPrepContext(stripPaintingElectricalPrepContext(stripProtectionOnlyFlooringContext(scopeText)))
+  )
   const trades: string[] = []
   const add = (trade: string, pattern: RegExp) => {
     if (pattern.test(text) && !trades.includes(trade)) trades.push(trade)

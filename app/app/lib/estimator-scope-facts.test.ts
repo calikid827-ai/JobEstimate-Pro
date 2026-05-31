@@ -40,6 +40,16 @@ test("drywall substrate wording stays painting only", () => {
   assert.equal(facts.trueMixedTrades, false)
 })
 
+test("drywall existing-condition wording stays context only", () => {
+  const facts = buildEstimatorScopeFacts(
+    "Paint 3 bedrooms and install flooring. This scope assumes standard drywall walls and typical bedroom layouts, without extensive demolition or repair work."
+  )
+
+  hasAll(facts.includedTrades, ["painting", "flooring"])
+  assert.equal(facts.includedTrades.includes("drywall"), false)
+  assert.equal(facts.trueMixedTrades, true)
+})
+
 test("true patch and paint includes drywall and painting", () => {
   const facts = buildEstimatorScopeFacts("Patch drywall access holes, prime repairs, and paint walls.")
 
@@ -102,6 +112,23 @@ test("true mixed painting and LVP remains mixed", () => {
   const facts = buildEstimatorScopeFacts("Paint walls in living room and install LVP flooring with transitions.")
 
   hasAll(facts.includedTrades, ["painting", "flooring"])
+  assert.equal(facts.trueMixedTrades, true)
+})
+
+test("outlet cover painting prep does not become electrical mixed scope", () => {
+  const facts = buildEstimatorScopeFacts(
+    "Paint 3 bedrooms. Walls only. Remove and reinstall outlet covers for painting only. Two coats."
+  )
+
+  assert.deepEqual(facts.includedTrades, ["painting"])
+  assert.equal(facts.includedTrades.includes("electrical"), false)
+  assert.equal(facts.trueMixedTrades, false)
+})
+
+test("true painting and outlet replacement remains mixed", () => {
+  const facts = buildEstimatorScopeFacts("Paint 3 bedrooms and replace outlets.")
+
+  hasAll(facts.includedTrades, ["painting", "electrical"])
   assert.equal(facts.trueMixedTrades, true)
 })
 

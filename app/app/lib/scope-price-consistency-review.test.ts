@@ -150,6 +150,38 @@ test("drywall substrate wording does not become typed mixed scope", () => {
   assert.doesNotMatch(text, /drywall/)
 })
 
+test("cover plate handling only does not become typed electrical mixed scope", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms. Walls only. Remove and reinstall outlet covers for painting only. Two coats.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint bedroom walls only." }],
+    }),
+    materialsList: materials(["Paint", "Masking tape", "Drop cloths"]),
+    estimateSections: [section("painting")],
+  })
+
+  const text = reviewText(review)
+  assert.doesNotMatch(text, /multiple trades/)
+  assert.doesNotMatch(text, /painting, electrical/)
+})
+
+test("true painting plus outlet replacement remains typed mixed scope", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "painting",
+    scopeText: "Paint 3 bedrooms and replace outlets.",
+    scopeXRay: scopeXRay({
+      primaryTrade: "painting",
+      splitScopes: [{ trade: "painting", scope: "Paint bedroom walls." }],
+    }),
+    materialsList: materials(["Paint", "Outlets"]),
+    estimateSections: [section("painting")],
+  })
+
+  assert.match(reviewText(review), /multiple trades/)
+})
+
 test("true painting plus LVP mixed scope remains accepted", () => {
   const review = buildScopePriceConsistencyReview({
     selectedTrade: "general_renovation",

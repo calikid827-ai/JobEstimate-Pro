@@ -361,6 +361,7 @@ test("does not warn for drywall substrate context in painting output", () => {
     "Customer-facing scope includes primer/sealer and two finish coats of interior wall paint on standard drywall surfaces.",
     "Customer-facing scope coordinates with other trades to prevent conflicts with ongoing drywall or finishing work.",
     "Customer-facing scope does not include drywall replacement or major repairs.",
+    "Customer-facing scope assumes standard drywall walls and typical bedroom layouts, without extensive demolition or repair work.",
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work includes surface preparation, which involves light sanding and patching of minor imperfections on standard drywall surfaces to facilitate proper paint adhesion. Prior to painting, all furniture and flooring in the bedrooms will be protected using drop cloths and masking materials. The scope explicitly excludes ceilings, trim, and doors. Paint materials will comprise a high-quality interior wall paint suitable for drywall, to be applied in two complete coats following appropriate drying intervals. This scope assumes normal access and that the existing drywall is in good condition, without requiring extensive repairs or demolition.",
     "This Change Order / Estimate encompasses the painting of walls in three existing bedrooms. The scope entails surface preparation, including light sanding and dust removal on standard drywall surfaces to facilitate proper paint adhesion. All furniture and flooring within the rooms will be safeguarded with drop cloths and masking materials to prevent any overspray or splatter. Two complete coats of interior wall paint will be applied to the prepared drywall surfaces. Paint materials will consist of primer and finish coats appropriate for drywall, with all necessary consumables such as masking tape and sanding materials provided. This scope excludes ceilings, trim, or doors and assumes the existing drywall is free of significant defects requiring repair.",
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work involves surface preparation, including light sanding and patching of minor drywall imperfections to facilitate proper paint adhesion. All floors, furniture, and fixtures within the bedrooms will be safeguarded using drop cloths and masking materials to prevent overspray or damage. The scope explicitly excludes ceilings, trim, and doors. Paint materials will consist of standard interior wall paint appropriate for drywall surfaces, with primer included as necessary to achieve coverage consistency. Coordination with other trades is planned to prevent conflicts with ongoing drywall or finishing work. This scope assumes that existing drywall surfaces are generally in sound condition and does not include drywall replacement or major repairs.",
@@ -378,6 +379,19 @@ test("does not warn for drywall substrate context in painting output", () => {
       resultText
     )
   }
+})
+
+test("true flooring scope does not warn for generated standard drywall condition context", () => {
+  assert.equal(
+    warning({
+      selectedTrade: "general_renovation",
+      writtenScope: "Paint 3 bedrooms and install flooring.",
+      estimateSections: [section("painting"), section("flooring")],
+      resultText:
+        "This Change Order / Estimate encompasses the preparation, painting, and flooring installation in three existing bedrooms. The three bedrooms will be painted with two coats of interior wall paint, addressing minor patching of nail holes and surface imperfections. Following the completion of painting, flooring installation will proceed. This scope assumes standard drywall walls and typical bedroom layouts, without extensive demolition or repair work.",
+    }),
+    null
+  )
 })
 
 test("true drywall work still warns from painting scope", () => {
