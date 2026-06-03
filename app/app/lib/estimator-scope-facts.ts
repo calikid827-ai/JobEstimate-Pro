@@ -84,7 +84,7 @@ const DRYWALL_SUBSTRATE_PAINT_CONTEXT_PATTERN =
   /\b(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,120}\b(?:paint|painting|painted|receive\s+paint|coats?)\b|\b(?:paint|painting|painted|coats?)\b.{0,120}\b(?:over\s+)?(?:standard|existing|paintable|previously\s+painted)?\s*(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b/i
 
 const DRYWALL_EXISTING_CONDITION_CONTEXT_PATTERN =
-  /\b(?:assumes?|existing|standard)\b.{0,80}\b(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?)\b.{0,160}\b(?:without|no|not)\b.{0,80}\b(?:extensive\s+)?(?:demolition|repairs?|repair\s+work|replacement|major\s+repairs?)\b/i
+  /\b(?:assumes?|existing|standard)\b.{0,100}\b(?:drywall|sheetrock|gypsum)\s+(?:surfaces?|walls?|wall\s+surfaces?|substrates?|walls?\s+and\s+ceilings?)\b.{0,180}\b(?:without|no|not)\b.{0,120}\b(?:concealed\s+damage\s+requiring\s+corrective\s+work|corrective\s+work|(?:extensive\s+)?demolition|(?:extensive\s+)?repairs?|repair\s+work|replacement|major\s+repairs?)\b/i
 
 const DRYWALL_TRUE_WORK_PATTERN =
   /\b(install|replace|repair|patch|hang|finish|texture|demo|demolition)\b.{0,80}\b(drywall|sheetrock|gypsum)\b|\b(drywall|sheetrock|gypsum)\b.{0,80}\b(install|replacement|replace|repair|patch|hang|finish|texture|demo|demolition)\b/i

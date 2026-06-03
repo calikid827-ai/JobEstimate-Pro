@@ -41,13 +41,18 @@ test("drywall substrate wording stays painting only", () => {
 })
 
 test("drywall existing-condition wording stays context only", () => {
-  const facts = buildEstimatorScopeFacts(
-    "Paint 3 bedrooms and install flooring. This scope assumes standard drywall walls and typical bedroom layouts, without extensive demolition or repair work."
-  )
+  const contexts = [
+    "Paint 3 bedrooms and install flooring. This scope assumes standard drywall walls and typical bedroom layouts, without extensive demolition or repair work.",
+    "Paint 3 bedrooms and install flooring. This scope assumes standard drywall walls and ceilings, typical room dimensions, and no concealed damage requiring corrective work.",
+  ]
 
-  hasAll(facts.includedTrades, ["painting", "flooring"])
-  assert.equal(facts.includedTrades.includes("drywall"), false)
-  assert.equal(facts.trueMixedTrades, true)
+  for (const scope of contexts) {
+    const facts = buildEstimatorScopeFacts(scope)
+
+    hasAll(facts.includedTrades, ["painting", "flooring"])
+    assert.equal(facts.includedTrades.includes("drywall"), false, scope)
+    assert.equal(facts.trueMixedTrades, true, scope)
+  }
 })
 
 test("true patch and paint includes drywall and painting", () => {
