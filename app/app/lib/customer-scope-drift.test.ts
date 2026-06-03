@@ -359,6 +359,8 @@ test("does not warn for drywall substrate context in painting output", () => {
     "Customer-facing scope includes light sanding and patching minor drywall imperfections to facilitate proper paint adhesion.",
     "Customer-facing scope includes standard interior wall paint appropriate for drywall surfaces.",
     "Customer-facing scope includes primer and finish paint suitable for drywall surfaces.",
+    "Customer-facing scope includes painting walls targeting existing standard drywall surfaces.",
+    "Customer-facing scope includes primer and finish paint for full coverage of the drywall surfaces.",
     "Customer-facing scope includes primer/sealer and two finish coats of interior wall paint on standard drywall surfaces.",
     "Customer-facing scope coordinates with other trades to prevent conflicts with ongoing drywall or finishing work.",
     "Customer-facing scope does not include drywall replacement or major repairs.",
@@ -369,6 +371,7 @@ test("does not warn for drywall substrate context in painting output", () => {
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work involves surface preparation, including light sanding and patching of minor drywall imperfections to facilitate proper paint adhesion. All floors, furniture, and fixtures within the bedrooms will be safeguarded using drop cloths and masking materials to prevent overspray or damage. The scope explicitly excludes ceilings, trim, and doors. Paint materials will consist of standard interior wall paint appropriate for drywall surfaces, with primer included as necessary to achieve coverage consistency. Coordination with other trades is planned to prevent conflicts with ongoing drywall or finishing work. This scope assumes that existing drywall surfaces are generally in sound condition and does not include drywall replacement or major repairs.",
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work includes surface preparation, which involves light sanding and patching minor drywall imperfections to facilitate proper paint adhesion. The scope includes the application of a primer/sealer coat if necessitated by the condition of the existing drywall, followed by two finish coats of interior wall paint on standard drywall surfaces. This scope excludes ceilings, trim, doors, or additional drywall repairs beyond minor surface preparation.",
     "This Change Order / Estimate encompasses the painting of walls in three existing bedrooms. The scope involves surface preparation, including light sanding and dust removal on standard drywall surfaces to facilitate proper paint adhesion. Floors, trim, and any existing finishes adjacent to the walls will be protected using drop cloths and masking tape. Two full coats of interior wall paint will be applied using rollers and brushes, allowing for appropriate drying time between coats. Materials will consist of primer and finish paint suitable for drywall surfaces, along with necessary consumables such as masking tape and protective coverings. Coordination with other trades is planned to prevent conflicts with ongoing or scheduled work in the bedrooms. Upon completion, all protective coverings will be removed, and the work area will be cleaned of paint debris and dust. This estimate is based on the scope described above.",
+    "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three bedrooms, targeting existing standard drywall surfaces. The scope entails surface preparation, including light sanding and dust removal, to facilitate proper paint adhesion. Materials will consist of primer and finish paint to achieve uniform coverage of the drywall surfaces.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
@@ -746,6 +749,8 @@ test("does not warn for painting masking context around outlets and switches", (
     "Customer-facing scope includes painting walls. Electrical coordination only for removing and reinstalling outlet covers for painting.",
     "Customer-facing scope includes painting walls. Coordination for electrical access restricted to the removal of outlet covers only.",
     "Customer-facing scope includes painting walls. This scope excludes any replacement or modification of electrical devices beyond the handling of outlet covers.",
+    "Customer-facing scope includes painting walls. Work will be coordinated to avoid interference with existing wiring and devices during removal/reinstallation of outlet covers.",
+    "Customer-facing scope includes painting walls. No electrical repairs or modifications beyond handling outlet covers.",
     "Customer-facing scope includes painting walls. Handle outlet covers safely and prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled safely to prevent interference with existing wiring.",
     "Customer-facing scope includes painting walls. Outlet covers handled without interference with existing wiring.",
@@ -778,6 +783,7 @@ test("does not warn for painting masking context around outlets and switches", (
     "This Change Order / Estimate encompasses the preparation and painting of walls in three existing bedrooms. The scope entails the removal and careful storage of all outlet covers in the specified rooms prior to the commencement of painting. Surface preparation will involve cleaning and light sanding to enhance paint adhesion on the existing finishes. Upon completion of painting, all outlet covers will be reinstalled. Coordination with the electrical trade is necessary to safely remove and reinstall outlet covers without affecting wiring or devices. This work aims to refresh wall surfaces without modifying electrical components beyond the handling of outlet covers.",
     "This Change Order / Estimate pertains to the preparation and painting of walls in three existing bedrooms. The scope entails the meticulous removal and subsequent reinstallation of all outlet covers in these rooms to facilitate uninterrupted wall painting. Protective masking and drop cloths will protect existing flooring, trim, and electrical fixtures from paint overspray or drips. Coordination with the electrical trade is necessary to safely remove and reinstall outlet covers without causing damage to wiring or devices.",
     "This Change Order / Estimate encompasses the preparation and painting of walls in three existing bedrooms. The scope entails the meticulous removal and subsequent reinstallation of all outlet covers in these rooms to facilitate painting. Surface preparation will involve cleaning and light sanding to enhance paint adhesion. Prior to painting, all adjacent finishes and flooring will be shielded with masking and drop cloths. Two complete coats of interior wall paint will be applied to the existing drywall surfaces. The work will be sequenced to minimize disruption, with coordination for electrical access restricted to the removal of outlet covers only. Upon completion, all protective coverings will be removed, and the work area will be cleared of debris and paint materials. This scope excludes painting of ceilings, trim, or doors, as well as any replacement or modification of electrical devices beyond the handling of outlet covers.",
+    "This Change Order / Estimate encompasses the preparation and painting of walls in three existing bedrooms. The scope involves the removal and careful storage of all outlet covers in these rooms prior to painting. Work will be coordinated to avoid interference with existing wiring and devices during removal/reinstallation. This scope includes no electrical repairs or modifications beyond handling outlet covers.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
@@ -911,6 +917,8 @@ test("warns when flooring scope expands into baseboard replacement or painting",
 test("does not warn for flooring fitment baseboard context", () => {
   const contextOnlyPhrases = [
     "This scope includes the layout, cutting, fitting, and securing of the flooring material, along with the installation of transition strips and the reattachment or replacement of baseboards as needed.",
+    "Customer-facing scope includes flooring installation with thresholds, transitions, cutting, fitting, and securing flooring at adjacent surfaces.",
+    "Customer-facing scope includes flooring installation threshold fitment, cutting, fitting, trimming, and securing flooring at transitions.",
     "This Change Order / Estimate encompasses the preparation and application of paint in three existing bedrooms, as well as the installation of new flooring in these rooms. The work involves surface preparation, including minor patching, sanding, and cleaning of walls and trim to prepare for painting. Prior to painting, all adjacent surfaces, furniture, and flooring will be protected using drop cloths and masking materials. The painting scope includes the application of primer where necessary and two finish coats on walls and trim within each bedroom. The flooring installation includes the removal and disposal of existing floor coverings, if present, followed by the installation of new flooring material suitable for the current subfloor conditions. This scope includes the layout, cutting, fitting, and securing of the flooring material, along with the installation of transition strips and the reattachment or replacement of baseboards as needed. Coordination with other trades is anticipated to prevent conflicts with electrical or HVAC components. Daily and final cleanup will be conducted, including the removal of all protective coverings and disposal of debris. The sequence of work is planned to complete painting before flooring installation to prevent damage to new floors.",
   ]
 
@@ -1001,6 +1009,9 @@ test("true carpentry and trim work still warns when unsupported", () => {
     "Customer-facing scope includes install trim.",
     "Customer-facing scope includes replace trim.",
     "Customer-facing scope includes carpentry work is included.",
+    "Customer-facing scope includes trim carpentry is included.",
+    "Customer-facing scope includes install thresholds as carpentry.",
+    "Customer-facing scope includes replace thresholds as carpentry.",
   ]
 
   for (const resultText of trueCarpentryPhrases) {
