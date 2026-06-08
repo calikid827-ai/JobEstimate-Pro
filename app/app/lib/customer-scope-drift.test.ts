@@ -346,15 +346,19 @@ test("does not warn for drywall substrate context in painting output", () => {
     "Customer-facing scope includes existing drywall surfaces to receive paint.",
     "Customer-facing scope includes paint standard drywall wall surfaces only.",
     "Customer-facing scope includes coats applied over standard drywall surfaces.",
+    "Customer-facing scope includes two coats over existing standard drywall surfaces.",
     "Customer-facing scope assumes standard drywall surfaces for painting.",
     "Customer-facing scope includes drywall and painting in three bedrooms with standard drywall surfaces.",
     "Customer-facing scope includes light sanding and patching of minor imperfections on standard drywall surfaces to facilitate proper paint adhesion.",
+    "Customer-facing scope includes light sanding and patching of minor imperfections to facilitate proper paint adhesion.",
     "Customer-facing scope includes minor patching of wall imperfections on standard drywall surfaces to facilitate proper paint adhesion.",
     "Customer-facing scope assumes the existing drywall is in good condition, without requiring extensive repairs or demolition.",
     "Customer-facing scope includes light sanding and dust removal on standard drywall surfaces to facilitate proper paint adhesion.",
     "Customer-facing scope includes two complete coats of interior wall paint applied to the prepared drywall surfaces.",
     "Customer-facing scope includes primer and finish coats appropriate for drywall, with masking tape and sanding materials provided.",
+    "Customer-facing scope includes primer and finish coats appropriate for interior drywall.",
     "Customer-facing scope assumes the existing drywall is free of significant defects requiring repair.",
+    "Customer-facing scope presumes existing drywall in satisfactory condition.",
     "Customer-facing scope includes light sanding and patching of minor drywall imperfections to facilitate proper paint adhesion.",
     "Customer-facing scope includes light sanding and patching minor drywall imperfections to facilitate proper paint adhesion.",
     "Customer-facing scope includes standard interior wall paint appropriate for drywall surfaces.",
@@ -372,6 +376,7 @@ test("does not warn for drywall substrate context in painting output", () => {
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three existing bedrooms. The work includes surface preparation, which involves light sanding and patching minor drywall imperfections to facilitate proper paint adhesion. The scope includes the application of a primer/sealer coat if necessitated by the condition of the existing drywall, followed by two finish coats of interior wall paint on standard drywall surfaces. This scope excludes ceilings, trim, doors, or additional drywall repairs beyond minor surface preparation.",
     "This Change Order / Estimate encompasses the painting of walls in three existing bedrooms. The scope involves surface preparation, including light sanding and dust removal on standard drywall surfaces to facilitate proper paint adhesion. Floors, trim, and any existing finishes adjacent to the walls will be protected using drop cloths and masking tape. Two full coats of interior wall paint will be applied using rollers and brushes, allowing for appropriate drying time between coats. Materials will consist of primer and finish paint suitable for drywall surfaces, along with necessary consumables such as masking tape and protective coverings. Coordination with other trades is planned to prevent conflicts with ongoing or scheduled work in the bedrooms. Upon completion, all protective coverings will be removed, and the work area will be cleaned of paint debris and dust. This estimate is based on the scope described above.",
     "This Change Order / Estimate encompasses the preparation and application of two coats of paint on the walls of three bedrooms, targeting existing standard drywall surfaces. The scope entails surface preparation, including light sanding and dust removal, to facilitate proper paint adhesion. Materials will consist of primer and finish paint to achieve uniform coverage of the drywall surfaces.",
+    "This Estimate encompasses the proposed painting of walls in three bedrooms, involving the application of two coats over existing standard drywall surfaces. The scope includes surface preparation, which entails light sanding and patching of minor imperfections to facilitate proper paint adhesion. Prior to painting, all furniture and flooring in the bedrooms will be safeguarded with drop cloths and masking materials. The work will be organized to minimize disruption, with coordination efforts to prevent conflicts with other trades. Paint materials will consist of primer and finish coats appropriate for interior drywall. Upon completion of the two coats, the work area will be cleared of all debris, masking materials will be removed, and surfaces will be left in a condition ready for occupancy. This scope excludes ceilings, trim, or doors, and presumes normal access and existing drywall in satisfactory condition.",
   ]
 
   for (const resultText of contextOnlyPhrases) {
