@@ -1146,16 +1146,16 @@ Done note:
 - Why it matters: Painting-prep masking/protection around flooring, outlets/switches, and outlet-cover handling should not make a painting-only estimate auto-open Customer Output Readiness or imply unsupported flooring/electrical scope.
 - Risk level: Low
 - Priority: P1
-- Recommended fix approach: Completed a UI/client review-only Customer Scope Drift polish. Painting-context flooring masking/protection, outlet/switch masking, cover-plate/outlet-cover prep, generated outlet-cover coordination, safe removal/reinstallation, wiring/device/circuit unaffected language, and outlet-cover handling to prevent interference with existing wiring no longer create unsupported drift or auto-open Customer Output Readiness. True flooring work and true electrical/circuit work still surface clearly.
+- Recommended fix approach: Completed a UI/client review-only Customer Scope Drift / Estimator Review false-positive cleanup. Painting-context flooring masking/protection, outlet/switch masking, cover-plate/outlet-cover prep, generated outlet-cover coordination, safe removal/reinstallation, wiring/device/circuit unaffected language, drywall substrate/prep/material/condition wording, flooring threshold/transition/fitment context, and outlet-cover handling-only electrical coordination no longer create unsupported drift, false mixed-scope summary wording, or false Crew Planning multi-trade notes. True drywall, flooring, electrical/circuit, carpentry, baseboard, and threshold work still surfaces clearly.
 - Exact files/components involved: `app/app/lib/customer-scope-drift.ts`, `app/app/lib/customer-scope-drift.test.ts`.
 - What not to touch: Backend routes, estimator runtime files, route/API response shape, saved estimate/history shape, PDFs/customer output, pricing formulas, pricing owner behavior, labor totals, prompts, `effectiveScopeChange`, `result.text`, materials generation, deterministic engines, `scopeSplitter`, `detectTradeStack`, `buildComplexityProfile`, billing/auth, deployment, Smart Questions pricing behavior, or Evidence Authority normal UI exposure.
-- Tests or manual QA needed: Completed with Customer Scope Drift tests 77/77, `npx tsc --noEmit`, `git diff --check`, and final desktop/mobile Playwright screenshot QA using `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-wiring-interference-final-qa`.
+- Tests or manual QA needed: Completed with focused Customer Scope Drift, Scope-to-Price Consistency Review, and Crew Planning regression tests, `npx tsc --noEmit`, `git diff --check`, and final desktop+iPhone Playwright screenshot QA using `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-final-generated-context-drift-qa/final-run-1`.
 - Status: Done
 
 Done note:
 
-- Customer Output Readiness no longer auto-opens for context-only floor/flooring masking/protection, outlet/switch masking, or cover-plate/outlet-cover prep because the unsupported-trade item is no longer created.
-- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep and still shows it for true typed multi-trade work.
+- Customer Output Readiness stays collapsed for context-only floor/flooring masking/protection, drywall substrate/prep/material/condition wording, outlet/switch masking, cover-plate/outlet-cover prep, and flooring threshold/transition/fitment context because unsupported-trade false positives are no longer created.
+- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep and drywall substrate / painting-prep context, and still shows it for true typed multi-trade work.
 - This was UI/client review-only and did not change backend/API/saved/PDF/pricing/prompt/`result.text`/materials/deterministic/billing behavior.
 - Smart Questions remain local-only and non-pricing-authoritative; Evidence Authority remains internal/debug-only and was not exposed in normal UI.
 

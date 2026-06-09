@@ -2347,15 +2347,19 @@ Status: PASSED
 Scope:
 - Customer Scope Drift now treats painting-context flooring masking/protection, outlet/switch masking, cover-plate/outlet-cover prep, generated outlet-cover coordination, safe removal/reinstallation, wiring/device/circuit unaffected language, and outlet-cover handling to prevent interference with existing wiring as context-only.
 - These phrases no longer create unsupported flooring/electrical drift or auto-open Customer Output Readiness because the `Unsupported trade wording` item is not created.
-- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep.
-- True flooring work and true electrical/circuit work still surface clearly.
+- Final generated-context cleanup also treats drywall substrate/prep/material/condition wording, flooring threshold/transition/fitment context, and cover-plate/outlet-cover handling-only electrical coordination as context-only.
+- These phrases no longer create unsupported drywall/electrical/flooring/carpentry drift, false painting + drywall / painting + electrical / painting + flooring mixed-scope summary wording, or false Crew Planning multi-trade notes.
+- Crew Planning avoids the multi-trade note for masking/protection/cover-plate-only prep and drywall substrate / painting-prep context.
+- True drywall, flooring, electrical/circuit, carpentry, baseboard, threshold, and true multi-trade work still surface clearly.
 
 Validation:
 - Customer Scope Drift tests passed 77/77.
 - `npx tsc --noEmit` passed.
 - `git diff --check` passed.
-- Final desktop/mobile Playwright screenshot QA passed with `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-wiring-interference-final-qa`.
-- Dry-time painting, flooring protection/masking, outlet/switch masking, cover-plate painting prep, true flooring control, and true electrical control passed on desktop and iPhone.
+- Earlier desktop/mobile Playwright screenshot QA passed with `test12345@gmail.com`; artifacts were saved outside the repo at `/tmp/jobestimatepro-wiring-interference-final-qa`.
+- Final desktop+iPhone Playwright screenshot QA passed after commit `Suppress final generated context drift` using `test12345@gmail.com` and Playwright Chromium 1.60.0; artifacts were saved outside the repo at `/tmp/jobestimatepro-final-generated-context-drift-qa/final-run-1`.
+- The final pass completed 9 scenarios x desktop/iPhone = 18/18 with 0 runner failures: simple painting / generated drywall substrate context, explicit drywall substrate context, flooring protection only, cover-plate painting prep, true drywall control, true flooring control, true electrical control, true flooring/baseboard control, and true flooring/threshold carpentry control.
+- Final QA left `git status --short` clean and added no screenshots to the repo.
 
 Architecture safety:
 - This was UI/client review-only.
