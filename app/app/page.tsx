@@ -121,7 +121,9 @@ import InvoicesSection from "./components/InvoicesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
+import EstimatorIntelligenceFindingsPanel from "./components/EstimatorIntelligenceFindingsPanel"
 import { detectChangeOrder } from "./lib/change-order-detector"
+import { buildEstimatorIntelligenceFindings } from "./lib/estimator-intelligence-findings"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -3514,6 +3516,27 @@ const priceGuardReview = useMemo(() => {
   estimateDefenseMode,
   estimateRows,
   estimateSections,
+])
+
+const estimatorIntelligenceFindings = useMemo(() => {
+  if (!result) return buildEstimatorIntelligenceFindings()
+
+  return buildEstimatorIntelligenceFindings({
+    planIntelligence,
+    photoAnalysis,
+    photoScopeAssist,
+    missedScopeDetector,
+    profitLeakDetector,
+    priceGuardReview,
+  })
+}, [
+  result,
+  planIntelligence,
+  photoAnalysis,
+  photoScopeAssist,
+  missedScopeDetector,
+  profitLeakDetector,
+  priceGuardReview,
 ])
 
 const customerScopeReviewGuard = useMemo(() => {
@@ -14493,6 +14516,8 @@ function SmartQuestionsPanel({
       <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
         Full estimator review, plan readback, and line-item detail for follow-up before sending.
       </div>
+
+      <EstimatorIntelligenceFindingsPanel result={estimatorIntelligenceFindings} />
 
       <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
 
