@@ -12,7 +12,7 @@ Principles:
 
 ## Current Priority Order
 
-1. Next active smart-upgrade direction: optional intelligence-layer work around typed scope as the required scope-control anchor. Good candidates are browser/mobile visual QA sweep for the overall reduced/compact Estimator Review flow, Crew Planning hotel/multi-unit production board audit only, company intelligence / saved-estimate learning audit, camera measuring prototype audit, voice-to-scope draft audit, or plan-to-scope reconciliation audit. Avoid actual pricing-authoritative or labor-total changes unless explicitly scoped; Evidence Authority remains internal/debug-only until normal API, saved estimate, UI, and PDF/customer-output exposure are separately scoped.
+1. NEXT: Phase 10B - Plan Intelligence Report. Use the completed Phase 10A Estimator Intelligence Findings backbone to build a detailed estimator-only Plan Intelligence Report that summarizes what the app understands from uploaded plan sets while keeping plan/photo/detector findings review-only and non-pricing-authoritative unless estimator confirmation is added later.
 2. Keep the real-world estimate QA matrix and cross-trade backend scope-boundary filtering under regression watch during trade QA.
 3. Keep PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, and warning-only AI scope protection under regression watch during real-world estimate QA.
 4. Keep deeper Plan Intelligence story wording polish as future/post-launch unless real-PDF QA shows a launch-blocking trust issue.
@@ -243,7 +243,7 @@ Done note:
 - Normal two-coat paint dry-time, low confidence, measurement, and payment review notes remain acceptable estimator guidance.
 - Validation passed: `customer-scope-drift.test.ts` 64/64, `schedule-sequencing-review.test.ts` 10/10, `missedScopeDetector.test.ts` 2/2, `scopeSplitter.test.ts` 19/19, `npm run test:estimator -- app/app/lib/priceguard-review.test.ts app/app/lib/scope-quality-check.test.ts` 37/37, `npx tsc --noEmit`, and `git diff --check`.
 - This cleanup did not change pricing formulas, backend pricing semantics, broad generation behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, or measured plan pricing eligibility.
-- Current next active direction is optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Remaining real-world QA false-positive cleanup for Cases 4, 6, 7, and 8
 
@@ -288,7 +288,7 @@ Done note:
 - Phase 1 intentionally did not migrate Customer Scope Drift, Schedule Sequencing, backend route diagnostics, `scopeSplitter`, materials generation, `missedScopeDetector`, pricing prep, or Estimate Defense yet. Those migrations have since advanced through Phase 7; broader route-level X-Ray / confirmation construction remains a Phase 8 audit target.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 11/11, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 38/38, `npx tsc --noEmit`, and `git diff --check`.
 - This architecture groundwork did not change pricing formulas, backend pricing semantics, generation prompts, `result.text`, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, broad backend route diagnostics, Customer Scope Drift behavior, Schedule Sequencing behavior, `scopeSplitter` behavior, or materials generation behavior.
-- Current next active direction is optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 2 EstimatorScopeFacts migration for Scope-to-Price Consistency Review
 
@@ -398,7 +398,7 @@ Done note:
 - Public behavior was preserved: same exported `buildEstimateDefenseMode` function name, same return shape and fields, display-only diagnostic behavior, and no customer text mutation.
 - Validation passed: `estimator-scope-facts.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only backend diagnostic migration did not change pricing formulas, backend pricing semantics, generation behavior, `result.text`, PDFs, approvals, invoices, billing, webhook/billing code, localStorage keys, saved data shapes, Generate payload shape, API route contracts, Customer Output Readiness layout/caps, result-page hierarchy, PriceGuard layout, assumptions panel layout, measured plan pricing eligibility, materials generation behavior, `scopeSplitter` behavior, route contract behavior, pricing anchors, or deterministic engines.
-- Current next active direction is optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Prompts, `effectiveScopeChange`, `result.text`, photo pricing behavior, and route/API shape must not change without a scoped review. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Current next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Prompts, `effectiveScopeChange`, `result.text`, photo pricing behavior, and route/API shape must not change without a scoped review. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 7 missedScopeDetector / backend missed-scope diagnostics EstimatorScopeFacts migration
 
@@ -447,7 +447,7 @@ Done note:
 - Public route/API response shape was preserved.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 6/6, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This display-only route diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active direction is optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics migration is complete in the next item. Phase 8C materialsList.items conditional item gate migration plus Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8B buildMaterialsList confirmation items/notes and materials diagnostics EstimatorScopeFacts migration
 
@@ -474,7 +474,7 @@ Done note:
 - Combined materials note now uses `trueMixedTrades` instead of only `splitScopes.length`.
 - Validation passed: `routeDisplayDiagnostics.test.ts` 14/14, `estimator-scope-facts.test.ts` 9/9, `missedScopeDetector.test.ts` 9/9, `estimateDefenseMode.test.ts` 7/7, `orchestratorEstimateSections.test.ts` 2/2, `priceguard-review.test.ts` 17/17, `scope-price-consistency-review.test.ts` 18/18, `customer-scope-drift.test.ts` 71/71, `schedule-sequencing-review.test.ts` 14/14, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - This confirmItems/notes-only backend materials diagnostics migration did not change pricing formulas, backend pricing semantics, anchors, deterministic engines, `materialsList.items` generation, `scopeSplitter` behavior, route contracts, generation prompts, `result.text`, PDFs, UI layouts, billing/webhook code, or measured plan pricing eligibility.
-- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active direction is optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
+- Phase 8C materialsList.items conditional item gate migration is complete in the next item. Phase 8D-2 coordination text gating, Phase 8D-3 schedule/rationale gating, Phase 8D-4A route display diagnostics gating, Phase 8D-4B estimate explanation gating, and Phase 8D-5A profit leak diagnostics gating are complete below. Current next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should still wait until response, saved estimate, and UI shape changes are explicitly scoped. Production Live Mode subscription verification remains the final pre-launch gate only.
 
 #### Item: Phase 8C materialsList.items conditional item gate EstimatorScopeFacts migration
 
@@ -660,7 +660,7 @@ Done note:
 - This was reason-text-only. It did not change `pricingAllowed`, blockers, confidence, confidenceBand, estimateMode, pricingPolicy, `missingInputs`, `derivePhotoPricingImpact`, photo pricing behavior, confidence penalty from `tradeStack.isMultiTrade`, measurement-heavy behavior, raw quantity parsing, prompts, `effectiveScopeChange`, `result.text`, route/API shape, pricing formulas, materials generation, `scopeSplitter`, deterministic engines, docs, UI, payment/auth, `detectTradeStack`, or `buildComplexityProfile`.
 - Validation passed: `routePhotoEstimateDecision.test.ts` 12/12, `routePromptAdjacentDiagnostics.test.ts` 14/14, `routeDisplayDiagnostics.test.ts` 28/28, `estimator-scope-facts.test.ts` 9/9, `npm run test:estimator -- app/app/lib/scope-quality-check.test.ts app/app/lib/priceguard-review.test.ts` 41/41, `npx tsc --noEmit`, and `git diff --check`.
 - Deferred photo behavior items remain: polluted multi-trade signals can still affect the confidence penalty and measurement-heavy behavior, and raw owner-supplied / by-others quantity parsing remains unchanged. These are pricing/policy-adjacent and should stay deferred unless explicitly scoped after launch-readiness review.
-- Phase 8D scope-boundary text/diagnostic cleanup is substantially complete. Next active direction should be optional intelligence-layer work around typed scope as the required scope-control anchor; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should wait until response, saved estimate, and UI shape changes are explicitly scoped.
+- Phase 8D scope-boundary text/diagnostic cleanup is substantially complete. Next active direction is Phase 10B - Plan Intelligence Report, built on the completed Phase 10A Estimator Intelligence Findings backbone; normal Evidence Authority API, saved estimate, UI, or PDF/customer-output exposure should wait until response, saved estimate, and UI shape changes are explicitly scoped.
 
 #### Item: Scope-to-Price Consistency Review Guard false-positive cleanup
 
@@ -1052,6 +1052,41 @@ Done note:
 - Excluded, by-others, owner/customer-supplied, protection-only, coordination-only, existing-to-remain, stale, ambiguous/short-text, material, schedule, demo/prep, permit, and photo/plan answers remain non-pricing-authoritative.
 - EstimatorScopeFacts is used only for classification/boundary checks and does not change existing scope behavior.
 - No runtime/UI/API/saved/PDF/pricing/prompt/result/materials/deterministic/billing behavior changed.
+
+## Phase 10 Estimator Intelligence Findings / Construction Estimator Brain
+
+#### Item: Phase 10A Estimator Intelligence Findings backbone
+
+- Problem: Plan Intelligence, Photo Intelligence, missed-scope detection, PriceGuard/profit-leak review, Evidence Authority, Smart Questions, Crew Planning, plan readbacks, plan pricing carry readbacks, trade quantity candidates, photo scope assist, and other diagnostics existed as fragmented intelligence outputs.
+- Why it matters: JobEstimate Pro needs a single review-only estimator intelligence backbone before building the larger Construction Estimator Brain surfaces such as Plan Intelligence Report, Photo Intelligence connection, Assembly Pricing, or Historical Learning.
+- Risk level: Low
+- Priority: P0
+- Recommended fix approach: Completed as a client-safe pure mapper plus compact estimator-only display panel. Keep all inferred findings review-only, data-no-print, customer-hidden, and non-pricing-authoritative unless a future estimator confirmation workflow explicitly changes authority.
+- Exact files/components involved: `app/app/lib/estimator-intelligence-findings.ts`, `app/app/lib/estimator-intelligence-findings.test.ts`, `app/app/components/EstimatorIntelligenceFindingsPanel.tsx`, `app/app/page.tsx`.
+- What not to touch: `/api/generate`, estimator orchestrator, route/API response shape, saved estimate/history shape, pricing totals, prompts, PDFs/customer output, Crew Planning behavior, Smart Questions behavior, Evidence Authority normal UI exposure, billing/auth/deployment.
+- Tests or manual QA needed: Completed with `npm run test:estimator -- app/app/lib/estimator-intelligence-findings.test.ts` passing 16/16, `npx tsc --noEmit`, `git diff --check`, and Playwright Chromium desktop QA.
+- Status: Done
+
+Done note:
+
+- Phase 10A-1 added `buildEstimatorIntelligenceFindings()` as a client-safe pure mapper. It defensively accepts existing client-side plan/readback, photo/photo-scope-assist, missed-scope, PriceGuard/profit-leak, Evidence Authority-like, and assembly-candidate-style data without importing server-only modules.
+- Every generated finding remains non-authoritative by default: `pricingEligibleNow: false`, `pricingAuthoritative: false`, `customerVisible: false`, `requiresEstimatorConfirmation: true`, and `dataNoPrint: true`.
+- Phase 10A-2 added the compact estimator-only `EstimatorIntelligenceFindingsPanel` inside the internal Estimator Review area. The panel is collapsed by default, uses `data-no-print`, shows summary counts and finding details, and displays the guardrail “Review-only. Not included in pricing unless estimator confirms.”
+- Browser QA passed in Playwright Chromium desktop using `test12345@gmail.com`; screenshots were saved outside the repo at `/tmp/jobestimatepro-phase-10a-2-intelligence-findings-panel-qa`.
+- QA confirmed the panel appears only after generation when findings exist, is hidden under print media, does not insert content into customer-facing scope, does not alter pricing text or estimate rows, does not alter Crew Planning or Smart Questions behavior, and opening it does not trigger regeneration.
+- Phase 10A did not change pricing, generation behavior, prompts, route/orchestrator/API response shape, saved estimate/history shape, PDFs/customer output, billing/auth/deployment, Crew Planning behavior, Smart Questions behavior, or Evidence Authority normal UI exposure.
+
+#### Item: Phase 10B Plan Intelligence Report
+
+- Problem: Existing plan data is spread across Plan Review Summary, Plan-to-price details, estimator diagnostics, readbacks, extracted tables, room/finish matrices, repeated room packages, trade quantity candidates, candidate gates, and Evidence Authority debug-only paths.
+- Why it matters: Contractors need a clear estimator-only report of what the app understood from uploaded plan sets before plan intelligence can safely support deeper workflows.
+- Risk level: Medium
+- Priority: P0
+- Recommended fix approach: Build an estimator-only Plan Intelligence Report using the Phase 10A Estimator Intelligence Findings backbone. Summarize selected/read pages, sheet/page/source evidence, extracted schedules/tables, room/unit/finish clues, quantity candidates, confirmation needs, exclusions/boundaries, and plan evidence limits while keeping all findings review-only and non-pricing-authoritative.
+- Exact files/components likely involved: New client-side report component(s), `app/app/page.tsx` wiring, existing plan readback/display helpers, and existing `buildEstimatorIntelligenceFindings()` output. Avoid route/orchestrator changes unless a later explicitly scoped task approves them.
+- What not to touch: Plan-derived pricing authority, pricing totals, prompts, `/api/generate` response shape, saved estimate/history shape, PDFs/customer output, billing/auth/deployment, Crew Planning behavior, Smart Questions behavior, or Evidence Authority normal UI exposure.
+- Tests or manual QA needed: Focused mapper/report tests if a helper is added, `npx tsc --noEmit`, `git diff --check`, desktop/mobile visual QA with a generated plan-assisted estimate, and print-media/customer-output safety checks.
+- Status: Next
 
 ## Future Advanced Estimator Features
 
