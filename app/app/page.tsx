@@ -15,6 +15,7 @@ import {
   ACTUALS_KEY,
   CREW_KEY,
   JOBS_KEY,
+  JOB_TEMPLATES_KEY,
   PAINT_SCOPE_OPTIONS,
 } from "./lib/constants"
 
@@ -119,11 +120,20 @@ import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import InvoicesSection from "./components/InvoicesSection"
+import JobTemplatesSection from "./components/JobTemplatesSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
 import EstimatorIntelligenceFindingsPanel from "./components/EstimatorIntelligenceFindingsPanel"
 import { detectChangeOrder } from "./lib/change-order-detector"
+import {
+  createJobTemplate,
+  deleteJobTemplate,
+  getJobTemplateApplyPayload,
+  normalizeJobTemplates,
+  upsertJobTemplate,
+  type JobTemplate,
+} from "./lib/job-templates"
 import { buildEstimatorIntelligenceFindings } from "./lib/estimator-intelligence-findings"
 import {
   getGenerateExceptionMessage,
@@ -1978,6 +1988,10 @@ const [showUpgrade, setShowUpgrade] = useState(false)
 const [history, setHistory] = useState<EstimateHistoryItem[]>([])
 
 const [budgets, setBudgets] = useState<JobBudget[]>([])
+const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([])
+const [jobTemplatesHydrated, setJobTemplatesHydrated] = useState(false)
+const [jobTemplateName, setJobTemplateName] = useState("")
+const [jobTemplateNotes, setJobTemplateNotes] = useState("")
 
 const [jobDetails, setJobDetails] = useState({
   clientName: "",
@@ -2805,6 +2819,19 @@ useEffect(() => {
 
   setHistoryHydrated(true)
 }, [])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  setJobTemplates(normalizeJobTemplates(readLocalJson<unknown>(JOB_TEMPLATES_KEY, null)))
+  setJobTemplatesHydrated(true)
+}, [])
+
+useEffect(() => {
+  if (typeof window === "undefined" || !jobTemplatesHydrated) return
+
+  writeLocalJson(JOB_TEMPLATES_KEY, jobTemplates)
+}, [jobTemplates, jobTemplatesHydrated])
 
   // -------------------------
   // App state
@@ -4118,6 +4145,47 @@ async function regenerateWithSmartScope() {
     `${smartScopePreview.original}\n\n• ${smartScopePreview.suggestions.join("\n• ")}`
 
   await generate(mergedScope)
+}
+
+function saveCurrentSetupAsJobTemplate() {
+  const template = createJobTemplate({
+    name: jobTemplateName,
+    trade,
+    documentType,
+    state,
+    scopeChange,
+    paintScope: showPaintScope ? paintScope : null,
+    notes: jobTemplateNotes,
+  })
+
+  if (!template) {
+    setStatus("Add a typed scope before saving a job template.")
+    return
+  }
+
+  setJobTemplates((prev) => upsertJobTemplate(prev, template))
+  setJobTemplateName("")
+  setJobTemplateNotes("")
+  setStatus(`Template saved: ${template.name}`)
+}
+
+function useJobTemplate(template: JobTemplate) {
+  const setup = getJobTemplateApplyPayload(template)
+
+  setDocumentType(setup.documentType)
+  setTrade(setup.trade)
+  setState(setup.state)
+  setScopeChange(setup.scopeChange)
+  setPaintScope(setup.paintScope ?? "walls")
+
+  setStatus(`Template applied: ${template.name}. Review the setup, then click Generate.`)
+}
+
+function removeJobTemplate(templateId: string) {
+  const template = jobTemplates.find((item) => item.id === templateId)
+
+  setJobTemplates((prev) => deleteJobTemplate(prev, templateId))
+  setStatus(template ? `Template deleted: ${template.name}` : "Template deleted.")
 }
 
 // -------------------------
@@ -14653,6 +14721,18 @@ function SmartQuestionsPanel({
   updateJob={updateJob}
   deleteJob={deleteJob}
   history={history}
+/>
+
+<JobTemplatesSection
+  templates={jobTemplates}
+  templateName={jobTemplateName}
+  setTemplateName={setJobTemplateName}
+  templateNotes={jobTemplateNotes}
+  setTemplateNotes={setJobTemplateNotes}
+  currentScopeReady={scopeChange.trim().length > 0}
+  onSaveCurrentSetup={saveCurrentSetupAsJobTemplate}
+  onUseTemplate={useJobTemplate}
+  onDeleteTemplate={removeJobTemplate}
 />
 
 <InvoicesSection

@@ -8,6 +8,7 @@ import {
   INVOICE_KEY,
   JOBS_KEY,
   JOB_KEY,
+  JOB_TEMPLATES_KEY,
   OWNER_SYNC_TOKEN_KEY,
 } from "./constants"
 
@@ -21,6 +22,7 @@ export const LOCAL_STORAGE_KEYS = {
   actuals: ACTUALS_KEY,
   crews: CREW_KEY,
   jobs: JOBS_KEY,
+  jobTemplates: JOB_TEMPLATES_KEY,
   ownerSyncToken: OWNER_SYNC_TOKEN_KEY,
 } as const
 
