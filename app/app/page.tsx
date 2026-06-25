@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
@@ -8286,6 +8287,42 @@ const hasAdvancedAnalysis =
   !!tradePricingPrepAnalysis ||
   hasReviewInsights
 
+function ResultCommandSection({
+  title,
+  summary,
+  children,
+  dataNoPrint = false,
+}: {
+  title: string
+  summary?: string
+  children: ReactNode
+  dataNoPrint?: boolean
+}) {
+  return (
+    <section
+      data-no-print={dataNoPrint ? "" : undefined}
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ marginBottom: summary ? 12 : 10 }}>
+        <h3 style={{ margin: 0, fontSize: 17 }}>{title}</h3>
+        {summary && (
+          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
+            {summary}
+          </div>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
 
@@ -10919,7 +10956,7 @@ function AdvancedAnalysisSection({
   if (!hasAnything) return null
 
   return (
-    <details
+    <div
       data-no-print
       style={{
         marginTop: 14,
@@ -10930,15 +10967,9 @@ function AdvancedAnalysisSection({
         background: "#fff",
       }}
     >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontWeight: 900,
-          fontSize: 15,
-        }}
-      >
-        Estimator Diagnostics
-      </summary>
+      <div style={{ fontWeight: 900, fontSize: 15 }}>
+        Technical Diagnostics
+      </div>
 
       <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
         Optional deep-dive analysis, scope logic, material planning, and review tools.
@@ -10994,7 +11025,7 @@ function AdvancedAnalysisSection({
         estimateBreakdown={estimateBreakdown}
         estimateAssumptions={estimateAssumptions}
       />
-    </details>
+    </div>
   )
 }
 
@@ -14279,255 +14310,155 @@ function SmartQuestionsPanel({
       </p>
     </div>
 
-    {hasEstimateStatus && (
-  <EstimateStatusCard
-  displayedDocumentType={displayedDocumentType}
-  displayedChangeOrderNote={displayedChangeOrderNote}
-  displayedScheduleImpactNote={displayedScheduleImpactNote}
-  changeOrderDetection={changeOrderDetection}
-  scopeSignals={scopeSignals}
-  jobPhotosCount={jobPhotos.length}
-  photoAnalysis={photoAnalysis}
-  photoScopeAssist={photoScopeAssist}
-  planAssistedStatus={planAssistedStatus}
-  measureEnabled={measureEnabled}
-  totalSqft={totalSqft}
-  hasMeasurementReference={hasMeasurementReference}
-  estimateConfidence={estimateConfidence}
-/>
-)}
-
-    <div
-      style={{
-        marginBottom: 14,
-        padding: 14,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fff",
-      }}
+    <ResultCommandSection
+      title="Proposal"
+      summary="Customer-ready scope and scope-update actions."
     >
       <div
         style={{
-          fontWeight: 900,
-          fontSize: 14,
-          marginBottom: 8,
-          color: "#111827",
+          padding: 14,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
         }}
       >
-        Customer-Facing Scope
-      </div>
-
-      {customerScopeTradeDriftWarning && (
         <div
           style={{
-            marginBottom: 10,
-            padding: 10,
-            border: "1px solid #fdba74",
-            borderRadius: 8,
-            background: "#fff7ed",
-            color: "#92400e",
-            fontSize: 12,
-            fontWeight: 800,
-            lineHeight: 1.45,
+            fontWeight: 900,
+            fontSize: 14,
+            marginBottom: 8,
+            color: "#111827",
           }}
         >
-          {customerScopeTradeDriftWarning}
-        </div>
-      )}
-
-      <div
-        style={{
-          whiteSpace: "pre-wrap",
-          lineHeight: 1.6,
-          fontSize: 14,
-          color: "#111",
-        }}
-      >
-        {result.text}
-      </div>
-    </div>
-
-    {smartScopePreview && (
-      <div
-        style={{
-          marginTop: 12,
-          marginBottom: 14,
-          padding: 14,
-          border: "1px solid #c7d2fe",
-          borderRadius: 14,
-          background: "#eef2ff",
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
-          Smart Scope Assist
+          Customer-Facing Scope
         </div>
 
-        <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
-          Suggested additions based on uploaded photos and missing scope details.
-        </div>
-
-        <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
-          {smartScopePreview.suggestions.map((item, i) => (
-            <li key={`smart-scope-${i}`}>{item}</li>
-          ))}
-        </ul>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-          <button
-            type="button"
-            onClick={regenerateWithSmartScope}
-            disabled={loading}
+        {customerScopeTradeDriftWarning && (
+          <div
             style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: loading ? "#a5b4fc" : "#312e81",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.8 : 1,
+              marginBottom: 10,
+              padding: 10,
+              border: "1px solid #fdba74",
+              borderRadius: 8,
+              background: "#fff7ed",
+              color: "#92400e",
+              fontSize: 12,
+              fontWeight: 800,
+              lineHeight: 1.45,
             }}
           >
-            {loading ? "Regenerating..." : "Regenerate with Suggestions"}
-          </button>
-
-          <button
-            type="button"
-            onClick={applySmartScopePreview}
-            disabled={loading}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #c7d2fe",
-              background: "#fff",
-              color: "#312e81",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            Apply to Scope Only
-          </button>
-        </div>
-      </div>
-    )}
-
-    <PricingSummarySection
-      pricing={pricing}
-      setPricing={setPricing}
-      setPricingEdited={setPricingEdited}
-      applyProfitTarget={applyProfitTarget}
-      depositEnabled={depositEnabled}
-      setDepositEnabled={setDepositEnabled}
-      depositType={depositType}
-      setDepositType={setDepositType}
-      depositValue={depositValue}
-      setDepositValue={setDepositValue}
-      depositDue={depositDue}
-      remainingBalance={remainingBalance}
-      taxEnabled={taxEnabled}
-      setTaxEnabled={setTaxEnabled}
-      taxRate={taxRate}
-      setTaxRate={setTaxRate}
-      taxAmount={taxAmount}
-      minimumSafeStatus={minimumSafeStatus}
-      historicalPriceGuard={historicalPriceGuard}
-      PriceGuardBadge={PriceGuardBadge}
-      pdfShowPriceGuard={pdfShowPriceGuard}
-      pdfPriceGuardLabel={pdfPriceGuardLabel}
-      isUserEdited={isUserEdited}
-      downloadPDF={downloadPDF}
-    />
-
-    {schedule && (
-      <>
-        <ScheduleBlock schedule={schedule} />
-
-        {completionWindow && (
-          <div style={{ marginTop: 10, fontSize: 13 }}>
-            Estimated Completion:
-            <strong>
-              {" "}
-              {completionWindow.min.toLocaleDateString()} –{" "}
-              {completionWindow.max.toLocaleDateString()}
-            </strong>
+            {customerScopeTradeDriftWarning}
           </div>
         )}
 
-        <details
+        <div
           style={{
-            marginTop: 12,
-            border: "1px solid #e5e7eb",
-            borderRadius: 12,
-            background: "#fff",
-            padding: 12,
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.6,
+            fontSize: 14,
+            color: "#111",
           }}
         >
-          <summary
-            style={{
-              cursor: "pointer",
-              fontWeight: 800,
-              fontSize: 13,
-            }}
-          >
-            Edit Schedule
-          </summary>
-
-          <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
-        </details>
-      </>
-    )}
-
-    <CrewPlanningPanel plan={crewPlanningReadback} />
-
-    <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
-
-    <SmartQuestionsPanel
-      questions={smartQuestions}
-      answers={smartQuestionAnswers}
-      onConfirm={confirmSmartQuestionAnswer}
-      onClear={clearSmartQuestionAnswer}
-    />
-
-    <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
-
-    <details
-      data-no-print
-      style={{
-        marginTop: 14,
-        marginBottom: 14,
-        padding: 12,
-        border: "1px solid #d1d5db",
-        borderRadius: 14,
-        background: "#fff",
-      }}
-    >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontWeight: 900,
-          fontSize: 15,
-        }}
-      >
-        Estimator review details
-      </summary>
-      <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
-        Full estimator review, plan readback, and line-item detail for follow-up before sending.
+          {result.text}
+        </div>
       </div>
 
-      <EstimatorIntelligenceFindingsPanel result={estimatorIntelligenceFindings} />
+      {smartScopePreview && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 14,
+            border: "1px solid #c7d2fe",
+            borderRadius: 14,
+            background: "#eef2ff",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
+            Smart Scope Assist
+          </div>
 
-      <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
+          <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
+            Suggested additions based on uploaded photos and missing scope details.
+          </div>
 
-      <PlanAwareEstimatorReadbackCard
-        planIntelligence={planIntelligence}
-        estimateSections={estimateSections}
-        selectedPagesChosenCount={jobPlans.reduce(
-          (sum, plan) => sum + countSelectedPlanPages(plan),
-          0
-        )}
+          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
+            {smartScopePreview.suggestions.map((item, i) => (
+              <li key={`smart-scope-${i}`}>{item}</li>
+            ))}
+          </ul>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+            <button
+              type="button"
+              onClick={regenerateWithSmartScope}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: loading ? "#a5b4fc" : "#312e81",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.8 : 1,
+              }}
+            >
+              {loading ? "Regenerating..." : "Regenerate with Suggestions"}
+            </button>
+
+            <button
+              type="button"
+              onClick={applySmartScopePreview}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #c7d2fe",
+                background: "#fff",
+                color: "#312e81",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              Apply to Scope Only
+            </button>
+          </div>
+        </div>
+      )}
+    </ResultCommandSection>
+
+    <ResultCommandSection
+      title="Price & Profit"
+      summary="Edit the price, protect margin, set tax/deposit terms, and download the estimate."
+    >
+      <PricingSummarySection
+        pricing={pricing}
+        setPricing={setPricing}
+        setPricingEdited={setPricingEdited}
+        applyProfitTarget={applyProfitTarget}
+        depositEnabled={depositEnabled}
+        setDepositEnabled={setDepositEnabled}
+        depositType={depositType}
+        setDepositType={setDepositType}
+        depositValue={depositValue}
+        setDepositValue={setDepositValue}
+        depositDue={depositDue}
+        remainingBalance={remainingBalance}
+        taxEnabled={taxEnabled}
+        setTaxEnabled={setTaxEnabled}
+        taxRate={taxRate}
+        setTaxRate={setTaxRate}
+        taxAmount={taxAmount}
+        minimumSafeStatus={minimumSafeStatus}
+        historicalPriceGuard={historicalPriceGuard}
+        PriceGuardBadge={PriceGuardBadge}
+        pdfShowPriceGuard={pdfShowPriceGuard}
+        pdfPriceGuardLabel={pdfPriceGuardLabel}
+        isUserEdited={isUserEdited}
+        downloadPDF={downloadPDF}
       />
 
       <EstimateSectionsCard
@@ -14535,34 +14466,162 @@ function SmartQuestionsPanel({
         estimateEmbeddedBurdens={estimateEmbeddedBurdens}
         estimateSections={estimateSections}
       />
-    </details>
+    </ResultCommandSection>
 
-    {hasAdvancedAnalysis && (
-      <AdvancedAnalysisSection
-        photoAnalysis={photoAnalysis}
-        photoScopeAssist={photoScopeAssist}
-        planIntelligence={planIntelligence}
-        estimateSkeletonHandoff={estimateSkeletonHandoff}
-        estimateStructureConsumption={estimateStructureConsumption}
-        materialsList={materialsList}
-        areaScopeBreakdown={areaScopeBreakdown}
-        profitProtection={profitProtection}
-        scopeXRay={scopeXRay}
-        missedScopeDetector={missedScopeDetector}
-        profitLeakDetector={profitLeakDetector}
-        estimateDefenseMode={estimateDefenseMode}
-        tradePricingPrepAnalysis={tradePricingPrepAnalysis}
-        estimateConfidence={estimateConfidence}
-        changeOrderSummary={changeOrderSummary}
-        explainChangesReport={explainChangesReport}
-        estimateBreakdown={estimateBreakdown}
-        estimateAssumptions={estimateAssumptions}
-      />
+    {(schedule || crewPlanningReadback) && (
+      <ResultCommandSection
+        title="Schedule & Crew"
+        summary="Review duration, edit schedule assumptions, and plan crew execution."
+      >
+        {schedule && (
+          <>
+            <ScheduleBlock schedule={schedule} />
+
+            {completionWindow && (
+              <div style={{ marginTop: 10, fontSize: 13 }}>
+                Estimated Completion:
+                <strong>
+                  {" "}
+                  {completionWindow.min.toLocaleDateString()} –{" "}
+                  {completionWindow.max.toLocaleDateString()}
+                </strong>
+              </div>
+            )}
+
+            <details
+              style={{
+                marginTop: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                background: "#fff",
+                padding: 12,
+              }}
+            >
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontWeight: 800,
+                  fontSize: 13,
+                }}
+              >
+                Edit Schedule
+              </summary>
+
+              <ScheduleEditor schedule={schedule} setSchedule={setSchedule} />
+            </details>
+          </>
+        )}
+
+        <CrewPlanningPanel plan={crewPlanningReadback} />
+      </ResultCommandSection>
     )}
+
+    <ResultCommandSection
+      title="Review Before Sending"
+      summary="One compact estimator review hub. Detailed diagnostics stay collapsed below."
+      dataNoPrint
+    >
+      <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
+
+      <SmartQuestionsPanel
+        questions={smartQuestions}
+        answers={smartQuestionAnswers}
+        onConfirm={confirmSmartQuestionAnswer}
+        onClear={clearSmartQuestionAnswer}
+      />
+
+      <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
+
+      <details
+        data-no-print
+        style={{
+          marginTop: 14,
+          marginBottom: 14,
+          padding: 12,
+          border: "1px solid #d1d5db",
+          borderRadius: 14,
+          background: "#fff",
+        }}
+      >
+        <summary
+          style={{
+            cursor: "pointer",
+            fontWeight: 900,
+            fontSize: 15,
+          }}
+        >
+          Advanced Diagnostics
+        </summary>
+        <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
+          Full estimator review, plan readback, pricing-support details, and technical diagnostics.
+        </div>
+
+        {hasEstimateStatus && (
+          <div data-no-print>
+            <EstimateStatusCard
+              displayedDocumentType={displayedDocumentType}
+              displayedChangeOrderNote={displayedChangeOrderNote}
+              displayedScheduleImpactNote={displayedScheduleImpactNote}
+              changeOrderDetection={changeOrderDetection}
+              scopeSignals={scopeSignals}
+              jobPhotosCount={jobPhotos.length}
+              photoAnalysis={photoAnalysis}
+              photoScopeAssist={photoScopeAssist}
+              planAssistedStatus={planAssistedStatus}
+              measureEnabled={measureEnabled}
+              totalSqft={totalSqft}
+              hasMeasurementReference={hasMeasurementReference}
+              estimateConfidence={estimateConfidence}
+            />
+          </div>
+        )}
+
+        <EstimatorIntelligenceFindingsPanel result={estimatorIntelligenceFindings} />
+
+        <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
+
+        <PlanAwareEstimatorReadbackCard
+          planIntelligence={planIntelligence}
+          estimateSections={estimateSections}
+          selectedPagesChosenCount={jobPlans.reduce(
+            (sum, plan) => sum + countSelectedPlanPages(plan),
+            0
+          )}
+        />
+
+        {hasAdvancedAnalysis && (
+          <AdvancedAnalysisSection
+            photoAnalysis={photoAnalysis}
+            photoScopeAssist={photoScopeAssist}
+            planIntelligence={planIntelligence}
+            estimateSkeletonHandoff={estimateSkeletonHandoff}
+            estimateStructureConsumption={estimateStructureConsumption}
+            materialsList={materialsList}
+            areaScopeBreakdown={areaScopeBreakdown}
+            profitProtection={profitProtection}
+            scopeXRay={scopeXRay}
+            missedScopeDetector={missedScopeDetector}
+            profitLeakDetector={profitLeakDetector}
+            estimateDefenseMode={estimateDefenseMode}
+            tradePricingPrepAnalysis={tradePricingPrepAnalysis}
+            estimateConfidence={estimateConfidence}
+            changeOrderSummary={changeOrderSummary}
+            explainChangesReport={explainChangesReport}
+            estimateBreakdown={estimateBreakdown}
+            estimateAssumptions={estimateAssumptions}
+          />
+        )}
+      </details>
+    </ResultCommandSection>
   </div>
 )}
 
 <div data-no-print>
+  <ResultCommandSection
+    title="Job Workflow"
+    summary="Track jobs, approval status, invoices, saved estimates, and live job margin."
+    dataNoPrint
+  >
   <JobsDashboardSection
   jobs={jobs}
   activeJobId={activeJobId}
@@ -14627,6 +14686,7 @@ function SmartQuestionsPanel({
   deleteHistoryItem={deleteHistoryItem}
   setStatus={setStatus}
 />
+  </ResultCommandSection>
 
   {!paid && (showUpgrade || remaining <= 0) && (
   <button
