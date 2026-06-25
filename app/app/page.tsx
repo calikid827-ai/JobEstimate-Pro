@@ -16,6 +16,7 @@ import {
   CREW_KEY,
   JOBS_KEY,
   JOB_TEMPLATES_KEY,
+  RATE_CARD_KEY,
   PAINT_SCOPE_OPTIONS,
 } from "./lib/constants"
 
@@ -121,6 +122,7 @@ import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import InvoicesSection from "./components/InvoicesSection"
 import JobTemplatesSection from "./components/JobTemplatesSection"
+import RateCardSection from "./components/RateCardSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
@@ -134,6 +136,13 @@ import {
   upsertJobTemplate,
   type JobTemplate,
 } from "./lib/job-templates"
+import {
+  buildRateCard,
+  getRateCardApplyPayload,
+  getStarterRateCard,
+  normalizeRateCard,
+  type RateCard,
+} from "./lib/rate-card"
 import { buildEstimatorIntelligenceFindings } from "./lib/estimator-intelligence-findings"
 import {
   getGenerateExceptionMessage,
@@ -1456,6 +1465,18 @@ const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
 const lastSavedEstimateIdRef = useRef<string | null>(null)
 const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
+const rateCardHistorySyncSkipRef = useRef<{
+  tax?: { enabled: boolean; rate: number }
+  deposit?: { enabled: boolean; type: RateCard["deposit"]["type"]; value: number }
+  pricing?: {
+    labor: number
+    materials: number
+    subs: number
+    markup: number
+    totals: number[]
+  }
+  profit?: { markup: number }
+}>({})
 
 const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
 const [jobPlans, setJobPlans] = useState<JobPlan[]>([])
@@ -1992,6 +2013,8 @@ const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>([])
 const [jobTemplatesHydrated, setJobTemplatesHydrated] = useState(false)
 const [jobTemplateName, setJobTemplateName] = useState("")
 const [jobTemplateNotes, setJobTemplateNotes] = useState("")
+const [rateCard, setRateCard] = useState<RateCard>(() => getStarterRateCard(0))
+const [draftRateCard, setDraftRateCard] = useState<RateCard>(() => getStarterRateCard(0))
 
 const [jobDetails, setJobDetails] = useState({
   clientName: "",
@@ -2832,6 +2855,14 @@ useEffect(() => {
 
   writeLocalJson(JOB_TEMPLATES_KEY, jobTemplates)
 }, [jobTemplates, jobTemplatesHydrated])
+
+useEffect(() => {
+  if (typeof window === "undefined") return
+
+  const savedRateCard = normalizeRateCard(readLocalJson<unknown>(RATE_CARD_KEY, null))
+  setRateCard(savedRateCard)
+  setDraftRateCard(savedRateCard)
+}, [])
 
   // -------------------------
   // App state
@@ -4188,6 +4219,186 @@ function removeJobTemplate(templateId: string) {
   setStatus(template ? `Template deleted: ${template.name}` : "Template deleted.")
 }
 
+function numbersEqual(a: unknown, b: unknown) {
+  return Math.abs(Number(a || 0) - Number(b || 0)) < 0.0001
+}
+
+function calculateClientEditableTotal(args: {
+  labor: number
+  materials: number
+  subs: number
+  markup: number
+  taxEnabled: boolean
+  taxRate: number
+}) {
+  const base = Number(args.labor || 0) + Number(args.materials || 0) + Number(args.subs || 0)
+  const markedUp = base * (1 + Number(args.markup || 0) / 100)
+  const tax = args.taxEnabled ? markedUp * (Number(args.taxRate || 0) / 100) : 0
+
+  return Math.round(markedUp + tax)
+}
+
+function shouldSkipRateCardTaxHistorySync() {
+  const target = rateCardHistorySyncSkipRef.current.tax
+  if (!target) return false
+
+  if (target.enabled === taxEnabled && numbersEqual(target.rate, taxRate)) {
+    delete rateCardHistorySyncSkipRef.current.tax
+    return true
+  }
+
+  return false
+}
+
+function shouldSkipRateCardDepositHistorySync() {
+  const target = rateCardHistorySyncSkipRef.current.deposit
+  if (!target) return false
+
+  if (
+    target.enabled === depositEnabled &&
+    target.type === depositType &&
+    numbersEqual(target.value, depositValue)
+  ) {
+    delete rateCardHistorySyncSkipRef.current.deposit
+    return true
+  }
+
+  return false
+}
+
+function shouldSkipRateCardPricingHistorySync() {
+  const target = rateCardHistorySyncSkipRef.current.pricing
+  if (!target) return false
+
+  const matchesEditablePricing =
+    numbersEqual(target.labor, pricing.labor) &&
+    numbersEqual(target.materials, pricing.materials) &&
+    numbersEqual(target.subs, pricing.subs) &&
+    numbersEqual(target.markup, pricing.markup)
+
+  if (!matchesEditablePricing) return false
+
+  const totalIndex = target.totals.findIndex((total) => numbersEqual(total, pricing.total))
+  if (totalIndex === -1) return false
+
+  target.totals.splice(totalIndex, 1)
+  if (target.totals.length === 0) {
+    delete rateCardHistorySyncSkipRef.current.pricing
+  }
+
+  return true
+}
+
+function shouldSkipRateCardProfitHistorySync() {
+  const target = rateCardHistorySyncSkipRef.current.profit
+  if (!target) return false
+
+  if (numbersEqual(target.markup, pricing.markup)) {
+    delete rateCardHistorySyncSkipRef.current.profit
+    return true
+  }
+
+  return false
+}
+
+function saveRateCardDefaults() {
+  const nextRateCard = buildRateCard(draftRateCard)
+  setRateCard(nextRateCard)
+  setDraftRateCard(nextRateCard)
+  writeLocalJson(RATE_CARD_KEY, nextRateCard)
+  setStatus("Rate card defaults saved on this device.")
+}
+
+function applyRateCardDefaults() {
+  const defaults = getRateCardApplyPayload(rateCard)
+  const nextMarkup = Number(defaults.markupPct || 0)
+  const nextTaxEnabled = Boolean(defaults.tax.enabled)
+  const nextTaxRate = Number(defaults.tax.rate || 0)
+  const nextDepositEnabled = Boolean(defaults.deposit.enabled)
+  const nextDepositType = defaults.deposit.type
+  const nextDepositValue = Number(defaults.deposit.value || 0)
+
+  const markupWillChange = !numbersEqual(pricing.markup, nextMarkup)
+  const taxWillChange = taxEnabled !== nextTaxEnabled || !numbersEqual(taxRate, nextTaxRate)
+  const depositWillChange =
+    depositEnabled !== nextDepositEnabled ||
+    depositType !== nextDepositType ||
+    !numbersEqual(depositValue, nextDepositValue)
+  const pricingWillChange = markupWillChange || taxWillChange
+  const changed = markupWillChange || taxWillChange || depositWillChange
+
+  if (changed && result && lastSavedEstimateIdRef.current) {
+    const nextSkip: typeof rateCardHistorySyncSkipRef.current = {}
+
+    if (taxWillChange) {
+      nextSkip.tax = { enabled: nextTaxEnabled, rate: nextTaxRate }
+    }
+
+    if (depositWillChange) {
+      nextSkip.deposit = {
+        enabled: nextDepositEnabled,
+        type: nextDepositType,
+        value: nextDepositValue,
+      }
+    }
+
+    const currentTotal = Number(pricing.total || 0)
+    const nextTotal = calculateClientEditableTotal({
+      labor: Number(pricing.labor || 0),
+      materials: Number(pricing.materials || 0),
+      subs: Number(pricing.subs || 0),
+      markup: nextMarkup,
+      taxEnabled: nextTaxEnabled,
+      taxRate: nextTaxRate,
+    })
+
+    if (pricingWillChange && (markupWillChange || !numbersEqual(currentTotal, nextTotal))) {
+      const totals = markupWillChange ? Array.from(new Set([currentTotal, nextTotal])) : [nextTotal]
+
+      nextSkip.pricing = {
+        labor: Number(pricing.labor || 0),
+        materials: Number(pricing.materials || 0),
+        subs: Number(pricing.subs || 0),
+        markup: nextMarkup,
+        totals,
+      }
+    }
+
+    const shouldSkipProfitSync = markupWillChange || (changed && !pricingEdited)
+
+    if (shouldSkipProfitSync) {
+      nextSkip.profit = { markup: nextMarkup }
+    }
+
+    rateCardHistorySyncSkipRef.current = nextSkip
+  }
+
+  setPricing((prev) => ({
+    ...prev,
+    markup: nextMarkup,
+  }))
+  setTaxEnabled(nextTaxEnabled)
+  setTaxRate(nextTaxRate)
+  setDepositEnabled(nextDepositEnabled)
+  setDepositType(nextDepositType)
+  setDepositValue(nextDepositValue)
+
+  if (changed) setPricingEdited(true)
+  setStatus(
+    changed
+      ? "Rate card defaults applied to editable pricing controls."
+      : "Rate card defaults already match the editable pricing controls."
+  )
+}
+
+function resetRateCardDefaults() {
+  const starterRateCard = getStarterRateCard()
+  setRateCard(starterRateCard)
+  setDraftRateCard(starterRateCard)
+  writeLocalJson(RATE_CARD_KEY, starterRateCard)
+  setStatus("Rate card defaults reset to starter values.")
+}
+
 // -------------------------
 // Jobs (localStorage)
 // -------------------------
@@ -4361,6 +4572,7 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
+  if (shouldSkipRateCardTaxHistorySync()) return
 
   const current = findHistoryById(id)
   if (!current) return
@@ -4379,6 +4591,7 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
+  if (shouldSkipRateCardDepositHistorySync()) return
 
   const current = findHistoryById(id)
   if (!current) return
@@ -4399,6 +4612,7 @@ useEffect(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return
   if (!result) return
+  if (shouldSkipRateCardPricingHistorySync()) return
 
   const current = findHistoryById(id)
   if (!current) return
@@ -4433,6 +4647,7 @@ useEffect(() => {
   if (!id) return
   if (!result) return
   if (!pricingEdited) return
+  if (shouldSkipRateCardProfitHistorySync()) return
 
   const nextProfitProtection = buildProfitProtectionFromPricing({
     labor: Number(pricing.labor || 0),
@@ -14502,6 +14717,15 @@ function SmartQuestionsPanel({
       title="Price & Profit"
       summary="Edit the price, protect margin, set tax/deposit terms, and download the estimate."
     >
+      <RateCardSection
+        draftRateCard={draftRateCard}
+        savedRateCard={rateCard}
+        onDraftChange={setDraftRateCard}
+        onSave={saveRateCardDefaults}
+        onApply={applyRateCardDefaults}
+        onReset={resetRateCardDefaults}
+      />
+
       <PricingSummarySection
         pricing={pricing}
         setPricing={setPricing}

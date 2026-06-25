@@ -11,6 +11,7 @@ export const ACTUALS_KEY = "jobestimatepro_actuals_v1"
 export const CREW_KEY = "jobestimatepro_crews_v1"
 export const JOBS_KEY = "jobestimatepro_jobs_v1"
 export const JOB_TEMPLATES_KEY = "jobestimatepro_templates_v1"
+export const RATE_CARD_KEY = "jobestimatepro_rate_card_v1"
 
 export const PAINT_SCOPE_OPTIONS = [
   { label: "Walls only", value: "walls" },

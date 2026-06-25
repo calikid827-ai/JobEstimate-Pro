@@ -10,6 +10,7 @@ import {
   JOB_KEY,
   JOB_TEMPLATES_KEY,
   OWNER_SYNC_TOKEN_KEY,
+  RATE_CARD_KEY,
 } from "./constants"
 
 export const LOCAL_STORAGE_KEYS = {
@@ -23,6 +24,7 @@ export const LOCAL_STORAGE_KEYS = {
   crews: CREW_KEY,
   jobs: JOBS_KEY,
   jobTemplates: JOB_TEMPLATES_KEY,
+  rateCard: RATE_CARD_KEY,
   ownerSyncToken: OWNER_SYNC_TOKEN_KEY,
 } as const
 
