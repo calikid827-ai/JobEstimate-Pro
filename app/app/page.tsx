@@ -7258,6 +7258,52 @@ function loadHistoryItem(item: EstimateHistoryItem) {
     // -------------------------
   // PDF generation (Branded)
   // -------------------------
+  async function copyProposalText() {
+    const proposalText = result?.text || ""
+
+    if (!proposalText.trim()) {
+      setStatus("Generate a proposal first, then copy the text.")
+      return
+    }
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(proposalText)
+        setStatus("Proposal text copied.")
+        return
+      }
+    } catch {}
+
+    if (typeof document === "undefined") {
+      setStatus("Copy unavailable. Select the proposal text and copy manually.")
+      return
+    }
+
+    let textArea: HTMLTextAreaElement | null = null
+
+    try {
+      textArea = document.createElement("textarea")
+      textArea.value = proposalText
+      textArea.setAttribute("readonly", "")
+      textArea.style.position = "fixed"
+      textArea.style.top = "0"
+      textArea.style.left = "-9999px"
+      document.body.appendChild(textArea)
+      textArea.focus()
+      textArea.select()
+
+      if (document.execCommand("copy")) {
+        setStatus("Proposal text copied.")
+      } else {
+        setStatus("Copy unavailable. Select the proposal text and copy manually.")
+      }
+    } catch {
+      setStatus("Copy unavailable. Select the proposal text and copy manually.")
+    } finally {
+      textArea?.parentNode?.removeChild(textArea)
+    }
+  }
+
   function downloadPDF() {
     if (!result) {
       setStatus("Generate a document first, then download the PDF.")
@@ -14614,6 +14660,43 @@ function SmartQuestionsPanel({
           }}
         >
           Customer-Facing Scope
+        </div>
+
+        <div
+          data-no-print
+          data-mobile-actions
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={downloadPDF}
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              padding: "8px 10px",
+              borderRadius: 8,
+            }}
+          >
+            Download Estimate PDF
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void copyProposalText()}
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              padding: "8px 10px",
+              borderRadius: 8,
+            }}
+          >
+            Copy proposal text
+          </button>
         </div>
 
         {customerScopeTradeDriftWarning && (
