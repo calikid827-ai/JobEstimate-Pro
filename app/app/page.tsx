@@ -4202,12 +4202,18 @@ function saveCurrentSetupAsJobTemplate() {
 
 function useJobTemplate(template: JobTemplate) {
   const setup = getJobTemplateApplyPayload(template)
+  const nextScopeChange = String(setup.scopeChange || "").trim()
 
-  setDocumentType(setup.documentType)
-  setTrade(setup.trade)
-  setState(setup.state)
-  setScopeChange(setup.scopeChange)
+  if (!nextScopeChange) {
+    setStatus(`Template ${template.name} is missing a typed scope. Save it again before use.`)
+    return
+  }
+
+  setDocumentType(setup.documentType || "Estimate")
+  setTrade(normalizeTrade(setup.trade))
+  setState(String(setup.state || "").trim().toUpperCase())
   setPaintScope(setup.paintScope ?? "walls")
+  setScopeChange(nextScopeChange)
 
   setStatus(`Template applied: ${template.name}. Review the setup, then click Generate.`)
 }
