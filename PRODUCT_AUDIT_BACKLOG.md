@@ -825,17 +825,16 @@ Done note:
 
 Done note:
 
-- The generated result page now follows a primary estimator workflow: Customer-Facing Scope, Customer Output Readiness, Pricing/PDF, and Schedule before deeper estimator detail.
-- Unsupported trade drift warnings remain visible above Customer-Facing Scope when present.
-- Customer Output Readiness remains visible before Pricing when review items exist.
-- PricingSummarySection remains prominent with editable pricing and Download Estimate PDF.
-- ScheduleBlock, Estimated Completion, and ScheduleEditor are closer to Pricing/PDF.
-- Full PriceGuard Review, Plan Review Summary, and Line Item Detail remain available inside a collapsed `Estimator review details` section.
-- AdvancedAnalysisSection remains separately collapsed as `Estimator Diagnostics`.
-- Jobs, Invoices, and Saved Estimates placement was unchanged.
-- Validation passed: `npx tsc --noEmit` and `git diff --check`.
-- Manual QA passed for a simple painting estimate and a Marina Dunes plan-assisted estimate.
-- This was UI-only and did not change pricing, generation behavior, `result.text`, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, Generate payload shape, or API routes.
+- The generated result page now uses five primary Command Center sections: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow.
+- Advanced estimator diagnostics are consolidated into one collapsed `Advanced Diagnostics` drawer inside Review Before Sending, with `EstimateStatusCard` inside that drawer.
+- Proposal contains Customer-Facing Scope plus compact `data-no-print` delivery actions: Download Estimate PDF and Copy proposal text.
+- Price & Profit contains Rate Card V1, editable pricing controls, and existing PDF behavior.
+- Job Workflow contains Jobs, Job Templates, Invoices, and Saved Estimates.
+- Saved Job Templates V1 is client-only/localStorage-backed through `jobestimatepro_templates_v1`; applying a template prefills estimator input fields only, does not auto-generate, and after `b4b26d8` correctly prefills the visible typed scope textarea after refresh.
+- Rate Card V1 is client-only/localStorage-backed through `jobestimatepro_rate_card_v1`; applying it updates only existing editable markup/tax/deposit controls and is not backend pricing authority.
+- Full no-code end-to-end regression QA passed after `b4b26d8` using `test12345@gmail.com`.
+- QA verified the five sections, Advanced Diagnostics collapsed by default, Proposal actions, Rate Card save/persist/apply, Job Templates save/persist/apply after refresh, typed scope textarea prefill, print hiding for `data-no-print` workflow controls, copy/PDF localStorage stability for history/jobs/invoices, and no console/page errors.
+- These workflow upgrades did not change `/api/generate`, pricing formulas, pricing authority, labor totals, PDF content, saved estimate/history/job/invoice shapes, API response shape, billing, auth, Stripe, Supabase, approval persistence, deployment, or server-backed logic.
 
 ### 11. Billing / Entitlement / Launch Readiness
 

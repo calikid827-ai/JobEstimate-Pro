@@ -13,6 +13,8 @@ Current scope:
 
 Use a clean browser profile or private window for the contractor app, plus a second browser/profile/device for customer approval.
 
+For JobEstimate Pro regression QA and generation testing, use the dedicated QA email `test12345@gmail.com`. Do not default to random/fresh QA emails for normal app workflow testing. The smoke-test owner email below is for intentional production/staging smoke records and SQL verification examples.
+
 Recommended test identifiers:
 
 - Owner email: `smoke+owner@example.com`
@@ -130,7 +132,7 @@ Expected result:
 If this fails:
 
 - Check `POST /api/generate` status and response message.
-- If free limit is reached, use a fresh test email or clear/update the production test entitlement row intentionally.
+- If free limit is reached during normal JobEstimate Pro QA, use `test12345@gmail.com` and verify its test entitlement state. For production smoke testing, clear/update the intentional production test entitlement row rather than switching to random emails.
 - Verify `consume_free_generation(p_email, p_free_limit, p_idempotency_key)` exists and returns `ok`, `usage_count`, and `free_limit`.
 - Verify `OPENAI_API_KEY` is valid if generation fails after entitlement succeeds.
 

@@ -1,6 +1,6 @@
 # JobEstimate Pro Pre-Launch Status
 
-This document captures the current pre-launch state of JobEstimate Pro as of the latest approval, Plan Intelligence, PDF, PriceGuard Review, workflow-clarity, logging, and documentation passes.
+This document captures the current pre-launch state of JobEstimate Pro as of the latest approval, Plan Intelligence, PDF, PriceGuard Review, contractor workflow, QA, logging, and documentation passes.
 
 ## Current App Status
 
@@ -13,7 +13,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - PARTIAL: Launch-channel strategy is PWA/web app first. Apple App Store/native iOS distribution is undecided and deferred until after real user, pricing, support, and cost-model validation.
 - PARTIAL: The contractor workspace is still mostly localStorage-backed. Estimates, jobs, invoices, budgets, actuals, company settings, and email live primarily in browser storage.
 - PARTIAL: Server persistence exists for approval snapshots, approval status, approval signatures, owner sync tokens, and approval-created invoice snapshots only.
-- DONE: The estimate result now opens with a cleaner customer-facing summary while preserving estimator diagnostics in clearly separated advanced sections.
+- DONE: The estimate result now opens with a cleaner Generated Result Command Center: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow. Advanced estimator diagnostics are consolidated into a collapsed Advanced Diagnostics drawer inside Review Before Sending.
 
 ## Launch Channel Strategy
 
@@ -44,6 +44,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - DONE: Estimate/invoice PDF visual hierarchy polish improved estimate document header hierarchy, customer/job metadata panels, stronger section labels, pricing card, invoice total-due block, invoice bill-to/date panels, invoice summary card, and page-break avoidance.
 - DONE: Advanced analysis customer-facing mode now opens estimate results with a clean document summary card, Customer-Facing Scope, Estimate Review Notes, Estimator Diagnostics, collapsed Line Item Detail, and nested plan-to-price diagnostics.
 - DONE: Result-page diagnostics clarity polish is complete. The nested Plan Review Summary accordion was renamed from “Estimator diagnostics” to “Plan-to-price details,” while the top-level advanced drawer remains “Estimator Diagnostics.” This was UI-only and did not change pricing, generation behavior, Plan Intelligence logic, upload/staging behavior, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
+- DONE: Contractor workflow upgrades are complete through `b4b26d8 Fix job template scope apply`. The generated result page now has five primary Command Center sections; Saved Job Templates V1 is client-only in `jobestimatepro_templates_v1`; Rate Card V1 is client-only in `jobestimatepro_rate_card_v1`; Proposal has `data-no-print` Download Estimate PDF and Copy proposal text actions; and applying a saved Job Template after refresh correctly prefills the visible typed scope textarea. Full no-code regression QA passed with `test12345@gmail.com`. These changes did not alter `/api/generate`, pricing formulas, pricing authority, labor totals, PDF content, saved estimate/history/job/invoice shapes, API response shape, billing, auth, Stripe, Supabase, approval persistence, deployment, or server-backed logic.
 - DONE: Estimator-facing Plan Review Summary clarity pass grouped Plan Intelligence diagnostics into Pages read, Extracted plan data, and Review-only quantity signals.
 - DONE: Plan Review Summary now includes a compact Pages Needing Review drilldown to explain weak/review-only plan evidence from selected pages without changing pricing, plan extraction behavior, upload/staging architecture, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
 - DONE: Customer Output Readiness panel now gives contractors a compact estimator-only review checkpoint before PDF/download/customer-output actions, summarizing unsupported trade wording, weak/review-only plan evidence, scope clarity, assumptions/exclusions, estimator risk notes, and send-readiness concerns without changing pricing, generation behavior, Plan Intelligence logic, PDFs, approvals, invoices, billing, localStorage keys, saved data shapes, or Generate payload shape.
@@ -305,7 +306,7 @@ This document captures the current pre-launch state of JobEstimate Pro as of the
 - NOTE: This completed app-side smoke test does not mean current subscription payment, webhook delivery, and entitlement activation are fully verified. Public paid launch still requires completing `SUBSCRIPTION_TEST_CHECKLIST.md`.
 - DONE: `SUPABASE_PRODUCTION_CHECKLIST.md` exists and lists required production tables, RPCs, indexes, constraints, RLS/service-role assumptions, manual queries, and smoke tests.
 - DONE: `PRE_LAUNCH_SMOKE_TEST.md` exists and lists the manual smoke-test steps, expected results, failure handling, log-safety checks, and Supabase checkpoints.
-- DONE/PARTIAL: Roadmap and feature inventory have been refreshed after the latest PriceGuard Review and workflow-clarity audit. `PRE_LAUNCH_SMOKE_TEST.md` has been reconciled with the subscription checkout foundation and now separates subscription Checkout foundation smoke coverage from the still-pending final subscription payment, webhook delivery, and entitlement activation verification in `SUBSCRIPTION_TEST_CHECKLIST.md`.
+- DONE/PARTIAL: Roadmap, feature inventory, README, smoke-test notes, and product audit backlog have been refreshed after the latest contractor workflow upgrades and QA checkpoint. `PRE_LAUNCH_SMOKE_TEST.md` documents `test12345@gmail.com` as the dedicated JobEstimate Pro regression QA email and still separates subscription Checkout foundation smoke coverage from the pending final subscription payment, webhook delivery, and entitlement activation verification in `SUBSCRIPTION_TEST_CHECKLIST.md`.
 
 ## Should-Improve Before Launch
 

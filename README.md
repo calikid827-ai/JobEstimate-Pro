@@ -15,6 +15,10 @@ The app currently includes:
 - Photo intelligence and scope review helpers
 - Browser-generated estimate and invoice PDFs
 - Local browser persistence for estimates, jobs, invoices, budgets, actuals, company settings, and email, with server-backed approval snapshot/status/invoice sync
+- Generated Result Command Center with five primary sections: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow
+- Saved Job Templates V1 for client-only reusable estimate starts in `jobestimatepro_templates_v1`
+- Rate Card V1 for client-only local contractor pricing defaults in `jobestimatepro_rate_card_v1`
+- Proposal delivery actions inside the Proposal section: Download Estimate PDF and Copy proposal text
 
 ## Local Development
 
@@ -65,6 +69,10 @@ node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs -
 node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/generate/lib/plans/orchestrator.test.ts app/api/generate/lib/plans/pdfSplit.test.ts app/api/generate/lib/plans/pdfSelect.test.ts
 node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test app/api/entitlement/entitlement.test.ts app/api/approvals/approvalWorkflow.test.ts app/app/lib/invoices.test.ts
 ```
+
+QA/testing note:
+
+- Use `test12345@gmail.com` for JobEstimate Pro generation/regression QA. Do not default to random or fresh QA emails for normal app workflow testing.
 
 ## Environment Variables
 
@@ -248,11 +256,32 @@ Important keys:
 - `jobestimatepro_actuals_v1`
 - `jobestimatepro_crews_v1`
 - `jobestimatepro_jobs_v1`
+- `jobestimatepro_templates_v1`
+- `jobestimatepro_rate_card_v1`
 - `jobestimatepro_owner_sync_token`
 
 Legacy keys may be migrated in the app from older `scopeguard_*` names.
 
 The app includes a thin local persistence helper at `app/app/lib/local-persistence.ts` for typed key groups, safe get/set/remove access, JSON read/write wrappers, and legacy email/company migration. It preserves the existing keys and data shapes; full server-backed persistence is not implemented yet.
+
+`jobestimatepro_templates_v1` stores client-only Saved Job Templates with safe setup fields only: id, name, timestamps, trade, document type, state, typed scope, paint scope, and optional notes. Applying a template prefills estimator input fields only and does not auto-generate.
+
+`jobestimatepro_rate_card_v1` stores client-only Rate Card defaults: markup, tax enabled/rate, deposit enabled/type/value, updatedAt, and reference-only trade/labor/material/minimum charge notes. Applying the Rate Card updates only existing editable client-side controls and is not backend pricing authority.
+
+## Recent Contractor Workflow QA
+
+Full no-code end-to-end regression QA passed after `b4b26d8 Fix job template scope apply` using `test12345@gmail.com`.
+
+Verified:
+
+- Five Generated Result Command Center sections render: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow.
+- Advanced Diagnostics is collapsed by default, with EstimateStatusCard inside that drawer.
+- Proposal actions work: Download Estimate PDF uses existing PDF behavior, and Copy proposal text copies only customer-facing proposal text.
+- Rate Card save, refresh persistence, and apply update only editable pricing controls.
+- Job Templates save, refresh persistence, and apply correctly prefill the visible typed scope textarea plus trade/state/paint scope without calling Generate.
+- Print mode hides `data-no-print` workflow controls, including Proposal delivery actions, Rate Card, Job Templates, and Advanced Diagnostics.
+- Copy/PDF actions do not mutate history/jobs/invoices localStorage.
+- No browser console/page errors were observed.
 
 ## Current Limitations
 
