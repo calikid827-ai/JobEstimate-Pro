@@ -4,7 +4,7 @@ Use this checklist to verify the current PWA/web app workflow end to end before 
 
 Current scope:
 
-- In scope: current web/PWA app, free generation, subscription checkout foundation smoke, entitlement refresh behavior, plan upload/selected-page generation, estimate and invoice PDFs, server-backed approval links, cross-device approval, approval sync, approval-created invoice import, production log safety, and Supabase checkpoints.
+- In scope: current web/PWA app, free generation, contractor workflow Command Center, subscription checkout foundation smoke, entitlement refresh behavior, plan upload/selected-page generation, estimate and invoice PDFs, server-backed approval links, cross-device approval, approval sync, approval-created invoice import, production log safety, and Supabase checkpoints.
 - Out of scope: final subscription payment/webhook entitlement verification, billing portal, invoice payments, full auth/workspaces, server-backed jobs/estimates/invoices, App Store/native iOS work.
 - Important: The subscription billing foundation is implemented. `/api/checkout` uses `STRIPE_PRO_MONTHLY_PRICE_ID` with `mode: "subscription"`, `/api/webhook` handles the required subscription lifecycle events, `/api/entitlement` returns subscription-aware fields, `/app` shows plan/status/period information, and `/success` and `/cancel` use subscription-oriented copy.
 - Important: Final subscription payment, webhook delivery, and entitlement activation verification is still pending until `SUBSCRIPTION_TEST_CHECKLIST.md` is completed. The prior completed app-side smoke test included the older pre-subscription Stripe checkout flow; this checklist now reflects the current subscription foundation without claiming final subscription verification has passed.
@@ -126,6 +126,15 @@ Expected result:
 
 - Status changes to generating and then returns a generated estimate/change order.
 - Pricing, schedule, scope text, and customer-facing summary render.
+- The generated result shows exactly five primary Command Center sections: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow.
+- Advanced Diagnostics is collapsed by default inside Review Before Sending.
+- Proposal contains Customer-Facing Scope plus `data-no-print` Download Estimate PDF and Copy proposal text actions.
+- Price & Profit contains Rate Card V1 and editable pricing controls.
+- Job Workflow contains Jobs/dashboard, Job Templates, Invoices, Saved Estimates, and Field Handoff V1.
+- Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It shows crew-ready notes from existing estimate state such as job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
+- Field Handoff omits empty fields instead of inventing facts and does not show diagnostics, Advanced Diagnostics, Rate Card, Job Templates, or PriceGuard/internal review content.
+- Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate result text, or mutate history/jobs/invoices localStorage.
+- Print mode hides Proposal delivery controls, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
 - The estimate is saved in `Saved Estimates`.
 - Account panel usage increments or reflects updated free usage after refresh.
 

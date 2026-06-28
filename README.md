@@ -19,6 +19,9 @@ The app currently includes:
 - Saved Job Templates V1 for client-only reusable estimate starts in `jobestimatepro_templates_v1`
 - Rate Card V1 for client-only local contractor pricing defaults in `jobestimatepro_rate_card_v1`
 - Proposal delivery actions inside the Proposal section: Download Estimate PDF and Copy proposal text
+- Field Handoff V1 inside Job Workflow for crew-ready handoff notes from the current estimate
+
+Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, and crew-ready field handoff.
 
 ## Local Development
 
@@ -268,9 +271,11 @@ The app includes a thin local persistence helper at `app/app/lib/local-persisten
 
 `jobestimatepro_rate_card_v1` stores client-only Rate Card defaults: markup, tax enabled/rate, deposit enabled/type/value, updatedAt, and reference-only trade/labor/material/minimum charge notes. Applying the Rate Card updates only existing editable client-side controls and is not backend pricing authority.
 
+Field Handoff V1 does not add a localStorage key. It is derived from the current estimate state only and does not add server persistence.
+
 ## Recent Contractor Workflow QA
 
-Full no-code end-to-end regression QA passed after `b4b26d8 Fix job template scope apply` using `test12345@gmail.com`.
+Full no-code end-to-end regression QA passed after `2261e10 Add field handoff workflow` using `test12345@gmail.com`.
 
 Verified:
 
@@ -279,7 +284,10 @@ Verified:
 - Proposal actions work: Download Estimate PDF uses existing PDF behavior, and Copy proposal text copies only customer-facing proposal text.
 - Rate Card save, refresh persistence, and apply update only editable pricing controls.
 - Job Templates save, refresh persistence, and apply correctly prefill the visible typed scope textarea plus trade/state/paint scope without calling Generate.
-- Print mode hides `data-no-print` workflow controls, including Proposal delivery actions, Rate Card, Job Templates, and Advanced Diagnostics.
+- Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It turns the current estimate into crew-ready notes for job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
+- Field Handoff omits empty fields instead of inventing facts, excludes diagnostics/internal review and PriceGuard content from helper output, is not a diagnostic/reporting panel, and is not pricing-authoritative.
+- Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate `result.text`, or mutate history/jobs/invoices localStorage.
+- Print mode hides `data-no-print` workflow controls, including Proposal delivery actions, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
 - Copy/PDF actions do not mutate history/jobs/invoices localStorage.
 - No browser console/page errors were observed.
 

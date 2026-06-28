@@ -829,11 +829,13 @@ Done note:
 - Advanced estimator diagnostics are consolidated into one collapsed `Advanced Diagnostics` drawer inside Review Before Sending, with `EstimateStatusCard` inside that drawer.
 - Proposal contains Customer-Facing Scope plus compact `data-no-print` delivery actions: Download Estimate PDF and Copy proposal text.
 - Price & Profit contains Rate Card V1, editable pricing controls, and existing PDF behavior.
-- Job Workflow contains Jobs, Job Templates, Invoices, and Saved Estimates.
+- Job Workflow contains Jobs, Job Templates, Invoices, Saved Estimates, and Field Handoff V1.
 - Saved Job Templates V1 is client-only/localStorage-backed through `jobestimatepro_templates_v1`; applying a template prefills estimator input fields only, does not auto-generate, and after `b4b26d8` correctly prefills the visible typed scope textarea after refresh.
 - Rate Card V1 is client-only/localStorage-backed through `jobestimatepro_rate_card_v1`; applying it updates only existing editable markup/tax/deposit controls and is not backend pricing authority.
-- Full no-code end-to-end regression QA passed after `b4b26d8` using `test12345@gmail.com`.
-- QA verified the five sections, Advanced Diagnostics collapsed by default, Proposal actions, Rate Card save/persist/apply, Job Templates save/persist/apply after refresh, typed scope textarea prefill, print hiding for `data-no-print` workflow controls, copy/PDF localStorage stability for history/jobs/invoices, and no console/page errors.
+- Field Handoff V1 is contractor-facing and derives crew-ready notes from existing estimate state only: job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when already available. It omits empty fields instead of inventing facts, excludes diagnostics/internal review and PriceGuard content, adds no localStorage key or server persistence, and does not change pricing authority, PDF content, or `/api/generate`.
+- Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate `result.text`, or mutate history/jobs/invoices localStorage. No print action was added in V1; action controls are `data-no-print`.
+- Full no-code end-to-end regression QA passed after `2261e10 Add field handoff workflow` using `test12345@gmail.com`.
+- QA verified the five sections, Advanced Diagnostics collapsed by default, Proposal actions without history/jobs/invoices mutation, Rate Card save/persist/apply without Generate or `result.text` changes, Job Templates save/persist/apply after refresh, typed scope textarea prefill, Field Handoff inside Job Workflow, Field Handoff copy content and storage safety, print hiding for Proposal delivery controls, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics, plus no console/page errors, blockers, or regressions.
 - These workflow upgrades did not change `/api/generate`, pricing formulas, pricing authority, labor totals, PDF content, saved estimate/history/job/invoice shapes, API response shape, billing, auth, Stripe, Supabase, approval persistence, deployment, or server-backed logic.
 
 ### 11. Billing / Entitlement / Launch Readiness
