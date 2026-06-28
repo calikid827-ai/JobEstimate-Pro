@@ -123,6 +123,7 @@ import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import InvoicesSection from "./components/InvoicesSection"
 import JobTemplatesSection from "./components/JobTemplatesSection"
 import RateCardSection from "./components/RateCardSection"
+import FieldHandoffSection from "./components/FieldHandoffSection"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
@@ -144,6 +145,7 @@ import {
   type RateCard,
 } from "./lib/rate-card"
 import { buildEstimatorIntelligenceFindings } from "./lib/estimator-intelligence-findings"
+import { buildFieldHandoff } from "./lib/field-handoff"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -4056,6 +4058,50 @@ const smartQuestionAnswers = useMemo(() => {
         !!answer && visibleQuestionIds.has(answer.questionId)
     )
 }, [smartQuestions, confirmedClarifications])
+
+const fieldHandoff = useMemo(
+  () =>
+    buildFieldHandoff({
+      resultText: result?.text || "",
+      scopeText: scopeChange,
+      jobDetails,
+      trade,
+      documentType,
+      state,
+      schedule,
+      crewPlanning: crewPlanningReadback,
+      materialsList,
+      estimateSections,
+      scopeXRay,
+      estimateDefenseMode,
+      deposit: {
+        enabled: depositEnabled,
+        type: depositType,
+        value: depositValue,
+        depositDue,
+        remainingBalance,
+      },
+    }),
+  [
+    result,
+    scopeChange,
+    jobDetails,
+    trade,
+    documentType,
+    state,
+    schedule,
+    crewPlanningReadback,
+    materialsList,
+    estimateSections,
+    scopeXRay,
+    estimateDefenseMode,
+    depositEnabled,
+    depositType,
+    depositValue,
+    depositDue,
+    remainingBalance,
+  ]
+)
 
 function confirmSmartQuestionAnswer(
   question: SmartQuestion,
@@ -15079,6 +15125,8 @@ function SmartQuestionsPanel({
   deleteHistoryItem={deleteHistoryItem}
   setStatus={setStatus}
 />
+
+<FieldHandoffSection handoff={fieldHandoff} />
   </ResultCommandSection>
 
   {!paid && (showUpgrade || remaining <= 0) && (
