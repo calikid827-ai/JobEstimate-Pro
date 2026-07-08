@@ -124,6 +124,7 @@ import InvoicesSection from "./components/InvoicesSection"
 import JobTemplatesSection from "./components/JobTemplatesSection"
 import RateCardSection from "./components/RateCardSection"
 import FieldHandoffSection from "./components/FieldHandoffSection"
+import JobWorkflowSummary from "./components/JobWorkflowSummary"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
@@ -146,6 +147,10 @@ import {
 } from "./lib/rate-card"
 import { buildEstimatorIntelligenceFindings } from "./lib/estimator-intelligence-findings"
 import { buildFieldHandoff } from "./lib/field-handoff"
+import {
+  buildJobWorkflowSummary,
+  type JobWorkflowNextActionKey,
+} from "./lib/job-workflow-summary"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -1467,6 +1472,8 @@ const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
 const lastSavedEstimateIdRef = useRef<string | null>(null)
 const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
+const jobsDashboardSectionRef = useRef<HTMLDivElement | null>(null)
+const fieldHandoffSectionRef = useRef<HTMLDivElement | null>(null)
 const rateCardHistorySyncSkipRef = useRef<{
   tax?: { enabled: boolean; rate: number }
   deposit?: { enabled: boolean; type: RateCard["deposit"]["type"]; value: number }
@@ -1487,6 +1494,18 @@ function scrollToInvoices() {
   // small delay so UI can render filtered invoices after setting activeJobId
   setTimeout(() => {
     invoicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, 50)
+}
+
+function scrollToJobsDashboard() {
+  setTimeout(() => {
+    jobsDashboardSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, 50)
+}
+
+function scrollToFieldHandoff() {
+  setTimeout(() => {
+    fieldHandoffSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }, 50)
 }
 
@@ -14200,6 +14219,140 @@ function SmartQuestionsPanel({
   // -------------------------
   // UI
   // -------------------------
+  const jobWorkflowSummaryJobId = activeJobId || currentLoadedEstimate?.jobId || ""
+  const jobWorkflowSummaryCurrentEstimate =
+    jobWorkflowSummaryJobId && jobWorkflowSummaryJobId === currentLoadedEstimate?.jobId
+      ? currentLoadedEstimate
+      : null
+  const jobWorkflowSummaryLatestEstimate = jobWorkflowSummaryJobId
+    ? latestEstimateForJob(jobWorkflowSummaryJobId)
+    : jobWorkflowSummaryCurrentEstimate
+  const jobWorkflowSummaryContract = jobWorkflowSummaryJobId
+    ? computeJobContractSummary(jobWorkflowSummaryJobId)
+    : null
+  const jobWorkflowSummaryOriginal = jobWorkflowSummaryJobId
+    ? lockedOriginalEstimateForJob(jobWorkflowSummaryJobId)
+    : null
+  const jobWorkflowSummaryEstimatedCost = jobWorkflowSummaryOriginal
+    ? estimateDirectCost(jobWorkflowSummaryOriginal) +
+      (jobWorkflowSummaryContract?.changeOrders || []).reduce(
+        (sum, item) => sum + estimateDirectCost(item),
+        0
+      )
+    : jobWorkflowSummaryLatestEstimate
+      ? estimateDirectCost(jobWorkflowSummaryLatestEstimate)
+      : 0
+  const jobWorkflowSummaryContractValueBeforeTax =
+    Number(jobWorkflowSummaryContract?.currentContractValueBeforeTax || 0) ||
+    (jobWorkflowSummaryLatestEstimate
+      ? estimateSubtotalBeforeTax(jobWorkflowSummaryLatestEstimate)
+      : 0)
+  const jobWorkflowSummaryActuals = jobWorkflowSummaryJobId
+    ? actualsForJob(jobWorkflowSummaryJobId)
+    : null
+  const jobWorkflowSummaryProfit =
+    jobWorkflowSummaryJobId &&
+    (jobWorkflowSummaryContractValueBeforeTax > 0 || jobWorkflowSummaryEstimatedCost > 0)
+      ? computeProfitProtectionFromTotals({
+          contractValue: jobWorkflowSummaryContractValueBeforeTax,
+          estimatedCost: jobWorkflowSummaryEstimatedCost,
+          actuals: jobWorkflowSummaryActuals,
+        })
+      : null
+  const jobWorkflowWeeklyCrewLoad = computeWeeklyCrewLoad()
+  const jobWorkflowSummaryFieldHandoffReady =
+    fieldHandoff.isReady &&
+    Boolean(jobWorkflowSummaryJobId) &&
+    jobWorkflowSummaryJobId === jobWorkflowSummaryCurrentEstimate?.jobId
+  const jobWorkflowSummary = buildJobWorkflowSummary({
+    jobs,
+    activeJobId,
+    currentEstimate: jobWorkflowSummaryCurrentEstimate,
+    jobDetails,
+    hasGeneratedResult: Boolean(result),
+    latestEstimate: jobWorkflowSummaryLatestEstimate,
+    contractValue: Number(jobWorkflowSummaryContract?.currentContractValue || 0),
+    pipelineStatus: jobWorkflowSummaryJobId
+      ? getJobPipelineStatus(jobWorkflowSummaryJobId)
+      : null,
+    invoiceSummary: jobWorkflowSummaryJobId
+      ? invoiceSummaryForJob(jobWorkflowSummaryJobId)
+      : null,
+    latestInvoice: jobWorkflowSummaryJobId
+      ? latestInvoiceForJob(jobWorkflowSummaryJobId)
+      : null,
+    actuals: jobWorkflowSummaryActuals,
+    profitSummary: jobWorkflowSummaryProfit,
+    weeklyCrewLoad: jobWorkflowWeeklyCrewLoad,
+    crewCapacityDays: crewCount * 6,
+    fieldHandoffReady: jobWorkflowSummaryFieldHandoffReady,
+  })
+
+  const handleJobWorkflowSummaryAction = (action: JobWorkflowNextActionKey) => {
+    if (action === "create_or_select_job") {
+      const id = getOrCreateJobIdFromDetails()
+      setActiveJobId(id)
+      setStatus("Job selected.")
+      scrollToJobsDashboard()
+      return
+    }
+
+    if (action === "select_job") {
+      setStatus("Select the job you want to continue.")
+      scrollToJobsDashboard()
+      return
+    }
+
+    if (action === "copy_approval") {
+      if (!jobWorkflowSummaryLatestEstimate) {
+        setStatus("Generate an estimate before copying an approval link.")
+        return
+      }
+      void copyApprovalLinkForEstimate(jobWorkflowSummaryLatestEstimate)
+      return
+    }
+
+    if (action === "create_deposit_invoice" || action === "create_final_invoice") {
+      if (!jobWorkflowSummaryLatestEstimate) {
+        setStatus("Generate an estimate before creating an invoice.")
+        return
+      }
+      createInvoiceFromEstimate(jobWorkflowSummaryLatestEstimate)
+      return
+    }
+
+    if (action === "create_balance_invoice") {
+      if (!jobWorkflowSummaryLatestEstimate) {
+        setStatus("Generate an estimate before creating a balance invoice.")
+        return
+      }
+      createBalanceInvoiceFromEstimate(jobWorkflowSummaryLatestEstimate)
+      return
+    }
+
+    if (action === "view_invoice") {
+      if (jobWorkflowSummaryJobId) {
+        selectJobAndJumpToInvoices(jobWorkflowSummaryJobId)
+        return
+      }
+      scrollToInvoices()
+      return
+    }
+
+    if (action === "review_actuals") {
+      if (jobWorkflowSummaryJobId) setActiveJobId(jobWorkflowSummaryJobId)
+      scrollToJobsDashboard()
+      return
+    }
+
+    if (action === "copy_field_handoff") {
+      scrollToFieldHandoff()
+      return
+    }
+
+    setStatus("Generate an estimate first, then continue the job workflow.")
+  }
+
   return (
   <main
     style={{
@@ -15049,6 +15202,13 @@ function SmartQuestionsPanel({
     summary="Track jobs, approval status, invoices, saved estimates, and live job margin."
     dataNoPrint
   >
+  <JobWorkflowSummary
+    summary={jobWorkflowSummary}
+    onPrimaryAction={handleJobWorkflowSummaryAction}
+    money={money}
+  />
+
+  <div ref={jobsDashboardSectionRef}>
   <JobsDashboardSection
   jobs={jobs}
   activeJobId={activeJobId}
@@ -15081,6 +15241,7 @@ function SmartQuestionsPanel({
   deleteJob={deleteJob}
   history={history}
 />
+  </div>
 
 <JobTemplatesSection
   templates={jobTemplates}
@@ -15126,7 +15287,9 @@ function SmartQuestionsPanel({
   setStatus={setStatus}
 />
 
-<FieldHandoffSection handoff={fieldHandoff} />
+<div ref={fieldHandoffSectionRef}>
+  <FieldHandoffSection handoff={fieldHandoff} />
+</div>
   </ResultCommandSection>
 
   {!paid && (showUpgrade || remaining <= 0) && (
