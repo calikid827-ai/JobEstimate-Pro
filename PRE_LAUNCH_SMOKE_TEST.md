@@ -15,6 +15,11 @@ Use a clean browser profile or private window for the contractor app, plus a sec
 
 For JobEstimate Pro regression QA and generation testing, use the dedicated QA email `test12345@gmail.com`. Do not default to random/fresh QA emails for normal app workflow testing. The smoke-test owner email below is for intentional production/staging smoke records and SQL verification examples.
 
+Latest local regression checkpoint:
+
+- Full no-code regression QA passed after `489351c Add job workflow summary` using `test12345@gmail.com`.
+- Verified `/api/generate` returned 200; exactly five Command Center sections rendered; Advanced Diagnostics was collapsed by default; Proposal copy/PDF actions worked without extra Generate calls or history/jobs/invoices mutation; Rate Card save/persist/apply worked without changing customer-facing proposal text; Job Workflow contained Active Job Summary, Jobs, Job Templates, Invoices, Saved Estimates, and Field Handoff; the cross-job Field Handoff guard passed; Field Handoff copied only Field Handoff content; Job Templates saved, persisted after refresh, applied back to visible scope/trade/state, and did not auto-generate; print mode hid workflow/proposal/rate-card/template/diagnostic controls; no console/page errors, blockers, or regressions were found; the dev server was stopped; and the working tree stayed clean.
+
 Recommended test identifiers:
 
 - Owner email: `smoke+owner@example.com`
@@ -130,11 +135,16 @@ Expected result:
 - Advanced Diagnostics is collapsed by default inside Review Before Sending.
 - Proposal contains Customer-Facing Scope plus `data-no-print` Download Estimate PDF and Copy proposal text actions.
 - Price & Profit contains Rate Card V1 and editable pricing controls.
-- Job Workflow contains Jobs/dashboard, Job Templates, Invoices, Saved Estimates, and Field Handoff V1.
+- Job Workflow contains Active Job Summary, Jobs/dashboard, Job Templates, Invoices, Saved Estimates, and Field Handoff V1.
+- Active Job Summary appears near the top of Job Workflow without creating a sixth Command Center section.
+- Active Job Summary derives contractor-facing workflow information from existing state only: active job, current loaded estimate only when it matches the summarized job, job details, workflow/pipeline status, contract value, approval status, invoice summary, actuals/profit, crew load, and Field Handoff readiness when available.
+- Active Job Summary shows one practical next action from existing state, such as Create/select job, Copy approval link, Create deposit invoice, Create final/balance invoice, Open invoices, Open actuals, or Open Field Handoff.
+- Active Job Summary actions reuse existing nearby workflow actions or scroll to existing workflow surfaces. Summary-only scroll/open actions do not call Generate and do not mutate pricing, result text, history, jobs, or invoices.
+- Field Handoff readiness/current estimate data is scoped to the summarized job, so the summary does not offer Field Handoff or borrow contract/approval data for the wrong selected job.
 - Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It shows crew-ready notes from existing estimate state such as job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
 - Field Handoff omits empty fields instead of inventing facts and does not show diagnostics, Advanced Diagnostics, Rate Card, Job Templates, or PriceGuard/internal review content.
 - Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate result text, or mutate history/jobs/invoices localStorage.
-- Print mode hides Proposal delivery controls, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
+- Print mode hides Proposal delivery controls, Rate Card, Job Templates, Active Job Summary workflow-only controls, Field Handoff action controls, and Advanced Diagnostics.
 - The estimate is saved in `Saved Estimates`.
 - Account panel usage increments or reflects updated free usage after refresh.
 

@@ -19,9 +19,10 @@ The app currently includes:
 - Saved Job Templates V1 for client-only reusable estimate starts in `jobestimatepro_templates_v1`
 - Rate Card V1 for client-only local contractor pricing defaults in `jobestimatepro_rate_card_v1`
 - Proposal delivery actions inside the Proposal section: Download Estimate PDF and Copy proposal text
+- Active Job Summary inside the existing Job Workflow section for current job status, key workflow facts, and one practical next action
 - Field Handoff V1 inside Job Workflow for crew-ready handoff notes from the current estimate
 
-Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, and crew-ready field handoff.
+Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, crew-ready field handoff, and a clearer active-job workflow summary / next action.
 
 ## Local Development
 
@@ -273,9 +274,11 @@ The app includes a thin local persistence helper at `app/app/lib/local-persisten
 
 Field Handoff V1 does not add a localStorage key. It is derived from the current estimate state only and does not add server persistence.
 
+Active Job Summary does not add a localStorage key, server persistence, saved estimate/job/invoice data shape, pricing authority, PDF content, or `/api/generate` behavior. It derives contractor-facing workflow information from existing state only: active job, current loaded estimate only when it matches the summarized job, job details, workflow/pipeline status, contract value, approval status, invoice summary, actuals/profit, crew load, and Field Handoff readiness when available.
+
 ## Recent Contractor Workflow QA
 
-Full no-code end-to-end regression QA passed after `2261e10 Add field handoff workflow` using `test12345@gmail.com`.
+Full no-code end-to-end regression QA passed after `489351c Add job workflow summary` using `test12345@gmail.com`.
 
 Verified:
 
@@ -284,11 +287,17 @@ Verified:
 - Proposal actions work: Download Estimate PDF uses existing PDF behavior, and Copy proposal text copies only customer-facing proposal text.
 - Rate Card save, refresh persistence, and apply update only editable pricing controls.
 - Job Templates save, refresh persistence, and apply correctly prefill the visible typed scope textarea plus trade/state/paint scope without calling Generate.
+- Active Job Summary appears near the top of Job Workflow and keeps Jobs, Job Templates, Invoices, Saved Estimates, and Field Handoff available below it.
+- Active Job Summary shows job/client/status/contract/approval/invoice/actuals/profit/crew/next-action information where available, using existing state only.
+- Active Job Summary next actions reuse existing workflow actions or scroll to existing workflow surfaces, such as Create/select job, Copy approval link, Create deposit/final/balance invoice, Open invoices, Open actuals, and Open Field Handoff.
+- Summary-only scroll/open actions do not call Generate and do not mutate pricing, `result.text`, history, jobs, or invoices.
+- Field Handoff readiness and current estimate data are scoped to the summarized job, so the summary does not offer Field Handoff or borrow contract/approval data for the wrong selected job.
 - Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It turns the current estimate into crew-ready notes for job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
 - Field Handoff omits empty fields instead of inventing facts, excludes diagnostics/internal review and PriceGuard content from helper output, is not a diagnostic/reporting panel, and is not pricing-authoritative.
 - Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate `result.text`, or mutate history/jobs/invoices localStorage.
 - Print mode hides `data-no-print` workflow controls, including Proposal delivery actions, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
 - Copy/PDF actions do not mutate history/jobs/invoices localStorage.
+- Dev server was stopped after QA, no blockers or regressions were found, and the working tree stayed clean.
 - No browser console/page errors were observed.
 
 ## Current Limitations
