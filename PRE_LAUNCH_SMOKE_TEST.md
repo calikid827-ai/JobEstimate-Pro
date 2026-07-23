@@ -17,8 +17,10 @@ For JobEstimate Pro regression QA and generation testing, use the dedicated QA e
 
 Latest local regression checkpoint:
 
-- Full no-code regression QA passed after `489351c Add job workflow summary` using `test12345@gmail.com`.
-- Verified `/api/generate` returned 200; exactly five Command Center sections rendered; Advanced Diagnostics was collapsed by default; Proposal copy/PDF actions worked without extra Generate calls or history/jobs/invoices mutation; Rate Card save/persist/apply worked without changing customer-facing proposal text; Job Workflow contained Active Job Summary, Jobs, Job Templates, Invoices, Saved Estimates, and Field Handoff; the cross-job Field Handoff guard passed; Field Handoff copied only Field Handoff content; Job Templates saved, persisted after refresh, applied back to visible scope/trade/state, and did not auto-generate; print mode hid workflow/proposal/rate-card/template/diagnostic controls; no console/page errors, blockers, or regressions were found; the dev server was stopped; and the working tree stayed clean.
+- Full no-code regression QA passed after `37c8a14 Add proposal readiness badge` using `test12345@gmail.com`.
+- Verified `/api/generate` returned 200; exactly five Command Center sections rendered; Advanced Diagnostics was collapsed by default; Send Readiness appeared inside Proposal; Review items scrolled only to Review Before Sending without another Generate call or checked-state mutation; Proposal PDF/copy actions worked; Rate Card save/persist/apply worked without changing customer-facing proposal text; Active Job Summary and the cross-job Field Handoff guard passed; Field Handoff copied only Field Handoff content; Job Templates saved, persisted, and applied after refresh without auto-generation; intended `data-no-print` workflow controls, including Send Readiness, were hidden; no console/page errors, blockers, or regressions were found; the dev server was stopped; and the working tree stayed clean.
+- Proposal Readiness validation passed with `npx tsc --noEmit`, `git diff --check`, and 10/10 focused helper tests. Browser QA did not naturally observe `Ready to send`; an explicit painting fixture remained in review because existing upstream signals remained. The helper covers a clean Ready state, and a complete code-level painting case produced strong PriceGuard with no warning/risk rows, so Ready is not treated as impossible.
+- Focused browser sanity QA after `0afc82e Fix proposal readiness severity`, also using `test12345@gmail.com`, showed `Review before sending` with `4 pre-send items need review.`, no inaccurate critical wording, scroll-only Review items behavior, no additional Generate call or checked state/localStorage mutation, working PDF/copy actions, no console/page errors, and a stopped dev server. That fixture contained neither Customer-ready review nor unsupported scope drift; those branches were confirmed through code inspection and existing helper behavior.
 
 Recommended test identifiers:
 
@@ -133,7 +135,11 @@ Expected result:
 - Pricing, schedule, scope text, and customer-facing summary render.
 - The generated result shows exactly five primary Command Center sections: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow.
 - Advanced Diagnostics is collapsed by default inside Review Before Sending.
-- Proposal contains Customer-Facing Scope plus `data-no-print` Download Estimate PDF and Copy proposal text actions.
+- Proposal contains Customer-Facing Scope, a compact `data-no-print` Send Readiness summary, and the unchanged Download Estimate PDF and Copy proposal text actions. Send Readiness appears directly above or near those actions and does not create a sixth Command Center section.
+- Send Readiness shows only one status, one short contractor-facing reason, and optional Review items. It summarizes existing unsupported-scope drift, Customer Output Readiness items, Estimator Review Summary status, PriceGuard level/score, unanswered high-priority Smart Questions, and plan/photo warnings without duplicating their details or exposing Advanced Diagnostics content.
+- The helper supports `Ready to send`, `Review before sending`, and `Finish estimate first`. Proposal renders only after generation, so Finish estimate first remains a safe helper state rather than a new pre-result Proposal surface. The badge remains conservative, does not block or disable PDF/copy, does not make review signals pricing-authoritative, and does not save readiness state.
+- Review items scrolls only to the existing Review Before Sending section, does not open Advanced Diagnostics, does not call Generate, and does not mutate pricing, result text, history, jobs, invoices, Rate Card, Saved Job Templates, Field Handoff, or Active Job Summary.
+- Unsupported trade wording remains critical and unsupported customer-facing scope drift keeps the higher-priority `Scope wording may overpromise unsupported work.` reason. Customer-ready review remains an ordinary PriceGuard review row that can keep the proposal in review through readiness-item count or PriceGuard level/score, but after `0afc82e` it must not produce `Customer-facing scope has a critical review item.` Ready/PriceGuard thresholds, helper priority, readiness-item generation, Estimator Review Summary, Smart Questions, and plan/photo behavior are unchanged.
 - Price & Profit contains Rate Card V1 and editable pricing controls.
 - Job Workflow contains Active Job Summary, Jobs/dashboard, Job Templates, Invoices, Saved Estimates, and Field Handoff V1.
 - Active Job Summary appears near the top of Job Workflow without creating a sixth Command Center section.
@@ -144,7 +150,7 @@ Expected result:
 - Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It shows crew-ready notes from existing estimate state such as job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
 - Field Handoff omits empty fields instead of inventing facts and does not show diagnostics, Advanced Diagnostics, Rate Card, Job Templates, or PriceGuard/internal review content.
 - Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate result text, or mutate history/jobs/invoices localStorage.
-- Print mode hides Proposal delivery controls, Rate Card, Job Templates, Active Job Summary workflow-only controls, Field Handoff action controls, and Advanced Diagnostics.
+- Print mode hides Send Readiness, Proposal delivery controls, Rate Card, Job Templates, Active Job Summary workflow-only controls, Field Handoff action controls, and Advanced Diagnostics.
 - The estimate is saved in `Saved Estimates`.
 - Account panel usage increments or reflects updated free usage after refresh.
 
