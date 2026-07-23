@@ -4102,7 +4102,7 @@ const unansweredHighPrioritySmartQuestions = useMemo(() => {
 
 const proposalReadiness = useMemo(() => {
   const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
-    /unsupported trade wording|customer-ready review/i.test(item.label)
+    /unsupported trade wording/i.test(item.label)
   )
   const hasPlanOrPhotoReviewWarning =
     customerOutputReadinessItems.some((item) => /plan evidence/i.test(item.label)) ||
