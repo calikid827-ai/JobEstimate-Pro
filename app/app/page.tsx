@@ -1,6 +1,6 @@
 "use client"
 
-import type { ReactNode } from "react"
+import type { ReactNode, Ref } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
@@ -125,6 +125,7 @@ import JobTemplatesSection from "./components/JobTemplatesSection"
 import RateCardSection from "./components/RateCardSection"
 import FieldHandoffSection from "./components/FieldHandoffSection"
 import JobWorkflowSummary from "./components/JobWorkflowSummary"
+import ProposalReadinessBadge from "./components/ProposalReadinessBadge"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
@@ -151,6 +152,10 @@ import {
   buildJobWorkflowSummary,
   type JobWorkflowNextActionKey,
 } from "./lib/job-workflow-summary"
+import {
+  buildProposalReadiness,
+  type ProposalReadinessActionTarget,
+} from "./lib/proposal-readiness"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -1474,6 +1479,7 @@ const lastSavedEstimateIdRef = useRef<string | null>(null)
 const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
 const jobsDashboardSectionRef = useRef<HTMLDivElement | null>(null)
 const fieldHandoffSectionRef = useRef<HTMLDivElement | null>(null)
+const reviewBeforeSendingSectionRef = useRef<HTMLDivElement | null>(null)
 const rateCardHistorySyncSkipRef = useRef<{
   tax?: { enabled: boolean; rate: number }
   deposit?: { enabled: boolean; type: RateCard["deposit"]["type"]; value: number }
@@ -1506,6 +1512,15 @@ function scrollToJobsDashboard() {
 function scrollToFieldHandoff() {
   setTimeout(() => {
     fieldHandoffSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, 50)
+}
+
+function scrollToReviewBeforeSending() {
+  setTimeout(() => {
+    reviewBeforeSendingSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    })
   }, 50)
 }
 
@@ -4078,6 +4093,45 @@ const smartQuestionAnswers = useMemo(() => {
     )
 }, [smartQuestions, confirmedClarifications])
 
+const unansweredHighPrioritySmartQuestions = useMemo(() => {
+  const answeredQuestionIds = new Set(smartQuestionAnswers.map((answer) => answer.questionId))
+  return smartQuestions.filter(
+    (question) => question.priority === "high" && !answeredQuestionIds.has(question.id)
+  ).length
+}, [smartQuestions, smartQuestionAnswers])
+
+const proposalReadiness = useMemo(() => {
+  const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
+    /unsupported trade wording|customer-ready review/i.test(item.label)
+  )
+  const hasPlanOrPhotoReviewWarning =
+    customerOutputReadinessItems.some((item) => /plan evidence/i.test(item.label)) ||
+    Boolean(
+      estimatorReviewSummary?.sections.some(
+        (section) => section.title === "Photo / Plan Notes" && section.tone === "warning"
+      )
+    )
+
+  return buildProposalReadiness({
+    hasResult: Boolean(result),
+    hasCustomerScopeDriftWarning: Boolean(customerScopeTradeDriftWarning),
+    customerOutputReadinessItemCount: customerOutputReadinessItems.length,
+    hasCriticalCustomerOutputReadinessItem,
+    estimatorReviewStatus: estimatorReviewSummary?.status ?? (result ? "needs_review" : null),
+    priceGuardLevel: priceGuardReview?.level ?? null,
+    priceGuardScore: priceGuardReview?.score ?? null,
+    unansweredHighPrioritySmartQuestions,
+    hasPlanOrPhotoReviewWarning,
+  })
+}, [
+  result,
+  customerScopeTradeDriftWarning,
+  customerOutputReadinessItems,
+  estimatorReviewSummary,
+  priceGuardReview,
+  unansweredHighPrioritySmartQuestions,
+])
+
 const fieldHandoff = useMemo(
   () =>
     buildFieldHandoff({
@@ -4139,6 +4193,12 @@ function clearSmartQuestionAnswer(questionId: string) {
     delete next[questionId]
     return next
   })
+}
+
+function handleProposalReadinessAction(target: ProposalReadinessActionTarget) {
+  if (target === "review_before_sending") {
+    scrollToReviewBeforeSending()
+  }
 }
 
 function applySuggestedPrice() {
@@ -8692,14 +8752,17 @@ function ResultCommandSection({
   summary,
   children,
   dataNoPrint = false,
+  sectionRef,
 }: {
   title: string
   summary?: string
   children: ReactNode
   dataNoPrint?: boolean
+  sectionRef?: Ref<HTMLElement>
 }) {
   return (
     <section
+      ref={sectionRef}
       data-no-print={dataNoPrint ? "" : undefined}
       style={{
         marginTop: 14,
@@ -14867,6 +14930,11 @@ function SmartQuestionsPanel({
           Customer-Facing Scope
         </div>
 
+        <ProposalReadinessBadge
+          readiness={proposalReadiness}
+          onAction={handleProposalReadinessAction}
+        />
+
         <div
           data-no-print
           data-mobile-actions
@@ -15100,6 +15168,7 @@ function SmartQuestionsPanel({
       title="Review Before Sending"
       summary="One compact estimator review hub. Detailed diagnostics stay collapsed below."
       dataNoPrint
+      sectionRef={reviewBeforeSendingSectionRef}
     >
       <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
 
