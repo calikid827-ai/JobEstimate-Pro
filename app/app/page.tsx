@@ -111,11 +111,7 @@ import {
   type CrewPlanningReadback,
 } from "./lib/crew-planning"
 import {
-  buildConfirmedClarification,
   buildSmartQuestions,
-  type ConfirmedClarification,
-  type ConfirmedClarificationAnswer,
-  type SmartQuestion,
 } from "./lib/smart-questions"
 import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
@@ -126,6 +122,7 @@ import RateCardSection from "./components/RateCardSection"
 import FieldHandoffSection from "./components/FieldHandoffSection"
 import JobWorkflowSummary from "./components/JobWorkflowSummary"
 import ProposalReadinessBadge from "./components/ProposalReadinessBadge"
+import ScopeDecisionsPanel from "./components/ScopeDecisionsPanel"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
@@ -156,6 +153,17 @@ import {
   buildProposalReadiness,
   type ProposalReadinessActionTarget,
 } from "./lib/proposal-readiness"
+import {
+  applyScopeDecisionWording,
+  buildActionableScopeDecisions,
+  buildScopeDecisionWording,
+  isScopeDecisionWordingOwned,
+  normalizeScopeWhitespace,
+  prioritizeActionableScopeDecisions,
+  type ActionableScopeDecision,
+  type ScopeDecisionSelection,
+  type ScopeDecisionWordingOwnership,
+} from "./lib/actionable-scope-decisions"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -2562,6 +2570,8 @@ function startChangeOrderFromJob(jobId: string) {
     setState(source.state || "")
     setScopeChange("")
     setResult(null)
+    setGeneratedScopeSnapshot(null)
+    resetTransientScopeDecisions()
     setEstimateRows(null)
     setEstimateEmbeddedBurdens(null)
     setEstimateSections(null)
@@ -2913,6 +2923,7 @@ const [result, setResult] = useState<{
     protectionReasons?: string[]
   } | null
 } | null>(null)
+const [generatedScopeSnapshot, setGeneratedScopeSnapshot] = useState<string | null>(null)
 const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
 const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
   useState<EstimateEmbeddedBurden[] | null>(null)
@@ -2924,9 +2935,22 @@ const [scopeSignals, setScopeSignals] = useState<ScopeSignals>(null)
 const [photoAnalysis, setPhotoAnalysis] = useState<PhotoAnalysis>(null)
 const [photoScopeAssist, setPhotoScopeAssist] = useState<PhotoScopeAssist>(null)
 const [planIntelligence, setPlanIntelligence] = useState<PlanIntelligence>(null)
-const [confirmedClarifications, setConfirmedClarifications] = useState<
-  Record<string, ConfirmedClarification>
+const [scopeDecisionSelections, setScopeDecisionSelections] = useState<
+  Record<string, ScopeDecisionSelection>
 >({})
+const [appliedScopeDecisions, setAppliedScopeDecisions] = useState<
+  Record<
+    string,
+    {
+      decision: ActionableScopeDecision
+      ownership: ScopeDecisionWordingOwnership
+    }
+  >
+>({})
+const [scopeDecisionFeedback, setScopeDecisionFeedback] = useState<
+  Record<string, string>
+>({})
+const [scopeDecisionScopeUpdated, setScopeDecisionScopeUpdated] = useState(false)
 const [estimateSkeletonHandoff, setEstimateSkeletonHandoff] =
   useState<PlanEstimateSkeletonHandoff>(null)
 const [estimateStructureConsumption, setEstimateStructureConsumption] =
@@ -3137,6 +3161,9 @@ const activeJobName = useMemo(() => {
   return activeJob?.jobName || null
 }, [jobs, activeJobId])
 
+const generatedResultScopeText =
+  result && generatedScopeSnapshot != null ? generatedScopeSnapshot : scopeChange
+
 const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return null
@@ -3149,7 +3176,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
     jobDetails: { ...jobDetails },
     trade,
     state,
-    scopeChange,
+    scopeChange: generatedResultScopeText,
     result: result?.text || "",
     pricing: {
       labor: Number(pricing.labor || 0),
@@ -3191,7 +3218,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   jobDetails,
   trade,
   state,
-  scopeChange,
+  generatedResultScopeText,
   result,
   pricing.labor,
   pricing.materials,
@@ -3234,8 +3261,12 @@ const explainChangesReport = useMemo(() => {
   return explainEstimateChanges(original, currentLoadedEstimate)
 }, [currentLoadedEstimate, history, jobs])
 
-const pricingMemory = getPricingMemory(history, trade, scopeChange)
+const pricingMemory = getPricingMemory(history, trade, generatedResultScopeText)
 const scopeQuality = checkScopeQuality(scopeChange, trade)
+const generatedResultScopeQuality = checkScopeQuality(
+  generatedResultScopeText,
+  trade
+)
 
 const historicalPriceGuard =
   pricingMemory && pricing.total
@@ -3351,25 +3382,25 @@ const hasMeasurementReference = useMemo(() => {
 
 const estimateConfidence = useMemo(() => {
   return buildEstimateConfidence({
-    scopeChange,
+    scopeChange: generatedResultScopeText,
     trade,
     state,
     measureEnabled,
     totalSqft,
     jobPhotosCount: jobPhotos.length,
-    scopeQualityScore: scopeQuality.score,
+    scopeQualityScore: generatedResultScopeQuality.score,
     priceGuardVerified,
     photoAnalysis,
     hasMeasurementReference,
   })
 }, [
-  scopeChange,
+  generatedResultScopeText,
   trade,
   state,
   measureEnabled,
   totalSqft,
   jobPhotos.length,
-  scopeQuality.score,
+  generatedResultScopeQuality.score,
   priceGuardVerified,
   photoAnalysis,
   hasMeasurementReference,
@@ -3562,7 +3593,7 @@ const priceGuardReview = useMemo(() => {
   return buildPriceGuardReview({
     hasResult: Boolean(result),
     selectedTrade: trade,
-    scopeText: scopeChange,
+    scopeText: generatedResultScopeText,
     resultText: result?.text || "",
     pricing,
     schedule,
@@ -3574,7 +3605,7 @@ const priceGuardReview = useMemo(() => {
           value: Number(depositValue || 0),
         }
       : { enabled: false },
-    scopeQuality,
+    scopeQuality: generatedResultScopeQuality,
     priceGuard,
     priceGuardVerified,
     pricingSource,
@@ -3591,14 +3622,14 @@ const priceGuardReview = useMemo(() => {
 }, [
   result,
   trade,
-  scopeChange,
+  generatedResultScopeText,
   pricing,
   schedule,
   scopeSignals,
   depositEnabled,
   depositType,
   depositValue,
-  scopeQuality,
+  generatedResultScopeQuality,
   priceGuard,
   priceGuardVerified,
   pricingSource,
@@ -3637,13 +3668,20 @@ const estimatorIntelligenceFindings = useMemo(() => {
 const customerScopeReviewGuard = useMemo(() => {
   return buildCustomerScopeReviewGuard({
     selectedTrade: trade,
-    writtenScope: scopeChange,
+    writtenScope: generatedResultScopeText,
     resultText: result?.text || "",
     estimateSections,
     scopeXRay,
     planIntelligence,
   })
-}, [trade, scopeChange, result?.text, estimateSections, scopeXRay, planIntelligence])
+}, [
+  trade,
+  generatedResultScopeText,
+  result?.text,
+  estimateSections,
+  scopeXRay,
+  planIntelligence,
+])
 const customerScopeTradeDriftWarning = customerScopeReviewGuard.summary
 
 const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() => {
@@ -4029,8 +4067,8 @@ const smartQuestions = useMemo(
   () =>
     buildSmartQuestions({
       selectedTrade: trade,
-      scopeText: scopeChange,
-      scopeQualityWarnings: scopeQuality.warnings,
+      scopeText: generatedResultScopeText,
+      scopeQualityWarnings: generatedResultScopeQuality.warnings,
       priceGuardReview,
       customerOutputReadinessItems,
       materialsConfirmItems: materialsList?.confirmItems || [],
@@ -4038,12 +4076,12 @@ const smartQuestions = useMemo(
       scopeXRayNeedsConfirmation: scopeXRay?.needsConfirmation || [],
       photoScopeAssist,
       planEvidenceStrength: planIntelligence?.evidenceStrength || null,
-      limit: 3,
+      limit: 8,
     }),
   [
     trade,
-    scopeChange,
-    scopeQuality.warnings,
+    generatedResultScopeText,
+    generatedResultScopeQuality.warnings,
     priceGuardReview,
     customerOutputReadinessItems,
     materialsList,
@@ -4054,12 +4092,57 @@ const smartQuestions = useMemo(
   ]
 )
 
+const currentScopeDecisions = useMemo(
+  () => buildActionableScopeDecisions(smartQuestions, 3),
+  [smartQuestions]
+)
+
+const scopeDecisions = useMemo(
+  () =>
+    prioritizeActionableScopeDecisions(
+      [
+        ...currentScopeDecisions,
+        ...Object.values(appliedScopeDecisions).map((record) => record.decision),
+      ],
+      3
+    ),
+  [currentScopeDecisions, appliedScopeDecisions]
+)
+
+const appliedScopeDecisionSentences = useMemo(
+  () =>
+    Object.fromEntries(
+      Object.entries(appliedScopeDecisions).flatMap(([id, record]) =>
+        isScopeDecisionWordingOwned(scopeChange, record.ownership)
+          ? [[id, record.ownership.sentence]]
+          : []
+      )
+    ),
+  [appliedScopeDecisions, scopeChange]
+)
+
+const unresolvedHighPriorityReviewQuestions = useMemo(
+  () => smartQuestions.filter((question) => question.priority === "high").length,
+  [smartQuestions]
+)
+
+const hasUnregeneratedScopeChanges = useMemo(
+  () =>
+    Boolean(
+      result &&
+        generatedScopeSnapshot != null &&
+        normalizeScopeWhitespace(scopeChange) !==
+          normalizeScopeWhitespace(generatedScopeSnapshot)
+    ),
+  [result, generatedScopeSnapshot, scopeChange]
+)
+
 const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
   if (!result) return null
 
   return buildCrewPlanningReadback({
     selectedTrade: trade,
-    scopeText: scopeChange,
+    scopeText: generatedResultScopeText,
     schedule,
     pricingLabor: pricing.labor,
     estimateRows,
@@ -4072,7 +4155,7 @@ const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
 }, [
   result,
   trade,
-  scopeChange,
+  generatedResultScopeText,
   schedule,
   pricing.labor,
   estimateRows,
@@ -4082,23 +4165,6 @@ const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
   priceGuardReview,
   scopeSignals,
 ])
-
-const smartQuestionAnswers = useMemo(() => {
-  const visibleQuestionIds = new Set(smartQuestions.map((question) => question.id))
-  return smartQuestions
-    .map((question) => confirmedClarifications[question.id])
-    .filter(
-      (answer): answer is ConfirmedClarification =>
-        !!answer && visibleQuestionIds.has(answer.questionId)
-    )
-}, [smartQuestions, confirmedClarifications])
-
-const unansweredHighPrioritySmartQuestions = useMemo(() => {
-  const answeredQuestionIds = new Set(smartQuestionAnswers.map((answer) => answer.questionId))
-  return smartQuestions.filter(
-    (question) => question.priority === "high" && !answeredQuestionIds.has(question.id)
-  ).length
-}, [smartQuestions, smartQuestionAnswers])
 
 const proposalReadiness = useMemo(() => {
   const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
@@ -4120,8 +4186,9 @@ const proposalReadiness = useMemo(() => {
     estimatorReviewStatus: estimatorReviewSummary?.status ?? (result ? "needs_review" : null),
     priceGuardLevel: priceGuardReview?.level ?? null,
     priceGuardScore: priceGuardReview?.score ?? null,
-    unansweredHighPrioritySmartQuestions,
+    unresolvedHighPriorityReviewQuestions,
     hasPlanOrPhotoReviewWarning,
+    hasUnregeneratedScopeChanges,
   })
 }, [
   result,
@@ -4129,14 +4196,15 @@ const proposalReadiness = useMemo(() => {
   customerOutputReadinessItems,
   estimatorReviewSummary,
   priceGuardReview,
-  unansweredHighPrioritySmartQuestions,
+  unresolvedHighPriorityReviewQuestions,
+  hasUnregeneratedScopeChanges,
 ])
 
 const fieldHandoff = useMemo(
   () =>
     buildFieldHandoff({
       resultText: result?.text || "",
-      scopeText: scopeChange,
+      scopeText: generatedResultScopeText,
       jobDetails,
       trade,
       documentType,
@@ -4157,7 +4225,7 @@ const fieldHandoff = useMemo(
     }),
   [
     result,
-    scopeChange,
+    generatedResultScopeText,
     jobDetails,
     trade,
     documentType,
@@ -4176,23 +4244,82 @@ const fieldHandoff = useMemo(
   ]
 )
 
-function confirmSmartQuestionAnswer(
-  question: SmartQuestion,
-  answer: ConfirmedClarificationAnswer
-) {
-  const clarification = buildConfirmedClarification({ question, answer })
-  setConfirmedClarifications((prev) => ({
-    ...prev,
-    [question.id]: clarification,
-  }))
+function resetTransientScopeDecisions() {
+  setScopeDecisionSelections({})
+  setAppliedScopeDecisions({})
+  setScopeDecisionFeedback({})
+  setScopeDecisionScopeUpdated(false)
 }
 
-function clearSmartQuestionAnswer(questionId: string) {
-  setConfirmedClarifications((prev) => {
+function updateScopeDecisionSelection(
+  decisionId: string,
+  selection: ScopeDecisionSelection
+) {
+  setScopeDecisionSelections((prev) => ({
+    ...prev,
+    [decisionId]: selection,
+  }))
+  setScopeDecisionFeedback((prev) => {
     const next = { ...prev }
-    delete next[questionId]
+    delete next[decisionId]
     return next
   })
+}
+
+function applyScopeDecision(
+  decision: ActionableScopeDecision,
+  selection: ScopeDecisionSelection
+) {
+  const wording = buildScopeDecisionWording(decision, selection)
+  if (!wording) {
+    setScopeDecisionFeedback((prev) => ({
+      ...prev,
+      [decision.id]: "Complete the choice before applying wording.",
+    }))
+    return
+  }
+
+  const application = applyScopeDecisionWording({
+    scopeText: scopeChange,
+    wording,
+    previousOwnership: appliedScopeDecisions[decision.id]?.ownership,
+  })
+
+  if (application.status === "ownership_lost") {
+    setScopeDecisionFeedback((prev) => ({
+      ...prev,
+      [decision.id]:
+        "The previously applied wording was changed manually. Review the typed scope before applying a replacement.",
+    }))
+    return
+  }
+
+  if (!application.changed) {
+    setScopeDecisionFeedback((prev) => ({
+      ...prev,
+      [decision.id]: "This wording is already in the typed scope.",
+    }))
+    return
+  }
+
+  setScopeChange(application.scopeText)
+  setAppliedScopeDecisions((prev) => {
+    const next = { ...prev }
+    if (application.ownership) {
+      next[decision.id] = { decision, ownership: application.ownership }
+    } else {
+      delete next[decision.id]
+    }
+    return next
+  })
+  setScopeDecisionFeedback((prev) => ({
+    ...prev,
+    [decision.id]:
+      application.status === "replaced"
+        ? "Updated the previously applied sentence."
+        : "Applied to the typed scope.",
+  }))
+  setScopeDecisionScopeUpdated(true)
 }
 
 function handleProposalReadinessAction(target: ProposalReadinessActionTarget) {
@@ -6033,6 +6160,8 @@ setResult({
   text: cleanedResultText,
   explanation: data?.explanation || null,
 })
+setGeneratedScopeSnapshot(finalScopeChange)
+resetTransientScopeDecisions()
 
 const normalizedJobDetails = {
   clientName: jobDetails.clientName?.trim() || "Client",
@@ -7326,6 +7455,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   setTrade(item.trade || "")
   setState(item.state || "")
   setScopeChange(item.scopeChange || "")
+  setGeneratedScopeSnapshot(item.scopeChange || "")
+  resetTransientScopeDecisions()
   setPricingEdited(false)
   setPriceGuard(null)
   setPriceGuardVerified(Boolean(item.priceGuardVerified))
@@ -13965,319 +14096,6 @@ function EstimatorReviewSummaryPanel({
   )
 }
 
-function SmartQuestionsPanel({
-  questions,
-  answers,
-  onConfirm,
-  onClear,
-}: {
-  questions: SmartQuestion[]
-  answers: ConfirmedClarification[]
-  onConfirm: (question: SmartQuestion, answer: ConfirmedClarificationAnswer) => void
-  onClear: (questionId: string) => void
-}) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [units, setUnits] = useState<
-    Record<string, "sqft" | "linear_ft" | "each" | "rooms" | "days">
-  >({})
-  const answerByQuestion = new Map(answers.map((answer) => [answer.questionId, answer]))
-
-  if (!questions.length) return null
-
-  const unansweredQuestions = questions.filter((question) => !answerByQuestion.has(question.id))
-  const answeredCount = questions.length - unansweredQuestions.length
-  const hasUnansweredHighPriority = unansweredQuestions.some(
-    (question) => question.priority === "high"
-  )
-  const summaryLabel =
-    unansweredQuestions.length > 0
-      ? `${unansweredQuestions.length} optional clarification${
-          unansweredQuestions.length === 1 ? "" : "s"
-        }`
-      : "Clarifications answered on this screen — price unchanged"
-
-  const setDraft = (questionId: string, value: string) => {
-    setDrafts((prev) => ({ ...prev, [questionId]: value }))
-  }
-  const setUnit = (
-    questionId: string,
-    value: "sqft" | "linear_ft" | "each" | "rooms" | "days"
-  ) => {
-    setUnits((prev) => ({ ...prev, [questionId]: value }))
-  }
-  const formatAnswer = (answer: ConfirmedClarification) => {
-    if (answer.answer.type === "yes_no") return answer.answer.value ? "Yes" : "No"
-    if (answer.answer.type === "number_unit") {
-      return `${answer.answer.value.toLocaleString()} ${answer.answer.unit.replace(/_/g, " ")}`
-    }
-    return answer.answer.value
-  }
-
-  return (
-    <details
-      data-no-print
-      open={hasUnansweredHighPriority && unansweredQuestions.length > 0}
-      style={{
-        marginTop: 14,
-        marginBottom: 14,
-        padding: 12,
-        border: "1px solid #bfdbfe",
-        borderRadius: 14,
-        background: "#eff6ff",
-      }}
-    >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontSize: 14,
-          fontWeight: 900,
-          color: "#111827",
-        }}
-      >
-        Quick Clarifications
-        <span
-          style={{
-            marginLeft: 8,
-            padding: "2px 7px",
-            border: "1px solid #bfdbfe",
-            borderRadius: 999,
-            background: "#fff",
-            color: "#1d4ed8",
-            fontSize: 11,
-            fontWeight: 900,
-            verticalAlign: "middle",
-          }}
-        >
-          {summaryLabel}
-        </span>
-      </summary>
-      <div style={{ marginTop: 3, fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
-        Saved for this on-screen review only. Price, proposal text, PDFs, and saved estimates
-        are unchanged.
-        {answeredCount > 0 ? ` ${answeredCount} answered.` : ""}
-      </div>
-
-      <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-        {questions.map((question) => {
-          const confirmed = answerByQuestion.get(question.id)
-          const draft = drafts[question.id] || ""
-          const unit = units[question.id] || "sqft"
-
-          return (
-            <div
-              key={question.id}
-              style={{
-                padding: 10,
-                border: "1px solid #dbeafe",
-                borderRadius: 8,
-                background: "#fff",
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
-                {question.prompt}
-              </div>
-              {question.helpText && (
-                <div style={{ marginTop: 3, fontSize: 11, color: "#6b7280", lineHeight: 1.4 }}>
-                  {question.helpText}
-                </div>
-              )}
-
-              {confirmed ? (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    marginTop: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      padding: "2px 7px",
-                      border: "1px solid #bbf7d0",
-                      borderRadius: 999,
-                      background: "#f0fdf4",
-                      color: "#166534",
-                      fontSize: 11,
-                      fontWeight: 900,
-                    }}
-                  >
-                    Confirmed: {formatAnswer(confirmed)}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#4b5563" }}>
-                    {confirmed.authority.replace(/_/g, " ")}. Estimator note only — price unchanged.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onClear(question.id)}
-                    style={{
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
-                      color: "#374151",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-              ) : (
-                <div style={{ marginTop: 8 }}>
-                  {question.answerType === "yes_no" && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => onConfirm(question, { type: "yes_no", value: true })}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #bfdbfe",
-                          background: "#eff6ff",
-                          color: "#1d4ed8",
-                          fontSize: 12,
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Yes
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onConfirm(question, { type: "yes_no", value: false })}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                          background: "#fff",
-                          color: "#374151",
-                          fontSize: 12,
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
-                      >
-                        No
-                      </button>
-                    </div>
-                  )}
-
-                  {question.answerType === "single_choice" && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <select
-                        value={draft}
-                        onChange={(event) => setDraft(question.id, event.target.value)}
-                        style={{
-                          flex: "1 1 180px",
-                          minWidth: 0,
-                          padding: 8,
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                        }}
-                      >
-                        <option value="">Choose one</option>
-                        {(question.options || []).map((option) => (
-                          <option key={`${question.id}-${option}`} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!draft}
-                        onClick={() =>
-                          onConfirm(question, { type: "single_choice", value: draft })
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #bfdbfe",
-                          background: draft ? "#eff6ff" : "#f3f4f6",
-                          color: draft ? "#1d4ed8" : "#9ca3af",
-                          fontSize: 12,
-                          fontWeight: 900,
-                          cursor: draft ? "pointer" : "not-allowed",
-                        }}
-                      >
-                        Confirm
-                      </button>
-                    </div>
-                  )}
-
-                  {question.answerType === "number_unit" && (
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <input
-                        type="number"
-                        min="0"
-                        value={draft}
-                        onChange={(event) => setDraft(question.id, event.target.value)}
-                        placeholder="Quantity"
-                        style={{
-                          flex: "1 1 120px",
-                          minWidth: 0,
-                          padding: 8,
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                        }}
-                      />
-                      <select
-                        value={unit}
-                        onChange={(event) =>
-                          setUnit(
-                            question.id,
-                            event.target.value as "sqft" | "linear_ft" | "each" | "rooms" | "days"
-                          )
-                        }
-                        style={{
-                          flex: "1 1 120px",
-                          minWidth: 0,
-                          padding: 8,
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                        }}
-                      >
-                        <option value="sqft">sqft</option>
-                        <option value="linear_ft">linear ft</option>
-                        <option value="each">each</option>
-                        <option value="rooms">rooms</option>
-                        <option value="days">days</option>
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!(Number(draft) > 0)}
-                        onClick={() =>
-                          onConfirm(question, {
-                            type: "number_unit",
-                            value: Number(draft),
-                            unit,
-                          })
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #bfdbfe",
-                          background: Number(draft) > 0 ? "#eff6ff" : "#f3f4f6",
-                          color: Number(draft) > 0 ? "#1d4ed8" : "#9ca3af",
-                          fontSize: 12,
-                          fontWeight: 900,
-                          cursor: Number(draft) > 0 ? "pointer" : "not-allowed",
-                        }}
-                      >
-                        Confirm
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </details>
-  )
-}
 
   // -------------------------
   // UI
@@ -15172,11 +14990,16 @@ function SmartQuestionsPanel({
     >
       <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
 
-      <SmartQuestionsPanel
-        questions={smartQuestions}
-        answers={smartQuestionAnswers}
-        onConfirm={confirmSmartQuestionAnswer}
-        onClear={clearSmartQuestionAnswer}
+      <ScopeDecisionsPanel
+        decisions={scopeDecisions}
+        selections={scopeDecisionSelections}
+        appliedSentences={appliedScopeDecisionSentences}
+        feedback={scopeDecisionFeedback}
+        showScopeUpdatedNotice={
+          scopeDecisionScopeUpdated && hasUnregeneratedScopeChanges
+        }
+        onSelectionChange={updateScopeDecisionSelection}
+        onApply={applyScopeDecision}
       />
 
       <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />

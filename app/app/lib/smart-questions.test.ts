@@ -7,6 +7,7 @@ import {
   classifySmartQuestionAuthority,
   type SmartQuestion,
 } from "./smart-questions"
+import { buildProposalReadiness } from "./proposal-readiness"
 
 function questionByCategory(questions: SmartQuestion[], category: string) {
   return questions.find((question) => question.category === category)
@@ -85,6 +86,313 @@ test("typed quantity and material responsibility prevent duplicate default quest
   assert.equal(questionByCategory(questions, "materials_responsibility"), undefined)
 })
 
+test("generic included-surface prose does not manufacture scope-decision metadata", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Repaint two bedrooms.",
+    scopeQualityWarnings: ["Confirm exact measured quantities before final approval."],
+    priceGuardReview: {
+      scopeClarityWarnings: [
+        "Painting scope should confirm included surfaces before sending.",
+        "Confirm paint/material supply and finish selection responsibility.",
+      ],
+      missedScopeWarnings: [
+        "Masking/protection for adjacent finishes or occupied areas is not clearly stated.",
+      ],
+    },
+    limit: 8,
+  })
+
+  assert.equal(questionByCategory(questions, "quantity")?.decision, undefined)
+  assert.equal(
+    questionByCategory(questions, "materials_responsibility")?.decision?.kind,
+    "material_responsibility"
+  )
+  assert.equal(
+    questions.some((question) => question.decision?.subjectKey === "ceilings"),
+    false
+  )
+  assert.equal(
+    questions.some((question) => question.decision?.subjectKey === "protection"),
+    false
+  )
+})
+
+test("an actual unresolved boundary warning remains high-priority review work", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint 1,200 sqft of bedroom walls. Contractor will supply paint.",
+    priceGuardReview: {
+      scopeClarityWarnings: [
+        "Exclusions and by-others responsibilities are not clearly stated.",
+      ],
+    },
+    limit: 8,
+  })
+  const boundary = questionByCategory(questions, "scope_boundary")
+
+  assert.ok(boundary)
+  assert.equal(boundary?.priority, "high")
+  assert.equal(boundary?.decision, undefined)
+})
+
+test("resolved boundary statements do not create high-priority boundary review", () => {
+  const resolvedStatements = [
+    "Ceilings are excluded.",
+    "Doors are by others.",
+    "No allowances are included.",
+    "Existing trim is to remain.",
+    "Owner will supply finish paint.",
+    "Electrical work is not included.",
+    "Furniture moving is excluded from this proposal.",
+    "Work not specifically described is excluded.",
+  ]
+
+  for (const statement of resolvedStatements) {
+    const questions = buildSmartQuestions({
+      selectedTrade: "painting",
+      scopeText:
+        "Paint 1,200 sqft of bedroom walls. Contractor will supply paint. Excludes ceilings and trim.",
+      priceGuardReview: {
+        suggestedExclusions: [statement],
+      },
+      customerOutputReadinessItems: [
+        {
+          label: "Assumptions / exclusions",
+          message:
+            "Confirm these customer-facing boundaries are reflected in the scope or proposal notes before sending.",
+          details: [statement],
+        },
+      ],
+      limit: 8,
+    })
+
+    assert.equal(
+      questionByCategory(questions, "scope_boundary"),
+      undefined,
+      statement
+    )
+  }
+})
+
+test("ordinary descriptive uses of thin do not create boundary review", () => {
+  const descriptiveStatements = [
+    "Included cabinet doors have a thin profile.",
+    "Included trim has a thin decorative profile.",
+  ]
+
+  for (const statement of descriptiveStatements) {
+    const questions = buildSmartQuestions({
+      selectedTrade: "painting",
+      scopeText:
+        "Paint 1,200 sqft of bedroom walls. Contractor will supply paint.",
+      priceGuardReview: {
+        scopeClarityWarnings: [statement],
+      },
+      limit: 8,
+    })
+
+    assert.equal(
+      questionByCategory(questions, "scope_boundary"),
+      undefined,
+      statement
+    )
+  }
+})
+
+test("explicit unresolved boundary messages create one review-only high-priority question", () => {
+  const unresolvedMessages = [
+    "Exclusions and by-others responsibilities are not clearly stated.",
+    "Confirm which work is excluded or completed by others.",
+    "Scope boundaries need clarification before sending.",
+    "Included and excluded surfaces are not clearly defined.",
+    "Allowance responsibility must be confirmed.",
+    "Existing-to-remain conditions need clarification.",
+    "The proposal does not clearly identify owner-supplied work.",
+    "Add clear exclusions for work outside the contractor's scope.",
+  ]
+
+  for (const message of unresolvedMessages) {
+    const questions = buildSmartQuestions({
+      selectedTrade: "painting",
+      scopeText:
+        "Paint 1,200 sqft of bedroom walls. Contractor will supply paint.",
+      priceGuardReview: {
+        scopeClarityWarnings: [message],
+      },
+      limit: 8,
+    })
+    const boundaries = questions.filter(
+      (question) => question.category === "scope_boundary"
+    )
+
+    assert.equal(boundaries.length, 1, message)
+    assert.equal(boundaries[0].priority, "high", message)
+    assert.equal(boundaries[0].decision, undefined, message)
+  }
+})
+
+test("resolved boundary text cannot borrow action language from an unrelated item", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint 1,200 sqft of bedroom walls. Contractor will supply paint. Excludes ceilings.",
+    priceGuardReview: {
+      suggestedExclusions: ["Ceilings are excluded."],
+      scopeClarityWarnings: ["Schedule needs confirmation."],
+    },
+    limit: 8,
+  })
+
+  assert.equal(questionByCategory(questions, "scope_boundary"), undefined)
+})
+
+test("a clean explicit boundary does not create a permanent high-priority blocker", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint 1,200 sqft of bedroom walls. Contractor will supply paint. Excludes ceilings and trim.",
+    priceGuardReview: {
+      suggestedExclusions: [
+        "Excludes work not specifically described in the written scope.",
+      ],
+    },
+    limit: 8,
+  })
+
+  assert.equal(questionByCategory(questions, "scope_boundary"), undefined)
+  assert.equal(
+    questions.some((question) => question.priority === "high"),
+    false
+  )
+})
+
+test("an unresolved boundary question remains represented in Proposal Readiness", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText:
+      "Paint 1,200 sqft of bedroom walls. Contractor will supply paint.",
+    scopeQualityWarnings: [
+      "Exclusions and by-others responsibilities are not clearly stated.",
+    ],
+    limit: 8,
+  })
+  const unresolvedHighPriorityReviewQuestions = questions.filter(
+    (question) => question.priority === "high"
+  ).length
+  const readiness = buildProposalReadiness({
+    hasResult: true,
+    customerOutputReadinessItemCount: 0,
+    estimatorReviewStatus: "ready",
+    priceGuardLevel: "strong",
+    priceGuardScore: 92,
+    unresolvedHighPriorityReviewQuestions,
+    hasPlanOrPhotoReviewWarning: false,
+  })
+
+  assert.equal(unresolvedHighPriorityReviewQuestions, 1)
+  assert.equal(readiness.status, "review")
+  assert.equal(
+    readiness.message,
+    "1 high-priority review item still needs action."
+  )
+})
+
+test("generic prep prose remains review-only and does not create repairs metadata", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Paint bedroom walls.",
+    scopeQualityWarnings: ["Preparation requirements need clarification."],
+    priceGuardReview: {
+      missedScopeWarnings: ["Prep and substrate conditions need review."],
+    },
+    limit: 8,
+  })
+
+  assert.ok(questionByCategory(questions, "demo_prep"))
+  assert.equal(
+    questions.some((question) => question.decision?.subjectKey === "repairs"),
+    false
+  )
+})
+
+test("generic access and protection prose cannot create responsibility metadata", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Paint bedroom walls.",
+    priceGuardReview: {
+      scopeClarityWarnings: [
+        "Site access needs review.",
+        "Protection for adjacent finishes is not clearly stated.",
+      ],
+    },
+    limit: 8,
+  })
+
+  assert.equal(
+    questions.some((question) => question.decision?.kind === "access_responsibility"),
+    false
+  )
+})
+
+test("low-confidence AI and plan prose cannot create actionable metadata", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Paint bedroom walls.",
+    photoScopeAssist: {
+      missingScopeFlags: [
+        "Low-confidence photo observation may show ceiling repair, access, and protection.",
+      ],
+      suggestedAdditions: ["Consider occupied-area protection."],
+    },
+    planEvidenceStrength: {
+      level: "review_only",
+      label: "Low-confidence evidence",
+      summary: "Ceilings and access may need review.",
+      confirmationNeeded: true,
+      hardQuantityCount: 0,
+    },
+    limit: 8,
+  })
+
+  assert.equal(
+    questions.filter((question) => question.decision != null).length,
+    0
+  )
+  assert.ok(
+    questions.some((question) => question.category === "photo_plan_review")
+  )
+})
+
+test("generic quantity stays structured for review but is not actionable without basis metadata", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Paint bedroom walls.",
+    scopeQualityWarnings: ["Confirm exact measured quantities."],
+    limit: 8,
+  })
+  const quantity = questionByCategory(questions, "quantity")
+
+  assert.ok(quantity)
+  assert.equal(quantity?.answerType, "number_unit")
+  assert.equal(quantity?.decision, undefined)
+})
+
+test("materials responsibility remains the safe structured actionable question", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "painting",
+    scopeText: "Paint bedroom walls.",
+    materialsConfirmItems: ["Confirm paint material responsibility."],
+    limit: 8,
+  })
+  const materials = questionByCategory(questions, "materials_responsibility")
+
+  assert.equal(materials?.decision?.kind, "material_responsibility")
+  assert.equal(materials?.decision?.subjectKey, "materials")
+  assert.equal(materials?.decision?.subjectLabel, "Painting materials")
+})
+
 test("plan and photo signals remain review-oriented questions", () => {
   const questions = buildSmartQuestions({
     selectedTrade: "painting",
@@ -106,6 +414,7 @@ test("plan and photo signals remain review-oriented questions", () => {
   const reviewQuestions = questions.filter((question) => question.category === "photo_plan_review")
   assert.ok(reviewQuestions.length >= 1)
   assert.equal(reviewQuestions.every((question) => question.canAffectPricingIfConfirmed === false), true)
+  assert.equal(reviewQuestions.every((question) => question.decision == null), true)
 })
 
 test("confirmed numeric quantity is structured but not pricing-eligible in V1", () => {
@@ -131,7 +440,9 @@ test("boundary and ambiguous answers never become pricing-eligible", () => {
     selectedTrade: "painting",
     scopeText: "Paint walls. Drywall by others.",
     priceGuardReview: {
-      suggestedExclusions: ["Excludes drywall by others."],
+      scopeClarityWarnings: [
+        "Confirm which excluded work will be completed by others.",
+      ],
     },
     limit: 3,
   })

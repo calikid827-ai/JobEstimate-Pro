@@ -65,7 +65,67 @@ test("buildProposalReadiness treats unanswered high-priority questions as review
   })
 
   assert.equal(readiness.status, "review")
-  assert.equal(readiness.message, "1 high-priority clarification still needs an answer.")
+  assert.equal(readiness.message, "1 high-priority review item still needs action.")
+})
+
+test("buildProposalReadiness keeps selected but unapplied scope decisions in review", () => {
+  const readiness = buildProposalReadiness({
+    hasResult: true,
+    unresolvedHighPriorityScopeDecisions: 1,
+  })
+
+  assert.equal(readiness.status, "review")
+  assert.equal(readiness.label, "Review before sending")
+  assert.equal(readiness.message, "1 high-priority review item still needs action.")
+})
+
+test("buildProposalReadiness keeps non-actionable high-priority questions in review", () => {
+  const readiness = buildProposalReadiness({
+    hasResult: true,
+    unresolvedHighPriorityReviewQuestions: 2,
+  })
+
+  assert.equal(readiness.status, "review")
+  assert.equal(readiness.label, "Review before sending")
+  assert.equal(readiness.message, "2 high-priority review items still need action.")
+})
+
+test("buildProposalReadiness prioritizes stale estimator inputs over clean readiness", () => {
+  const readiness = buildProposalReadiness({
+    hasResult: true,
+    hasUnregeneratedScopeChanges: true,
+    customerOutputReadinessItemCount: 0,
+    estimatorReviewStatus: "ready",
+    priceGuardLevel: "strong",
+    priceGuardScore: 92,
+    unresolvedHighPriorityReviewQuestions: 1,
+    hasPlanOrPhotoReviewWarning: false,
+  })
+
+  assert.equal(readiness.status, "review")
+  assert.equal(readiness.label, "Regenerate before sending")
+  assert.equal(
+    readiness.message,
+    "Estimator inputs changed after this proposal was generated."
+  )
+})
+
+test("buildProposalReadiness prioritizes stale estimator inputs over ordinary review reasons", () => {
+  const readiness = buildProposalReadiness({
+    hasResult: true,
+    hasUnregeneratedScopeChanges: true,
+    hasCustomerScopeDriftWarning: true,
+    customerOutputReadinessItemCount: 4,
+    priceGuardLevel: "profit_leak",
+    unresolvedHighPriorityScopeDecisions: 2,
+    unresolvedHighPriorityReviewQuestions: 3,
+  })
+
+  assert.equal(readiness.label, "Regenerate before sending")
+  assert.equal(
+    readiness.message,
+    "Estimator inputs changed after this proposal was generated."
+  )
 })
 
 test("buildProposalReadiness is conservative for weak PriceGuard signals", () => {
@@ -125,8 +185,9 @@ test("buildProposalReadiness returns ready only when existing review signals are
     estimatorReviewStatus: "ready",
     priceGuardLevel: "strong",
     priceGuardScore: 92,
-    unansweredHighPrioritySmartQuestions: 0,
+    unresolvedHighPriorityReviewQuestions: 0,
     hasPlanOrPhotoReviewWarning: false,
+    hasUnregeneratedScopeChanges: false,
   })
 
   assert.equal(readiness.status, "ready")

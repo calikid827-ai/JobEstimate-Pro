@@ -11,7 +11,10 @@ export type ProposalReadinessInput = {
   priceGuardLevel?: "strong" | "review" | "profit_leak" | null
   priceGuardScore?: number | null
   unansweredHighPrioritySmartQuestions?: number
+  unresolvedHighPriorityScopeDecisions?: number
+  unresolvedHighPriorityReviewQuestions?: number
   hasPlanOrPhotoReviewWarning?: boolean
+  hasUnregeneratedScopeChanges?: boolean
 }
 
 export type ProposalReadinessView = {
@@ -41,10 +44,23 @@ export function buildProposalReadiness(
     }
   }
 
+  if (input.hasUnregeneratedScopeChanges) {
+    return {
+      status: "review",
+      label: "Regenerate before sending",
+      message: "Estimator inputs changed after this proposal was generated.",
+      tone: "warning",
+      actionLabel: "Review items",
+      actionTarget: "review_before_sending",
+    }
+  }
+
   const reviewReasons: string[] = []
   const readinessCount = Math.max(0, Number(input.customerOutputReadinessItemCount || 0))
-  const highPriorityQuestions = Math.max(
+  const highPriorityReviewQuestions = Math.max(
     0,
+    Number(input.unresolvedHighPriorityReviewQuestions || 0),
+    Number(input.unresolvedHighPriorityScopeDecisions || 0),
     Number(input.unansweredHighPrioritySmartQuestions || 0)
   )
 
@@ -58,8 +74,13 @@ export function buildProposalReadiness(
     )
   }
 
-  if (highPriorityQuestions > 0) {
-    reviewReasons.push(`${plural(highPriorityQuestions, "high-priority clarification")} still needs an answer.`)
+  if (highPriorityReviewQuestions > 0) {
+    reviewReasons.push(
+      `${plural(
+        highPriorityReviewQuestions,
+        "high-priority review item"
+      )} still ${highPriorityReviewQuestions === 1 ? "needs" : "need"} action.`
+    )
   }
 
   if (input.priceGuardLevel === "profit_leak") {

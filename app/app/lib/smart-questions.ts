@@ -11,6 +11,48 @@ export type SmartQuestionCategory =
   | "permit_inspection"
   | "photo_plan_review"
 
+export type SmartQuestionDecisionKind =
+  | "scope_boundary"
+  | "material_responsibility"
+  | "quantity"
+  | "access_responsibility"
+
+export type SmartQuestionDecisionSubject =
+  | "ceilings"
+  | "doors_and_frames"
+  | "closets"
+  | "repairs"
+  | "furniture_moving"
+  | "protection"
+  | "access"
+  | "occupied_areas"
+  | "materials"
+  | "quantity"
+
+export type SmartQuestionQuantityUnit =
+  | "sqft"
+  | "linear_ft"
+  | "each"
+  | "rooms"
+
+export type SmartQuestionQuantityBasis =
+  | "wall_area"
+  | "floor_area"
+  | "ceiling_area"
+  | "linear_scope"
+  | "door_count"
+  | "fixture_count"
+  | "room_count"
+  | "unit_count"
+
+export type SmartQuestionDecisionMetadata = {
+  kind: SmartQuestionDecisionKind
+  subjectKey: SmartQuestionDecisionSubject
+  subjectLabel: string
+  quantityUnit?: SmartQuestionQuantityUnit
+  quantityBasis?: SmartQuestionQuantityBasis
+}
+
 export type SmartQuestionSource =
   | "trade_default"
   | "scope_quality"
@@ -36,6 +78,7 @@ export type SmartQuestion = {
   priority: "high" | "medium" | "low"
   canAffectPricingIfConfirmed: boolean
   dedupeKey: string
+  decision?: SmartQuestionDecisionMetadata
 }
 
 export type ConfirmedClarificationAuthority =
@@ -229,6 +272,36 @@ function collectReviewText(args: BuildSmartQuestionsArgs): string[] {
   ].map(clean).filter(Boolean)
 }
 
+function hasUnresolvedBoundaryReview(args: BuildSmartQuestionsArgs): boolean {
+  const customerBoundaryReviewEntries = (
+    args.customerOutputReadinessItems || []
+  ).flatMap((item) => {
+    if (/^assumptions?\s*\/\s*exclusions?$/i.test(clean(item.label))) {
+      return []
+    }
+    return [[item.label, item.message, ...(item.details || [])].join(" ")]
+  })
+  const boundaryReviewEntries = [
+    ...(args.scopeQualityWarnings || []),
+    ...(args.priceGuardReview?.missedScopeWarnings || []),
+    ...(args.priceGuardReview?.scopeClarityWarnings || []),
+    ...customerBoundaryReviewEntries,
+    ...(args.areaMissingConfirmations || []),
+    ...(args.scopeXRayNeedsConfirmation || []),
+  ]
+    .map(clean)
+    .filter(Boolean)
+
+  const boundarySubject =
+    /\b(exclusions?|excluded|exclude|included|inclusions?|by\s+others|owner[-\s]+supplied|allowances?|scope\s+boundar(?:y|ies)|existing[-\s]+to[-\s]+remain)\b/i
+  const needsAction =
+    /\b(unclear|not\s+clear(?:ly)?|missing|omitted|not\s+addressed|unresolved|needs?\s+(?:review|clarification|confirmation)|requires?\s+(?:review|clarification|confirmation)|must\s+be\s+confirmed|confirm|clarify|define|identify|specify|add\s+clear|should\s+(?:state|identify)|verify)\b/i
+
+  return boundaryReviewEntries.some(
+    (entry) => boundarySubject.test(entry) && needsAction.test(entry)
+  )
+}
+
 function addQuestion(
   questions: SmartQuestion[],
   seen: Set<string>,
@@ -251,7 +324,6 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
 
   const hasQuantitySignal = facts.hasQuantityLocationSignal
   const hasMaterialResponsibility = facts.hasMaterialResponsibility
-  const hasBoundary = facts.hasExclusionOrByOthersBoundary
   const hasScheduleSignal = /\b(day|days|week|weeks|return|visit|phase|schedule|duration|cure|dry|inspection)\b/.test(
     normalize(args.scopeText)
   )
@@ -294,13 +366,15 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
       priority: "high",
       canAffectPricingIfConfirmed: false,
       dedupeKey: "materials_responsibility",
+      decision: {
+        kind: "material_responsibility",
+        subjectKey: "materials",
+        subjectLabel: `${label} materials`,
+      },
     })
   }
 
-  if (
-    hasBoundary ||
-    hasAny(reviewBlob, [/\bexclusion|excluded|by others|boundary|not included|owner supplied|existing.*remain\b/])
-  ) {
+  if (hasUnresolvedBoundaryReview(args)) {
     addQuestion(questions, seen, {
       trade,
       category: "scope_boundary",
