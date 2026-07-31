@@ -20,10 +20,11 @@ The app currently includes:
 - Rate Card V1 for client-only local contractor pricing defaults in `jobestimatepro_rate_card_v1`
 - Proposal delivery actions inside the Proposal section: Download Estimate PDF and Copy proposal text
 - Compact Send Readiness inside Proposal for one contractor-facing status, one short reason, and an optional scroll-only Review items action
+- Actionable Scope Decisions V1 inside Review Before Sending for explicit preview-and-apply scope wording without automatic regeneration
 - Active Job Summary inside the existing Job Workflow section for current job status, key workflow facts, and one practical next action
 - Field Handoff V1 inside Job Workflow for crew-ready handoff notes from the current estimate
 
-Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, crew-ready field handoff, a clearer active-job workflow summary / next action, and a simple Send Readiness decision at the point of proposal delivery.
+Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, crew-ready field handoff, a clearer active-job workflow summary / next action, a simple Send Readiness decision at proposal delivery, and explicit contractor-approved scope decisions before regeneration.
 
 ## Local Development
 
@@ -277,16 +278,27 @@ Field Handoff V1 does not add a localStorage key. It is derived from the current
 
 Active Job Summary does not add a localStorage key, server persistence, saved estimate/job/invoice data shape, pricing authority, PDF content, or `/api/generate` behavior. It derives contractor-facing workflow information from existing state only: active job, current loaded estimate only when it matches the summarized job, job details, workflow/pipeline status, contract value, approval status, invoice summary, actuals/profit, crew load, and Field Handoff readiness when available.
 
-Send Readiness does not add a localStorage key, server persistence, or saved readiness field. Its pure helper supports `Ready to send`, `Review before sending`, and the safe `Finish estimate first` fallback. The Generated Result Command Center renders only after generation, so that fallback does not create a pre-result Proposal surface. Readiness is derived from existing unsupported-scope drift, Customer Output Readiness items, Estimator Review Summary status, PriceGuard level/score, unanswered high-priority Smart Questions, and plan/photo review warnings. It does not make those signals pricing-authoritative or change pricing, `result.text`, PDF content, proposal delivery availability, or `/api/generate`.
+Send Readiness does not add a localStorage key, server persistence, or saved readiness field. Its pure helper supports `Ready to send`, `Review before sending`, and the safe `Finish estimate first` fallback. The Generated Result Command Center renders only after generation, so that fallback does not create a pre-result Proposal surface. Readiness is derived from existing unsupported-scope drift, Customer Output Readiness items, Estimator Review Summary status, PriceGuard level/score, all unresolved high-priority Smart Questions, and plan/photo review warnings. While typed scope differs from the scope used for the displayed result, `Regenerate before sending` takes priority. These signals remain non-pricing-authoritative and do not change pricing, `result.text`, PDF content, proposal delivery availability, or `/api/generate`.
+
+Actionable Scope Decisions V1 replaces the former Quick Clarifications interaction in the existing Review Before Sending section. It renders zero to three decisions from safely structured Smart Question metadata, currently supporting structured material responsibility at runtime. Trusted quantity or explicit scope-boundary decisions require allowlisted subject metadata and, for quantity, a matching fixed measurement basis/unit. Generic warning, diagnostic, plan, photo, Scope X-Ray, PriceGuard, or AI prose cannot manufacture deterministic wording; ambiguous subjects are deferred.
+
+Selecting a decision previews an exact deterministic sentence without changing typed scope. `Apply to typed scope` changes only the existing estimator input and marks the displayed result stale; it does not call Generate or update pricing, labor, proposal text, PDF/copy output, workflow readbacks, or saved data. Generated-result surfaces continue using the exact generated-scope snapshot until successful manual regeneration. Transient choices and sentence-ownership records use local React state only, add no localStorage key or saved field, and never become pricing authority.
+
+Feature-applied wording is replaced only when the current scope exactly matches the expected post-Apply snapshot and the sentence remains at its recorded range. Any manual textarea edit fails closed with ownership-loss feedback rather than rewriting or appending contractor text. Exact normalized line/sentence matches prevent duplicates without treating partial phrases inside longer contractor prose as duplicates.
 
 ## Recent Contractor Workflow QA
 
-Full no-code end-to-end regression QA passed after `37c8a14 Add proposal readiness badge` using `test12345@gmail.com`. Focused validation and browser sanity QA also passed after `0afc82e Fix proposal readiness severity`.
+Full no-code end-to-end regression QA passed after `37c8a14 Add proposal readiness badge` using `test12345@gmail.com`. Focused validation and browser sanity QA also passed after `0afc82e Fix proposal readiness severity`. Post-push regression QA passed after `7c5ac91 Add actionable scope decisions` using the same QA email.
 
 Verified:
 
 - Five Generated Result Command Center sections render: Proposal, Price & Profit, Schedule & Crew, Review Before Sending, and Job Workflow.
 - Advanced Diagnostics is collapsed by default, with EstimateStatusCard inside that drawer.
+- Scope Decisions replaces Quick Clarifications in Review Before Sending, renders zero to three safely structured decisions, and does not create another panel or Command Center section.
+- The committed browser regression rendered one structured material-responsibility decision and no inferred ceiling, repair, access, protection, or occupied-area decision.
+- Selection previews wording without changing scope or calling Generate. Apply changes only typed scope, keeps generated proposal/workflow readbacks frozen, and changes Send Readiness to `Regenerate before sending`.
+- Immediate replacement of unchanged feature-owned wording works. After a manual textarea edit, replacement fails closed with ownership-loss feedback and leaves contractor text unchanged.
+- Successful manual regeneration rebuilds generated-result readbacks, clears stale readiness and transient decision state, and reevaluates Send Readiness normally.
 - Proposal includes a compact `data-no-print` Send Readiness badge directly above or near Download Estimate PDF and Copy proposal text. It summarizes existing review intelligence instead of duplicating Customer Output Readiness, PriceGuard Review, Smart Questions, or Advanced Diagnostics details, and it does not create a sixth Command Center section.
 - Review items scrolls only to the existing Review Before Sending section, does not open Advanced Diagnostics, does not call Generate, and does not mutate pricing, `result.text`, history, jobs, invoices, Rate Card, Saved Job Templates, Field Handoff, or Active Job Summary. PDF download and proposal copy remain available and unchanged.
 - `0afc82e` keeps Unsupported trade wording critical and preserves the higher-priority `Scope wording may overpromise unsupported work.` reason. The broader Customer-ready review row still keeps proposals in review through normal readiness-item or PriceGuard signals but no longer produces the inaccurate `Customer-facing scope has a critical review item.` message. Ready thresholds, PriceGuard thresholds/classification, helper priority, readiness-item generation, Estimator Review Summary, Smart Questions, and plan/photo behavior were unchanged.
@@ -301,10 +313,11 @@ Verified:
 - Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It turns the current estimate into crew-ready notes for job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
 - Field Handoff omits empty fields instead of inventing facts, excludes diagnostics/internal review and PriceGuard content from helper output, is not a diagnostic/reporting panel, and is not pricing-authoritative.
 - Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate `result.text`, or mutate history/jobs/invoices localStorage.
-- Print mode hides `data-no-print` workflow controls, including Send Readiness, Proposal delivery actions, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
+- Print mode hides `data-no-print` workflow controls, including Send Readiness, Scope Decisions, Proposal delivery actions, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
 - Copy/PDF actions do not mutate history/jobs/invoices localStorage.
 - Proposal Readiness validation passed with `npx tsc --noEmit`, `git diff --check`, and 10/10 focused helper tests. A deliberately explicit painting browser fixture remained `Review before sending` because upstream review signals remained; browser QA did not observe `Ready to send`. Focused helper coverage confirms the clean Ready state, and a complete code-level painting case produced strong PriceGuard with no warning/risk rows, so Ready is not documented as impossible.
 - Focused QA after `0afc82e` showed `Review before sending` with `4 pre-send items need review.`, no inaccurate critical wording, scroll-only Review items behavior, no extra Generate call or checked state/localStorage mutation, working PDF/copy actions, and no console/page errors. That fixture contained neither Customer-ready review nor unsupported scope drift; those branches were confirmed through code inspection and existing helper behavior.
+- Actionable Scope Decisions validation passed with `npx tsc --noEmit` and 54/54 focused tests. The post-push browser regression returned 200 for both intentional Generate requests, preserved exactly five Command Center sections, passed stale/readback/ownership/PDF-copy/print/mobile checks, reported no console or page errors, stopped all test processes, and left the working tree clean.
 - Dev server was stopped after QA, no blockers or regressions were found, and the working tree stayed clean.
 - No browser console/page errors were observed.
 
