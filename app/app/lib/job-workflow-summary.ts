@@ -295,7 +295,7 @@ function deriveNextAction({
         return {
           key: "review_actuals",
           label: "Review actuals",
-          description: "Enter actual labor, material, and other costs to confirm job margin.",
+          description: "Record job costs to review costs to date.",
           buttonLabel: "Open Actuals",
           enabled: true,
         }
@@ -316,7 +316,10 @@ function deriveNextAction({
   return {
     key: "review_actuals",
     label: "Review actuals",
-    description: "Keep labor, material, and other job costs current as the work progresses.",
+    description:
+      pipelineStatus?.primaryAction === "paid_closed"
+        ? "Record job costs to review costs to date."
+        : "Keep labor, material, and other job costs current as the work progresses.",
     buttonLabel: "Open Actuals",
     enabled: true,
   }

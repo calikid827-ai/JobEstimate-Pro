@@ -1,6 +1,10 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import type React from "react"
+
+import { buildActualsVsEstimateFeedback } from "../lib/actuals-vs-estimate"
+import ActualsVsEstimateSection from "./ActualsVsEstimateSection"
 
 type Props = {
   jobs: any[]
@@ -59,8 +63,6 @@ export default function JobsDashboardSection({
   latestInvoiceForJob,
   actualsForJob,
   getJobPipelineStatus,
-  estimateDirectCost,
-  computeProfitProtectionFromTotals,
   money,
   upsertActuals,
   setJobDetails,
@@ -74,6 +76,12 @@ export default function JobsDashboardSection({
   deleteJob,
   history,
 }: Props) {
+  const [actualsEditorOpenJobId, setActualsEditorOpenJobId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setActualsEditorOpenJobId(null)
+  }, [activeJobId])
+
   return (
     <div
       style={{
@@ -315,7 +323,6 @@ export default function JobsDashboardSection({
               const originalLockedTotal = contract.originalEstimateTotal
               const changeOrdersTotal = contract.changeOrdersTotal
               const currentContractValue = contract.currentContractValue
-              const currentContractValueBeforeTax = contract.currentContractValueBeforeTax
 
               const dep = latest?.deposit
               const depComputed = computeDepositFromEstimateTotal(latestTotal, dep)
@@ -325,18 +332,14 @@ export default function JobsDashboardSection({
               const latestInv = latestInvoiceForJob(j.id)
               const act = actualsForJob(j.id)
               const pipeline = getJobPipelineStatus(j.id)
-
-              const estimatedJobCost =
-                (originalLocked ? estimateDirectCost(originalLocked) : 0) +
-                contract.changeOrders.reduce((sum: number, co: any) => sum + estimateDirectCost(co), 0)
-
-              const profitProtection = computeProfitProtectionFromTotals({
-                contractValue: currentContractValueBeforeTax,
-                estimatedCost: estimatedJobCost,
-                actuals: act,
-              })
-
               const isActive = activeJobId === j.id
+              const actualsVsEstimateFeedback = isActive
+                ? buildActualsVsEstimateFeedback({
+                    job: j,
+                    estimates: history,
+                    actuals: act,
+                  })
+                : null
 
               return (
                 <div
@@ -466,91 +469,25 @@ export default function JobsDashboardSection({
                         </div>
                       </div>
 
-                      <div
-                        style={{
-                          marginTop: 8,
-                          padding: 10,
-                          border: "1px solid #eee",
-                          borderRadius: 10,
-                          background: "#fff",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, color: "#666", fontWeight: 800 }}>
-                          Profit Protection
-                        </div>
-
-                        <div style={{ fontSize: 12, marginTop: 6 }}>
-                          Profit Contract Value (pre-tax): <strong>{money(profitProtection.contractValue)}</strong>
-                        </div>
-
-                        <div style={{ fontSize: 12 }}>
-                          Estimated Cost: <strong>{money(profitProtection.estimatedCost)}</strong>
-                        </div>
-
-                        <div style={{ fontSize: 12 }}>
-                          Actual Cost: <strong>{money(profitProtection.actualCost)}</strong>
-                        </div>
-
-                        <div style={{ fontSize: 12, marginTop: 4 }}>
-                          Profit Remaining:{" "}
-                          <strong
-                            style={{
-                              color:
-                                profitProtection.profitRemaining >= 0 ? "#065f46" : "#9b1c1c",
-                            }}
-                          >
-                            {money(profitProtection.profitRemaining)}
-                          </strong>
-                        </div>
-
-                        <div style={{ fontSize: 12, marginTop: 4 }}>
-                          Live Margin: <strong>{profitProtection.liveMarginPct}%</strong>
-                        </div>
-
-                        <div style={{ fontSize: 12, marginTop: 4 }}>
-                          Cost vs Estimate: <strong>{profitProtection.costOverEstimatePct}%</strong>
-                        </div>
-
+                      {actualsVsEstimateFeedback && (
                         <div
                           style={{
                             marginTop: 8,
-                            padding: "8px 10px",
+                            padding: 10,
+                            border: "1px solid #eee",
                             borderRadius: 10,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            background:
-                              profitProtection.status === "on-track"
-                                ? "#ecfdf5"
-                                : profitProtection.status === "watch"
-                                ? "#fff7ed"
-                                : profitProtection.status === "risk" ||
-                                  profitProtection.status === "overrun"
-                                ? "#fef2f2"
-                                : "#f3f4f6",
-                            border:
-                              profitProtection.status === "on-track"
-                                ? "1px solid #86efac"
-                                : profitProtection.status === "watch"
-                                ? "1px solid #fdba74"
-                                : profitProtection.status === "risk" ||
-                                  profitProtection.status === "overrun"
-                                ? "1px solid #fecaca"
-                                : "1px solid #e5e7eb",
-                            color:
-                              profitProtection.status === "on-track"
-                                ? "#065f46"
-                                : profitProtection.status === "watch"
-                                ? "#9a3412"
-                                : profitProtection.status === "risk" ||
-                                  profitProtection.status === "overrun"
-                                ? "#991b1b"
-                                : "#444",
+                            background: "#fff",
                           }}
                         >
-                          {profitProtection.label} — {profitProtection.message}
-                        </div>
+                          <ActualsVsEstimateSection feedback={actualsVsEstimateFeedback} />
 
-                        <details style={{ marginTop: 8 }}>
+                          <details
+                            open={actualsEditorOpenJobId === j.id}
+                            onToggle={(event) => {
+                              setActualsEditorOpenJobId(event.currentTarget.open ? j.id : null)
+                            }}
+                            style={{ marginTop: 8 }}
+                          >
                           <summary style={{ cursor: "pointer", fontSize: 12 }}>
                             Edit actual costs
                           </summary>
@@ -606,8 +543,9 @@ export default function JobsDashboardSection({
                               </strong>
                             </div>
                           </div>
-                        </details>
-                      </div>
+                          </details>
+                        </div>
+                      )}
                     </div>
 
                     <div data-mobile-actions style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>

@@ -109,6 +109,48 @@ test("buildJobWorkflowSummary maps approved deposit jobs to deposit invoice acti
   assert.equal(summary.nextAction.buttonLabel, "Create Deposit Invoice")
 })
 
+test("buildJobWorkflowSummary keeps paid-job actuals actions reference-only", () => {
+  assert.equal("originalEstimateId" in job, false)
+
+  const missingCosts = buildJobWorkflowSummary({
+    jobs: [job],
+    activeJobId: "job_1",
+    latestEstimate: estimate,
+    pipelineStatus: {
+      label: "Paid / Closed",
+      tone: "good",
+      message: "Final invoice is paid.",
+      primaryAction: "paid_closed",
+    },
+  })
+  const partialCosts = buildJobWorkflowSummary({
+    jobs: [job],
+    activeJobId: "job_1",
+    latestEstimate: estimate,
+    pipelineStatus: {
+      label: "Paid / Closed",
+      tone: "good",
+      message: "Final invoice is paid.",
+      primaryAction: "paid_closed",
+    },
+    profitSummary: {
+      actualCost: 500,
+      profitRemaining: 350,
+      liveMarginPct: 23,
+      label: "On Track",
+    },
+  })
+
+  for (const summary of [missingCosts, partialCosts]) {
+    assert.equal(summary.nextAction.key, "review_actuals")
+    assert.equal(
+      summary.nextAction.description,
+      "Record job costs to review costs to date."
+    )
+    assert.doesNotMatch(summary.nextAction.description, /original estimate|profit|margin/i)
+  }
+})
+
 test("buildJobWorkflowSummary surfaces invoices, profit, and crew in contractor language", () => {
   const summary = buildJobWorkflowSummary({
     jobs: [job],

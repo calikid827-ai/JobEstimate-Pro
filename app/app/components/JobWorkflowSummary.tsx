@@ -137,9 +137,6 @@ export default function JobWorkflowSummary({ summary, onPrimaryAction, money }: 
         />
         <SummaryItem label="Approval" value={summary.approvalLabel} />
         <SummaryItem label="Invoices" value={summary.invoiceLabel} detail={summary.invoiceDetail} />
-        {summary.profitLabel && (
-          <SummaryItem label="Actuals / Profit" value={summary.profitLabel} />
-        )}
         {summary.crewLabel && (
           <SummaryItem label="Crew Load" value={summary.crewLabel} detail={summary.crewDetail} />
         )}

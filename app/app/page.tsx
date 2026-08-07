@@ -1480,6 +1480,45 @@ const ROOM_TAG_SUGGESTIONS = [
   "Exterior",
 ] as const
 
+function ResultCommandSection({
+  title,
+  summary,
+  children,
+  dataNoPrint = false,
+  sectionRef,
+}: {
+  title: string
+  summary?: string
+  children: ReactNode
+  dataNoPrint?: boolean
+  sectionRef?: Ref<HTMLElement>
+}) {
+  return (
+    <section
+      ref={sectionRef}
+      data-no-print={dataNoPrint ? "" : undefined}
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 14,
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ marginBottom: summary ? 12 : 10 }}>
+        <h3 style={{ margin: 0, fontSize: 17 }}>{title}</h3>
+        {summary && (
+          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
+            {summary}
+          </div>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
 export default function Home() {
 const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
@@ -8878,45 +8917,6 @@ const hasAdvancedAnalysis =
   !!tradePricingPrepAnalysis ||
   hasReviewInsights
 
-function ResultCommandSection({
-  title,
-  summary,
-  children,
-  dataNoPrint = false,
-  sectionRef,
-}: {
-  title: string
-  summary?: string
-  children: ReactNode
-  dataNoPrint?: boolean
-  sectionRef?: Ref<HTMLElement>
-}) {
-  return (
-    <section
-      ref={sectionRef}
-      data-no-print={dataNoPrint ? "" : undefined}
-      style={{
-        marginTop: 14,
-        marginBottom: 14,
-        padding: 14,
-        border: "1px solid #e5e7eb",
-        borderRadius: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ marginBottom: summary ? 12 : 10 }}>
-        <h3 style={{ margin: 0, fontSize: 17 }}>{title}</h3>
-        {summary && (
-          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
-            {summary}
-          </div>
-        )}
-      </div>
-      {children}
-    </section>
-  )
-}
-
 function PriceGuardBadge() {
   if (!result) return null // only show after generation
 
@@ -15091,7 +15091,7 @@ function EstimatorReviewSummaryPanel({
 <div data-no-print>
   <ResultCommandSection
     title="Job Workflow"
-    summary="Track jobs, approval status, invoices, saved estimates, and live job margin."
+    summary="Track jobs, approval status, invoices, saved estimates, and recorded job costs."
     dataNoPrint
   >
   <JobWorkflowSummary
