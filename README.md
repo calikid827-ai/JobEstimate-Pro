@@ -22,9 +22,10 @@ The app currently includes:
 - Compact Send Readiness inside Proposal for one contractor-facing status, one short reason, and an optional scroll-only Review items action
 - Actionable Scope Decisions V1 inside Review Before Sending for explicit preview-and-apply scope wording without automatic regeneration
 - Active Job Summary inside the existing Job Workflow section for current job status, key workflow facts, and one practical next action
+- Actuals vs Estimate Feedback V1 inside the active Job Workflow card for reference-only comparison of original estimated Labor, Materials, and Subs / other costs against contractor-recorded costs to date
 - Field Handoff V1 inside Job Workflow for crew-ready handoff notes from the current estimate
 
-Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, crew-ready field handoff, a clearer active-job workflow summary / next action, a simple Send Readiness decision at proposal delivery, and explicit contractor-approved scope decisions before regeneration.
+Recent workflow upgrades move the app away from diagnostic clutter and toward contractor value: a cleaner generated result page, faster repeat estimating, local pricing defaults, faster proposal delivery, crew-ready field handoff, a clearer active-job workflow summary / next action, reference-only recorded-cost feedback, a simple Send Readiness decision at proposal delivery, and explicit contractor-approved scope decisions before regeneration.
 
 ## Local Development
 
@@ -276,7 +277,7 @@ The app includes a thin local persistence helper at `app/app/lib/local-persisten
 
 Field Handoff V1 does not add a localStorage key. It is derived from the current estimate state only and does not add server persistence.
 
-Active Job Summary does not add a localStorage key, server persistence, saved estimate/job/invoice data shape, pricing authority, PDF content, or `/api/generate` behavior. It derives contractor-facing workflow information from existing state only: active job, current loaded estimate only when it matches the summarized job, job details, workflow/pipeline status, contract value, approval status, invoice summary, actuals/profit, crew load, and Field Handoff readiness when available.
+Active Job Summary does not add a localStorage key, server persistence, saved estimate/job/invoice data shape, pricing authority, PDF content, or `/api/generate` behavior. It derives contractor-facing workflow information from existing state only: active job, current loaded estimate only when it matches the summarized job, job details, workflow/pipeline status, contract value, approval status, invoice summary, recorded-cost workflow status, crew load, and Field Handoff readiness when available.
 
 Send Readiness does not add a localStorage key, server persistence, or saved readiness field. Its pure helper supports `Ready to send`, `Review before sending`, and the safe `Finish estimate first` fallback. The Generated Result Command Center renders only after generation, so that fallback does not create a pre-result Proposal surface. Readiness is derived from existing unsupported-scope drift, Customer Output Readiness items, Estimator Review Summary status, PriceGuard level/score, all unresolved high-priority Smart Questions, and plan/photo review warnings. While typed scope differs from the scope used for the displayed result, `Regenerate before sending` takes priority. These signals remain non-pricing-authoritative and do not change pricing, `result.text`, PDF content, proposal delivery availability, or `/api/generate`.
 
@@ -286,9 +287,13 @@ Selecting a decision previews an exact deterministic sentence without changing t
 
 Feature-applied wording is replaced only when the current scope exactly matches the expected post-Apply snapshot and the sentence remains at its recorded range. Any manual textarea edit fails closed with ownership-loss feedback rather than rewriting or appending contractor text. Exact normalized line/sentence matches prevent duplicates without treating partial phrases inside longer contractor prose as duplicates.
 
+Actuals vs Estimate Feedback V1 uses the exact nonblank `Job.originalEstimateId` as its only estimate anchor and never falls back to an earlier, later, or current generated estimate. Inside the active Job Workflow card, it compares the original saved estimate's Labor, Materials, and Subs / other cost assumptions with contractor-recorded costs to date for the same job. Missing, zero, invalid, negative, or mismatched-job actuals remain `Not recorded`; available variance is recorded cost minus estimated cost and is described as Over estimate, Under estimate, On estimate, or Unplanned recorded cost.
+
+The comparison is reference-only. It does not calculate final actual cost, actual profit, final margin, completion, labor efficiency, invoice or billing variance, or recommendations, and it does not automatically modify Rate Card, production rates, pricing, or future estimates. The compact surface stays inside Job Workflow, is hidden from print with `data-no-print`, retains the existing actual-cost persistence shape and immediate inputs, and does not call Generate. `ResultCommandSection` is module-scoped so ordinary app rerenders preserve native input focus; the actual-cost disclosure uses ordinary local React state with no external cache or persisted UI state.
+
 ## Recent Contractor Workflow QA
 
-Full no-code end-to-end regression QA passed after `37c8a14 Add proposal readiness badge` using `test12345@gmail.com`. Focused validation and browser sanity QA also passed after `0afc82e Fix proposal readiness severity`. Post-push regression QA passed after `7c5ac91 Add actionable scope decisions` using the same QA email.
+Full no-code end-to-end regression QA passed after `37c8a14 Add proposal readiness badge` using `test12345@gmail.com`. Focused validation and browser sanity QA also passed after `0afc82e Fix proposal readiness severity`. Post-push regression QA passed after `7c5ac91 Add actionable scope decisions`, and focused Actuals vs Estimate Feedback V1 validation/browser QA passed through `910391d Add actuals vs estimate workflow feedback`, using the same QA email.
 
 Verified:
 
@@ -306,18 +311,19 @@ Verified:
 - Rate Card save, refresh persistence, and apply update only editable pricing controls.
 - Job Templates save, refresh persistence, and apply correctly prefill the visible typed scope textarea plus trade/state/paint scope without calling Generate.
 - Active Job Summary appears near the top of Job Workflow and keeps Jobs, Job Templates, Invoices, Saved Estimates, and Field Handoff available below it.
-- Active Job Summary shows job/client/status/contract/approval/invoice/actuals/profit/crew/next-action information where available, using existing state only.
+- Active Job Summary shows job/client/status/contract/approval/invoice/recorded-cost workflow/crew/next-action information where available, using existing state only. It no longer presents partial recorded costs as an Actuals / Profit tile or live job margin.
 - Active Job Summary next actions reuse existing workflow actions or scroll to existing workflow surfaces, such as Create/select job, Copy approval link, Create deposit/final/balance invoice, Open invoices, Open actuals, and Open Field Handoff.
 - Summary-only scroll/open actions do not call Generate and do not mutate pricing, `result.text`, history, jobs, or invoices.
 - Field Handoff readiness and current estimate data are scoped to the summarized job, so the summary does not offer Field Handoff or borrow contract/approval data for the wrong selected job.
 - Field Handoff appears inside Job Workflow, not as a sixth Command Center section. It turns the current estimate into crew-ready notes for job basics, scope summary, included work, exclusions/boundaries, schedule/crew guidance, materials/reminders, watch-outs/coordination, and deposit/payment note when available.
 - Field Handoff omits empty fields instead of inventing facts, excludes diagnostics/internal review and PriceGuard content from helper output, is not a diagnostic/reporting panel, and is not pricing-authoritative.
 - Copy field handoff copies only Field Handoff content and does not call Generate, mutate pricing, mutate `result.text`, or mutate history/jobs/invoices localStorage.
-- Print mode hides `data-no-print` workflow controls, including Send Readiness, Scope Decisions, Proposal delivery actions, Rate Card, Job Templates, Field Handoff action controls, and Advanced Diagnostics.
+- Print mode hides `data-no-print` workflow controls, including Send Readiness, Scope Decisions, Proposal delivery actions, Rate Card, Job Templates, Actuals vs Estimate, Field Handoff action controls, and Advanced Diagnostics.
 - Copy/PDF actions do not mutate history/jobs/invoices localStorage.
 - Proposal Readiness validation passed with `npx tsc --noEmit`, `git diff --check`, and 10/10 focused helper tests. A deliberately explicit painting browser fixture remained `Review before sending` because upstream review signals remained; browser QA did not observe `Ready to send`. Focused helper coverage confirms the clean Ready state, and a complete code-level painting case produced strong PriceGuard with no warning/risk rows, so Ready is not documented as impossible.
 - Focused QA after `0afc82e` showed `Review before sending` with `4 pre-send items need review.`, no inaccurate critical wording, scroll-only Review items behavior, no extra Generate call or checked state/localStorage mutation, working PDF/copy actions, and no console/page errors. That fixture contained neither Customer-ready review nor unsupported scope drift; those branches were confirmed through code inspection and existing helper behavior.
 - Actionable Scope Decisions validation passed with `npx tsc --noEmit` and 54/54 focused tests. The post-push browser regression returned 200 for both intentional Generate requests, preserved exactly five Command Center sections, passed stale/readback/ownership/PDF-copy/print/mobile checks, reported no console or page errors, stopped all test processes, and left the working tree clean.
+- Actuals vs Estimate Feedback V1 validation passed TypeScript, 40/40 focused tests, focused review, and browser regression with `test12345@gmail.com`. The browser pass preserved exactly five Command Center sections, exercised real sequential Labor, Materials, Notes, and Subs / other input without focus loss, confirmed no Generate during actual-cost edits, preserved pricing, Rate Card, proposal, history, and invoice state, passed mobile/print checks, and reported no console, React, hydration, or page errors.
 - Dev server was stopped after QA, no blockers or regressions were found, and the working tree stayed clean.
 - No browser console/page errors were observed.
 
