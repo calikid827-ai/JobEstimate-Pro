@@ -176,6 +176,13 @@ import {
   requiresPhotoEvidenceRegeneration,
 } from "./lib/photo-intelligence-action-integration"
 import {
+  buildPlanEvidenceFingerprint,
+  classifyPlanEvidenceFreshness,
+  requiresPlanEvidenceRegeneration,
+  type PlanEvidenceFingerprint,
+  type SelectedPlanEvidence,
+} from "./lib/plan-intelligence-evidence"
+import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
 } from "../lib/generate-response"
@@ -253,6 +260,36 @@ type JobPlan = {
     label: string
     selected: boolean
   }>
+}
+
+type SelectedPlanRequestEntry = {
+  plan: JobPlan
+  evidence: SelectedPlanEvidence
+}
+
+function buildSelectedPlanRequestEntries(
+  plans: readonly JobPlan[]
+): SelectedPlanRequestEntry[] {
+  return plans.map((plan) => {
+    const selectedSourcePages = plan.pages
+      .filter((page) => page.selected)
+      .map((page) => page.sourcePageNumber)
+
+    return {
+      plan,
+      evidence: {
+        planId: plan.id,
+        name: plan.name,
+        mimeType: plan.mimeType,
+        sourceKind: plan.sourceKind,
+        fileSize: plan.file.size,
+        fileLastModified: plan.file.lastModified,
+        sourcePageCount: plan.sourcePageCount,
+        note: plan.note,
+        selectedSourcePages,
+      },
+    }
+  })
 }
 
 type PlanPageReadStatusView = {
@@ -1613,6 +1650,19 @@ const currentPhotoEvidenceFingerprint = useMemo(
   [selectedPhotoEvidence]
 )
 
+const selectedPlanRequestEntries = useMemo(
+  () => buildSelectedPlanRequestEntries(jobPlans),
+  [jobPlans]
+)
+
+const currentPlanEvidenceFingerprint = useMemo(
+  () =>
+    buildPlanEvidenceFingerprint(
+      selectedPlanRequestEntries.map((entry) => entry.evidence)
+    ),
+  [selectedPlanRequestEntries]
+)
+
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
 ): number {
@@ -1629,10 +1679,12 @@ function countSelectedPlanPages(plan: JobPlan): number {
   return plan.pages.filter((page) => page.selected).length
 }
 
-function estimatePlanTransportBytes(plan: JobPlan): number {
+function estimatePlanTransportBytes(
+  plan: JobPlan,
+  selectedPages: number
+): number {
   if (plan.sourceKind !== "pdf") return plan.bytes
 
-  const selectedPages = countSelectedPlanPages(plan)
   if (!selectedPages) return 0
 
   if (selectedPages >= plan.sourcePageCount) return plan.bytes
@@ -1644,13 +1696,16 @@ function estimatePlanTransportBytes(plan: JobPlan): number {
   })
 }
 
-function getPlanPreflightIssue(plan: JobPlan): string | null {
+function getPlanPreflightIssue(
+  plan: JobPlan,
+  selectedPages: number
+): string | null {
   return getPlanUploadPreflightIssue({
     name: plan.name,
     sourceKind: plan.sourceKind,
     originalBytes: plan.bytes,
     totalPages: plan.sourcePageCount,
-    selectedPages: countSelectedPlanPages(plan),
+    selectedPages,
   })
 }
 
@@ -1660,6 +1715,7 @@ async function readStageResponseMessage(response: Response): Promise<string> {
 
 async function stagePlanForGenerate(
   plan: JobPlan,
+  selectedSourcePages: number[],
   onProgress: (message: string) => void
 ): Promise<{
   stagedUploadId: string
@@ -1670,10 +1726,6 @@ async function stagePlanForGenerate(
   selectedPageUploadMode?: PlanSelectedPageUploadMode
   selectedPageUploadNote?: string | null
 }> {
-  const selectedSourcePages = plan.pages
-    .filter((page) => page.selected)
-    .map((page) => page.sourcePageNumber)
-
   let uploadFile = plan.file
   let uploadBytes = plan.file.size
   let uploadSourcePageCount = plan.sourcePageCount
@@ -2637,6 +2689,7 @@ function startChangeOrderFromJob(jobId: string) {
 
   setActiveJobId(jobId)
   setGeneratedPhotoEvidenceProvenance(null)
+  setGeneratedPlanEvidenceFingerprint(null)
 
   setJobDetails({
     clientName: job.clientName || "",
@@ -3009,6 +3062,8 @@ const [result, setResult] = useState<{
 const [generatedScopeSnapshot, setGeneratedScopeSnapshot] = useState<string | null>(null)
 const [generatedPhotoEvidenceProvenance, setGeneratedPhotoEvidenceProvenance] =
   useState<GeneratedPhotoEvidenceProvenance | null>(null)
+const [generatedPlanEvidenceFingerprint, setGeneratedPlanEvidenceFingerprint] =
+  useState<PlanEvidenceFingerprint | null>(null)
 const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
 const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
   useState<EstimateEmbeddedBurden[] | null>(null)
@@ -4150,6 +4205,15 @@ const photoEvidenceFreshness = useMemo(
   [generatedPhotoEvidenceProvenance, currentPhotoEvidenceFingerprint]
 )
 
+const planEvidenceFreshness = useMemo(
+  () =>
+    classifyPlanEvidenceFreshness({
+      generatedEvidenceFingerprint: generatedPlanEvidenceFingerprint,
+      currentEvidenceFingerprint: currentPlanEvidenceFingerprint,
+    }),
+  [generatedPlanEvidenceFingerprint, currentPlanEvidenceFingerprint]
+)
+
 const photoIntelligenceActions = useMemo(
   () =>
     buildPhotoIntelligenceActions({
@@ -4327,8 +4391,20 @@ const photoEvidenceRequiresRegeneration = useMemo(
   [result, photoEvidenceFreshness, selectedPhotoEvidence.length]
 )
 
+const planEvidenceRequiresRegeneration = useMemo(
+  () =>
+    requiresPlanEvidenceRegeneration({
+      hasDisplayedResult: Boolean(result),
+      freshness: planEvidenceFreshness,
+      hasCurrentPlanInputs: jobPlans.length > 0,
+    }),
+  [result, planEvidenceFreshness, jobPlans.length]
+)
+
 const hasUnregeneratedEstimatorInputChanges =
-  hasUnregeneratedScopeChanges || photoEvidenceRequiresRegeneration
+  hasUnregeneratedScopeChanges ||
+  photoEvidenceRequiresRegeneration ||
+  planEvidenceRequiresRegeneration
 
 const proposalReadiness = useMemo(() => {
   const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
@@ -5152,6 +5228,7 @@ async function generate() {
   setStatus("") // prevents duplicate “Generating…” line
   setResult(null)
   setGeneratedPhotoEvidenceProvenance(null)
+  setGeneratedPlanEvidenceFingerprint(null)
   setEstimateRows(null)
   setEstimateEmbeddedBurdens(null)
   setEstimateSections(null)
@@ -5194,6 +5271,20 @@ const requestPhotoTrade = sendPaintScope ? "painting" : trade
   try {
     const requestId = crypto.randomUUID()
 
+const requestPlanEntries = selectedPlanRequestEntries.map(({ plan, evidence }) => {
+  const selectedSourcePages = [...evidence.selectedSourcePages]
+  return {
+    plan,
+    evidence: {
+      ...evidence,
+      selectedSourcePages,
+    },
+  }
+})
+const requestPlanEvidenceFingerprint = buildPlanEvidenceFingerprint(
+  requestPlanEntries.map((entry) => entry.evidence)
+)
+
 const requestSelectedPhotoEvidence = selectedPhotoEvidence
 const requestPhotoEvidenceFingerprint = buildPhotoEvidenceFingerprint(
   requestSelectedPhotoEvidence
@@ -5218,12 +5309,15 @@ if (jobPhotos.length > 0 && (!photosToSend || photosToSend.length < jobPhotos.le
   setStatus("Some photos were skipped automatically to keep upload size within limits.")
 }
 
-const planPreflightIssues = jobPlans
-  .map((plan) => getPlanPreflightIssue(plan))
+const planPreflightIssues = requestPlanEntries
+  .map(({ plan, evidence }) =>
+    getPlanPreflightIssue(plan, evidence.selectedSourcePages.length)
+  )
   .filter((issue): issue is string => !!issue)
 
-const estimatedSelectedPlanBytes = jobPlans.reduce(
-  (sum, plan) => sum + estimatePlanTransportBytes(plan),
+const estimatedSelectedPlanBytes = requestPlanEntries.reduce(
+  (sum, { plan, evidence }) =>
+    sum + estimatePlanTransportBytes(plan, evidence.selectedSourcePages.length),
   0
 )
 
@@ -5284,13 +5378,17 @@ const requestPayload = {
 
 let res: Response
 
-if (jobPlans.length > 0) {
-  setStatus(`Preparing ${jobPlans.length} selected plan file${jobPlans.length === 1 ? "" : "s"} for reliable upload...`)
+if (requestPlanEntries.length > 0) {
+  setStatus(`Preparing ${requestPlanEntries.length} selected plan file${requestPlanEntries.length === 1 ? "" : "s"} for reliable upload...`)
 
   const stagedPlans = []
   const stageNotices: string[] = []
-  for (const plan of jobPlans) {
-    const staged = await stagePlanForGenerate(plan, (message) => setStatus(message))
+  for (const { plan, evidence } of requestPlanEntries) {
+    const staged = await stagePlanForGenerate(
+      plan,
+      evidence.selectedSourcePages,
+      (message) => setStatus(message)
+    )
     setJobPlans((prev) =>
       prev.map((existing) =>
         existing.id === plan.id
@@ -5316,23 +5414,22 @@ if (jobPlans.length > 0) {
         mode: staged.selectedPageUploadMode,
         originalBytes: staged.originalBytes,
         stagedBytes: staged.bytes,
-        analyzedPages: plan.pages.filter((page) => page.selected).length,
-        originalSourcePageCount: staged.originalSourcePageCount ?? plan.sourcePageCount,
+        analyzedPages: evidence.selectedSourcePages.length,
+        originalSourcePageCount:
+          staged.originalSourcePageCount ?? evidence.sourcePageCount,
       })
     )
 
     stagedPlans.push({
-      uploadId: plan.id,
+      uploadId: evidence.planId,
       stagedUploadId: staged.stagedUploadId,
-      name: plan.name,
-      note: plan.note,
-      mimeType: plan.mimeType,
+      name: evidence.name,
+      note: evidence.note,
+      mimeType: evidence.mimeType,
       bytes: staged.bytes,
       originalBytes: staged.originalBytes,
       transport: "staged" as const,
-      selectedSourcePages: plan.pages
-        .filter((page) => page.selected)
-        .map((page) => page.sourcePageNumber),
+      selectedSourcePages: evidence.selectedSourcePages,
     })
   }
 
@@ -5341,7 +5438,7 @@ if (jobPlans.length > 0) {
   }
 
   requestPayload.plans = stagedPlans
-  setStatus(`Preparing ${jobPlans.length} staged plan file${jobPlans.length === 1 ? "" : "s"} with selected-page transport...`)
+  setStatus(`Preparing ${requestPlanEntries.length} staged plan file${requestPlanEntries.length === 1 ? "" : "s"} with selected-page transport...`)
 
   res = await fetch("/api/generate", {
     method: "POST",
@@ -6312,6 +6409,7 @@ setGeneratedPhotoEvidenceProvenance({
   fingerprint: requestPhotoEvidenceFingerprint,
   trade: requestPhotoTrade,
 })
+setGeneratedPlanEvidenceFingerprint(requestPlanEvidenceFingerprint)
 resetTransientScopeDecisions()
 
 const normalizedJobDetails = {
@@ -7602,6 +7700,7 @@ function clearHistory() {
 // ✅ Load history item back into the form
 function loadHistoryItem(item: EstimateHistoryItem) {
   setGeneratedPhotoEvidenceProvenance(null)
+  setGeneratedPlanEvidenceFingerprint(null)
   setJobDetails(item.jobDetails)
   setDocumentType(item.documentType || "Estimate")
   setTrade(item.trade || "")
