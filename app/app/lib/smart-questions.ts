@@ -19,6 +19,7 @@ export type SmartQuestionDecisionKind =
 
 export type SmartQuestionDecisionSubject =
   | "ceilings"
+  | "trim_and_baseboards"
   | "doors_and_frames"
   | "closets"
   | "repairs"

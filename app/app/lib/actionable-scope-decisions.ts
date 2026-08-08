@@ -83,15 +83,16 @@ const KIND_RANK: Record<SmartQuestionDecisionKind, number> = {
 
 const SUBJECT_RANK: Record<SmartQuestionDecisionSubject, number> = {
   ceilings: 0,
-  doors_and_frames: 1,
-  closets: 2,
-  repairs: 3,
-  quantity: 4,
-  materials: 5,
-  furniture_moving: 6,
-  protection: 7,
-  access: 8,
-  occupied_areas: 9,
+  trim_and_baseboards: 1,
+  doors_and_frames: 2,
+  closets: 3,
+  repairs: 4,
+  quantity: 5,
+  materials: 6,
+  furniture_moving: 7,
+  protection: 8,
+  access: 9,
+  occupied_areas: 10,
 }
 
 const SCOPE_BOUNDARY_CHOICES: ScopeDecisionChoiceOption[] = [
@@ -116,6 +117,7 @@ const SAFE_SCOPE_BOUNDARIES: Partial<
   Record<SmartQuestionDecisionSubject, string>
 > = {
   ceilings: "Ceiling preparation and painting",
+  trim_and_baseboards: "Trim, baseboard, and casing preparation and painting",
   doors_and_frames: "Door and frame preparation and painting",
   closets: "Closet interior painting",
 }
@@ -356,6 +358,21 @@ function scopeBoundaryWording(
     }
     if (choice === "site_confirmation") {
       return "Ceiling conditions and scope require field confirmation before work begins; changes may require a revised estimate."
+    }
+  }
+
+  if (subjectKey === "trim_and_baseboards") {
+    if (choice === "include") {
+      return "Includes preparation and painting of the confirmed trim, baseboards, and casings."
+    }
+    if (choice === "exclude") {
+      return "Excludes trim, baseboard, and casing preparation and painting."
+    }
+    if (choice === "by_others") {
+      return "Trim, baseboard, and casing work will be completed by others and is excluded from this proposal."
+    }
+    if (choice === "site_confirmation") {
+      return "Trim, baseboard, and casing conditions and scope require field confirmation before work begins; changes may require a revised estimate."
     }
   }
 

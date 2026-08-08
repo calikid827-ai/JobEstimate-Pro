@@ -21,6 +21,7 @@ function makeQuestion(args: {
   decision?: SmartQuestionDecisionMetadata
   prompt?: string
   helpText?: string
+  source?: SmartQuestion["source"]
 }): SmartQuestion {
   return {
     id: args.id,
@@ -28,7 +29,7 @@ function makeQuestion(args: {
     category: args.category || "included_surfaces",
     prompt: args.prompt || "Review this scope item.",
     helpText: args.helpText,
-    source: "priceguard_review",
+    source: args.source || "priceguard_review",
     answerType: "single_choice",
     priority: args.priority || "high",
     canAffectPricingIfConfirmed: false,
@@ -48,6 +49,9 @@ function buildDecision(
       priority: overrides.priority,
       trade: overrides.trade,
       decision,
+      prompt: overrides.prompt,
+      helpText: overrides.helpText,
+      source: overrides.source,
     }),
   ])
   assert.ok(result)
@@ -60,6 +64,19 @@ function ceilingDecision() {
     subjectKey: "ceilings",
     subjectLabel: "Untrusted caller label is ignored",
   })
+}
+
+function trimDecision(
+  overrides: Partial<Parameters<typeof makeQuestion>[0]> = {}
+) {
+  return buildDecision(
+    {
+      kind: "scope_boundary",
+      subjectKey: "trim_and_baseboards",
+      subjectLabel: "Untrusted caller label is ignored",
+    },
+    overrides
+  )
 }
 
 test("buildActionableScopeDecisions uses deterministic priority and caps output at three", () => {
@@ -178,6 +195,69 @@ test("explicit structured scope subjects use canonical deterministic wording", (
     buildScopeDecisionWording(decision, { choice: "site_confirmation" }),
     "Ceiling conditions and scope require field confirmation before work begins; changes may require a revised estimate."
   )
+})
+
+test("photo trim decisions use canonical wording for every contractor choice", () => {
+  const rawPhotoProse =
+    "AI photo prose says doors, cabinets, and margin should be changed automatically."
+  const decision = trimDecision({
+    prompt: rawPhotoProse,
+    helpText: rawPhotoProse,
+    source: "photo_scope_assist",
+  })
+
+  assert.equal(
+    decision.subjectLabel,
+    "Trim, baseboard, and casing preparation and painting"
+  )
+  assert.equal(decision.prompt.includes(rawPhotoProse), false)
+  assert.equal(
+    buildScopeDecisionWording(decision, { choice: "include" }),
+    "Includes preparation and painting of the confirmed trim, baseboards, and casings."
+  )
+  assert.equal(
+    buildScopeDecisionWording(decision, { choice: "exclude" }),
+    "Excludes trim, baseboard, and casing preparation and painting."
+  )
+  assert.equal(
+    buildScopeDecisionWording(decision, { choice: "by_others" }),
+    "Trim, baseboard, and casing work will be completed by others and is excluded from this proposal."
+  )
+  assert.equal(
+    buildScopeDecisionWording(decision, { choice: "site_confirmation" }),
+    "Trim, baseboard, and casing conditions and scope require field confirmation before work begins; changes may require a revised estimate."
+  )
+})
+
+test("trim wording retains duplicate and ownership protection", () => {
+  const decision = trimDecision()
+  const included = buildScopeDecisionWording(decision, { choice: "include" })
+  const excluded = buildScopeDecisionWording(decision, { choice: "exclude" })
+  assert.ok(included)
+  assert.ok(excluded)
+
+  const first = applyScopeDecisionWording({
+    scopeText: "Paint bedroom walls.",
+    wording: included,
+  })
+  assert.equal(first.status, "applied")
+  assert.ok(first.ownership)
+
+  const duplicate = applyScopeDecisionWording({
+    scopeText: first.scopeText,
+    wording: included,
+    previousOwnership: first.ownership,
+  })
+  assert.equal(duplicate.status, "duplicate")
+
+  const manuallyChanged = `${first.scopeText}\nContractor clarification.`
+  const replacement = applyScopeDecisionWording({
+    scopeText: manuallyChanged,
+    wording: excluded,
+    previousOwnership: first.ownership,
+  })
+  assert.equal(replacement.status, "ownership_lost")
+  assert.equal(replacement.scopeText, manuallyChanged)
 })
 
 test("all retained door and closet choices produce matching boundary wording", () => {
