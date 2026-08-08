@@ -2512,7 +2512,7 @@ function getJobPipelineStatus(jobId: string) {
 
     return {
       key: "paid_closed" as const,
-      label: "Paid / Closed",
+      label: "Paid",
       tone: "good" as const,
       message: "Deposit and balance have both been paid.",
       primaryAction: "paid_closed" as const,
@@ -2541,7 +2541,7 @@ function getJobPipelineStatus(jobId: string) {
 
   return {
     key: "paid_closed" as const,
-    label: "Paid / Closed",
+    label: "Paid",
     tone: "good" as const,
     message: "Final invoice has been paid.",
     primaryAction: "paid_closed" as const,
@@ -4075,7 +4075,9 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
   }
 
   return {
-    headline: needsReview ? "Needs estimator review" : "Looks ready to send",
+    headline: needsReview
+      ? "Needs estimator review"
+      : "No additional estimator review items.",
     status: needsReview ? "needs_review" : "ready",
     tone: needsReview ? "warning" : "good",
     summary: needsReview

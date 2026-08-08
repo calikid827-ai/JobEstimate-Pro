@@ -112,27 +112,23 @@ test("buildJobWorkflowSummary maps approved deposit jobs to deposit invoice acti
 test("buildJobWorkflowSummary keeps paid-job actuals actions reference-only", () => {
   assert.equal("originalEstimateId" in job, false)
 
+  const paidPipelineStatus = {
+    label: "Paid",
+    tone: "good" as const,
+    message: "Final invoice is paid.",
+    primaryAction: "paid_closed" as const,
+  }
   const missingCosts = buildJobWorkflowSummary({
     jobs: [job],
     activeJobId: "job_1",
     latestEstimate: estimate,
-    pipelineStatus: {
-      label: "Paid / Closed",
-      tone: "good",
-      message: "Final invoice is paid.",
-      primaryAction: "paid_closed",
-    },
+    pipelineStatus: paidPipelineStatus,
   })
   const partialCosts = buildJobWorkflowSummary({
     jobs: [job],
     activeJobId: "job_1",
     latestEstimate: estimate,
-    pipelineStatus: {
-      label: "Paid / Closed",
-      tone: "good",
-      message: "Final invoice is paid.",
-      primaryAction: "paid_closed",
-    },
+    pipelineStatus: paidPipelineStatus,
     profitSummary: {
       actualCost: 500,
       profitRemaining: 350,
@@ -140,8 +136,23 @@ test("buildJobWorkflowSummary keeps paid-job actuals actions reference-only", ()
       label: "On Track",
     },
   })
+  const handoffReady = buildJobWorkflowSummary({
+    jobs: [job],
+    activeJobId: "job_1",
+    latestEstimate: estimate,
+    pipelineStatus: paidPipelineStatus,
+    profitSummary: {
+      actualCost: 500,
+      profitRemaining: 350,
+      liveMarginPct: 23,
+      label: "On Track",
+    },
+    fieldHandoffReady: true,
+  })
 
   for (const summary of [missingCosts, partialCosts]) {
+    assert.equal(summary.status.label, "Paid")
+    assert.doesNotMatch(summary.status.label, /closed|complete|completed/i)
     assert.equal(summary.nextAction.key, "review_actuals")
     assert.equal(
       summary.nextAction.description,
@@ -149,6 +160,10 @@ test("buildJobWorkflowSummary keeps paid-job actuals actions reference-only", ()
     )
     assert.doesNotMatch(summary.nextAction.description, /original estimate|profit|margin/i)
   }
+
+  assert.equal(paidPipelineStatus.primaryAction, "paid_closed")
+  assert.equal(handoffReady.status.label, "Paid")
+  assert.equal(handoffReady.nextAction.key, "copy_field_handoff")
 })
 
 test("buildJobWorkflowSummary surfaces invoices, profit, and crew in contractor language", () => {
