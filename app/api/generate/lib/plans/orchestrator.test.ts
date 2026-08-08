@@ -51,6 +51,30 @@ async function makePdfBuffer(pages: string[]): Promise<Buffer> {
   return Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64")
 }
 
+function makeFinishSchedulePage(args: {
+  ceiling: string
+  wall?: string
+  sheetNumber?: string
+}): string {
+  return [
+    `${args.sheetNumber || "A8.1"} Finish Schedule`,
+    "Room | Wall Finish | Ceiling",
+    `101 Guest Room | ${args.wall || "Wallcovering"} | ${args.ceiling}`,
+  ].join("\n")
+}
+
+function makeFinishLegendPage(args: {
+  code: string
+  definition: string
+  sheetNumber?: string
+}): string {
+  return [
+    `${args.sheetNumber || "A9.1"} Finish Legend`,
+    "Code | Description",
+    `${args.code} | ${args.definition}`,
+  ].join("\n")
+}
+
 test("selected-sheet analysis only uses user-selected pages", async () => {
   const result = await runPlanIntelligence({
     rawPlans: [
@@ -592,4 +616,165 @@ test("browser-derived, server-derived, and fallback upload modes preserve identi
   } finally {
     await rm(tempRoot, { recursive: true, force: true })
   }
+})
+
+test("exposes a direct ceiling paint semantic candidate with non-operational authority", async () => {
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        uploadId: "direct-ceiling-paint",
+        name: "direct-ceiling-paint.pdf",
+        dataUrl: await makePdfDataUrl([
+          makeFinishSchedulePage({ ceiling: "Paint" }),
+        ]),
+        note: "Direct finish schedule semantics",
+        selectedSourcePages: [1],
+      },
+    ],
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  assert(result)
+  assert.equal(result.extractedTables?.length, 1)
+  assert.equal(result.roomFinishMatrices?.length, 1)
+  assert.equal(result.scopeBoundarySemanticCandidates?.length, 1)
+
+  const candidate = result.scopeBoundarySemanticCandidates?.[0]
+  assert(candidate)
+  assert.equal(candidate.trade, "painting")
+  assert.equal(candidate.subjectKey, "ceilings")
+  assert.equal(candidate.surface, "ceiling")
+  assert.equal(candidate.semanticStatus, "resolved")
+  assert.equal(candidate.resolvedFinishCategory, "paint_coating")
+  assert.equal(candidate.resolutionMethod, "explicit_schedule_value")
+  assert.equal(candidate.eligibleForFutureScopeReview, true)
+  assert.equal(candidate.pricingAuthoritative, false)
+  assert.equal(candidate.pricingEligibleNow, false)
+  assert.equal(candidate.quantityAuthoritative, false)
+  assert.equal(candidate.mutatesTypedScope, false)
+  assert.equal(candidate.generatesEstimate, false)
+  assert.equal(candidate.persistsState, false)
+  assert.deepEqual(candidate.warnings, [])
+  assert.deepEqual(candidate.blockers, [])
+  assert.equal("actionable" in candidate, false)
+  assert.equal(candidate.scheduleSource.uploadId, "direct-ceiling-paint")
+  assert.equal(candidate.scheduleSource.uploadName, "direct-ceiling-paint.pdf")
+  assert.equal(candidate.scheduleSource.sourcePageNumber, 1)
+  assert.equal(candidate.scheduleSource.sheetNumber, "A8-1")
+  assert.equal(candidate.scheduleSource.sourceTableIndex, 0)
+  assert.equal(candidate.scheduleSource.sourceMatrixIndex, 0)
+  assert.equal(candidate.scheduleSource.rowIndex, 1)
+  assert.equal(candidate.scheduleSource.sourceColumnIndex, 2)
+  assert.equal(candidate.scheduleSource.sourceColumnLabel, "Ceiling")
+  assert.equal(candidate.scheduleSource.surface, "ceiling")
+  assert.equal(candidate.scheduleSource.roomNumber, "101")
+  assert.equal(candidate.scheduleSource.roomName, "Guest Room")
+  assert.equal(candidate.scheduleSource.rawFinishValue, "Paint")
+  assert.deepEqual(candidate.legendSources, [])
+})
+
+test("exposes same-upload cross-page legend resolution with both provenance chains", async () => {
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        uploadId: "same-upload-plan",
+        name: "same-upload-plan.pdf",
+        dataUrl: await makePdfDataUrl([
+          makeFinishSchedulePage({ ceiling: "P-1", sheetNumber: "A8.1" }),
+          makeFinishLegendPage({
+            code: "P-1",
+            definition: "Paint",
+            sheetNumber: "A9.1",
+          }),
+        ]),
+        note: "Architectural finish references",
+        selectedSourcePages: [1, 2],
+      },
+    ],
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  assert(result)
+  assert.equal(result.extractedTables?.length, 2)
+  assert.equal(result.roomFinishMatrices?.length, 1)
+  assert.equal(result.scopeBoundarySemanticCandidates?.length, 1)
+
+  const candidate = result.scopeBoundarySemanticCandidates?.[0]
+  assert(candidate)
+  assert.equal(candidate.resolutionMethod, "legend_code")
+  assert.equal(candidate.scheduleSource.uploadId, "same-upload-plan")
+  assert.equal(candidate.scheduleSource.sourcePageNumber, 1)
+  assert.equal(candidate.scheduleSource.sheetNumber, "A8-1")
+  assert.equal(candidate.scheduleSource.rawFinishValue, "P-1")
+  assert.equal(candidate.legendSources.length, 1)
+  assert.equal(candidate.legendSources[0].uploadId, "same-upload-plan")
+  assert.equal(candidate.legendSources[0].uploadName, "same-upload-plan.pdf")
+  assert.equal(candidate.legendSources[0].sourceTableIndex, 1)
+  assert.equal(candidate.legendSources[0].rowIndex, 1)
+  assert.equal(candidate.legendSources[0].sourcePageNumber, 2)
+  assert.equal(candidate.legendSources[0].sheetNumber, "A9-1")
+  assert.equal(candidate.legendSources[0].rawCode, "P-1")
+  assert.equal(candidate.legendSources[0].rawDefinition, "Paint")
+})
+
+test("does not resolve a finish code from a different upload legend", async () => {
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        uploadId: "schedule-upload",
+        name: "schedule-upload.pdf",
+        dataUrl: await makePdfDataUrl([
+          makeFinishSchedulePage({ ceiling: "P-1" }),
+        ]),
+        note: "Finish schedule",
+        selectedSourcePages: [1],
+      },
+      {
+        uploadId: "legend-upload",
+        name: "legend-upload.pdf",
+        dataUrl: await makePdfDataUrl([
+          makeFinishLegendPage({ code: "P-1", definition: "Paint" }),
+        ]),
+        note: "Unrelated legend",
+        selectedSourcePages: [1],
+      },
+    ],
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  assert(result)
+  assert.equal(result.extractedTables?.length, 2)
+  assert.equal(result.roomFinishMatrices?.length, 1)
+  assert.deepEqual(result.scopeBoundarySemanticCandidates, [])
+})
+
+test("returns an empty candidate array for review-only and blocked finish semantics", async () => {
+  const result = await runPlanIntelligence({
+    rawPlans: [
+      {
+        uploadId: "non-candidate-finishes",
+        name: "non-candidate-finishes.pdf",
+        dataUrl: await makePdfDataUrl([
+          [
+            "A8.1 Finish Schedule",
+            "Room | Wall Finish | Ceiling",
+            "101 Guest Room | Paint | No Paint",
+            "102 Guest Room | Wallcovering | Do Not Paint",
+          ].join("\n"),
+        ]),
+        note: "Review-only and blocked finish semantics",
+        selectedSourcePages: [1],
+      },
+    ],
+    scopeText: "Refresh guest room finishes.",
+    trade: "painting",
+  })
+
+  assert(result)
+  assert.equal(result.extractedTables?.length, 1)
+  assert.equal(result.roomFinishMatrices?.length, 1)
+  assert.deepEqual(result.scopeBoundarySemanticCandidates, [])
 })

@@ -5,6 +5,7 @@ import { analyzePlanSheet } from "./analyzeSheet"
 import { mergePlanAnalyses } from "./crossSheetMerge"
 import { extractPlanTablesFromPages } from "./tableExtraction"
 import { extractRoomFinishMatricesFromTables } from "./roomFinishMatrix"
+import { buildPlanScopeBoundaryCandidates } from "./scopeBoundaryCandidates"
 import { detectRepeatedRoomPackagesFromMatrices } from "./repeatedRoomPackages"
 import { buildTradeQuantityCandidates } from "./tradeQuantityCandidates"
 import { buildTradeQuantityCandidateGates } from "./tradeQuantityCandidateGates"
@@ -374,6 +375,11 @@ export async function runPlanIntelligence(args: {
     sheetIndex: finalSheetIndex,
   })
   const roomFinishMatrices = extractRoomFinishMatricesFromTables(extractedTables)
+  const { candidates: scopeBoundarySemanticCandidates } =
+    buildPlanScopeBoundaryCandidates({
+      extractedTables,
+      roomFinishMatrices,
+    })
   const repeatedRoomPackages = detectRepeatedRoomPackagesFromMatrices(roomFinishMatrices)
   const tradeQuantityCandidates = buildTradeQuantityCandidates({
     extractedTables,
@@ -398,6 +404,7 @@ export async function runPlanIntelligence(args: {
     pageReadStatuses,
     extractedTables,
     roomFinishMatrices,
+    scopeBoundarySemanticCandidates,
     repeatedRoomPackages,
     tradeQuantityCandidates,
     tradeQuantityCandidateGates,

@@ -600,6 +600,7 @@ export type PlanIntelligence = {
   pageReadStatuses?: PlanPageReadStatus[]
   extractedTables?: PlanExtractedTable[]
   roomFinishMatrices?: PlanRoomFinishMatrix[]
+  scopeBoundarySemanticCandidates?: import("./scopeBoundaryCandidates").PlanScopeBoundarySemanticCandidate[]
   repeatedRoomPackages?: PlanRepeatedRoomPackage[]
   tradeQuantityCandidates?: PlanTradeQuantityCandidate[]
   tradeQuantityCandidateGates?: PlanTradeQuantityCandidateGate[]
