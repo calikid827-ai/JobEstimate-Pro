@@ -159,11 +159,22 @@ import {
   buildScopeDecisionWording,
   isScopeDecisionWordingOwned,
   normalizeScopeWhitespace,
-  prioritizeActionableScopeDecisions,
   type ActionableScopeDecision,
   type ScopeDecisionSelection,
   type ScopeDecisionWordingOwnership,
 } from "./lib/actionable-scope-decisions"
+import {
+  buildPhotoEvidenceFingerprint,
+  buildPhotoIntelligenceActions,
+  classifyPhotoEvidenceFreshness,
+  type PhotoEvidenceFingerprint,
+  type PhotoIntelligenceActionCandidate,
+} from "./lib/photo-intelligence-actions"
+import {
+  canApplyPhotoScopeDecision,
+  composePhotoScopeDecisions,
+  requiresPhotoEvidenceRegeneration,
+} from "./lib/photo-intelligence-action-integration"
 import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
@@ -216,6 +227,11 @@ type JobPhoto = {
     label: string
     realWidthIn: number | null
   }
+}
+
+type GeneratedPhotoEvidenceProvenance = {
+  fingerprint: PhotoEvidenceFingerprint
+  trade: string
 }
 
 type JobPlan = {
@@ -1527,6 +1543,7 @@ const invoicesSectionRef = useRef<HTMLDivElement | null>(null)
 const jobsDashboardSectionRef = useRef<HTMLDivElement | null>(null)
 const fieldHandoffSectionRef = useRef<HTMLDivElement | null>(null)
 const reviewBeforeSendingSectionRef = useRef<HTMLDivElement | null>(null)
+const previousPhotoDecisionIdsRef = useRef<Set<string>>(new Set())
 const rateCardHistorySyncSkipRef = useRef<{
   tax?: { enabled: boolean; rate: number }
   deposit?: { enabled: boolean; type: RateCard["deposit"]["type"]; value: number }
@@ -1574,6 +1591,27 @@ function scrollToReviewBeforeSending() {
 const MAX_JOB_PHOTOS = 8
 const MAX_PHOTO_DATAURL_LENGTH = 450_000
 const MAX_TOTAL_PHOTO_PAYLOAD = 3_200_000
+
+const selectedPhotoEvidence = useMemo(() => {
+  const selected: JobPhoto[] = []
+  let runningTotal = 0
+
+  for (const photo of jobPhotos) {
+    const size = photo.dataUrl?.length || 0
+    if (size > MAX_PHOTO_DATAURL_LENGTH) continue
+    if (runningTotal + size > MAX_TOTAL_PHOTO_PAYLOAD) continue
+
+    selected.push(photo)
+    runningTotal += size
+  }
+
+  return selected
+}, [jobPhotos])
+
+const currentPhotoEvidenceFingerprint = useMemo(
+  () => buildPhotoEvidenceFingerprint(selectedPhotoEvidence),
+  [selectedPhotoEvidence]
+)
 
 function estimatePhotoPayloadLength(
   photos: { dataUrl: string }[]
@@ -2592,7 +2630,13 @@ function startChangeOrderFromJob(jobId: string) {
   const latest = latestEstimateForJob(jobId)
   const source = latest || original
 
+  if (!source) {
+    setStatus("No estimate found for this job yet.")
+    return
+  }
+
   setActiveJobId(jobId)
+  setGeneratedPhotoEvidenceProvenance(null)
 
   setJobDetails({
     clientName: job.clientName || "",
@@ -2963,6 +3007,8 @@ const [result, setResult] = useState<{
   } | null
 } | null>(null)
 const [generatedScopeSnapshot, setGeneratedScopeSnapshot] = useState<string | null>(null)
+const [generatedPhotoEvidenceProvenance, setGeneratedPhotoEvidenceProvenance] =
+  useState<GeneratedPhotoEvidenceProvenance | null>(null)
 const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
 const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
   useState<EstimateEmbeddedBurden[] | null>(null)
@@ -2983,6 +3029,7 @@ const [appliedScopeDecisions, setAppliedScopeDecisions] = useState<
     {
       decision: ActionableScopeDecision
       ownership: ScopeDecisionWordingOwnership
+      photoCandidate?: PhotoIntelligenceActionCandidate
     }
   >
 >({})
@@ -3515,28 +3562,6 @@ const planAssistedStatus = useMemo(() => {
     ],
   }
 }, [jobPlans.length, planIntelligence])
-
-const smartScopePreview = useMemo(() => {
-  const base = (scopeChange || "").trim()
-  if (!base) return null
-
-  const additions = photoScopeAssist?.suggestedAdditions ?? []
-  const notes = photoAnalysis?.suggestedScopeNotes ?? []
-
-  const merged = [...notes, ...additions]
-    .map((x) => x.trim())
-    .filter(Boolean)
-
-  const unique = Array.from(new Set(merged))
-
-  if (unique.length === 0) return null
-
-  return {
-    original: base,
-    suggestions: unique,
-    combined: [base, ...unique].join("\n• "),
-  }
-}, [scopeChange, photoScopeAssist, photoAnalysis])
 
     const smartSuggestedPrice = useMemo(() => {
   if (!pricingMemory) return null
@@ -4104,6 +4129,61 @@ const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
   areaScopeBreakdown,
 ])
 
+const hasUnregeneratedScopeChanges = useMemo(
+  () =>
+    Boolean(
+      result &&
+        generatedScopeSnapshot != null &&
+        normalizeScopeWhitespace(scopeChange) !==
+          normalizeScopeWhitespace(generatedScopeSnapshot)
+    ),
+  [result, generatedScopeSnapshot, scopeChange]
+)
+
+const photoEvidenceFreshness = useMemo(
+  () =>
+    classifyPhotoEvidenceFreshness({
+      generatedEvidenceFingerprint:
+        generatedPhotoEvidenceProvenance?.fingerprint ?? null,
+      currentEvidenceFingerprint: currentPhotoEvidenceFingerprint,
+    }),
+  [generatedPhotoEvidenceProvenance, currentPhotoEvidenceFingerprint]
+)
+
+const photoIntelligenceActions = useMemo(
+  () =>
+    buildPhotoIntelligenceActions({
+      trade,
+      photoScopeAssist: photoScopeAssist ?? undefined,
+      generatedEvidenceFingerprint:
+        generatedPhotoEvidenceProvenance?.fingerprint ?? null,
+      currentEvidenceFingerprint: currentPhotoEvidenceFingerprint,
+    }),
+  [
+    trade,
+    photoScopeAssist,
+    generatedPhotoEvidenceProvenance,
+    currentPhotoEvidenceFingerprint,
+  ]
+)
+
+const eligiblePhotoActionCandidates = useMemo(
+  () =>
+    result &&
+    !hasUnregeneratedScopeChanges &&
+    generatedPhotoEvidenceProvenance?.trade === "painting" &&
+    trade === "painting"
+      ? photoIntelligenceActions.candidates
+      : [],
+  [
+    result,
+    hasUnregeneratedScopeChanges,
+    generatedPhotoEvidenceProvenance,
+    trade,
+    photoIntelligenceActions,
+  ]
+)
+
 const smartQuestions = useMemo(
   () =>
     buildSmartQuestions({
@@ -4138,17 +4218,58 @@ const currentScopeDecisions = useMemo(
   [smartQuestions]
 )
 
-const scopeDecisions = useMemo(
+const scopeDecisionComposition = useMemo(
   () =>
-    prioritizeActionableScopeDecisions(
-      [
-        ...currentScopeDecisions,
-        ...Object.values(appliedScopeDecisions).map((record) => record.decision),
-      ],
-      3
-    ),
-  [currentScopeDecisions, appliedScopeDecisions]
+    composePhotoScopeDecisions({
+      ordinaryDecisions: currentScopeDecisions,
+      appliedDecisions: Object.values(appliedScopeDecisions),
+      photoCandidates: eligiblePhotoActionCandidates,
+      limit: 3,
+    }),
+  [
+    currentScopeDecisions,
+    appliedScopeDecisions,
+    eligiblePhotoActionCandidates,
+  ]
 )
+
+const scopeDecisions = scopeDecisionComposition.decisions
+const photoCandidatesByDecisionId =
+  scopeDecisionComposition.photoCandidatesByDecisionId
+const displayedPhotoDecisionIds = useMemo(
+  () => Object.keys(photoCandidatesByDecisionId).sort(),
+  [photoCandidatesByDecisionId]
+)
+
+useEffect(() => {
+  const nextIds = new Set(displayedPhotoDecisionIds)
+  const removedIds = [...previousPhotoDecisionIdsRef.current].filter(
+    (id) => !nextIds.has(id)
+  )
+  previousPhotoDecisionIdsRef.current = nextIds
+  if (removedIds.length === 0) return
+
+  setScopeDecisionSelections((prev) => {
+    const next = { ...prev }
+    let changed = false
+    for (const id of removedIds) {
+      if (!(id in next)) continue
+      delete next[id]
+      changed = true
+    }
+    return changed ? next : prev
+  })
+  setScopeDecisionFeedback((prev) => {
+    const next = { ...prev }
+    let changed = false
+    for (const id of removedIds) {
+      if (!(id in next)) continue
+      delete next[id]
+      changed = true
+    }
+    return changed ? next : prev
+  })
+}, [displayedPhotoDecisionIds])
 
 const appliedScopeDecisionSentences = useMemo(
   () =>
@@ -4165,17 +4286,6 @@ const appliedScopeDecisionSentences = useMemo(
 const unresolvedHighPriorityReviewQuestions = useMemo(
   () => smartQuestions.filter((question) => question.priority === "high").length,
   [smartQuestions]
-)
-
-const hasUnregeneratedScopeChanges = useMemo(
-  () =>
-    Boolean(
-      result &&
-        generatedScopeSnapshot != null &&
-        normalizeScopeWhitespace(scopeChange) !==
-          normalizeScopeWhitespace(generatedScopeSnapshot)
-    ),
-  [result, generatedScopeSnapshot, scopeChange]
 )
 
 const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
@@ -4207,6 +4317,19 @@ const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
   scopeSignals,
 ])
 
+const photoEvidenceRequiresRegeneration = useMemo(
+  () =>
+    requiresPhotoEvidenceRegeneration({
+      hasDisplayedResult: Boolean(result),
+      freshness: photoEvidenceFreshness,
+      currentSelectedEvidenceCount: selectedPhotoEvidence.length,
+    }),
+  [result, photoEvidenceFreshness, selectedPhotoEvidence.length]
+)
+
+const hasUnregeneratedEstimatorInputChanges =
+  hasUnregeneratedScopeChanges || photoEvidenceRequiresRegeneration
+
 const proposalReadiness = useMemo(() => {
   const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
     /unsupported trade wording/i.test(item.label)
@@ -4229,7 +4352,7 @@ const proposalReadiness = useMemo(() => {
     priceGuardScore: priceGuardReview?.score ?? null,
     unresolvedHighPriorityReviewQuestions,
     hasPlanOrPhotoReviewWarning,
-    hasUnregeneratedScopeChanges,
+    hasUnregeneratedScopeChanges: hasUnregeneratedEstimatorInputChanges,
   })
 }, [
   result,
@@ -4238,7 +4361,7 @@ const proposalReadiness = useMemo(() => {
   estimatorReviewSummary,
   priceGuardReview,
   unresolvedHighPriorityReviewQuestions,
-  hasUnregeneratedScopeChanges,
+  hasUnregeneratedEstimatorInputChanges,
 ])
 
 const fieldHandoff = useMemo(
@@ -4309,7 +4432,8 @@ function updateScopeDecisionSelection(
 
 function applyScopeDecision(
   decision: ActionableScopeDecision,
-  selection: ScopeDecisionSelection
+  selection: ScopeDecisionSelection,
+  photoCandidate?: PhotoIntelligenceActionCandidate
 ) {
   const wording = buildScopeDecisionWording(decision, selection)
   if (!wording) {
@@ -4347,7 +4471,11 @@ function applyScopeDecision(
   setAppliedScopeDecisions((prev) => {
     const next = { ...prev }
     if (application.ownership) {
-      next[decision.id] = { decision, ownership: application.ownership }
+      next[decision.id] = {
+        decision,
+        ownership: application.ownership,
+        photoCandidate,
+      }
     } else {
       delete next[decision.id]
     }
@@ -4361,6 +4489,38 @@ function applyScopeDecision(
         : "Applied to the typed scope.",
   }))
   setScopeDecisionScopeUpdated(true)
+}
+
+function applyScopeDecisionFromPanel(
+  decision: ActionableScopeDecision,
+  selection: ScopeDecisionSelection
+) {
+  const photoCandidate = photoCandidatesByDecisionId[decision.id]
+  if (
+    photoCandidate &&
+    !canApplyPhotoScopeDecision({
+      candidate: photoCandidate,
+      currentCandidates: photoIntelligenceActions.candidates,
+      generatedEvidenceFingerprint:
+        generatedPhotoEvidenceProvenance?.fingerprint ?? null,
+      currentEvidenceFingerprint: currentPhotoEvidenceFingerprint,
+      generatedTrade: generatedPhotoEvidenceProvenance?.trade ?? null,
+      currentTrade: trade,
+      generatedScopeSnapshot,
+      currentScopeText: scopeChange,
+    })
+  ) {
+    const message =
+      "Photos or typed scope changed since this estimate was generated. Click Generate before using this photo decision."
+    setScopeDecisionFeedback((prev) => ({
+      ...prev,
+      [decision.id]: message,
+    }))
+    setStatus(message)
+    return
+  }
+
+  applyScopeDecision(decision, selection, photoCandidate)
 }
 
 function handleProposalReadinessAction(target: ProposalReadinessActionTarget) {
@@ -4452,23 +4612,6 @@ function applyProfitTarget(targetMarginPct: number) {
 
   setPricingEdited(true)
   setStatus(`Profit target applied: ${Math.round(targetMarginPct)}% TRUE margin`)
-}
-
-function applySmartScopePreview() {
-  if (!smartScopePreview) return
-  setScopeChange(
-    `${smartScopePreview.original}\n\n• ${smartScopePreview.suggestions.join("\n• ")}`
-  )
-  setStatus("Smart scope additions applied.")
-}
-
-async function regenerateWithSmartScope() {
-  if (!smartScopePreview) return
-
-  const mergedScope =
-    `${smartScopePreview.original}\n\n• ${smartScopePreview.suggestions.join("\n• ")}`
-
-  await generate(mergedScope)
 }
 
 function saveCurrentSetupAsJobTemplate() {
@@ -4974,7 +5117,7 @@ useEffect(() => {
   // -------------------------
 // Generate AI document
 // -------------------------
-async function generate(scopeOverride?: string) {
+async function generate() {
   if (generatingRef.current) return
   generatingRef.current = true
 
@@ -4990,10 +5133,7 @@ async function generate(scopeOverride?: string) {
     return
   }
 
-  const finalScopeChange =
-  typeof scopeOverride === "string"
-    ? scopeOverride.trim()
-    : String(scopeChange || "").trim()
+  const finalScopeChange = String(scopeChange || "").trim()
 
     if (!finalScopeChange) {
     setStatus("Please describe the scope change.")
@@ -5011,6 +5151,7 @@ async function generate(scopeOverride?: string) {
   setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
   setResult(null)
+  setGeneratedPhotoEvidenceProvenance(null)
   setEstimateRows(null)
   setEstimateEmbeddedBurdens(null)
   setEstimateSections(null)
@@ -5036,11 +5177,6 @@ async function generate(scopeOverride?: string) {
   setTradePricingPrepAnalysis(null)
   setChangeOrderDetection(null)
 
-    if (scopeOverride) {
-    setScopeChange(finalScopeChange)
-    setStatus("Regenerating with smart scope suggestions...")
-  }
-
 const sendPaintScope =
   trade === "painting" || (trade === "" && hasPaintWord)
 
@@ -5053,59 +5189,29 @@ const tradeToSend =
     ? "general renovation"
     : trade
 
+const requestPhotoTrade = sendPaintScope ? "painting" : trade
+
   try {
     const requestId = crypto.randomUUID()
 
+const requestSelectedPhotoEvidence = selectedPhotoEvidence
+const requestPhotoEvidenceFingerprint = buildPhotoEvidenceFingerprint(
+  requestSelectedPhotoEvidence
+)
 const photosToSend =
-  jobPhotos.length > 0
-    ? (() => {
-        const selected: {
-          name: string
-          dataUrl: string
-          roomTag: string
-          shotType:
-            | "overview"
-            | "corner"
-            | "wall"
-            | "ceiling"
-            | "floor"
-            | "fixture"
-            | "damage"
-            | "measurement"
-          note: string
-          reference: {
-            kind: "none" | "custom"
-            label: string
-            realWidthIn: number | null
-          }
-        }[] = []
-
-        let runningTotal = 0
-
-        for (const p of jobPhotos) {
-          const size = p.dataUrl?.length || 0
-
-          if (size > MAX_PHOTO_DATAURL_LENGTH) continue
-          if (runningTotal + size > MAX_TOTAL_PHOTO_PAYLOAD) continue
-
-          selected.push({
-            name: p.name,
-            dataUrl: p.dataUrl,
-            roomTag: p.roomTag || "",
-            shotType: p.shotType || "overview",
-            note: p.note || "",
-            reference: p.reference ?? {
-              kind: "none",
-              label: "",
-              realWidthIn: null,
-            },
-          })
-
-          runningTotal += size
-        }
-
-        return selected.length > 0 ? selected : null
-      })()
+  requestSelectedPhotoEvidence.length > 0
+    ? requestSelectedPhotoEvidence.map((photo) => ({
+        name: photo.name,
+        dataUrl: photo.dataUrl,
+        roomTag: photo.roomTag || "",
+        shotType: photo.shotType || "overview",
+        note: photo.note || "",
+        reference: photo.reference ?? {
+          kind: "none" as const,
+          label: "",
+          realWidthIn: null,
+        },
+      }))
     : null
 
 if (jobPhotos.length > 0 && (!photosToSend || photosToSend.length < jobPhotos.length)) {
@@ -6202,6 +6308,10 @@ setResult({
   explanation: data?.explanation || null,
 })
 setGeneratedScopeSnapshot(finalScopeChange)
+setGeneratedPhotoEvidenceProvenance({
+  fingerprint: requestPhotoEvidenceFingerprint,
+  trade: requestPhotoTrade,
+})
 resetTransientScopeDecisions()
 
 const normalizedJobDetails = {
@@ -7491,6 +7601,7 @@ function clearHistory() {
 
 // ✅ Load history item back into the form
 function loadHistoryItem(item: EstimateHistoryItem) {
+  setGeneratedPhotoEvidenceProvenance(null)
   setJobDetails(item.jobDetails)
   setDocumentType(item.documentType || "Estimate")
   setTrade(item.trade || "")
@@ -14822,71 +14933,6 @@ function EstimatorReviewSummaryPanel({
         </div>
       </div>
 
-      {smartScopePreview && (
-        <div
-          style={{
-            marginTop: 12,
-            padding: 14,
-            border: "1px solid #c7d2fe",
-            borderRadius: 14,
-            background: "#eef2ff",
-          }}
-        >
-          <div style={{ fontWeight: 900, fontSize: 15, color: "#1e1b4b" }}>
-            Smart Scope Assist
-          </div>
-
-          <div style={{ fontSize: 13, color: "#4338ca", marginTop: 4 }}>
-            Suggested additions based on uploaded photos and missing scope details.
-          </div>
-
-          <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
-            {smartScopePreview.suggestions.map((item, i) => (
-              <li key={`smart-scope-${i}`}>{item}</li>
-            ))}
-          </ul>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={regenerateWithSmartScope}
-              disabled={loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: loading ? "#a5b4fc" : "#312e81",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.8 : 1,
-              }}
-            >
-              {loading ? "Regenerating..." : "Regenerate with Suggestions"}
-            </button>
-
-            <button
-              type="button"
-              onClick={applySmartScopePreview}
-              disabled={loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #c7d2fe",
-                background: "#fff",
-                color: "#312e81",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
-                opacity: loading ? 0.7 : 1,
-              }}
-            >
-              Apply to Scope Only
-            </button>
-          </div>
-        </div>
-      )}
     </ResultCommandSection>
 
     <ResultCommandSection
@@ -15001,7 +15047,7 @@ function EstimatorReviewSummaryPanel({
           scopeDecisionScopeUpdated && hasUnregeneratedScopeChanges
         }
         onSelectionChange={updateScopeDecisionSelection}
-        onApply={applyScopeDecision}
+        onApply={applyScopeDecisionFromPanel}
       />
 
       <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
