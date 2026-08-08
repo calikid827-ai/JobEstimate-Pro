@@ -645,8 +645,8 @@ Known gaps:
 
 - Completed: Actionable Scope Decisions V1 in `7c5ac91`.
 - Completed: Actuals vs Estimate Feedback V1 in `6f535d2` and `910391d`; recorded-cost variance remains reference-only and cannot automatically update Rate Card defaults, production rates, pricing formulas, pricing authority, labor totals, or future estimates.
-- Next planning checkpoint: Whole-Product Intelligence & Simplification Review. This is a bounded audit/planning checkpoint, not a product feature or roadmap phase.
-- Next product-intelligence feature: Photo Intelligence Actions V1, followed by Plan Intelligence Workflow V1 and Contractor Learning System as separately scoped phases. Plan/photo findings remain review-only and non-pricing-authoritative unless a later explicit estimator-confirmation workflow establishes stronger authority.
+- Completed: The bounded Whole-Product Intelligence & Simplification Review and its one pre-Photo cleanup, Canonical Contractor Status Semantics Cleanup (`2c8ebb1`). Send Readiness remains the sole send/no-send verdict, Estimator Review remains a findings summary, and paid invoice workflow now presents payment status without claiming job completion.
+- Next product-intelligence feature: Photo Intelligence Actions V1, followed by Plan Intelligence Workflow V1 and Contractor Learning System as separately scoped phases. Photo actions must remain inside Review Before Sending, preserve five Command Center sections, reuse the Scope Decisions interaction pattern rather than coexist with a parallel Smart Scope Assist action flow, bind to the generated evidence snapshot, and suppress stale actionability after photo changes. Photos remain non-pricing-authoritative; any estimating effect must come through explicit contractor action that updates typed scope followed by successful regeneration.
 - Continue real-PDF QA for plan evidence and customer-output safety under regression watch. The typed scope normalization helper, PriceGuard trade-specific missed-scope checks, Schedule Sequencing Review Guard, Customer Scope Drift cleanups, backend scope-boundary filtering, Scope-to-Price Consistency Review Guard, and real-world QA false-positive cleanups are implemented; keep them under regression watch while preserving useful AI-generated detailed scope descriptions and detecting unsupported expansion without rewriting `result.text`.
 - Further PriceGuard Review copy/heuristic polish only if QA finds new false positives; the current generated-text warning filtering pass is complete.
 - Focused non-billing QA for Saved Estimates and Invoices empty states, selected-job context, mobile layout, and existing actions.
@@ -687,8 +687,8 @@ These already exist and should be extended or hardened rather than rebuilt:
 
 ## Top 5 Safest Next Activities
 
-1. Run the bounded Whole-Product Intelligence & Simplification Review planning checkpoint; this is not a product feature or roadmap phase.
-2. Build Photo Intelligence Actions V1 without making photo observations pricing-authoritative.
-3. Build Plan Intelligence Workflow V1 on the existing plan-intelligence backbone while preserving typed scope as the scope-control anchor.
-4. Build Contractor Learning System only after reference-only feedback and evidence workflows are stable.
+1. Build Photo Intelligence Actions V1 inside Review Before Sending without adding a section or making photo observations pricing-authoritative.
+2. Build Plan Intelligence Workflow V1 on the existing plan-intelligence backbone while preserving typed scope as the scope-control anchor.
+3. Build Contractor Learning System only after reference-only feedback and evidence workflows are stable.
+4. Continue focused real-world estimate, plan evidence, and workflow regression QA without broadening authority.
 5. Complete final Production Live Mode payment, webhook delivery, and entitlement activation verification using `SUBSCRIPTION_TEST_CHECKLIST.md` as the final pre-launch gate before public paid launch.
