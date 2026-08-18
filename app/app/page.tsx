@@ -183,6 +183,10 @@ import {
   type SelectedPlanEvidence,
 } from "./lib/plan-intelligence-evidence"
 import {
+  transitionGeneratedPlanScopeCandidateContext,
+  type GeneratedPlanScopeCandidateContext,
+} from "./lib/plan-scope-candidate-integration"
+import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
 } from "../lib/generate-response"
@@ -2690,6 +2694,11 @@ function startChangeOrderFromJob(jobId: string) {
   setActiveJobId(jobId)
   setGeneratedPhotoEvidenceProvenance(null)
   setGeneratedPlanEvidenceFingerprint(null)
+  setGeneratedPlanScopeCandidateContext((current) =>
+    transitionGeneratedPlanScopeCandidateContext(current, {
+      type: "source_change_order_reset",
+    })
+  )
 
   setJobDetails({
     clientName: job.clientName || "",
@@ -3064,6 +3073,10 @@ const [generatedPhotoEvidenceProvenance, setGeneratedPhotoEvidenceProvenance] =
   useState<GeneratedPhotoEvidenceProvenance | null>(null)
 const [generatedPlanEvidenceFingerprint, setGeneratedPlanEvidenceFingerprint] =
   useState<PlanEvidenceFingerprint | null>(null)
+const [
+  generatedPlanScopeCandidateContext,
+  setGeneratedPlanScopeCandidateContext,
+] = useState<GeneratedPlanScopeCandidateContext | null>(null)
 const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
 const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
   useState<EstimateEmbeddedBurden[] | null>(null)
@@ -5229,6 +5242,11 @@ async function generate() {
   setResult(null)
   setGeneratedPhotoEvidenceProvenance(null)
   setGeneratedPlanEvidenceFingerprint(null)
+  setGeneratedPlanScopeCandidateContext((current) =>
+    transitionGeneratedPlanScopeCandidateContext(current, {
+      type: "accepted_generate_reset",
+    })
+  )
   setEstimateRows(null)
   setEstimateEmbeddedBurdens(null)
   setEstimateSections(null)
@@ -6410,6 +6428,15 @@ setGeneratedPhotoEvidenceProvenance({
   trade: requestPhotoTrade,
 })
 setGeneratedPlanEvidenceFingerprint(requestPlanEvidenceFingerprint)
+setGeneratedPlanScopeCandidateContext((current) =>
+  transitionGeneratedPlanScopeCandidateContext(current, {
+    type: "successful_generate",
+    evidenceFingerprint: requestPlanEvidenceFingerprint,
+    generatedTrade: nextTrade,
+    rawCandidates:
+      data?.planIntelligence?.scopeBoundarySemanticCandidates,
+  })
+)
 resetTransientScopeDecisions()
 
 const normalizedJobDetails = {
@@ -7701,6 +7728,11 @@ function clearHistory() {
 function loadHistoryItem(item: EstimateHistoryItem) {
   setGeneratedPhotoEvidenceProvenance(null)
   setGeneratedPlanEvidenceFingerprint(null)
+  setGeneratedPlanScopeCandidateContext((current) =>
+    transitionGeneratedPlanScopeCandidateContext(current, {
+      type: "history_load",
+    })
+  )
   setJobDetails(item.jobDetails)
   setDocumentType(item.documentType || "Estimate")
   setTrade(item.trade || "")
