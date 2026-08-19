@@ -23,6 +23,11 @@ type WebhookDeps = {
   supabase: typeof supabase
 }
 
+type WebhookRouteDeps = {
+  stripe: Pick<Stripe, "webhooks" | "customers" | "subscriptions">
+  supabase: typeof supabase
+}
+
 type EntitlementPatch = {
   email: string
   plan: string
@@ -259,22 +264,44 @@ export async function handleSupportedStripeWebhookEvent(event: Stripe.Event, dep
   return NextResponse.json({ received: true })
 }
 
-export async function POST(req: Request) {
-  const sig = req.headers.get("stripe-signature")
-  if (!sig) return NextResponse.json({ error: "Missing signature" }, { status: 400 })
+export function createWebhookPostHandler(deps: WebhookRouteDeps = { stripe, supabase }) {
+  return async function post(req: Request) {
+    const sig = req.headers.get("stripe-signature")
+    if (!sig) return NextResponse.json({ error: "Missing signature" }, { status: 400 })
 
-  const body = await req.text()
+    const body = await req.text()
 
-  let event: Stripe.Event
-  try {
-    event = stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET!)
-  } catch (err: any) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
+    let event: Stripe.Event
+    try {
+      event = deps.stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET!)
+    } catch (err: any) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
+    }
+
+    const vercelEnv = process.env.VERCEL_ENV
+    let expectedLivemode: boolean
+    if (vercelEnv === "production") {
+      expectedLivemode = true
+    } else if (vercelEnv === "preview" || vercelEnv === "development") {
+      expectedLivemode = false
+    } else {
+      return NextResponse.json({ error: "Invalid VERCEL_ENV" }, { status: 500 })
+    }
+
+    if (event.livemode !== expectedLivemode) {
+      return NextResponse.json({
+        received: true,
+        ignored: true,
+        reason: "stripe_mode_mismatch",
+      })
+    }
+
+    if (!isSupportedStripeWebhookEvent(event.type)) {
+      return NextResponse.json({ received: true, ignored: true })
+    }
+
+    return handleSupportedStripeWebhookEvent(event, deps)
   }
-
-  if (!isSupportedStripeWebhookEvent(event.type)) {
-    return NextResponse.json({ received: true, ignored: true })
-  }
-
-  return handleSupportedStripeWebhookEvent(event)
 }
+
+export const POST = createWebhookPostHandler()

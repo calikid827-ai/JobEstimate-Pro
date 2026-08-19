@@ -1,10 +1,22 @@
 import assert from "node:assert/strict"
 import test from "node:test"
+import Stripe from "stripe"
 
 process.env.STRIPE_SECRET_KEY ||= "sk_test_webhook_route_test"
 process.env.STRIPE_WEBHOOK_SECRET ||= "whsec_webhook_route_test"
 process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://example.supabase.co"
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key"
+
+const originalVercelEnv = process.env.VERCEL_ENV
+const webhookTestStripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+
+test.afterEach(() => {
+  if (originalVercelEnv === undefined) {
+    delete process.env.VERCEL_ENV
+  } else {
+    process.env.VERCEL_ENV = originalVercelEnv
+  }
+})
 
 type QueryCall = {
   table: string
@@ -134,6 +146,85 @@ function makeDeps(supabaseClient: any, subscriptionOverrides: Record<string, unk
   } as any
 }
 
+function makeWebhookEvent(args: { id: string; type: string; livemode: boolean }) {
+  return {
+    id: args.id,
+    object: "event",
+    type: args.type,
+    livemode: args.livemode,
+    data: {
+      object: args.type === "checkout.session.completed"
+        ? {
+            id: "cs_mode_guard",
+            customer: "cus_mode_guard",
+            customer_email: "client@example.com",
+            subscription: "sub_mode_guard",
+          }
+        : { id: "pi_mode_guard" },
+    },
+  }
+}
+
+function makeSignedWebhookRequest(event: ReturnType<typeof makeWebhookEvent>) {
+  const payload = JSON.stringify(event)
+  const signature = webhookTestStripe.webhooks.generateTestHeaderString({
+    payload,
+    secret: process.env.STRIPE_WEBHOOK_SECRET!,
+  })
+
+  return new Request("https://jobestimatepro.test/api/webhook", {
+    method: "POST",
+    headers: { "stripe-signature": signature },
+    body: payload,
+  })
+}
+
+async function makeNoProcessingRoute() {
+  const { createWebhookPostHandler } = await import("./route")
+  const { client, calls } = makeSupabaseMock(() => ({
+    data: null,
+    error: { message: "Unexpected Supabase call" },
+  }))
+  let customerLookups = 0
+  let subscriptionLookups = 0
+
+  const post = createWebhookPostHandler({
+    supabase: client as any,
+    stripe: {
+      webhooks: webhookTestStripe.webhooks,
+      customers: {
+        retrieve: async () => {
+          customerLookups += 1
+          throw new Error("Unexpected Stripe customer lookup")
+        },
+      },
+      subscriptions: {
+        retrieve: async () => {
+          subscriptionLookups += 1
+          throw new Error("Unexpected Stripe subscription lookup")
+        },
+      },
+    } as any,
+  })
+
+  return {
+    post,
+    calls,
+    get customerLookups() {
+      return customerLookups
+    },
+    get subscriptionLookups() {
+      return subscriptionLookups
+    },
+  }
+}
+
+function assertNoProcessingWork(work: Awaited<ReturnType<typeof makeNoProcessingRoute>>) {
+  assert.equal(work.calls.length, 0)
+  assert.equal(work.customerLookups, 0)
+  assert.equal(work.subscriptionLookups, 0)
+}
+
 test("checkout.session.completed activates entitlement before recording the event as processed", async () => {
   const { handleSupportedStripeWebhookEvent } = await import("./route")
   const { client, calls } = makeSupabaseMock((call) => {
@@ -258,4 +349,93 @@ test("POST still rejects invalid Stripe signatures before webhook processing", a
 
   assert.equal(response.status, 400)
   assert.deepEqual(await response.json(), { error: "Invalid signature" })
+})
+
+for (const { vercelEnv, livemode } of [
+  { vercelEnv: "production", livemode: true },
+  { vercelEnv: "preview", livemode: false },
+  { vercelEnv: "development", livemode: false },
+] as const) {
+  test(`${vercelEnv} accepts Stripe ${livemode ? "Live" : "Test"}-mode events`, async () => {
+    const work = await makeNoProcessingRoute()
+    process.env.VERCEL_ENV = vercelEnv
+
+    const response = await work.post(makeSignedWebhookRequest(makeWebhookEvent({
+      id: `evt_${vercelEnv}_matching_mode`,
+      type: "payment_intent.succeeded",
+      livemode,
+    })))
+
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { received: true, ignored: true })
+    assertNoProcessingWork(work)
+  })
+}
+
+test("missing VERCEL_ENV fails closed before webhook processing", async () => {
+  const work = await makeNoProcessingRoute()
+  delete process.env.VERCEL_ENV
+
+  const response = await work.post(makeSignedWebhookRequest(makeWebhookEvent({
+    id: "evt_missing_vercel_env",
+    type: "checkout.session.completed",
+    livemode: false,
+  })))
+
+  assert.equal(response.status, 500)
+  assert.deepEqual(await response.json(), { error: "Invalid VERCEL_ENV" })
+  assertNoProcessingWork(work)
+})
+
+test("unexpected VERCEL_ENV fails closed before webhook processing", async () => {
+  const work = await makeNoProcessingRoute()
+  process.env.VERCEL_ENV = "staging"
+
+  const response = await work.post(makeSignedWebhookRequest(makeWebhookEvent({
+    id: "evt_unexpected_vercel_env",
+    type: "checkout.session.completed",
+    livemode: false,
+  })))
+
+  assert.equal(response.status, 500)
+  assert.deepEqual(await response.json(), { error: "Invalid VERCEL_ENV" })
+  assertNoProcessingWork(work)
+})
+
+test("signed Stripe Test event is ignored in production without processing", async () => {
+  const work = await makeNoProcessingRoute()
+  process.env.VERCEL_ENV = "production"
+
+  const response = await work.post(makeSignedWebhookRequest(makeWebhookEvent({
+    id: "evt_test_mode_in_production",
+    type: "checkout.session.completed",
+    livemode: false,
+  })))
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    received: true,
+    ignored: true,
+    reason: "stripe_mode_mismatch",
+  })
+  assertNoProcessingWork(work)
+})
+
+test("signed Stripe Live event is ignored in preview without processing", async () => {
+  const work = await makeNoProcessingRoute()
+  process.env.VERCEL_ENV = "preview"
+
+  const response = await work.post(makeSignedWebhookRequest(makeWebhookEvent({
+    id: "evt_live_mode_in_preview",
+    type: "checkout.session.completed",
+    livemode: true,
+  })))
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    received: true,
+    ignored: true,
+    reason: "stripe_mode_mismatch",
+  })
+  assertNoProcessingWork(work)
 })
