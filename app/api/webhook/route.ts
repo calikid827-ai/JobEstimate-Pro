@@ -54,6 +54,34 @@ function unixToIso(value: unknown) {
     : null
 }
 
+function resolveSubscriptionPeriod(subscription: Stripe.Subscription) {
+  const legacySubscription = subscription as Stripe.Subscription & {
+    current_period_start?: unknown
+    current_period_end?: unknown
+  }
+  const positiveTimestamp = (value: unknown) => {
+    const seconds = Number(value)
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null
+  }
+  const topLevelStart = positiveTimestamp(legacySubscription.current_period_start)
+  const topLevelEnd = positiveTimestamp(legacySubscription.current_period_end)
+  let itemStart: number | null = null
+  let itemEnd: number | null = null
+
+  for (const item of subscription.items?.data ?? []) {
+    const start = positiveTimestamp(item.current_period_start)
+    const end = positiveTimestamp(item.current_period_end)
+
+    if (start !== null && (itemStart === null || start < itemStart)) itemStart = start
+    if (end !== null && (itemEnd === null || end > itemEnd)) itemEnd = end
+  }
+
+  return {
+    currentPeriodStart: topLevelStart ?? itemStart,
+    currentPeriodEnd: topLevelEnd ?? itemEnd,
+  }
+}
+
 function isFutureIso(value: string | null | undefined) {
   if (!value) return false
   const ms = Date.parse(value)
@@ -139,14 +167,16 @@ async function upsertSubscription(subscription: Stripe.Subscription, fallbackEma
 
   if (!email) return null
 
+  const { currentPeriodStart, currentPeriodEnd } = resolveSubscriptionPeriod(subscription)
+
   return upsertEntitlement(
     buildSubscriptionPatch({
       email,
       customerId,
       subscriptionId: subscription.id,
       status: subscription.status,
-      currentPeriodStart: (subscription as any).current_period_start,
-      currentPeriodEnd: (subscription as any).current_period_end,
+      currentPeriodStart,
+      currentPeriodEnd,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       canceledAt: subscription.canceled_at,
       trialEnd: subscription.trial_end,

@@ -121,6 +121,30 @@ function makeCheckoutCompletedEvent(overrides: Record<string, unknown> = {}) {
   } as any
 }
 
+function makeSubscriptionEvent(args: {
+  id: string
+  type: "customer.subscription.created" | "customer.subscription.updated" | "customer.subscription.deleted"
+  subscriptionOverrides?: Record<string, unknown>
+}) {
+  return {
+    id: args.id,
+    type: args.type,
+    data: {
+      object: {
+        id: "sub_123",
+        customer: "cus_123",
+        status: "active",
+        metadata: { email: "Client@Example.com" },
+        items: { data: [] },
+        cancel_at_period_end: false,
+        canceled_at: null,
+        trial_end: null,
+        ...args.subscriptionOverrides,
+      },
+    },
+  } as any
+}
+
 function makeDeps(supabaseClient: any, subscriptionOverrides: Record<string, unknown> = {}) {
   return {
     supabase: supabaseClient,
@@ -223,6 +247,21 @@ function assertNoProcessingWork(work: Awaited<ReturnType<typeof makeNoProcessing
   assert.equal(work.calls.length, 0)
   assert.equal(work.customerLookups, 0)
   assert.equal(work.subscriptionLookups, 0)
+}
+
+function makeSuccessfulWebhookSupabaseMock() {
+  return makeSupabaseMock((call) => {
+    if (call.table === "stripe_webhook_events" && call.action === "select") {
+      return { data: null, error: null }
+    }
+    if (call.table === "entitlements" && call.action === "upsert") {
+      return { error: null }
+    }
+    if (call.table === "stripe_webhook_events" && call.action === "insert") {
+      return { error: null }
+    }
+    throw new Error(`Unexpected Supabase call: ${call.table}.${call.action}`)
+  })
 }
 
 test("checkout.session.completed activates entitlement before recording the event as processed", async () => {
@@ -334,6 +373,89 @@ test("entitlement activation failure does not permanently block a later Stripe r
     retry.calls.some((call) => call.table === "stripe_webhook_events" && call.action === "insert"),
     true
   )
+})
+
+test("subscription item periods populate entitlement period fields", async () => {
+  const { handleSupportedStripeWebhookEvent } = await import("./route")
+  const { client, calls } = makeSuccessfulWebhookSupabaseMock()
+
+  const response = await handleSupportedStripeWebhookEvent(
+    makeSubscriptionEvent({
+      id: "evt_subscription_item_periods",
+      type: "customer.subscription.updated",
+      subscriptionOverrides: {
+        items: {
+          data: [
+            { current_period_start: 1_710_000_000, current_period_end: 1_790_000_000 },
+            { current_period_start: 1_700_000_000, current_period_end: 1_800_000_000 },
+          ],
+        },
+      },
+    }),
+    makeDeps(client)
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { received: true })
+  const entitlement = calls.find((call) => call.table === "entitlements")?.payload as any
+  assert.equal(entitlement.current_period_start, new Date(1_700_000_000 * 1000).toISOString())
+  assert.equal(entitlement.current_period_end, new Date(1_800_000_000 * 1000).toISOString())
+})
+
+test("top-level subscription periods remain preferred over item periods", async () => {
+  const { handleSupportedStripeWebhookEvent } = await import("./route")
+  const { client, calls } = makeSuccessfulWebhookSupabaseMock()
+
+  const response = await handleSupportedStripeWebhookEvent(
+    makeSubscriptionEvent({
+      id: "evt_subscription_top_level_periods",
+      type: "customer.subscription.created",
+      subscriptionOverrides: {
+        current_period_start: 1_720_000_000,
+        current_period_end: 1_780_000_000,
+        items: {
+          data: [
+            { current_period_start: 1_700_000_000, current_period_end: 1_800_000_000 },
+          ],
+        },
+      },
+    }),
+    makeDeps(client)
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { received: true })
+  const entitlement = calls.find((call) => call.table === "entitlements")?.payload as any
+  assert.equal(entitlement.current_period_start, new Date(1_720_000_000 * 1000).toISOString())
+  assert.equal(entitlement.current_period_end, new Date(1_780_000_000 * 1000).toISOString())
+})
+
+test("canceled subscription remains active through a future item period end", async () => {
+  const { handleSupportedStripeWebhookEvent } = await import("./route")
+  const { client, calls } = makeSuccessfulWebhookSupabaseMock()
+
+  const response = await handleSupportedStripeWebhookEvent(
+    makeSubscriptionEvent({
+      id: "evt_canceled_subscription_item_period",
+      type: "customer.subscription.deleted",
+      subscriptionOverrides: {
+        status: "canceled",
+        items: {
+          data: [
+            { current_period_start: 1_700_000_000, current_period_end: 4_102_444_800 },
+          ],
+        },
+      },
+    }),
+    makeDeps(client)
+  )
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { received: true })
+  const entitlement = calls.find((call) => call.table === "entitlements")?.payload as any
+  assert.equal(entitlement.subscription_status, "canceled")
+  assert.equal(entitlement.current_period_end, new Date(4_102_444_800 * 1000).toISOString())
+  assert.equal(entitlement.active, true)
 })
 
 test("POST still rejects invalid Stripe signatures before webhook processing", async () => {
