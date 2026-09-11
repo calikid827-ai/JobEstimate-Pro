@@ -187,6 +187,16 @@ import {
   type GeneratedPlanScopeCandidateContext,
 } from "./lib/plan-scope-candidate-integration"
 import {
+  buildPlanCeilingScopeChange,
+  confirmPlanCeilingScopeChange,
+  createPlanCeilingScopeChangeSession,
+  transitionPlanCeilingScopeChangeSession,
+  type PlanCeilingScopeChangeChoice,
+  type PlanCeilingScopeChangeDecision,
+  type PlanCeilingScopeChangeInputs,
+  type PlanCeilingScopeChangeSessionEvent,
+} from "./lib/plan-ceiling-scope-change"
+import {
   getGenerateExceptionMessage,
   readGenerateResponseErrorMessage,
 } from "../lib/generate-response"
@@ -2691,6 +2701,7 @@ function startChangeOrderFromJob(jobId: string) {
     return
   }
 
+  updatePlanCeilingSession({ type: "source_change_order_reset" })
   setActiveJobId(jobId)
   setGeneratedPhotoEvidenceProvenance(null)
   setGeneratedPlanEvidenceFingerprint(null)
@@ -3077,6 +3088,16 @@ const [
   generatedPlanScopeCandidateContext,
   setGeneratedPlanScopeCandidateContext,
 ] = useState<GeneratedPlanScopeCandidateContext | null>(null)
+const [planCeilingSession, setPlanCeilingSession] = useState(createPlanCeilingScopeChangeSession)
+const planCeilingSessionRef = useRef(planCeilingSession)
+
+function updatePlanCeilingSession(event: PlanCeilingScopeChangeSessionEvent) {
+  const next = transitionPlanCeilingScopeChangeSession(planCeilingSessionRef.current, event)
+  // Synchronous session suppression also protects repeated/stale confirmation callbacks.
+  planCeilingSessionRef.current = next
+  setPlanCeilingSession(next)
+}
+
 const [estimateRows, setEstimateRows] = useState<EstimateRow[] | null>(null)
 const [estimateEmbeddedBurdens, setEstimateEmbeddedBurdens] =
   useState<EstimateEmbeddedBurden[] | null>(null)
@@ -4311,6 +4332,24 @@ const scopeDecisionComposition = useMemo(
 )
 
 const scopeDecisions = scopeDecisionComposition.decisions
+const planCeilingScopeChangeInputs: PlanCeilingScopeChangeInputs = {
+  hasDisplayedResult: Boolean(result),
+  candidateContext: generatedPlanScopeCandidateContext,
+  generatedEvidenceFingerprint: generatedPlanEvidenceFingerprint,
+  currentEvidenceFingerprint: currentPlanEvidenceFingerprint,
+  generatedScopeSnapshot,
+  currentScopeText: scopeChange,
+  currentTrade: trade,
+  generatedPaintScopeInputs: planCeilingSession.generatedInputs,
+  currentPaintScope: paintScope,
+  currentEffectivePaintScope: effectivePaintScope,
+  higherPriorityDecisions: scopeDecisions,
+  resolutions: planCeilingSession.resolutions,
+}
+const planCeilingScopeChangeInputsRef = useRef(planCeilingScopeChangeInputs)
+planCeilingScopeChangeInputsRef.current = planCeilingScopeChangeInputs
+// Append-only: the plan row cannot reorder or displace ordinary/photo decisions.
+const planCeilingScopeChange = buildPlanCeilingScopeChange(planCeilingScopeChangeInputs)
 const photoCandidatesByDecisionId =
   scopeDecisionComposition.photoCandidatesByDecisionId
 const displayedPhotoDecisionIds = useMemo(
@@ -4612,6 +4651,27 @@ function applyScopeDecisionFromPanel(
   applyScopeDecision(decision, selection, photoCandidate)
 }
 
+function confirmPlanCeilingScopeChangeFromPanel(
+  offered: PlanCeilingScopeChangeDecision,
+  choice: PlanCeilingScopeChangeChoice
+) {
+  const confirmation = confirmPlanCeilingScopeChange({
+    ...planCeilingScopeChangeInputsRef.current,
+    generatedPaintScopeInputs: planCeilingSessionRef.current.generatedInputs,
+    resolutions: planCeilingSessionRef.current.resolutions,
+  }, offered, choice)
+  if (confirmation.status === "rejected") return
+
+  // Compute/authorize both inputs first; Keep records suppression only. No result,
+  // pricing, proposal, or generic applied-decision record is changed by this action.
+  updatePlanCeilingSession({ type: "resolved", resolution: confirmation.resolution })
+  if (confirmation.status === "included") {
+    setScopeChange(confirmation.scopeText)
+    setPaintScope(confirmation.paintScope)
+    setScopeDecisionScopeUpdated(true)
+  }
+}
+
 function handleProposalReadinessAction(target: ProposalReadinessActionTarget) {
   if (target === "review_before_sending") {
     scrollToReviewBeforeSending()
@@ -4734,6 +4794,7 @@ function useJobTemplate(template: JobTemplate) {
     return
   }
 
+  updatePlanCeilingSession({ type: "estimate_context_reset" })
   setDocumentType(setup.documentType || "Estimate")
   setTrade(normalizeTrade(setup.trade))
   setState(String(setup.state || "").trim().toUpperCase())
@@ -5278,6 +5339,16 @@ const sendPaintScope =
 const paintScopeToSend = sendPaintScope
   ? (effectivePaintScope === "doors_only" ? "walls" : paintScope)
   : null
+
+// Captured before staging/export/network awaits, never sampled from later state.
+// Accepted Generate clears authority but retains unchanged-context resolutions.
+updatePlanCeilingSession({
+  type: "accepted_generate",
+  requestInputs: {
+    selectedPaintScope: paintScope,
+    transmittedPaintScope: paintScopeToSend,
+  },
+})
 
 const tradeToSend =
   trade === "bathroom_tile" || trade === "general_renovation"
@@ -6423,6 +6494,7 @@ setResult({
   explanation: data?.explanation || null,
 })
 setGeneratedScopeSnapshot(finalScopeChange)
+updatePlanCeilingSession({ type: "successful_generate" })
 setGeneratedPhotoEvidenceProvenance({
   fingerprint: requestPhotoEvidenceFingerprint,
   trade: requestPhotoTrade,
@@ -6614,6 +6686,9 @@ setStatus("")
     }
     setStatus(getGenerateExceptionMessage(err))
   } finally {
+    if (planCeilingSessionRef.current.pendingInputs) {
+      updatePlanCeilingSession({ type: "failed_generate" })
+    }
     setLoading(false)
     generatingRef.current = false
   }
@@ -7726,6 +7801,7 @@ function clearHistory() {
 
 // ✅ Load history item back into the form
 function loadHistoryItem(item: EstimateHistoryItem) {
+  updatePlanCeilingSession({ type: "history_load" })
   setGeneratedPhotoEvidenceProvenance(null)
   setGeneratedPlanEvidenceFingerprint(null)
   setGeneratedPlanScopeCandidateContext((current) =>
@@ -15179,6 +15255,8 @@ function EstimatorReviewSummaryPanel({
         }
         onSelectionChange={updateScopeDecisionSelection}
         onApply={applyScopeDecisionFromPanel}
+        planDecision={planCeilingScopeChange}
+        onPlanChoice={confirmPlanCeilingScopeChangeFromPanel}
       />
 
       <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />

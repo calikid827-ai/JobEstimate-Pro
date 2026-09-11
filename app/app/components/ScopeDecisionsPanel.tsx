@@ -1,11 +1,16 @@
 "use client"
 
+import { useState } from "react"
 import {
   buildScopeDecisionWording,
   normalizeScopeWhitespace,
   type ActionableScopeDecision,
   type ScopeDecisionSelection,
 } from "../lib/actionable-scope-decisions"
+import type {
+  PlanCeilingScopeChangeChoice,
+  PlanCeilingScopeChangeDecision,
+} from "../lib/plan-ceiling-scope-change"
 
 type Props = {
   decisions: ActionableScopeDecision[]
@@ -21,12 +26,167 @@ type Props = {
     decision: ActionableScopeDecision,
     selection: ScopeDecisionSelection
   ) => void
+  planDecision?: PlanCeilingScopeChangeDecision | null
+  onPlanChoice?: (
+    decision: PlanCeilingScopeChangeDecision,
+    choice: PlanCeilingScopeChangeChoice
+  ) => void
 }
 
 function quantityUnitLabel(decision: ActionableScopeDecision) {
   if (decision.quantityUnit === "sqft") return "sq ft"
   if (decision.quantityUnit === "linear_ft") return "linear ft"
   return decision.quantityUnit || ""
+}
+
+function PlanCeilingScopeChangeRow({
+  decision,
+  hasEarlierDecisions,
+  onChoice,
+}: {
+  decision: PlanCeilingScopeChangeDecision
+  hasEarlierDecisions: boolean
+  onChoice: (
+    decision: PlanCeilingScopeChangeDecision,
+    choice: PlanCeilingScopeChangeChoice
+  ) => void
+}) {
+  const [choice, setChoice] = useState<PlanCeilingScopeChangeChoice | "">("")
+
+  return (
+    <div
+      data-scope-decision={decision.id}
+      data-plan-ceiling-scope-change
+      style={{
+        marginTop: hasEarlierDecisions ? 0 : 10,
+        padding: hasEarlierDecisions ? "12px 0" : "4px 0 12px",
+        borderTop: hasEarlierDecisions ? "1px solid #e5e7eb" : 0,
+      }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#6b7280" }}>
+        Plans · Optional ceiling scope change
+      </div>
+      <div
+        style={{
+          marginTop: 3,
+          fontSize: 13,
+          fontWeight: 900,
+          color: "#111827",
+          lineHeight: 1.4,
+        }}
+      >
+        Your estimate is set to Walls only. The plans show ceiling paint. Change
+        this estimate to include ceiling painting?
+      </div>
+      <div
+        style={{
+          marginTop: 2,
+          fontSize: 11,
+          color: "#6b7280",
+          lineHeight: 1.4,
+        }}
+      >
+        This is optional. Including ceiling painting updates both written scope
+        and Paint Scope. Generate is still required to refresh the estimate and
+        proposal.
+      </div>
+
+      <div
+        data-mobile-stack
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 8,
+          marginTop: 8,
+        }}
+      >
+        <label style={{ flex: "1 1 210px", minWidth: 0 }}>
+          <span
+            style={{
+              display: "block",
+              marginBottom: 4,
+              fontSize: 11,
+              fontWeight: 800,
+              color: "#374151",
+            }}
+          >
+            Contractor choice
+          </span>
+          <select
+            aria-label="Plan ceiling scope change choice"
+            value={choice}
+            onChange={(event) =>
+              setChoice(event.target.value as PlanCeilingScopeChangeChoice | "")
+            }
+            style={{
+              width: "100%",
+              padding: 8,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              background: "#fff",
+              color: "#111827",
+            }}
+          >
+            <option value="">Choose one</option>
+            <option value="keep_current_scope">Keep current scope</option>
+            <option value="include_ceiling_painting">
+              Include ceiling painting
+            </option>
+          </select>
+        </label>
+      </div>
+
+      <div
+        data-scope-decision-preview
+        style={{
+          marginTop: 8,
+          padding: 8,
+          background: "#f8fafc",
+          borderLeft: "3px solid #94a3b8",
+          color: choice ? "#1f2937" : "#64748b",
+          fontSize: 12,
+          lineHeight: 1.45,
+        }}
+      >
+        <strong>Proposed change:</strong>{" "}
+        {choice === "include_ceiling_painting"
+          ? `${decision.inclusionWording} Paint Scope changes from Walls only to Walls + ceilings. Click Generate afterward to refresh the estimate and proposal.`
+          : choice === "keep_current_scope"
+            ? "No changes to written scope, Paint Scope, or the displayed estimate and proposal."
+            : "Choose an option to preview the change."}
+      </div>
+
+      <div
+        data-mobile-stack
+        style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}
+      >
+        <button
+          type="button"
+          data-scope-decision-apply
+          disabled={!choice}
+          onClick={() => {
+            if (choice) onChoice(decision, choice)
+          }}
+          style={{
+            padding: "7px 10px",
+            border: "1px solid #2563eb",
+            borderRadius: 6,
+            background: choice ? "#2563eb" : "#e5e7eb",
+            color: choice ? "#fff" : "#6b7280",
+            fontSize: 12,
+            fontWeight: 900,
+            cursor: choice ? "pointer" : "not-allowed",
+          }}
+        >
+          {choice === "include_ceiling_painting"
+            ? "Include ceiling painting"
+            : choice === "keep_current_scope"
+              ? "Keep current scope"
+              : "Confirm choice"}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function ScopeDecisionsPanel({
@@ -37,8 +197,12 @@ export default function ScopeDecisionsPanel({
   showScopeUpdatedNotice,
   onSelectionChange,
   onApply,
+  planDecision,
+  onPlanChoice,
 }: Props) {
-  if (!decisions.length && !showScopeUpdatedNotice) return null
+  const visiblePlanDecision = onPlanChoice ? planDecision : null
+  const decisionCount = decisions.length + (visiblePlanDecision ? 1 : 0)
+  if (!decisionCount && !showScopeUpdatedNotice) return null
 
   return (
     <section
@@ -82,7 +246,7 @@ export default function ScopeDecisionsPanel({
             then apply it to the typed scope.
           </div>
         </div>
-        {decisions.length > 0 && (
+        {decisionCount > 0 && (
           <div
             style={{
               flexShrink: 0,
@@ -91,7 +255,7 @@ export default function ScopeDecisionsPanel({
               color: "#1d4ed8",
             }}
           >
-            {decisions.length} decision{decisions.length === 1 ? "" : "s"}
+            {decisionCount} decision{decisionCount === 1 ? "" : "s"}
           </div>
         )}
       </div>
@@ -349,6 +513,14 @@ export default function ScopeDecisionsPanel({
             )
           })}
         </div>
+      )}
+      {visiblePlanDecision && onPlanChoice && (
+        <PlanCeilingScopeChangeRow
+          key={JSON.stringify(visiblePlanDecision.context)}
+          decision={visiblePlanDecision}
+          hasEarlierDecisions={decisions.length > 0}
+          onChoice={onPlanChoice}
+        />
       )}
     </section>
   )
