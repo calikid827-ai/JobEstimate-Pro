@@ -14346,10 +14346,10 @@ function EstimatorReviewSummaryPanel({
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-          gap: 8,
-          marginTop: 10,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          marginTop: 12,
         }}
       >
         {summary.sections.map((section) => {
@@ -14359,42 +14359,30 @@ function EstimatorReviewSummaryPanel({
             <div
               key={`estimator-review-summary-${section.title}`}
               style={{
-                padding: 10,
-                border: `1px solid ${sectionTone.border}`,
-                borderRadius: 8,
-                background: "#fff",
                 minWidth: 0,
               }}
             >
               <div
                 style={{
-                  display: "flex",
-                  gap: 6,
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
+                  fontSize: 13,
+                  lineHeight: 1.45,
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#111827" }}>
+                <span style={{ fontWeight: 900, color: "#111827" }}>
                   {section.title}
-                </div>
-                <div
+                </span>{" · "}
+                <span
                   style={{
-                    flexShrink: 0,
-                    padding: "1px 6px",
-                    border: `1px solid ${sectionTone.border}`,
-                    borderRadius: 999,
-                    background: sectionTone.bg,
                     color: sectionTone.color,
-                    fontSize: 10,
-                    fontWeight: 900,
-                    whiteSpace: "nowrap",
+                    fontSize: 12,
+                    fontWeight: 800,
                   }}
                 >
                   {section.status}
-                </div>
+                </span>
               </div>
 
-              <ul style={{ margin: "7px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
                 {section.items.slice(0, 2).map((item, index) => (
                   <li
                     key={`estimator-review-summary-${section.title}-${index}`}
@@ -14568,6 +14556,12 @@ function EstimatorReviewSummaryPanel({
     }}
   >
     <style jsx global>{`
+      @media screen {
+        [data-proposal-scope-drift-warning] {
+          display: none;
+        }
+      }
+
       @media print {
         [data-no-print] {
           display: none !important;
@@ -15112,6 +15106,7 @@ function EstimatorReviewSummaryPanel({
 
         {customerScopeTradeDriftWarning && (
           <div
+            data-proposal-scope-drift-warning
             style={{
               marginBottom: 10,
               padding: 10,
@@ -15243,8 +15238,6 @@ function EstimatorReviewSummaryPanel({
       dataNoPrint
       sectionRef={reviewBeforeSendingSectionRef}
     >
-      <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
-
       <ScopeDecisionsPanel
         decisions={scopeDecisions}
         selections={scopeDecisionSelections}
@@ -15258,6 +15251,8 @@ function EstimatorReviewSummaryPanel({
         planDecision={planCeilingScopeChange}
         onPlanChoice={confirmPlanCeilingScopeChangeFromPanel}
       />
+
+      <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
 
       <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
 
