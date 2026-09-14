@@ -14186,6 +14186,21 @@ const accountAccessMessage = !normalizedEmail
         : "Free generation access is active for this email."
       : "Refresh access to check the latest entitlement status.")
 
+function visibleReviewExplanations(items: string[], primaryMessages: string[]) {
+  // This source warning's detail bullets repeat trades already named in its full
+  // message. Other guard warnings can add qualifications and must stay intact.
+  const repeatedWarning = customerScopeReviewGuard.warnings.find(
+    (warning) =>
+      warning.label === "Unsupported trade wording" &&
+      warning.message === customerScopeReviewGuard.summary &&
+      primaryMessages.includes(warning.message)
+  )
+
+  return items
+    .map((text, index) => ({ text, index }))
+    .filter(({ text }) => !repeatedWarning?.details?.includes(text))
+}
+
 function CustomerOutputReadinessPanel({
   items,
 }: {
@@ -14241,37 +14256,44 @@ function CustomerOutputReadinessPanel({
       </p>
 
       <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-        {items.map((item, index) => (
-          <div
-            key={`customer-output-readiness-${item.label}-${index}`}
-            style={{
-              padding: 10,
-              border: "1px solid #fdba74",
-              borderRadius: 8,
-              background: "#fff",
-              minWidth: 0,
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>
-              {item.label}
+        {items.map((item, index) => {
+          const displayedDetails = visibleReviewExplanations(
+            item.details || [],
+            [item.message]
+          )
+
+          return (
+            <div
+              key={`customer-output-readiness-${item.label}-${index}`}
+              style={{
+                padding: 10,
+                border: "1px solid #fdba74",
+                borderRadius: 8,
+                background: "#fff",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>
+                {item.label}
+              </div>
+              <div style={{ marginTop: 3, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
+                {item.message}
+              </div>
+              {displayedDetails.length > 0 && (
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.45 }}>
+                  {displayedDetails.map(({ text: detail, index: detailIndex }) => (
+                    <li
+                      key={`customer-output-readiness-${item.label}-${detailIndex}`}
+                      style={{ fontSize: 12, color: "#4b5563" }}
+                    >
+                      {detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <div style={{ marginTop: 3, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
-              {item.message}
-            </div>
-            {item.details && item.details.length > 0 && (
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.45 }}>
-                {item.details.map((detail, detailIndex) => (
-                  <li
-                    key={`customer-output-readiness-${item.label}-${detailIndex}`}
-                    style={{ fontSize: 12, color: "#4b5563" }}
-                  >
-                    {detail}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </details>
   )
@@ -14354,6 +14376,8 @@ function EstimatorReviewSummaryPanel({
       >
         {summary.sections.map((section) => {
           const sectionTone = toneStyle(section.tone)
+          const selectedItems = section.items.slice(0, 2)
+          const displayedItems = visibleReviewExplanations(selectedItems, selectedItems)
 
           return (
             <div
@@ -14383,7 +14407,7 @@ function EstimatorReviewSummaryPanel({
               </div>
 
               <ul style={{ margin: "4px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
-                {section.items.slice(0, 2).map((item, index) => (
+                {displayedItems.map(({ text: item, index }) => (
                   <li
                     key={`estimator-review-summary-${section.title}-${index}`}
                     style={{ fontSize: 12, color: "#4b5563" }}

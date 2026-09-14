@@ -315,16 +315,19 @@ export default function ScopeDecisionsPanel({
                 >
                   {decision.prompt}
                 </div>
-                <div
-                  style={{
-                    marginTop: 2,
-                    fontSize: 11,
-                    color: "#6b7280",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {decision.helpText}
-                </div>
+                {decision.helpText !==
+                  "Choose a boundary, review the exact sentence, then apply it to the typed scope." && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      fontSize: 11,
+                      color: "#6b7280",
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {decision.helpText}
+                  </div>
+                )}
 
                 <div
                   data-mobile-stack
