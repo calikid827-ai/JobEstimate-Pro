@@ -15141,15 +15141,6 @@ function EstimatorReviewSummaryPanel({
       title="Price & Profit"
       summary="Edit the price, protect margin, set tax/deposit terms, and download the estimate."
     >
-      <RateCardSection
-        draftRateCard={draftRateCard}
-        savedRateCard={rateCard}
-        onDraftChange={setDraftRateCard}
-        onSave={saveRateCardDefaults}
-        onApply={applyRateCardDefaults}
-        onReset={resetRateCardDefaults}
-      />
-
       <PricingSummarySection
         pricing={pricing}
         setPricing={setPricing}
@@ -15182,6 +15173,27 @@ function EstimatorReviewSummaryPanel({
         estimateEmbeddedBurdens={estimateEmbeddedBurdens}
         estimateSections={estimateSections}
       />
+
+      <details
+        data-no-print
+        style={{
+          marginTop: 14,
+          paddingTop: 12,
+          borderTop: "1px solid #e5e7eb",
+        }}
+      >
+        <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 800 }}>
+          Saved pricing defaults
+        </summary>
+        <RateCardSection
+          draftRateCard={draftRateCard}
+          savedRateCard={rateCard}
+          onDraftChange={setDraftRateCard}
+          onSave={saveRateCardDefaults}
+          onApply={applyRateCardDefaults}
+          onReset={resetRateCardDefaults}
+        />
+      </details>
     </ResultCommandSection>
 
     {(schedule || crewPlanningReadback) && (
