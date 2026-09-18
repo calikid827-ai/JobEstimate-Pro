@@ -350,8 +350,37 @@ test("owner-supplied LVP creates material responsibility note only", () => {
 
   const text = reviewText(review)
   assert.match(text, /owner\/customer-supplied materials/)
+  assert.match(text, /exclude purchase costs for those items/)
+  assert.match(text, /retaining separately specified contractor-supplied materials/)
+  assert.match(text, /supported installation, consumables, handling, protection, and return-trip costs/)
+  assert.match(text, /confirm responsibility for any materials not assigned in the scope/)
+  assert.deepEqual(review.suggestedExclusions, [
+    "Excludes delays, defects, shortages, or reorders for owner/customer-supplied finish materials unless approved in writing.",
+  ])
   assert.doesNotMatch(text, /pricing anchor appears flooring-based/)
   assert.doesNotMatch(text, /materials list includes flooring items/)
+})
+
+test("mixed owner-supplied LVT and contractor-supplied paint retain separate material responsibilities", () => {
+  const review = buildScopePriceConsistencyReview({
+    selectedTrade: "general renovation",
+    scopeText:
+      "Repaint bedroom walls and replace bedroom carpet with LVT. Owner supplies the LVT. Contractor supplies paint. Ceilings, electrical work, and plumbing excluded. Room dimensions have not been measured.",
+  })
+
+  const materialNotes = review.laborMaterialConfidenceNotes.filter((note) =>
+    note.startsWith("Owner/customer-supplied materials are referenced.")
+  )
+  assert.equal(materialNotes.length, 1)
+  const note = materialNotes[0].toLowerCase()
+  assert.match(note, /exclude purchase costs for those items/)
+  assert.match(note, /retaining separately specified contractor-supplied materials/)
+  assert.match(note, /supported installation, consumables, handling, protection, and return-trip costs/)
+  assert.match(note, /confirm responsibility for any materials not assigned in the scope/)
+  assert.doesNotMatch(note, /carries only contractor-supplied consumables/)
+  assert.deepEqual(review.suggestedExclusions, [
+    "Excludes delays, defects, shortages, or reorders for owner/customer-supplied finish materials unless approved in writing.",
+  ])
 })
 
 test("contractor-supplied paint does not create owner material responsibility note", () => {
@@ -367,6 +396,8 @@ test("contractor-supplied paint does not create owner material responsibility no
   })
 
   assert.doesNotMatch(reviewText(review), /owner\/customer-supplied materials/)
+  assert.deepEqual(review.laborMaterialConfidenceNotes, [])
+  assert.deepEqual(review.suggestedExclusions, [])
 })
 
 test("flooring scope with painting by others and existing baseboards remains flooring only", () => {

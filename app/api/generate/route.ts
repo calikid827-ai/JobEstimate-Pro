@@ -25,6 +25,7 @@ import {
 } from "./lib/guards"
 
 import { buildEstimatorContext } from "./lib/estimator/context"
+import { priceFlooringOnlyAnchor } from "./lib/estimator/flooring-anchor"
 import {
   buildLiveTradePricingInfluence,
   mergeLiveTradePricingInfluenceIntoBasis,
@@ -2150,6 +2151,7 @@ type AnchorResult = {
 
 type AnchorContext = {
   scope: string
+  rawScope: string
   trade: string
   stateMultiplier: number
   measurements: any | null
@@ -5833,84 +5835,6 @@ const hrsPerFixture = treatAsAdd ? 0.95 : 0.65
   return { labor, materials, subs, markup, total }
 }
 
-function priceFlooringOnlyAnchor(args: {
-  scope: string
-  stateMultiplier: number
-  measurements?: any | null
-  fallbackSqft?: number | null
-}): Pricing | null {
-  const s = args.scope.toLowerCase()
-
-  // Must be flooring-ish
-  const isFlooring = parseFlooringKeyword(s)
-  if (!isFlooring) return null
-
-  // Don’t let it catch wall tile / shower surround
-  if (parseWallTileKeyword(s)) return null
-  if (parseBathKeyword(s) && /\b(shower|tub)\b/.test(s)) return null
-
-  // Sqft: prefer measurements.totalSqft, then parse, then default
-  const sqft =
-  (args.measurements?.totalSqft && args.measurements.totalSqft > 0
-    ? Number(args.measurements.totalSqft)
-    : null) ??
-  parseSqft(s) ??
-  (args.fallbackSqft && args.fallbackSqft > 0 ? Number(args.fallbackSqft) : null) ??
-  180
-
-  // Demo signal
-  const hasDemo =
-    parseDemo(s) || /\b(remove\s+existing|tear\s*out|haul\s*away|dispose)\b/.test(s)
-
-  // Material class
-  const isTile = /\b(tile|porcelain|ceramic)\b/.test(s) && /\bfloor\b/.test(s)
-  const isHardwood = /\b(hardwood|engineered\s*wood)\b/.test(s)
-  const isLaminate = /\b(laminate)\b/.test(s)
-  const isCarpet = /\b(carpet)\b/.test(s)
-  const isLvp = /\b(lvp|vinyl\s+plank|luxury\s+vinyl)\b/.test(s)
-
-  const laborRate = 85
-  const markup = 25
-
-  // Labor hours per sqft (tunable)
-  const installHrsPerSqft =
-    isTile ? 0.12 :
-    isHardwood ? 0.09 :
-    isCarpet ? 0.06 :
-    (isLaminate || isLvp) ? 0.05 :
-    0.06
-
-  const demoHrsPerSqft = hasDemo ? 0.03 : 0
-  const baseHrs = sqft * (installHrsPerSqft + demoHrsPerSqft) + 8 // protection/transitions/cleanup
-
-  let labor = Math.round(baseHrs * laborRate)
-  labor = Math.round(labor * args.stateMultiplier)
-
-  // Materials allowance per sqft (mid-market)
-  const matPerSqft =
-    isTile ? 6.5 :
-    isHardwood ? 7.5 :
-    isCarpet ? 4.0 :
-    isLaminate ? 3.2 :
-    isLvp ? 3.8 :
-    4.0
-
-  const underlaymentPerSqft = isTile ? 0.0 : 0.6
-  const transitionAllowance = 160
-
-  const materials = Math.round(sqft * (matPerSqft + underlaymentPerSqft) + transitionAllowance)
-
-  const mobilization = 400
-  const dumpFee = hasDemo ? 300 : 0
-  const supervision = Math.round((labor + materials) * 0.06)
-  const subs = mobilization + dumpFee + supervision
-
-  const base = labor + materials + subs
-  const total = Math.round(base * (1 + markup / 100))
-
-  return { labor, materials, subs, markup, total }
-}
-
 function pricePlumbingFixtureSwapsAnchor(args: {
   scope: string
   stateMultiplier: number
@@ -6067,42 +5991,17 @@ const PRICEGUARD_ANCHORS: PricingAnchor[] = [
   }),
   },
 
-  // 3) Flooring-only
-{
-  id: "flooring_only_v1",
-  when: (ctx) => {
-    // ✅ Flooring trade should be handled by the flooring deterministic engine,
-    // not by this generic anchor.
-    if (ctx.trade === "flooring") return false
-
-    const s = ctx.scope.toLowerCase()
-
-    // Only trigger this anchor when flooring is IMPLIED inside another trade
-    // (ex: kitchen refresh mentions flooring, general renovation mentions flooring, etc.)
-    const mentionsFlooring =
-      /\b(floor|flooring|lvp|vinyl\s+plank|laminate|hardwood|carpet|tile\s+floor)\b/.test(s)
-
-    if (!mentionsFlooring) return false
-
-    // Exclude *remodel* signals, not just the words kitchen/bath
-    const looksLikeKitchenRemodel =
-      (/\bkitchen\b/.test(s) || parseKitchenKeyword(s)) &&
-      /\b(remodel|renovation|gut|cabinets?|counter(top)?|backsplash|sink)\b/.test(s)
-
-    const looksLikeBathRemodel =
-      (/\b(bath|bathroom)\b/.test(s) || parseBathKeyword(s)) &&
-      /\b(remodel|renovation|gut|shower|tub|vanity|tile\s+walls?|surround)\b/.test(s)
-
-    return !looksLikeKitchenRemodel && !looksLikeBathRemodel
+  // 3) Flooring-only: applicability and construction share the tested production boundary.
+  {
+    id: "flooring_only_v1",
+    when: () => true,
+    price: (ctx) => priceFlooringOnlyAnchor({
+      scope: ctx.rawScope,
+      trade: ctx.trade,
+      stateMultiplier: ctx.stateMultiplier,
+      measurements: ctx.measurements,
+    }),
   },
-  price: (ctx) =>
-  priceFlooringOnlyAnchor({
-    scope: ctx.scope,
-    stateMultiplier: ctx.stateMultiplier,
-    measurements: ctx.measurements,
-    fallbackSqft: ctx.photoFloorSqft ?? null,
-  }),
-},
 
 // 4) Plumbing fixture swaps (strict, count-based)
 {
@@ -7804,6 +7703,7 @@ const anchorHit =
     ? null
     : runPriceGuardAnchors({
     scope: includedScopeForAnchors || scopeChange,
+    rawScope: scopeChange,
     trade,
     stateMultiplier,
     measurements,

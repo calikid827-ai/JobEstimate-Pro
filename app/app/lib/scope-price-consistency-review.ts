@@ -323,7 +323,7 @@ export function buildScopePriceConsistencyReview(
   if (included.hasMaterialResponsibility && included.hasOwnerCustomerMaterialResponsibility) {
     addUnique(
       laborMaterialConfidenceNotes,
-      "Owner/customer-supplied materials are referenced. Confirm the estimate carries only contractor-supplied consumables, handling, protection, and return-trip risk."
+      "Owner/customer-supplied materials are referenced. Exclude purchase costs for those items while retaining separately specified contractor-supplied materials and supported installation, consumables, handling, protection, and return-trip costs. Confirm responsibility for any materials not assigned in the scope."
     )
     addUnique(
       suggestedExclusions,
