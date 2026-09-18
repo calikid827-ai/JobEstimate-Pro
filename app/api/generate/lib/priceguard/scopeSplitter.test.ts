@@ -1,11 +1,176 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
-import { getIncludedScopeText, isMultiTradeScope, splitScopeByTrade } from "./scopeSplitter"
+import { getIncludedScopeText, isMultiTradeScope, splitScopeByTrade, splitScopeByTradeForPricing } from "./scopeSplitter"
+import { computePaintingDeterministic } from "./paintingEngine"
+import { computeDrywallDeterministic } from "./drywallEngine"
+import { decidePricingOwner } from "../estimator/pricingOwner"
+import type { PricingOwnerContext } from "../estimator/types"
 
 const tradesFor = (scope: string) => splitScopeByTrade(scope).map((chunk) => chunk.trade)
 const includedFor = (scope: string) => getIncludedScopeText(scope)
 const splitTextFor = (scope: string) => splitScopeByTrade(scope).map((chunk) => chunk.scope).join(" ")
+
+test("coordinated paint and patch retain the shared wall boundary and bedroom location", () => {
+  for (const [scope, count, order] of [
+    ["Paint and patch walls only in 5 bedrooms.", "5 bedrooms", ["painting", "drywall"]],
+    ["Patch and paint walls only in 5 bedrooms.", "5 bedrooms", ["drywall", "painting"]],
+    ["Paint and patch walls only in 1 bedroom.", "1 bedroom", ["painting", "drywall"]],
+    ["PAINT  and   PATCH walls only in 3 bedrooms.", "3 bedrooms", ["painting", "drywall"]],
+  ] as const) {
+    const before = scope
+    const splits = splitScopeByTrade(scope)
+    assert.deepEqual(splits.map((part) => part.trade), order)
+    assert.equal(splits.find((part) => part.trade === "painting")?.scope.toLowerCase(), `paint walls only in ${count}`)
+    assert.equal(splits.find((part) => part.trade === "drywall")?.scope.toLowerCase(), `patch walls only in ${count}`)
+    assert.equal(scope, before)
+    for (const part of splits) assert.deepEqual(Object.keys(part).sort(), ["scope", "signals", "trade"])
+  }
+})
+
+test("existing painting engine distinguishes bare Paint from a descriptive singular-bedroom input", () => {
+  const input = { stateMultiplier: 1.2, measurements: null, paintScope: "walls" as const }
+  // Characterizes the hazard of a naive description-only fix, not a baseline
+  // live estimate: the current engine already prices the restored wording.
+  const bare = computePaintingDeterministic({ ...input, scopeText: "Paint" })
+  const restored = computePaintingDeterministic({ ...input, scopeText: "Paint walls only in 1 bedroom" })
+  assert.equal(bare.pricing, null)
+  assert.equal(bare.okForDeterministic, false)
+  assert.equal(restored.okForDeterministic, true)
+  assert.equal(restored.signals.rooms, 1)
+  assert.ok(restored.pricing && restored.pricing.labor > 0)
+  const patch = computeDrywallDeterministic({ scopeText: "Patch 2 holes", stateMultiplier: 1.2, measurements: null })
+  assert.equal(patch.okForDeterministic, true)
+  assert.equal(patch.signals.patchCount, 2)
+  assert.ok(patch.pricing && patch.pricing.labor > 0)
+})
+
+const paintingInput = { stateMultiplier: 1.2, measurements: null, paintScope: "walls" as const }
+
+test("production pricing selection keeps newly shared bedroom context descriptive only", () => {
+  for (const location of ["5 bedrooms", "1 bedroom", "3 bedrooms", "5 rooms"]) {
+    const raw = `Paint and patch walls only in ${location}.`
+    const descriptions = splitScopeByTrade(raw)
+    const pricingScopes = splitScopeByTradeForPricing(raw)
+    assert.equal(descriptions[0].scope, `Paint walls only in ${location}`)
+    assert.equal(pricingScopes[0].scope, "Paint")
+    assert.equal(pricingScopes[1].scope, `patch walls only in ${location}`)
+    const painting = computePaintingDeterministic({ ...paintingInput, scopeText: pricingScopes[0].scope })
+    const drywall = computeDrywallDeterministic({ ...paintingInput, scopeText: pricingScopes[1].scope })
+    assert.equal(painting.pricing, null)
+    assert.equal(painting.signals.rooms, null)
+    assert.equal(painting.signals.sqft, null)
+    assert.equal(drywall.pricing, null)
+    assert.equal(drywall.signals.patchCount, null)
+    assert.equal(drywall.signals.sqft, null)
+    assert.equal(raw, `Paint and patch walls only in ${location}.`)
+  }
+})
+
+test("reverse order retains the painting context that was already directly present", () => {
+  const raw = "Patch and paint walls only in 1 bedroom."
+  const descriptions = splitScopeByTrade(raw)
+  const pricingScopes = splitScopeByTradeForPricing(raw)
+  assert.equal(descriptions[0].scope, "Patch walls only in 1 bedroom")
+  assert.equal(descriptions[1].scope, "paint walls only in 1 bedroom")
+  assert.equal(pricingScopes[0].scope, "Patch")
+  assert.equal(pricingScopes[1].scope, "paint walls only in 1 bedroom")
+  const actual = computePaintingDeterministic({ ...paintingInput, scopeText: pricingScopes[1].scope })
+  const existingDirect = computePaintingDeterministic({ ...paintingInput, scopeText: "paint walls only in 1 bedroom" })
+  assert.equal(actual.okForDeterministic, true)
+  assert.deepEqual(actual, existingDirect)
+  assert.equal(computeDrywallDeterministic({ ...paintingInput, scopeText: pricingScopes[0].scope }).pricing, null)
+})
+
+test("independently quantified drywall cannot make inherited bedroom context authorize painting or combined ownership", () => {
+  const raw = "Paint and patch walls only in 1 bedroom. Patch 2 holes."
+  const descriptions = splitScopeByTrade(raw)
+  const pricingScopes = splitScopeByTradeForPricing(raw)
+  const painting = computePaintingDeterministic({ ...paintingInput, scopeText: pricingScopes[0].scope })
+  const drywall = computeDrywallDeterministic({ ...paintingInput, scopeText: pricingScopes[1].scope })
+  assert.equal(descriptions[0].scope, "Paint walls only in 1 bedroom")
+  assert.equal(pricingScopes[0].scope, "Paint")
+  assert.equal(painting.okForDeterministic, false)
+  assert.equal(painting.pricing, null)
+  assert.equal(drywall.okForDeterministic, true)
+  assert.equal(drywall.signals.patchCount, 2)
+  assert.ok(drywall.pricing && drywall.pricing.labor > 0)
+  // Surrounding DTO follows the unchanged route's all-pieces-priced gate.
+  // No route execution or copied pricing calculation is claimed by this check.
+  const ctx: PricingOwnerContext = {
+    trade: "general renovation", effectivePaintScope: "walls", useBigJobPricing: false,
+    anchorHit: null, paintingDet: null, drywallDet: null, wallcoveringDet: null,
+    flooringDet: null, electricalDet: null, plumbingDet: null, mixedPaintPricing: null,
+    doorPricing: null, bigJobPricing: null, photoPaintPricing: null,
+    multiTradeDet: {
+      okForDeterministic: [painting, drywall].every((result) => result.okForDeterministic && result.pricing),
+      okForVerified: false, pricing: drywall.pricing, estimateBasis: null, notes: [],
+      perTrade: [{
+        trade: "drywall", scope: descriptions[1].scope, pricing: drywall.pricing,
+        laborRate: 70, crewDays: 1, source: "drywall_engine_v1", notes: [],
+      }],
+    },
+  }
+  const owner = decidePricingOwner(ctx)
+  assert.equal(owner.owner, "ai")
+  assert.equal(owner.baselinePricing, null)
+  assert.deepEqual(ctx.multiTradeDet?.perTrade.map((part) => part.trade), ["drywall"])
+})
+
+test("direct room and measured painting support retain established engine results", () => {
+  for (const directScope of ["Paint walls only in 1 bedroom", "Paint walls in 5 rooms", "Paint 400 sqft of walls"]) {
+    const selected = splitScopeByTradeForPricing(`${directScope} and patch 2 holes.`)[0]
+    assert.equal(selected.scope, directScope)
+    const actual = computePaintingDeterministic({ ...paintingInput, scopeText: selected.scope })
+    const direct = computePaintingDeterministic({ ...paintingInput, scopeText: directScope })
+    assert.equal(actual.okForDeterministic, true)
+    assert.ok(actual.pricing && actual.pricing.labor > 0 && actual.pricing.materials > 0)
+    assert.deepEqual(actual, direct)
+  }
+  // Existing separately supplied measurements still accompany the same original
+  // engine input; the selector neither discards nor invents their attribution.
+  const selected = splitScopeByTradeForPricing("Paint and patch walls only in 1 bedroom.")[0]
+  const measuredInput = { ...paintingInput, measurements: { totalSqft: 400 } }
+  const measured = computePaintingDeterministic({ ...measuredInput, scopeText: selected.scope })
+  assert.equal(measured.okForDeterministic, true)
+  assert.deepEqual(measured, computePaintingDeterministic({ ...measuredInput, scopeText: "Paint" }))
+})
+
+test("a separate explicitly measured painting operation is not removed with inherited context", () => {
+  const raw = "Paint and patch walls only in 1 bedroom. Paint 400 sqft of hallway walls."
+  const pricing = splitScopeByTradeForPricing(raw).find((part) => part.trade === "painting")!
+  assert.equal(pricing.scope, "Paint, Paint 400 sqft of hallway walls")
+  const result = computePaintingDeterministic({ ...paintingInput, scopeText: pricing.scope })
+  assert.equal(result.okForDeterministic, true)
+  assert.equal(result.signals.sqft, 400)
+  assert.equal(result.signals.rooms, null)
+})
+
+test("separate objects and locations never inherit one another", () => {
+  for (const [raw, expected] of [
+    ["Paint walls in 5 bedrooms and patch the bathroom ceiling.", ["Paint walls in 5 bedrooms", "patch the bathroom ceiling"]],
+    ["Patch bedroom walls; paint hallway walls.", ["Patch bedroom walls", "paint hallway walls"]],
+    ["Paint. Patch walls only in 5 bedrooms.", ["Paint", "Patch walls only in 5 bedrooms"]],
+    ["Paint; patch walls only in 5 bedrooms.", ["Paint", "patch walls only in 5 bedrooms"]],
+  ] as const) {
+    assert.deepEqual(splitScopeByTrade(raw).map((part) => part.scope), expected)
+    assert.deepEqual(splitScopeByTradeForPricing(raw), splitScopeByTrade(raw))
+  }
+})
+
+test("shared context preserves exclusions and by-others boundaries without copying furnishing clauses", () => {
+  const byOthers = "Paint walls only in 5 bedrooms. Patching by others."
+  assert.deepEqual(tradesFor(byOthers), ["painting"])
+  const raw = "Paint and patch walls only in 5 bedrooms. Ceilings excluded. Owner supplies paint."
+  const split = splitScopeByTrade(raw)
+  assert.equal(split[0].scope, "Paint walls only in 5 bedrooms, Owner supplies paint")
+  assert.equal(split[1].scope, "patch walls only in 5 bedrooms")
+  assert.doesNotMatch(splitTextFor(raw), /ceiling/i)
+  for (const boundary of ["Paint and patch walls in 5 bedrooms by others.", "Scope does not include paint and patch walls in 5 bedrooms."]) {
+    assert.deepEqual(splitScopeByTrade(boundary), [])
+    assert.deepEqual(splitScopeByTradeForPricing(boundary), [])
+  }
+})
 
 function assertNoTrades(scope: string, trades: RegExp) {
   assert.doesNotMatch(includedFor(scope), trades)

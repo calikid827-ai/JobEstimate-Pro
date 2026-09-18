@@ -60,7 +60,8 @@ import type {
   TradeStack as EstimatorTradeStack,
 } from "./lib/estimator/types"
 import type { EvidenceAuthorityReadback } from "./lib/estimator/evidenceAuthority"
-import { splitScopeByTrade, isMultiTradeScope, getIncludedScopeText } from "./lib/priceguard/scopeSplitter"
+import { splitScopeByTrade, splitScopeByTradeForPricing, isMultiTradeScope, getIncludedScopeText } from "./lib/priceguard/scopeSplitter"
+import { buildScopeQuantityReviewWarning } from "./lib/priceguard/scope-quantity-review"
 import {
   runEstimatorOrchestrator,
   type OrchestratorDeps,
@@ -1578,6 +1579,7 @@ function clampConfidence(n: number) {
 }
 
 function buildPriceGuardReport(args: {
+  scopeText: string
   pricingSource: "ai" | "deterministic" | "merged"
   priceGuardVerified: boolean
   priceGuardAnchorStrict: boolean
@@ -1626,8 +1628,9 @@ function buildPriceGuardReport(args: {
 
   if (args.pricingSource === "ai" && !hasDoors && !hasRooms && !hasMeas) {
     score -= 30
-    warnings.push("No explicit quantities detected (doors/rooms/sqft). Add quantities for stronger pricing protection.")
   }
+  const quantityWarning = buildScopeQuantityReviewWarning(args)
+  if (quantityWarning) warnings.push(quantityWarning)
 
   if (args.effectivePaintScope === "doors_only") {
     appliedRules.push("Doors-only scope classification enforced")
@@ -6598,6 +6601,7 @@ function computeMultiTradeDeterministic(args: {
   tradeStack?: EstimatorTradeStack | null
   complexityProfile?: EstimatorComplexityProfile | null
 }): MultiTradeDeterministicResult {
+  const pricingScopes = splitScopeByTradeForPricing(args.fullScopeText)
   const pieces = (args.splitScopes || []).filter(
     (x) => x && typeof x.scope === "string" && x.scope.trim()
   )
@@ -6626,6 +6630,8 @@ function computeMultiTradeDeterministic(args: {
   for (const piece of pieces) {
     const trade = String(piece.trade || "").toLowerCase().trim()
     const scope = String(piece.scope || "").trim()
+    const pricingScope = pricingScopes.find((part) => part.trade === trade)?.scope
+    if (!trade || !scope || !pricingScope) continue
     const pieceMeasurements =
       overallSqft && overallSqft > 0
         ? { totalSqft: overallSqft }
@@ -6638,7 +6644,7 @@ function computeMultiTradeDeterministic(args: {
       trade === "painting" || trade === "drywall" || trade === "wallcovering" || trade === "flooring"
         ? buildLiveTradePricingInfluence({
             trade,
-            scopeText: scope,
+            scopeText: pricingScope,
             measurements: splitInfluenceMeasurements,
             paintScope: args.paintScope ?? "walls",
             planIntelligence: args.planIntelligence ?? null,
@@ -6653,8 +6659,6 @@ function computeMultiTradeDeterministic(args: {
       hasPlanIntelligence: !!args.planIntelligence?.ok,
     })
 
-    if (!trade || !scope) continue
-
     // Multi-trade uses the same live plan-aware seam as the single-trade path:
     // route existing plan-aware execution sections directly into the real
     // deterministic engines, then let owner resolution and final protections
@@ -6662,7 +6666,7 @@ function computeMultiTradeDeterministic(args: {
 
         if (trade === "flooring") {
       const det = computeFlooringDeterministic({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         measurements: splitTradeMeasurements ??
           (overallSqft && overallSqft > 0
@@ -6708,7 +6712,7 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "painting") {
       const det = computePaintingDeterministic({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         measurements: splitTradeMeasurements,
         paintScope: args.paintScope ?? "walls",
@@ -6750,7 +6754,7 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "drywall") {
       const det = computeDrywallDeterministic({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         measurements: splitTradeMeasurements,
         planSectionInputs:
@@ -6806,7 +6810,7 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "wallcovering") {
       const det = computeWallcoveringDeterministic({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         measurements: null,
         planSectionInputs:
@@ -6855,7 +6859,7 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "carpentry") {
       const det = priceBaseboardCarpentrySimple({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         floorSqft: overallSqft ?? null,
       })
@@ -6880,7 +6884,7 @@ function computeMultiTradeDeterministic(args: {
 
     if (trade === "texture") {
       const det = priceTexturePatchSimple({
-        scopeText: scope,
+        scopeText: pricingScope,
         stateMultiplier: args.stateMultiplier,
         wholeJobSqft: overallSqft ?? null,
       })
@@ -8521,7 +8525,7 @@ const deps = {
   },
   buildScheduleBlock,
   buildScopeXRay,
-  buildPriceGuardReport,
+  buildPriceGuardReport: (args) => buildPriceGuardReport({ ...args, scopeText: scopeChange }),
   buildEstimateExplanation,
 } satisfies OrchestratorDeps
 

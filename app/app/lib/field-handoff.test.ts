@@ -2,6 +2,31 @@ import test from "node:test"
 import assert from "node:assert/strict"
 
 import { buildFieldHandoff } from "./field-handoff"
+import { splitScopeByTrade } from "../../api/generate/lib/priceguard/scopeSplitter"
+
+test("shared paint and patch descriptions reach Included Work through production splitting", () => {
+  const scopeText = "Paint and patch walls only in 5 bedrooms."
+  const before = scopeText
+  const handoff = buildFieldHandoff({
+    scopeText,
+    trade: "general renovation",
+    documentType: "Estimate",
+    state: "ca",
+    scopeXRay: {
+      detectedScope: {
+        // The route's X-Ray projection and client handoff use these same fields.
+        splitScopes: splitScopeByTrade(scopeText).map(({ trade, scope }) => ({ trade, scope })),
+      },
+    },
+  })
+  assert.deepEqual(handoff.sections.find((section) => section.title === "Included Work")?.items, [
+    "Painting: Paint walls only in 5 bedrooms",
+    "Drywall: patch walls only in 5 bedrooms",
+  ])
+  assert.doesNotMatch(handoff.text, /Painting: Paint\n/)
+  assert.doesNotMatch(handoff.text, /sqft|skim|texture|finish level|coats|ceiling/i)
+  assert.equal(scopeText, before)
+})
 
 test("buildFieldHandoff returns an empty handoff before an estimate exists", () => {
   const handoff = buildFieldHandoff({})

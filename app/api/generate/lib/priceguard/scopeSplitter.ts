@@ -22,6 +22,11 @@ type SegmentBucket = {
   signals: string[]
 }
 
+type IncludedSegment = {
+  description: string
+  pricingScope: string
+}
+
 type ScopeContext = {
   paintingContext: boolean
   exteriorPaintingContext: boolean
@@ -164,12 +169,40 @@ function isBoundaryOnlySegment(segment: string): boolean {
   return false
 }
 
-export function getIncludedScopeText(scopeText: string): string {
+function getIncludedSegments(scopeText: string): IncludedSegment[] {
   return splitIntoSentences(scopeText)
-    .flatMap((sentence) =>
-      isBoundaryOnlySegment(sentence) ? [] : splitIntoSegments(sentence)
-    )
-    .filter((segment) => !isBoundaryOnlySegment(segment))
+    .flatMap((sentence) => {
+      if (isBoundaryOnlySegment(sentence)) return []
+      // Only an adjacent coordinated pair within one clause can share its object.
+      // Keep the original per-operation input at the point of distribution;
+      // descriptive context is not new deterministic quantity authority.
+      return sentence.split(/\s*,\s*|\s+\bthen\b\s+|\s+\balso\b\s+/i).flatMap((clause) => {
+        const segments = splitIntoSegments(clause).map((pricingScope) => ({
+          description: pricingScope,
+          pricingScope,
+        }))
+        for (let i = 0; i < segments.length - 1; i++) {
+          const first = segments[i]
+          const second = segments[i + 1]
+          const verb = /^(paint|patch)$/i.exec(first.pricingScope)
+          const shared = /^(paint|patch)\s+(walls?\b.*)$/i.exec(second.pricingScope)
+          if (
+            verb && shared && verb[1].toLowerCase() !== shared[1].toLowerCase() &&
+            !isBoundaryOnlySegment(second.pricingScope)
+          ) {
+            first.description = `${verb[1]} ${shared[2]}`
+          }
+        }
+        return segments
+      })
+    })
+    .filter((segment) => !isBoundaryOnlySegment(segment.pricingScope))
+}
+
+export function getIncludedScopeText(scopeText: string): string {
+  // Existing anchor and quantity consumers retain the original included text.
+  return getIncludedSegments(scopeText)
+    .map((segment) => segment.pricingScope)
     .join(", ")
 }
 
@@ -334,9 +367,9 @@ function mergeRelatedTrades(
   return buckets
 }
 
-export function splitScopeByTrade(scopeText: string): ScopeChunk[] {
-  const includedScopeText = getIncludedScopeText(scopeText)
-  const segments = splitIntoSegments(includedScopeText)
+function splitScope(scopeText: string, purpose: "description" | "pricingScope"): ScopeChunk[] {
+  const segments = getIncludedSegments(scopeText)
+  const includedScopeText = segments.map((segment) => segment.pricingScope).join(", ")
 
   if (!segments.length) return []
 
@@ -344,14 +377,14 @@ export function splitScopeByTrade(scopeText: string): ScopeChunk[] {
   const buckets = new Map<SplitTrade, SegmentBucket>()
 
   for (const segment of segments) {
-    const detected = detectTradeForSegment(segment, context)
+    const detected = detectTradeForSegment(segment.pricingScope, context)
 
     if (!buckets.has(detected.trade)) {
       buckets.set(detected.trade, createBucket(detected.trade))
     }
 
     const bucket = buckets.get(detected.trade)!
-    bucket.phrases.push(segment)
+    bucket.phrases.push(segment[purpose])
     bucket.signals.push(...detected.signals)
   }
 
@@ -373,6 +406,16 @@ export function splitScopeByTrade(scopeText: string): ScopeChunk[] {
   }
 
   return out
+}
+
+export function splitScopeByTrade(scopeText: string): ScopeChunk[] {
+  return splitScope(scopeText, "description")
+}
+
+// Internal pricing input selection shares the parser; no provenance is added to
+// ScopeChunk or the API. Measurements supplied independently remain separate.
+export function splitScopeByTradeForPricing(scopeText: string): ScopeChunk[] {
+  return splitScope(scopeText, "pricingScope")
 }
 
 export function isMultiTradeScope(scopeText: string): boolean {
