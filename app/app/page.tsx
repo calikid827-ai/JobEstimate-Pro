@@ -82,6 +82,7 @@ import {
   buildEstimateConfidence,
   normalizeProfitProtection,
 } from "./lib/estimate-utils"
+import { calculateProfitTargetMarkup } from "./lib/profit-target"
 import {
   getEstimateSectionTreatmentLabel,
   resolveCanonicalEstimateOutput,
@@ -4735,32 +4736,23 @@ function applyMinimumSafePrice() {
 }
 
 function applyProfitTarget(targetMarginPct: number) {
-  const cost =
-    Number(pricing.labor || 0) +
-    Number(pricing.materials || 0) +
-    Number(pricing.subs || 0)
+  const newMarkup = calculateProfitTargetMarkup(pricing, targetMarginPct)
+  if (newMarkup == null) {
+    setStatus("Profit target not applied. Enter valid positive job costs first.")
+    return
+  }
 
-  if (!cost) return
-
-  const targetMargin = Math.max(0, Math.min(95, Number(targetMarginPct || 0))) / 100
-
-  const effectiveTaxRate = taxEnabled ? Number(taxRate || 0) / 100 : 0
-
-  // target total AFTER tax (what contractor actually collects)
-  const targetAfterTax = cost / (1 - targetMargin)
-
-  // convert to pre-tax price
-  const targetBeforeTax = targetAfterTax / (1 + effectiveTaxRate)
-
-  const newMarkup = ((targetBeforeTax - cost) / cost) * 100
+  const appliedProfit = buildProfitProtectionFromPricing({ ...pricing, markup: newMarkup })!
 
   setPricing((prev) => ({
     ...prev,
-    markup: Math.round(newMarkup * 10) / 10,
+    markup: newMarkup,
   }))
 
   setPricingEdited(true)
-  setStatus(`Profit target applied: ${Math.round(targetMarginPct)}% TRUE margin`)
+  setStatus(
+    `Markup applied: ${newMarkup}%. Estimated pre-tax margin: ${appliedProfit.grossMarginPct}% (requested ${targetMarginPct}%).`
+  )
 }
 
 function saveCurrentSetupAsJobTemplate() {

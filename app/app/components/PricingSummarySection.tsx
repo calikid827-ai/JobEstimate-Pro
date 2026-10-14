@@ -1,5 +1,7 @@
 "use client"
 
+import { currentProfitMarginPct } from "../lib/profit-target"
+
 type Props = {
   pricing: any
   setPricing: (p: any) => void
@@ -356,10 +358,7 @@ export default function PricingSummarySection({
         )}
 
         {pricing && (() => {
-          const cost = (pricing.labor || 0) + (pricing.materials || 0) + (pricing.subs || 0)
-          const total = pricing.total || 0
-          const margin = total > 0 ? (total - cost) / total : 0
-          const marginPct = Math.round(margin * 100)
+          const marginPct = currentProfitMarginPct(pricing)
 
           if (marginPct < 15) {
             return (
