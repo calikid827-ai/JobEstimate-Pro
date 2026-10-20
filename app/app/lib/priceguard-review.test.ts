@@ -366,6 +366,51 @@ test("PriceGuard suppresses primer after patching material confirmation when dry
   assert.doesNotMatch(text, /primer \/ sealer after patching/)
 })
 
+test("PriceGuard omits answered supplier-only confirmations while retaining independent instructions", () => {
+  const supplierPrompt = "Confirm who supplies the main materials and fixtures."
+  const selectionPrompt = "Confirm paint finish selection and material delivery timing."
+  const compoundPrompt = "Confirm who supplies paint and verify quantities before ordering."
+  const makeReview = (answer: string) => buildReview({
+    selectedTrade: "general_renovation",
+    scopeText: `Paint 10 bedrooms that are 10x12. Walls and ceilings. Patch any holes and imperfections. Two coats. ${answer}`,
+    resultText: "Includes painting, masking, protection, cleanup, and customer approval.",
+    materialsList: { items: [], confirmItems: [supplierPrompt, selectionPrompt, compoundPrompt], notes: [] },
+  })
+  const resolved = makeReview("Contractor will supply the main materials and fixtures listed in this scope.")
+  assert.equal(resolved?.missedScopeWarnings.includes(supplierPrompt), false)
+  assert.equal(resolved?.missedScopeWarnings.includes(selectionPrompt), true)
+  assert.equal(resolved?.missedScopeWarnings.includes(compoundPrompt), true)
+  assert.equal(makeReview("")?.missedScopeWarnings.includes(supplierPrompt), true)
+  assert.equal(makeReview("Contractor will supply paint. Owner will supply paint.")?.missedScopeWarnings.includes(supplierPrompt), true)
+})
+
+test("PriceGuard retains unanswered paint supply without clearing independent instructions or borrowing primer supply", () => {
+  const paint = "Confirm who supplies paint."
+  const primer = "Confirm who supplies primer."
+  const independent = [
+    "Confirm paint delivery timing.", "Confirm paint finish selection.",
+    "Confirm paint quantities before ordering.", "Confirm excluded trim remains by others.",
+    "Confirm who supplies paint and verify quantities before ordering.",
+  ]
+  const makeReview = (answer: string, independentPrompt = independent[0]) => buildReview({
+    selectedTrade: "painting", scopeText: `Paint bedroom walls. ${answer}`,
+    resultText: "Includes painting, masking, protection, cleanup, and customer approval.",
+    materialsList: { items: [], confirmItems: [paint, primer, independentPrompt], notes: [] },
+  })
+  for (const answer of ["", "Contractor will supply no paint.", "No paint will be supplied by contractor.", "Owner will supply primer.", "Contractor will supply all materials except paint."]) {
+    const review = makeReview(answer)
+    assert.equal(review?.missedScopeWarnings.includes(paint), true, answer)
+    for (const prompt of independent) assert.equal(makeReview(answer, prompt)?.missedScopeWarnings.includes(prompt), true, `${answer}: ${prompt}`)
+  }
+  assert.equal(makeReview("Owner will supply primer.")?.missedScopeWarnings.includes(primer), false)
+  assert.equal(makeReview("Contractor will supply paint.")?.missedScopeWarnings.includes(primer), true)
+  const resolved = makeReview("Contractor will supply paint. Owner will supply primer.")
+  assert.equal(resolved?.missedScopeWarnings.includes(paint), false)
+  assert.equal(resolved?.missedScopeWarnings.includes(primer), false)
+  for (const prompt of independent) assert.equal(makeReview("Contractor will supply paint. Owner will supply primer.", prompt)?.missedScopeWarnings.includes(prompt), true, prompt)
+  assert.equal(makeReview("Contractor will supply paint. Owner will supply paint.")?.missedScopeWarnings.includes(paint), true)
+})
+
 test("PriceGuard preserves primer after patching confirmation for true patch-and-paint", () => {
   const text = reviewText(
     buildReview({

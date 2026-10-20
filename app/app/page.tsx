@@ -67,8 +67,6 @@ import {
   startOfWeek,
   addDays,
   isoDay,
-  completionEndFromSchedule,
-  daysBetween,
   formatDelta,
   formatSignedNumber,
   buildActualsPatch,
@@ -107,6 +105,7 @@ import {
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
 import { checkScopeQuality } from "./lib/scope-quality-check"
+import { isResolvedMaterialSupplyPrompt } from "./lib/estimator-scope-facts"
 import { buildPriceGuardReview } from "./lib/priceguard-review"
 import { buildCustomerScopeReviewGuard } from "./lib/customer-scope-drift"
 import {
@@ -129,6 +128,13 @@ import ScopeDecisionsPanel from "./components/ScopeDecisionsPanel"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
 import { detectChangeOrder } from "./lib/change-order-detector"
+import {
+  buildChangeOrderSummary,
+  buildJobContractSummary,
+  findOriginalEstimateForJob,
+  normalizeGeneratedDocumentText,
+  resolveEstimateDocumentType,
+} from "./lib/estimate-workflow"
 import {
   createJobTemplate,
   deleteJobTemplate,
@@ -2738,6 +2744,7 @@ function startChangeOrderFromJob(jobId: string) {
   })
 
   setDocumentType("Change Order")
+  setDocumentIntent("Change Order")
 
   if (source) {
     setTrade(source.trade || "")
@@ -2876,134 +2883,15 @@ function computeWeeklyCrewLoad() {
 }
 
 function lockedOriginalEstimateForJob(jobId?: string) {
-  if (!jobId) return null
-
-  const job = jobs.find((j) => j.id === jobId)
-
-  const jobHistory = history
-    .filter((h) => h.jobId === jobId)
-    .sort((a, b) => a.createdAt - b.createdAt)
-
-  if (job?.originalEstimateId) {
-    const locked = jobHistory.find((h) => h.id === job.originalEstimateId)
-    if (locked) return locked
-  }
-
-  // fallback: use earliest estimate for this job
-  return jobHistory[0] || null
+  return findOriginalEstimateForJob({ jobId, jobs, history })
 }
 
 function computeJobContractSummary(jobId?: string) {
-  if (!jobId) {
-    return {
-      originalEstimate: null as EstimateHistoryItem | null,
-      originalEstimateTotal: 0, // with tax
-      originalEstimateContractValue: 0, // before tax
-      changeOrders: [] as EstimateHistoryItem[],
-      changeOrdersTotal: 0, // with tax
-      changeOrdersContractValue: 0, // before tax
-      currentContractValue: 0, // with tax
-      currentContractValueBeforeTax: 0, // before tax
-    }
-  }
-
-  const originalEstimate = lockedOriginalEstimateForJob(jobId)
-
-  if (!originalEstimate) {
-    return {
-      originalEstimate: null,
-      originalEstimateTotal: 0,
-      originalEstimateContractValue: 0,
-      changeOrders: [],
-      changeOrdersTotal: 0,
-      changeOrdersContractValue: 0,
-      currentContractValue: 0,
-      currentContractValueBeforeTax: 0,
-    }
-  }
-
-  // original estimate
-  const originalEstimateTotal = estimateTotalWithTax(originalEstimate)
-  const originalEstimateContractValue = estimateSubtotalBeforeTax(originalEstimate)
-
-  // all later change orders / estimates tied to same job
-  const changeOrders = history
-    .filter((h) => h.jobId === jobId && h.id !== originalEstimate.id)
-    .sort((a, b) => a.createdAt - b.createdAt)
-
-  const changeOrdersTotal = changeOrders.reduce(
-    (sum, h) => sum + estimateTotalWithTax(h),
-    0
-  )
-
-  const changeOrdersContractValue = changeOrders.reduce(
-    (sum, h) => sum + estimateSubtotalBeforeTax(h),
-    0
-  )
-
-  const currentContractValue = originalEstimateTotal + changeOrdersTotal
-  const currentContractValueBeforeTax =
-    originalEstimateContractValue + changeOrdersContractValue
-
-  return {
-    originalEstimate,
-    originalEstimateTotal,
-    originalEstimateContractValue,
-    changeOrders,
-    changeOrdersTotal,
-    changeOrdersContractValue,
-    currentContractValue,
-    currentContractValueBeforeTax,
-  }
+  return buildJobContractSummary({ jobId, jobs, history })
 }
 
 function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
-  if (!current?.jobId) return null
-
-  const contract = computeJobContractSummary(current.jobId)
-  const original = contract.originalEstimate
-  if (!original) return null
-
-  const isOriginalEstimate = current.id === original.id
-
-  const previousContractValue = isOriginalEstimate
-    ? contract.originalEstimateTotal
-    : contract.originalEstimateTotal +
-      contract.changeOrders
-        .filter((h) => h.createdAt < current.createdAt)
-        .reduce((sum, h) => sum + estimateTotalWithTax(h), 0)
-
-  const currentEstimateTotal = estimateTotalWithTax(current)
-  const newContractValue = isOriginalEstimate
-    ? contract.originalEstimateTotal
-    : previousContractValue + currentEstimateTotal
-
-  const costDelta = isOriginalEstimate ? 0 : currentEstimateTotal
-
-  const originalCrewDays = Number(original.schedule?.crewDays || 0)
-  const currentCrewDays = Number(current.schedule?.crewDays || 0)
-  const crewDayDelta = currentCrewDays - originalCrewDays
-
-  const originalEnd = completionEndFromSchedule(original.schedule, original.createdAt)
-  const currentEnd = completionEndFromSchedule(current.schedule, current.createdAt)
-  const scheduleDeltaDays = daysBetween(originalEnd, currentEnd)
-
-  return {
-    original,
-    current,
-    isOriginalEstimate,
-    originalEstimateTotal: contract.originalEstimateTotal,
-    previousContractValue,
-    currentEstimateTotal,
-    newContractValue,
-    costDelta,
-    originalCrewDays,
-    currentCrewDays,
-    crewDayDelta,
-    originalEnd,
-    currentEnd,
-    scheduleDeltaDays,
-  }
+  return buildChangeOrderSummary({ current, jobs, history })
 }
 
   // -------------------------
@@ -3202,6 +3090,7 @@ const completionWindow = useMemo(() => {
 ])
   
   const [documentType, setDocumentType] = useState<DocumentType>("Estimate")
+  const [documentIntent, setDocumentIntent] = useState<DocumentType>("Estimate")
   const [trade, setTrade] = useState<UiTrade>("")
   const [state, setState] = useState("")
   const [paintScope, setPaintScope] = useState<PaintScope>("walls")
@@ -3366,6 +3255,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
 
   return {
     ...base,
+    documentType,
     jobDetails: { ...jobDetails },
     trade,
     state,
@@ -3408,6 +3298,7 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   }
 }, [
   history,
+  documentType,
   jobDetails,
   trade,
   state,
@@ -4094,8 +3985,10 @@ const planEvidenceRequiresRegeneration = useMemo(
 const reviewIssues = useMemo(() => {
   if (!result) return []
   const inputs: ReviewIssueInput[] = []
+  const supplierPromptResolved = (message: string) =>
+    isResolvedMaterialSupplyPrompt(message, { scopeText: generatedResultScopeText, selectedTrade: trade })
   const add = (message: string, source: string, title?: string) => {
-    if (message.trim()) inputs.push({ message, source, title })
+    if (message.trim() && !supplierPromptResolved(message)) inputs.push({ message, source, title })
   }
   for (const warning of customerScopeReviewGuard.warnings) {
     if (warning.reviewActions?.length) {
@@ -4120,6 +4013,11 @@ const reviewIssues = useMemo(() => {
     ...(profitLeakDetector?.pricingReviewPrompts || []),
   ].map((item) => item.label.trim().toLowerCase()).filter(Boolean))
   for (const finding of estimatorIntelligenceFindings.findings) {
+    // A supplier-only summary cannot clear a separate instruction in evidence.
+    if (supplierPromptResolved(finding.summary) && finding.evidence
+      .flatMap((item) => [item.label || "", item.excerpt || ""])
+      .filter(Boolean)
+      .every((detail) => normalizeScopeWhitespace(detail) === normalizeScopeWhitespace(finding.summary) || supplierPromptResolved(detail))) continue
     // Plan findings and quantities have their own source-linked summary below.
     if (["plan_readback", "plan_evidence", "plan_quantity_candidate"].includes(finding.sourceKind)) continue
     if (["diagnostic_note", "assembly_candidate"].includes(finding.category)) continue
@@ -4163,7 +4061,8 @@ const reviewIssues = useMemo(() => {
   return consolidateReviewIssues(inputs).filter((issue) => !decisionKeys.has(issue.key))
 }, [result, customerScopeReviewGuard.warnings, estimatorIntelligenceFindings, missedScopeDetector,
   profitLeakDetector, materialsList,
-  areaScopeBreakdown, scopeXRay, generatedResultScopeQuality.warnings, schedule, scopeDecisions])
+  areaScopeBreakdown, scopeXRay, generatedResultScopeQuality.warnings, schedule, scopeDecisions,
+  generatedResultScopeText, trade])
 
 const unresolvedScopeDecisionCount = scopeDecisions.filter((decision) => !appliedScopeDecisionSentences[decision.id]).length
 const compactPlanReview = buildPlanReviewSummary({
@@ -4450,7 +4349,10 @@ function saveCurrentSetupAsJobTemplate() {
   const template = createJobTemplate({
     name: jobTemplateName,
     trade,
-    documentType,
+    documentType: resolveEstimateDocumentType({
+      documentType: documentIntent,
+      changeOrderNo: jobDetails.changeOrderNo,
+    }),
     state,
     scopeChange,
     paintScope: showPaintScope ? paintScope : null,
@@ -4478,7 +4380,10 @@ function useJobTemplate(template: JobTemplate) {
   }
 
   updatePlanCeilingSession({ type: "estimate_context_reset" })
-  setDocumentType(setup.documentType || "Estimate")
+  setDocumentIntent(setup.documentType || "Estimate")
+  if (setup.documentType !== "Change Order") {
+    setJobDetails((current) => ({ ...current, changeOrderNo: "" }))
+  }
   setTrade(normalizeTrade(setup.trade))
   setState(String(setup.state || "").trim().toUpperCase())
   setPaintScope(setup.paintScope ?? "walls")
@@ -4967,6 +4872,12 @@ async function generate() {
   }
 
   const finalScopeChange = String(scopeChange || "").trim()
+  // User workflow controls establish intent; AI labels and earlier estimates do not.
+  // Capture it before awaits so an in-flight response cannot change the operation.
+  const requestedDocumentType = resolveEstimateDocumentType({
+    documentType: documentIntent,
+    changeOrderNo: jobDetails.changeOrderNo,
+  })
 
     if (!finalScopeChange) {
     setStatus("Please describe the scope change.")
@@ -5126,6 +5037,7 @@ if (ENABLE_CLIENT_DEBUG_LOGS) {
 const requestPayload = {
   requestId,
   email: e,
+  documentPurpose: requestedDocumentType,
   scopeChange: finalScopeChange,
   trade: tradeToSend,
   state,
@@ -5237,6 +5149,12 @@ if (requestPlanEntries.length > 0) {
     }
 
     const data = await res.json()
+    const rawResultText = String(data.text || data.description || "").trim()
+    // Validate before accepting any response as a generated/saved proposal.
+    const cleanedResultText = normalizeGeneratedDocumentText(
+      rawResultText,
+      requestedDocumentType
+    )
     if (ENABLE_CLIENT_DEBUG_LOGS) {
       console.log("pricingSource:", data.pricingSource)
     }
@@ -5245,12 +5163,6 @@ if (requestPlanEntries.length > 0) {
     setPriceGuardVerified(nextVerified)
     setPriceGuard(data?.priceGuard ?? null)
 
-const rawDocumentType = String(data?.documentType ?? "").trim()
-
-const nextDocumentType: DocumentType =
-  rawDocumentType === "Change Order" ? "Change Order" : "Estimate"
-
-const rawResultText = String(data.text || data.description || "").trim()
 const nextPricing = data.pricing ? data.pricing : pricing
 const nextPricingSource =
   (data?.pricingSource as PricingSource) || "ai"
@@ -6100,14 +6012,12 @@ setPricingSource(nextPricingSource)
 const nextTrade: UiTrade = trade ? trade : normalizeTrade(data?.trade)
 if (!trade && nextTrade) setTrade(nextTrade)
 
-const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
-
 const jobId = getOrCreateJobIdFromDetails()
 
 const originalEstimate = lockedOriginalEstimateForJob(jobId)
 
 const changeOrderDetection = detectChangeOrder({
-  documentType: nextDocumentType,
+  documentType: requestedDocumentType,
   scopeChange: finalScopeChange,
   currentSchedule: normalizedSchedule,
   originalEstimate,
@@ -6117,41 +6027,12 @@ const changeOrderDetection = detectChangeOrder({
 setChangeOrderDetection(changeOrderDetection)
 
 const finalDocumentType: DocumentType =
-  changeOrderDetection.isChangeOrder ? "Change Order" : nextDocumentType
+  requestedDocumentType
 
 setDocumentType(finalDocumentType)
 
-const cleanedResultText = rawResultText
-  .replace(
-    /^This\s+Change\s+Order\s*\/\s*Estimate\s+covers/i,
-    finalDocumentType === "Change Order"
-      ? "This change order covers"
-      : "This estimate covers"
-  )
-  .replace(
-    /^This\s+Estimate\s*\/\s*Change\s+Order\s+covers/i,
-    finalDocumentType === "Change Order"
-      ? "This change order covers"
-      : "This estimate covers"
-  )
-  .replace(
-    /^This\s+Change\s+Order\s+or\s+Estimate\s+covers/i,
-    finalDocumentType === "Change Order"
-      ? "This change order covers"
-      : "This estimate covers"
-  )
-  .replace(
-    /This\s+scope\s+is\s+additive\s+to\s+any\s+existing\s+[^.]+\./i,
-    finalDocumentType === "Change Order"
-      ? "This change is additive to the original contract scope."
-      : "This estimate is based on the scope described above."
-  )
-  .replace(
-    /The\s+work\s+is\s+intended\s+to\s+be\s+additive\s+or\s+corrective\s+to\s+existing\s+contract\s+conditions\s+or\s+proposed\s+as\s+new\s+work\s+depending\s+on\s+project\s+status\./i,
-    finalDocumentType === "Change Order"
-      ? "This change modifies the original contract scope as described above."
-      : "This estimate is for the scope described above."
-  )
+// Keep each generated approval snapshot distinct from earlier shared documents.
+const newId = `${Date.now()}_${Math.random().toString(16).slice(2)}`
 
 setResult({
   text: cleanedResultText,
@@ -7475,6 +7356,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   )
   setJobDetails(item.jobDetails)
   setDocumentType(item.documentType || "Estimate")
+  setDocumentIntent(item.documentType || "Estimate")
   setTrade(item.trade || "")
   setState(item.state || "")
   setScopeChange(item.scopeChange || "")
@@ -14429,9 +14311,10 @@ const accountAccessMessage = !normalizedEmail
       <input
         placeholder="Change Order # (optional)"
         value={jobDetails.changeOrderNo}
-        onChange={(e) =>
+        onChange={(e) => {
           setJobDetails({ ...jobDetails, changeOrderNo: e.target.value })
-        }
+          if (e.target.value.trim()) setDocumentIntent("Change Order")
+        }}
         style={{ width: "100%", padding: 8 }}
       />
       <input
@@ -14450,6 +14333,33 @@ const accountAccessMessage = !normalizedEmail
   </div>
 </details>
      
+      <div style={{ marginTop: 12 }}>
+        <label htmlFor="document-purpose" style={{ display: "block", fontWeight: 600 }}>
+          Document purpose
+        </label>
+        <select
+          id="document-purpose"
+          value={documentIntent === "Change Order" ? "Change Order" : "Estimate"}
+          disabled={loading}
+          onChange={(event) => {
+            const intent = event.target.value === "Change Order" ? "Change Order" : "Estimate"
+            setDocumentIntent(intent)
+            if (intent === "Estimate") {
+              setJobDetails((current) => ({ ...current, changeOrderNo: "" }))
+            }
+          }}
+          style={{ width: "100%", padding: 10, marginTop: 6 }}
+        >
+          <option value="Estimate">Estimate — create or revise the current estimate</option>
+          <option value="Change Order">Change Order — adjust an existing contract</option>
+        </select>
+        <p style={{ margin: "6px 0 0", fontSize: 12, color: "#666" }}>
+          {documentIntent === "Change Order"
+            ? "Enter only the added or deducted work for this change order."
+            : "Regenerating revises this estimate. An approved contract remains saved separately."}
+        </p>
+      </div>
+
       <EstimateBuilderSection
   trade={trade}
   setTrade={setTrade}

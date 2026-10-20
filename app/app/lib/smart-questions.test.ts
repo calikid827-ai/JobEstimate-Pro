@@ -10,6 +10,7 @@ import {
 import { buildProposalReadiness } from "./proposal-readiness"
 import { checkScopeQuality } from "./scope-quality-check"
 import { buildPriceGuardReview } from "./priceguard-review"
+import { applyScopeDecisionWording, buildActionableScopeDecisions, buildScopeDecisionWording } from "./actionable-scope-decisions"
 
 function questionByCategory(questions: SmartQuestion[], category: string) {
   return questions.find((question) => question.category === category)
@@ -40,6 +41,95 @@ function answerQuestion(
     answeredAt: 1,
   })
 }
+
+test("applied supplier wording resolves from current scope after regeneration and stays idempotent", () => {
+  const originalScope = "Paint 10 bedrooms that are 10x12. Walls and Ceilings. Patch any holes and imperfections. Two coats."
+  const build = (scopeText: string) => buildSmartQuestions({
+    selectedTrade: "general_renovation", scopeText,
+    materialsConfirmItems: ["Confirm material supply responsibility."],
+    priceGuardReview: { scopeClarityWarnings: ["Exclusions and by-others responsibilities need confirmation."] },
+    limit: 20,
+  })
+  const decision = buildActionableScopeDecisions(build(originalScope), 20).find((item) => item.kind === "material_responsibility")
+  assert.ok(decision)
+  for (const choice of ["contractor_supplied", "owner_supplied"] as const) {
+    const wording = buildScopeDecisionWording(decision, { choice })
+    assert.ok(wording)
+    const applied = applyScopeDecisionWording({ scopeText: originalScope, wording })
+    assert.equal(applied.status, "applied")
+    assert.equal(questionByCategory(build(applied.scopeText), "materials_responsibility"), undefined)
+    // A newly constructed question list has no selected dropdown state to rely on.
+    assert.equal(questionByCategory(build(applied.scopeText), "materials_responsibility"), undefined)
+    assert.ok(questionByCategory(build(applied.scopeText), "scope_boundary"))
+    const repeated = applyScopeDecisionWording({ scopeText: applied.scopeText, wording })
+    assert.equal(repeated.status, "duplicate")
+    assert.equal(repeated.scopeText, applied.scopeText)
+  }
+  assert.ok(questionByCategory(build(originalScope), "materials_responsibility"))
+})
+
+test("manual supplier answers remain scoped, with removed and contradictory answers reopening uncertainty", () => {
+  const scope = "Paint bedroom walls and install light fixtures."
+  const build = (answer: string) => buildSmartQuestions({
+    selectedTrade: "general_renovation", scopeText: `${scope} ${answer}`,
+    materialsConfirmItems: ["Confirm paint and fixture supplier."], limit: 20,
+  })
+  for (const answer of [
+    "Contractor will supply the main materials and fixtures listed in this scope.",
+    "Owner will supply the main materials and fixtures listed in this scope.",
+    "Contractor supplies paint. Owner supplies fixtures.",
+    "Contractor will supply paint while owner will provide fixtures.",
+  ]) {
+    assert.equal(questionByCategory(build(answer), "materials_responsibility"), undefined, answer)
+  }
+  for (const answer of [
+    "", "Owner will supply fixtures.", "Contractor will not supply paint. Owner will supply fixtures.",
+    "Contractor will supply paint. Owner will supply paint and fixtures.",
+  ]) {
+    assert.ok(questionByCategory(build(answer), "materials_responsibility"), answer)
+  }
+})
+
+test("painting patch prep does not require a separate supplier while explicit drywall work retains one", () => {
+  const scopeText = "Paint 10 bedrooms that are 10x12. Walls and Ceilings. Patch any holes and imperfections. Two coats. Contractor supplies paint. Owner supplies fixtures."
+  const build = (scopeText: string) => buildSmartQuestions({
+    selectedTrade: "general_renovation", scopeText,
+    materialsConfirmItems: ["Confirm material supply responsibility."], limit: 20,
+  })
+  assert.equal(questionByCategory(build(scopeText), "materials_responsibility"), undefined)
+  assert.ok(questionByCategory(build(`${scopeText} Install new drywall on the garage walls.`), "materials_responsibility"))
+  assert.ok(questionByCategory(build(scopeText.replace("Contractor supplies paint.", "")), "materials_responsibility"))
+})
+
+test("negative and primer-only answers leave the paint action while independent quantity and boundary actions remain", () => {
+  const build = (answer: string) => buildSmartQuestions({
+    selectedTrade: "painting", scopeText: `Paint bedroom walls. ${answer}`,
+    materialsConfirmItems: ["Confirm who supplies paint."],
+    priceGuardReview: { scopeClarityWarnings: ["Exclusions and by-others responsibilities need confirmation."] },
+    limit: 20,
+  })
+  for (const answer of [
+    "", "Contractor will supply no paint.", "No paint will be supplied by contractor.",
+    "Owner will supply primer.", "Contractor will supply all materials except paint.",
+    "Contractor will supply paint. Owner will supply paint.",
+  ]) {
+    const questions = build(answer)
+    assert.deepEqual(new Set(questions.map((question) => question.category)), new Set(["quantity", "materials_responsibility", "scope_boundary"]), answer)
+    assert.equal(questions.length, 3, answer)
+    assert.ok(buildActionableScopeDecisions(questions, 20).some((decision) => decision.kind === "material_responsibility"), answer)
+  }
+  for (const answer of [
+    "Contractor will supply paint.", "Owner will supply paint.",
+    "Owner will supply primer. Contractor will supply paint.",
+    "Contractor will supply no paint. Owner will supply paint.",
+    "Contractor will supply all materials except paint. Owner will supply paint.",
+  ]) {
+    const questions = build(answer)
+    assert.equal(questions.length, 2, answer)
+    assert.deepEqual(new Set(questions.map((question) => question.category)), new Set(["quantity", "scope_boundary"]), answer)
+    assert.equal(buildActionableScopeDecisions(questions, 20).some((decision) => decision.kind === "material_responsibility"), false, answer)
+  }
+})
 
 test("painting under General Renovation keeps relevant questions without fixture or permit boilerplate", () => {
   const scopeText = "Paint 15 10’x12’ bedrooms. Walls and ceilings. Patching any cracks and imperfections. Two coats."

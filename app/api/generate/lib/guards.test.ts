@@ -23,6 +23,18 @@ const baseGeneratePayload = {
   workDaysPerWeek: 5,
 }
 
+test("document purpose is optional for existing callers and accepts only explicit workflow values", () => {
+  assert.equal(GenerateSchema.safeParse(baseGeneratePayload).success, true)
+  for (const documentPurpose of ["Estimate", "Change Order"]) {
+    const parsed = GenerateSchema.safeParse({ ...baseGeneratePayload, documentPurpose })
+    assert.equal(parsed.success, true)
+    if (parsed.success) assert.equal(parsed.data.documentPurpose, documentPurpose)
+  }
+  for (const documentPurpose of ["Change Order / Estimate", "estimate", "", true, null]) {
+    assert.equal(GenerateSchema.safeParse({ ...baseGeneratePayload, documentPurpose }).success, false)
+  }
+})
+
 test("successful selected-page staged upload payload can continue into generate schema", () => {
   const payload = {
     ...baseGeneratePayload,

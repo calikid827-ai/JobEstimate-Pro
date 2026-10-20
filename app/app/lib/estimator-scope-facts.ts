@@ -100,13 +100,13 @@ const EXISTING_CONDITION_PATTERN =
   /\b(existing|remain|to remain|leave in place|salvage|reuse|protect in place)\b/
 
 const OWNER_SUPPLIED_PATTERN =
-  /\b(owner supplied|owner-supplied|owner supplies|owner provides?|owner to provide|by owner)\b/
+  /\b(owner[-\s]+supplied|owner\s+(?:(?:will|to)\s+)?(?:suppl(?:y|ies)|provides?)|by owner)\b/
 
 const CUSTOMER_SUPPLIED_PATTERN =
-  /\b(customer supplied|customer-supplied|customer supplies|customer provides?|customer to provide)\b/
+  /\b(customer[-\s]+supplied|customer\s+(?:(?:will|to)\s+)?(?:suppl(?:y|ies)|provides?))\b/
 
 const CONTRACTOR_SUPPLIED_PATTERN =
-  /\b(contractor supplied|contractor-supplied|contractor supplies|contractor provides?)\b/
+  /\b(contractor[-\s]+supplied|contractor\s+(?:(?:will|to)\s+)?(?:suppl(?:y|ies)|provides?))\b/
 
 const ALLOWANCE_PATTERN = /\b(allowance|material selection|finish selection|materials? included|include materials?)\b/
 
@@ -193,6 +193,147 @@ function detectTrades(text: string): EstimatorScopeTrade[] {
   }
 
   return uniq(trades)
+}
+
+// Resolve the existing material question from explicit scope relationships, rather
+// than from a supplier word elsewhere in the scope or a transient dropdown value.
+const MATERIAL_SUBJECT_NEGATION = /^(?:no|none\s+of(?:\s+the)?|not(?:\s+any|\s+the)?|neither|zero|without)\b\s*/
+
+function materialSubject(subject: string) {
+  subject = normalize(subject)
+  const keys = uniq(subject.replace(/\bpainting\b/g, "paint").replace(/\b(?:sheetrock|gypsum)\b/g, "drywall")
+    .match(/\b[a-z]+\b/g)?.filter((word) =>
+      !["the", "and", "or", "nor", "but", "all", "any", "no", "none", "not", "neither", "zero", "without", "of", "main", "standard", "finish", "finishing", "material", "materials", "electrical", "plumbing", "listed", "included", "described", "in", "this", "scope"].includes(word)
+    ).map((word) => word.replace(/s$/, "")) || [])
+  const generic = /^(?:the\s+)?(?:(?:all|main|standard)\s+)?materials?(?:\s+and\s+fixtures?)?(?:\s+(?:listed|included|described)\s+in\s+(?:this|the)\s+scope)?$/.test(subject)
+  return { keys, generic }
+}
+
+export function hasMaterialResponsibilityForTrade(
+  facts: Pick<EstimatorScopeFacts, "clauses" | "includedTrades"> & Partial<Pick<EstimatorScopeFacts, "rawText">>,
+  trade: string,
+  requestedSubject?: string
+): boolean {
+  // Keep a material list and its comma-separated exclusions in one relationship.
+  // The general scope-clause splitter intentionally separates those commas.
+  const supplierClauses = facts.rawText == null
+    ? facts.clauses.map((clause) => clause.text)
+    : facts.rawText.toLowerCase().split(/[.;\n\r]+/).map(normalize)
+  const statements = supplierClauses.flatMap((clause) =>
+    clause.split(/(?:\s+(?:and|while|but)\s+|,\s*)(?=(?:the\s+)?(?:owner|customer|contractor)\b)/)
+  ).flatMap((text) => {
+    const direct = /\b(owner|customer|contractor)(?:[-\s]+(supplied)|\s+(?:(will|to|does)\s+)?(?:(not|never)\s+)?(suppl(?:y|ies)|provides?))\s+(.+)/.exec(text)
+    const reverse = /^(.+?)\s+(?:(?:will\s+be|to\s+be|is|are)\s+)?(?:(not)\s+)?(?:supplied|provided)\s+by\s+(?:the\s+)?(owner|customer|contractor)\b/.exec(text)
+    if (!direct && !reverse) return []
+    const supplier = (direct?.[1] || reverse?.[3]) === "contractor" ? "contractor" : "owner"
+    const rawSubject = (direct?.[6] || reverse?.[1] || "").replace(/[()]/g, " ").replace(/\s+(?:and|while|but)$/, "").trim()
+    const [included, ...excludedSubjects] = rawSubject.split(/\s+\b(?:except(?:\s+for)?|excluding|other\s+than|(?:but\s+)?not)\b\s+/)
+    const includedSubject = included.replace(/,\s*$/, "").trim()
+    const excludedKeys = materialSubject(excludedSubjects.join(" and ")).keys
+    // A denial may live in the material list rather than beside the verb.
+    // Keep affirmative alternatives in that list separate from the denied item.
+    const subjectParts = /\b(?:no|none|neither|zero|without|not)\b/.test(includedSubject)
+      ? includedSubject.split(/\s+(and|or|nor|but)\s+/)
+      : [includedSubject]
+    let subjectNegative = false
+    return subjectParts.flatMap((part, index) => {
+      if (index % 2) return []
+      subjectNegative = MATERIAL_SUBJECT_NEGATION.test(part) || (subjectNegative && subjectParts[index - 1] !== "but")
+      const subject = part.replace(MATERIAL_SUBJECT_NEGATION, "").trim()
+      const trades = detectTrades(subject)
+      const { keys, generic } = materialSubject(subject)
+      if (!generic && !trades.length && !/\bfixtures?\b/.test(subject)) return []
+      return [{
+        supplier, subject, trades, generic, keys, excludedKeys,
+        negative: Boolean(subjectNegative || direct?.[4] || reverse?.[2] || /\b(?:not|no|without)\s+$/.test(text.slice(0, direct?.index || 0))),
+        uncertain: /\?|\b(if|unless|might|may|pending|unconfirmed|undecided|not\s+(?:yet\s+)?confirmed|to\s+be\s+(?:confirmed|determined))\b/.test(text),
+      }]
+    })
+  })
+  // Descriptive work such as "Add painting ..." can name the material scope
+  // without matching an included-work verb. Use that existing clause evidence
+  // only for this question; boundary and supplier clauses cannot create a target.
+  const materialScopeTrades = facts.includedTrades.length ? facts.includedTrades : uniq(
+    facts.clauses.filter((clause) =>
+      !clause.excludedByOthers && !clause.protectionOnly && !clause.coordinationOnly &&
+      !clause.existingCondition && !clause.ownerSupplied && !clause.customerSupplied &&
+      !clause.contractorSupplied && !clause.permitInspection && !ALLOWANCE_PATTERN.test(clause.text)
+    ).flatMap((clause) => clause.trades)
+  )
+  const targets = TRADE_PATTERNS.some((entry) => entry.trade === trade)
+    ? [trade]
+    : materialScopeTrades.filter((included) =>
+      // Bare hole/imperfection patch prep in painting does not establish a
+      // separate drywall material-supply question. Explicit drywall work does.
+      included !== "drywall" || !materialScopeTrades.includes("painting") ||
+      facts.clauses.some((clause) => clause.includedWork && /\b(drywall|sheetrock|gypsum|skim|texture)\b/.test(clause.text))
+    )
+  const relevant = (statement: typeof statements[number], target: string) =>
+    statement.generic || statement.trades.includes(target as EstimatorScopeTrade) ||
+    (["electrical", "plumbing", "bathroom_tile"].includes(target) && /\bfixtures?\b/.test(statement.subject))
+  const overlaps = (left: typeof statements[number], right: typeof statements[number]) =>
+    (left.generic && right.generic) ||
+    left.keys.some((key) => !right.excludedKeys.includes(key) && (right.generic || right.keys.includes(key))) ||
+    right.keys.some((key) => !left.excludedKeys.includes(key) && left.generic)
+
+  const resolvesMaterial = (key: string) => {
+    const applicable = statements.filter((statement) =>
+      !statement.excludedKeys.includes(key) && (statement.generic || statement.keys.includes(key))
+    )
+    const positive = applicable.filter((statement) => !statement.negative && !statement.uncertain)
+    return positive.length > 0 && !positive.some((answer) => applicable.some((other) =>
+      other.uncertain || (other.negative ? other.supplier === answer.supplier : other.supplier !== answer.supplier)
+    ))
+  }
+  const requested = requestedSubject ? materialSubject(requestedSubject) : null
+  if (requested && !requested.keys.every(resolvesMaterial)) return false
+  if (requested && !requested.generic && requested.keys.length) return true
+
+  return (targets.length ? targets : ["general_renovation"]).every((target) => {
+    // The existing painting question names paint. Primer alone is an answer
+    // about a different material, even though both have painting-trade evidence.
+    const applicable = statements.filter((statement) => relevant(statement, target))
+    if (target === "painting" && applicable.length && !resolvesMaterial("paint")) return false
+    const positive = applicable.filter((statement) => !statement.negative && !statement.uncertain)
+    if (!positive.length) {
+      // Retain the existing allowance/selection treatment; explicit supply
+      // contradictions still require clarification below.
+      return !applicable.length && facts.clauses.some((clause) => ALLOWANCE_PATTERN.test(clause.text))
+    }
+    return !positive.some((answer) => applicable.some((other) =>
+      overlaps(answer, other) &&
+      (other.uncertain || (other.negative ? other.supplier === answer.supplier : other.supplier !== answer.supplier))
+    ))
+  })
+}
+
+export function isResolvedMaterialSupplyPrompt(
+  message: string,
+  args: { scopeText: string; selectedTrade?: string | null }
+): boolean {
+  const prompt = normalize(message).replace(/[.!?]+$/, "")
+  const question = /^(?:confirm\s+)?who\s+(?:(?:will\s+)?(?:suppl(?:y|ies)|provides?)|is\s+responsible\s+for\s+(?:supplying|providing))\s+(.+)$/.exec(prompt)
+  const genericResponsibility = /^confirm\s+(?:the\s+)?materials?\s+supply\s+responsibility$/.test(prompt)
+  const subject = question?.[1] || (genericResponsibility ? "materials" : "")
+  if (!subject) return false
+  // Only supplier-only prompts are redundant. Product selection, delivery,
+  // quantities and any unknown/compound instruction remain actionable.
+  const subjectWords = subject.match(/\b[a-z]+\b/g) || []
+  const allowedWords = new Set([
+    "the", "main", "all", "standard", "finish", "finishing", "and", "or", "listed", "in", "this", "scope",
+    "material", "materials", "paint", "painting", "fixture", "fixtures", "device", "devices", "electrical",
+    "plumbing", "drywall", "sheetrock", "gypsum", "tile", "wallcovering", "flooring", "carpentry", "primer",
+    "grout", "thinset", "membrane", "underlayment", "transition", "transitions", "outlet", "outlets",
+    "receptacle", "receptacles", "switch", "switches", "valve", "valves", "faucet", "faucets",
+    "baseboard", "baseboards", "door", "doors", "cabinet", "cabinets", "wallpaper",
+  ])
+  if (!subjectWords.length || !subjectWords.every((word) => allowedWords.has(word)) || /[^a-z\s-]/.test(subject)) return false
+  const facts = buildEstimatorScopeFacts(args.scopeText)
+  const subjectTrades = detectTrades(subject)
+  if (!subjectTrades.length && !/\b(materials?|fixtures?|devices?)\b/.test(subject)) return false
+  return hasMaterialResponsibilityForTrade(
+    facts, args.selectedTrade || "general_renovation", subject
+  )
 }
 
 function materialResponsibilitiesForClause(clause: EstimatorScopeFactClause) {

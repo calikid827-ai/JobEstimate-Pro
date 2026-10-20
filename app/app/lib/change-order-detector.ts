@@ -1,5 +1,6 @@
 // app/lib/change-order-detector.ts
 import type { EstimateHistoryItem, Schedule, ChangeOrderDetection } from "./types"
+import { resolveEstimateDocumentType } from "./estimate-workflow"
 
 export function detectChangeOrder(params: {
   documentType: string
@@ -20,17 +21,15 @@ export function detectChangeOrder(params: {
   const reasons: string[] = []
   const scheduleNotes: string[] = []
 
-  let isChangeOrder = false
+  const isChangeOrder = resolveEstimateDocumentType({ documentType, changeOrderNo }) === "Change Order"
   let mode: "add" | "deduct" | "mixed" | "unknown" = "unknown"
   let confidence: "low" | "medium" | "high" = "low"
 
   if (documentType === "Change Order") {
-    isChangeOrder = true
     reasons.push("Document type is Change Order")
   }
 
   if (changeOrderNo?.trim()) {
-    isChangeOrder = true
     reasons.push("Change order number is present")
   }
 
@@ -47,8 +46,7 @@ export function detectChangeOrder(params: {
     reasons.push("Scope language suggests deductive work")
   }
 
-  if (originalEstimate) {
-    isChangeOrder = true
+  if (isChangeOrder && originalEstimate) {
     reasons.push("Original estimate exists for this job")
   }
 

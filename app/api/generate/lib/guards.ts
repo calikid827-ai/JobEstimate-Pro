@@ -125,6 +125,9 @@ export const GenerateSchema = z.object({
 
   requestId: z.string().max(200).optional(),
 
+  // Optional for older callers; when supplied, contractor intent is authoritative.
+  documentPurpose: z.enum(["Estimate", "Change Order"]).optional(),
+
   scopeChange: z.string().min(10).max(4000),
 
   trade: TradeSchema.optional().default(""),

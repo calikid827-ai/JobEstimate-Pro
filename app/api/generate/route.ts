@@ -110,6 +110,10 @@ import {
   readStagedPlanUpload,
 } from "./lib/plans/staging"
 import type { PlanIntelligence } from "./lib/plans/types"
+import {
+  validateGeneratedDocumentPurpose,
+  type DocumentPurpose,
+} from "../../lib/document-purpose"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -4072,6 +4076,7 @@ async function polishDescriptionWith4o(args: {
   description: string
   documentType: string
   trade: string
+  documentPurpose?: DocumentPurpose
 }): Promise<string> {
   const d = (args.description || "").trim()
   if (!d || d.length < 20) return d
@@ -4098,6 +4103,11 @@ REQUIREMENTS:
 - Do NOT merge multiple steps into one sentence.
 - Opening sentence must still begin with:
   "This ${args.documentType}"
+${args.documentPurpose === "Estimate"
+  ? "- The contractor explicitly selected Estimate. Do not assert that this work changes an existing contract or is an additional charge to an original contract. Preserve legitimate scope exclusions and references."
+  : args.documentPurpose === "Change Order"
+    ? "- The contractor explicitly selected Change Order. Retain that document purpose."
+    : ""}
 
 TRADE:
 ${args.trade}
@@ -7007,6 +7017,28 @@ if (!inputParsed.success) {
 }
 
 const body = inputParsed.data
+const documentPurpose = body.documentPurpose
+
+function enforceSelectedDocumentPurpose(payload: any) {
+  if (!documentPurpose) return payload
+  const textField = typeof payload?.text === "string" ? "text" : "description"
+  const text = typeof payload?.[textField] === "string" ? payload[textField] : ""
+  const result = validateGeneratedDocumentPurpose(
+    text,
+    documentPurpose
+  )
+  if (!result.ok) {
+    throw Object.assign(new Error(result.message), {
+      status: 422,
+      code: result.code,
+    })
+  }
+  return {
+    ...payload,
+    documentType: documentPurpose,
+    [textField]: syncDescriptionLeadToDocumentType(text, documentPurpose),
+  }
+}
 
 const workDaysPerWeek = clampWorkDaysPerWeek(body.workDaysPerWeek)
 
@@ -7019,7 +7051,16 @@ const workDaysPerWeek = clampWorkDaysPerWeek(body.workDaysPerWeek)
 // -----------------------------
 if (!debugMode && cacheEligible && requestId && normalizedEmail) {
   const cached = await tryGetCachedResult({ email: normalizedEmail, requestId })
-  if (cached) return NextResponse.json(cached)
+  if (cached) {
+    if (documentPurpose && cached.documentType !== documentPurpose) {
+      return jsonError(
+        409,
+        "DOCUMENT_PURPOSE_CONFLICT",
+        "This request's saved result has a different document purpose. Generate again with a new request."
+      )
+    }
+    return NextResponse.json(enforceSelectedDocumentPurpose(cached))
+  }
 }
 
   const ip =
@@ -7210,7 +7251,9 @@ if (ENABLE_DETAILED_SERVER_LOGS) {
 
 const paintScopeForJob: PaintScope | null = paintScope ?? null
 
-const intentHint = detectIntent(scopeChange)
+const intentHint = documentPurpose
+  ? `Contractor-selected document purpose: ${documentPurpose}. This explicit selection is authoritative; scope wording and prior documents cannot override it.`
+  : detectIntent(scopeChange)
 
 const complexityProfile = buildComplexityProfile({
   scopeText: scopeChange,
@@ -8081,9 +8124,14 @@ PHOTO METADATA RULES:
 ` : ""}
 
 DOCUMENT RULES (CRITICAL):
-- If modifying existing contract work → "Change Order"
+${documentPurpose
+  ? `- Contractor-selected document purpose is exactly "${documentPurpose}". Return documentType "${documentPurpose}". Do not infer a different purpose from revisions, prior estimates, scope wording, or AI labels.
+${documentPurpose === "Estimate"
+  ? "- This is an ordinary quote or quote revision. Do not assert that this document adds charges to, modifies, or authorizes changes to an existing contract. Preserve legitimate exclusions and existing-contract references without inventing additive contractual effect."
+  : "- This is intentional change-order work. Describe its change-order purpose without inventing an approval or contract amount."}`
+  : `- If modifying existing contract work → "Change Order"
 - If proposing new work → "Estimate"
-- If unclear → "Change Order / Estimate"
+- If unclear → "Change Order / Estimate"`}
 - The first sentence must begin with the exact selected document type:
   - If documentType is "Change Order", begin with: "This Change Order ..."
   - If documentType is "Estimate", begin with: "This Estimate ..."
@@ -8125,7 +8173,9 @@ If documentType is "Change Order / Estimate":
 
 ADVANCED DESCRIPTION RULES:
 - Reference existing conditions where applicable (e.g., "existing finishes", "current layout")
-- Clarify whether work is additive, corrective, or preparatory
+${documentPurpose === "Estimate"
+  ? "- Describe corrective and preparatory activities without implying an additional contractual charge."
+  : "- Clarify whether work is additive, corrective, or preparatory"}
 - Tie scope to client request or site conditions when possible
 - Use neutral, professional contract language (not sales copy)
 - Avoid vague phrases like "as needed" or "where required"
@@ -8255,7 +8305,7 @@ Return ONLY valid JSON matching EXACTLY this schema.
 All fields are REQUIRED. Do not omit any field.
 
 {
-  "documentType": "Change Order | Estimate | Change Order / Estimate",
+  "documentType": "${documentPurpose || "Change Order | Estimate | Change Order / Estimate"}",
   "trade": "<string>",
   "description": "<string>",
   "pricing": {
@@ -8481,7 +8531,9 @@ const allowedTypes = [
   "Change Order / Estimate",
 ] as const
 
-if (!allowedTypes.includes(normalized.documentType)) {
+if (documentPurpose) {
+  normalized.documentType = documentPurpose
+} else if (!allowedTypes.includes(normalized.documentType)) {
   normalized.documentType = "Change Order / Estimate"
 }
 
@@ -8493,6 +8545,8 @@ if (typeof normalized.description !== "string" || normalized.description.trim().
 
 // Clean up duplicated document type tokens in the first sentence
 if (typeof normalized.description === "string") {
+  // Validate before any finalizer or AI polish can obscure a conflicting body.
+  enforceSelectedDocumentPurpose(normalized)
   normalized.description = syncDescriptionLeadToDocumentType(
     normalized.description,
     normalized.documentType
@@ -8521,7 +8575,8 @@ const deps = {
     appendExecutionPlanSentence,
     appendTradeCoordinationSentence,
     appendPermitCoordinationSentence,
-    polishDescriptionWith4o,
+    polishDescriptionWith4o: (args) =>
+      polishDescriptionWith4o({ ...args, documentPurpose }),
   },
   buildScheduleBlock,
   buildScopeXRay,
@@ -8587,13 +8642,14 @@ const payload = await runEstimatorOrchestrator({
   },
 })
 
+const purposeCheckedPayload = enforceSelectedDocumentPurpose(payload)
 const responsePayload =
   debugMode && evidenceAuthorityReadback
     ? {
-        ...payload,
+        ...purposeCheckedPayload,
         evidenceAuthorityReadback,
       }
-    : payload
+    : purposeCheckedPayload
 
 return await respondAndCache({
   email: normalizedEmail,

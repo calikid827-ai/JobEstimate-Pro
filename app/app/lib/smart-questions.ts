@@ -1,4 +1,4 @@
-import { buildEstimatorScopeFacts, type EstimatorScopeTrade } from "./estimator-scope-facts"
+import { buildEstimatorScopeFacts, hasMaterialResponsibilityForTrade, type EstimatorScopeTrade } from "./estimator-scope-facts"
 
 export type SmartQuestionCategory =
   | "quantity"
@@ -329,7 +329,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
   const seen = new Set<string>()
 
   const hasQuantitySignal = facts.hasQuantityLocationSignal
-  const hasMaterialResponsibility = facts.hasMaterialResponsibility
+  const hasMaterialResponsibility = hasMaterialResponsibilityForTrade(facts, trade)
   const hasFixtureWork = ["electrical", "plumbing", "bathroom_tile"].includes(trade) ||
     /\bfixtures?\b/.test(facts.includedWorkText)
   const permitRelevant = facts.hasPermitResponsibility ||
@@ -362,7 +362,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
 
   if (
     !hasMaterialResponsibility &&
-    (hasAny(reviewBlob, [/\bmaterial|materials|fixture|fixtures|allowance|selection|supplied|supply|owner\b/]) ||
+    (hasAny(reviewBlob, [/\bmaterial|materials|fixture|fixtures|allowance|selection|suppl(?:y|ies|ied)|provid(?:e|es|ed)|owner\b/]) ||
       ["electrical", "plumbing", "bathroom_tile", "flooring", "wallcovering"].includes(trade))
   ) {
     addQuestion(questions, seen, {

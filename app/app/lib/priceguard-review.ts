@@ -14,7 +14,7 @@ import type {
 } from "./types"
 import { buildScheduleSequencingReview } from "./schedule-sequencing-review"
 import { buildScopePriceConsistencyReview } from "./scope-price-consistency-review"
-import { buildEstimatorScopeFacts, type EstimatorScopeFacts } from "./estimator-scope-facts"
+import { buildEstimatorScopeFacts, isResolvedMaterialSupplyPrompt, type EstimatorScopeFacts } from "./estimator-scope-facts"
 
 type PricingInput = {
   labor?: number
@@ -575,9 +575,11 @@ function includedPatchTextureWork(text: string) {
 function unresolvedMaterialConfirmItems(
   items: string[] | undefined,
   combinedText: string,
-  facts: EstimatorScopeFacts
+  facts: EstimatorScopeFacts,
+  selectedTrade?: string
 ) {
   return (items || []).filter((item) => {
+    if (isResolvedMaterialSupplyPrompt(item, { scopeText: facts.rawText, selectedTrade })) return false
     const text = normalize(item)
     if (
       /\b(primer|sealer)\b/.test(text) &&
@@ -770,7 +772,7 @@ export function buildPriceGuardReview(args: BuildPriceGuardReviewArgs): PriceGua
     score -= 5
   }
 
-  const materialConfirmItems = unresolvedMaterialConfirmItems(args.materialsList?.confirmItems, combinedText, scopeFacts)
+  const materialConfirmItems = unresolvedMaterialConfirmItems(args.materialsList?.confirmItems, combinedText, scopeFacts, args.selectedTrade)
   if (materialConfirmItems.length) {
     addMany(missedScopeWarnings, materialConfirmItems.slice(0, 3), 6)
     score -= Math.min(6, materialConfirmItems.length * 2)
