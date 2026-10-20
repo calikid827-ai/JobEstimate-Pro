@@ -267,6 +267,8 @@ export default function EstimateBuilderSection({
       </select>
 
       <textarea
+        id="written-estimate-scope"
+        aria-label="Written scope"
         placeholder="Describe the scope change…"
         value={scopeChange}
         onChange={(e) => setScopeChange(e.target.value)}
@@ -303,6 +305,12 @@ export default function EstimateBuilderSection({
         totalSqft={totalSqft}
       />
 
+      {hasPlans && (
+        <p style={{ marginTop: 12, marginBottom: 0, fontSize: 12, color: "#4b5563", lineHeight: 1.5 }}>
+          Generate reviews your selected sheets with the scope above. Check the plan findings and verify quantities before sending your estimate.
+        </p>
+      )}
+
       <button
         type="button"
         onClick={generate}
@@ -323,7 +331,7 @@ export default function EstimateBuilderSection({
       </button>
 
       {status && (
-        <p style={{ marginTop: 10, fontSize: 13, color: "#c53030" }}>
+        <p role="status" style={{ marginTop: 10, fontSize: 13, color: "#c53030" }}>
           {status}
         </p>
       )}

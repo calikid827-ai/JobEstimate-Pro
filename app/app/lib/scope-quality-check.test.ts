@@ -196,6 +196,21 @@ test("weak general renovation scope asks for rooms, trades, finishes, and exclus
   assert.match(warnings, /exclusions/)
 })
 
+test("General Renovation reviews the included painting work without unrelated trade boilerplate", () => {
+  const warnings = warningsFor(
+    "Paint 15 10’x12’ bedrooms. Walls and ceilings. Patching any cracks and imperfections. Two coats.",
+    "general_renovation"
+  )
+  assert.match(warnings, /paint and materials/)
+  assert.doesNotMatch(warnings, /demolition|rough-in|fixture|painted surfaces|prep, patching|coat count|painting area, rooms/)
+})
+
+test("descriptive scope details do not turn excluded work into review support", () => {
+  const warnings = warningsFor("Paint 3 rooms. Ceilings and trim excluded. Prep and patching by others.", "general_renovation")
+  assert.match(warnings, /painted surfaces/)
+  assert.match(warnings, /prep, patching/)
+})
+
 test("weak wallcovering scope asks for wallcovering-specific details", () => {
   const warnings = warningsFor("Install wallpaper.", "wallcovering")
 

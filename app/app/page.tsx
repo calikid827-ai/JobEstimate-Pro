@@ -82,7 +82,9 @@ import {
   buildEstimateConfidence,
   normalizeProfitProtection,
 } from "./lib/estimate-utils"
-import { calculateProfitTargetMarkup } from "./lib/profit-target"
+import { calculateProfitTargetMarkup, currentProfitMarginPct } from "./lib/profit-target"
+import { buildPlanReviewSummary } from "./lib/plan-review-summary"
+import { consolidateReviewIssues, getReviewIssueKey, reviewIssueCause, type ReviewIssueInput } from "./lib/review-issues"
 import {
   getEstimateSectionTreatmentLabel,
   resolveCanonicalEstimateOutput,
@@ -126,8 +128,6 @@ import ProposalReadinessBadge from "./components/ProposalReadinessBadge"
 import ScopeDecisionsPanel from "./components/ScopeDecisionsPanel"
 import PricingSummarySection from "./components/PricingSummarySection"
 import PhotoIntelligenceCard from "./components/PhotoIntelligenceCard"
-import PriceGuardReviewPanel from "./components/PriceGuardReviewPanel"
-import EstimatorIntelligenceFindingsPanel from "./components/EstimatorIntelligenceFindingsPanel"
 import { detectChangeOrder } from "./lib/change-order-detector"
 import {
   createJobTemplate,
@@ -180,6 +180,7 @@ import {
   buildPlanEvidenceFingerprint,
   classifyPlanEvidenceFreshness,
   requiresPlanEvidenceRegeneration,
+  type PlanEvidenceFreshness,
   type PlanEvidenceFingerprint,
   type SelectedPlanEvidence,
 } from "./lib/plan-intelligence-evidence"
@@ -203,7 +204,6 @@ import {
 } from "../lib/generate-response"
 import {
   ALLOWED_PLAN_MIME_TYPES,
-  buildSelectedPageUploadDebugSummary,
   buildSelectedPageUploadFallbackMessage,
   buildLocalPlanPageSelection,
   exportSelectedPdfInBrowser,
@@ -739,24 +739,6 @@ type CustomerOutputReadinessItem = {
   label: string
   message: string
   details?: string[]
-}
-
-type EstimatorReviewSummaryTone = "good" | "warning" | "danger" | "neutral"
-
-type EstimatorReviewSummarySection = {
-  title: string
-  status: string
-  tone: EstimatorReviewSummaryTone
-  items: string[]
-}
-
-type EstimatorReviewSummary = {
-  headline: string
-  status: "ready" | "needs_review"
-  tone: EstimatorReviewSummaryTone
-  summary: string
-  sections: EstimatorReviewSummarySection[]
-  footer: string
 }
 
 const normalizePlanStrings = (value: unknown): string[] =>
@@ -1554,12 +1536,14 @@ function ResultCommandSection({
   children,
   dataNoPrint = false,
   sectionRef,
+  expandable = false,
 }: {
   title: string
   summary?: string
   children: ReactNode
   dataNoPrint?: boolean
   sectionRef?: Ref<HTMLElement>
+  expandable?: boolean
 }) {
   return (
     <section
@@ -1574,20 +1558,49 @@ function ResultCommandSection({
         background: "#fff",
       }}
     >
-      <div style={{ marginBottom: summary ? 12 : 10 }}>
-        <h3 style={{ margin: 0, fontSize: 17 }}>{title}</h3>
-        {summary && (
-          <div style={{ marginTop: 4, fontSize: 12, color: "#666", lineHeight: 1.45 }}>
-            {summary}
-          </div>
-        )}
-      </div>
-      {children}
+      {expandable ? (
+        <details data-expandable-section>
+          <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 15 }}>
+            {title}
+          </summary>
+          {summary && <p style={{ fontSize: 12, color: "#666" }}>{summary}</p>}
+          <div style={{ marginTop: 12 }}>{children}</div>
+        </details>
+      ) : (
+        <>
+          <h3 style={{ margin: "0 0 8px", fontSize: 17 }}>{title}</h3>
+          {summary && <p style={{ fontSize: 12, color: "#666" }}>{summary}</p>}
+          {children}
+        </>
+      )}
     </section>
   )
 }
 
 export default function Home() {
+useEffect(() => {
+  const expandedForPrint = new Set<HTMLDetailsElement>()
+  const beforePrint = () => {
+    document.querySelectorAll<HTMLDetailsElement>("[data-print-result] details").forEach((details) => {
+      if (!details.open) {
+        expandedForPrint.add(details)
+        details.open = true
+      }
+    })
+  }
+  const afterPrint = () => {
+    expandedForPrint.forEach((details) => { details.open = false })
+    expandedForPrint.clear()
+  }
+  window.addEventListener("beforeprint", beforePrint)
+  window.addEventListener("afterprint", afterPrint)
+  return () => {
+    window.removeEventListener("beforeprint", beforePrint)
+    window.removeEventListener("afterprint", afterPrint)
+    afterPrint()
+  }
+}, [])
+
 const generatingRef = useRef(false)
 const entitlementReqId = useRef(0)
 const lastSavedEstimateIdRef = useRef<string | null>(null)
@@ -1612,22 +1625,30 @@ const rateCardHistorySyncSkipRef = useRef<{
 const [jobPhotos, setJobPhotos] = useState<JobPhoto[]>([])
 const [jobPlans, setJobPlans] = useState<JobPlan[]>([])
 
+function revealSection(element: HTMLElement | null) {
+  if (!element) return
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    if (parent instanceof HTMLDetailsElement) parent.open = true
+  }
+  element.scrollIntoView({ behavior: "smooth", block: "start" })
+}
+
 function scrollToInvoices() {
   // small delay so UI can render filtered invoices after setting activeJobId
   setTimeout(() => {
-    invoicesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    revealSection(invoicesSectionRef.current)
   }, 50)
 }
 
 function scrollToJobsDashboard() {
   setTimeout(() => {
-    jobsDashboardSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    revealSection(jobsDashboardSectionRef.current)
   }, 50)
 }
 
 function scrollToFieldHandoff() {
   setTimeout(() => {
-    fieldHandoffSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    revealSection(fieldHandoffSectionRef.current)
   }, 50)
 }
 
@@ -1754,7 +1775,7 @@ async function stagePlanForGenerate(
     selectedSourcePages.length < plan.sourcePageCount
   ) {
     onProgress(
-      `${plan.name}: preparing ${selectedSourcePages.length} selected PDF page(s) for browser-side reduction before upload...`
+      `${plan.name}: preparing ${selectedSourcePages.length} selected pages...`
     )
     try {
       const browserDerived = await exportSelectedPdfInBrowser({
@@ -1822,10 +1843,6 @@ async function stagePlanForGenerate(
   const chunkBytes =
     Number(beginPayload.chunkBytes) > 0 ? Number(beginPayload.chunkBytes) : PLAN_UPLOAD_CHUNK_BYTES
 
-  if (uploadNote) {
-    onProgress(uploadNote)
-  }
-
   let uploadedBytes = 0
   for (let offset = 0; offset < uploadFile.size; offset += chunkBytes) {
     const chunk = uploadFile.slice(offset, offset + chunkBytes)
@@ -1846,7 +1863,7 @@ async function stagePlanForGenerate(
 
     uploadedBytes += chunk.size
     onProgress(
-      `Uploading ${plan.name} for staging... ${Math.min(
+      `Uploading ${plan.name}... ${Math.min(
         100,
         Math.round((uploadedBytes / Math.max(uploadFile.size, 1)) * 100)
       )}%`
@@ -2124,7 +2141,7 @@ async function handlePlanUpload(files: FileList | null) {
       notices.push(`Some plan files were skipped because indexed plan pages exceeded the ${MAX_PLAN_SOURCE_PAGES}-page limit.`)
     }
     if (addedCount > 0) {
-      notices.push("Plan files stay local until Generate, when the selected pages upload through reliable staging.")
+      notices.push("Choose the sheets for your scope, then Generate to review them.")
     }
 
     setStatus(notices.join(" "))
@@ -3608,12 +3625,7 @@ const planAssistedStatus = useMemo(() => {
     false
 
   if (!hasPlanContext) {
-    return {
-      label: "No plans provided",
-      tone: "neutral" as const,
-      message: "This estimate was generated without uploaded plan review.",
-      details: ["Use plan upload when you want a plan-assisted review of sheets, affected areas, and quantity support."],
-    }
+    return null
   }
 
   if (hasHardQuantitySupport) {
@@ -3819,6 +3831,15 @@ const estimatorIntelligenceFindings = useMemo(() => {
   priceGuardReview,
 ])
 
+const planEvidenceFreshness = useMemo(
+  () =>
+    classifyPlanEvidenceFreshness({
+      generatedEvidenceFingerprint: generatedPlanEvidenceFingerprint,
+      currentEvidenceFingerprint: currentPlanEvidenceFingerprint,
+    }),
+  [generatedPlanEvidenceFingerprint, currentPlanEvidenceFingerprint]
+)
+
 const customerScopeReviewGuard = useMemo(() => {
   return buildCustomerScopeReviewGuard({
     selectedTrade: trade,
@@ -3826,7 +3847,7 @@ const customerScopeReviewGuard = useMemo(() => {
     resultText: result?.text || "",
     estimateSections,
     scopeXRay,
-    planIntelligence,
+    planIntelligence: planEvidenceFreshness === "current" ? planIntelligence : null,
   })
 }, [
   trade,
@@ -3835,389 +3856,19 @@ const customerScopeReviewGuard = useMemo(() => {
   estimateSections,
   scopeXRay,
   planIntelligence,
+  planEvidenceFreshness,
 ])
 const customerScopeTradeDriftWarning = customerScopeReviewGuard.summary
 
-const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() => {
-  if (!result) return []
-
-  const items: CustomerOutputReadinessItem[] = []
-  const seenDetailKeys = new Set<string>()
-  const detailKey = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  const cleanItems = (values: string[] | undefined, max = 2) => {
-    const cleaned: string[] = []
-
-    for (const rawValue of values || []) {
-      if (cleaned.length >= max) break
-
-      const value = String(rawValue || "").replace(/\s+/g, " ").trim()
-      const key = detailKey(value)
-      if (!value || !key || seenDetailKeys.has(key)) continue
-
-      seenDetailKeys.add(key)
-      cleaned.push(value)
-    }
-
-    return cleaned
-  }
-  const pushItem = (item: CustomerOutputReadinessItem) => {
-    if (items.length >= 6) return false
-    items.push(item)
-    return true
-  }
-
-  if (customerScopeTradeDriftWarning) {
-    pushItem({
-      label: "Unsupported trade wording",
-      message: customerScopeTradeDriftWarning,
-      details: cleanItems(
-        customerScopeReviewGuard.warnings.flatMap((warning) => warning.details || [warning.message]),
-        2
-      ),
-    })
-  }
-
-  const evidence = planIntelligence?.evidenceStrength
-  const selectedPageNeedsReview = (planIntelligence?.pageReadStatuses || []).some(
-    (status) =>
-      status.selected &&
-      (status.failureReasons.length > 0 ||
-        status.warnings.length > 0 ||
-        (status.textStatus !== "extracted" && status.imageStatus !== "rendered") ||
-        status.classificationStatus !== "classified")
-  )
-  const planEvidenceNeedsReview =
-    !!evidence &&
-    (evidence.level === "review_only" ||
-      evidence.confirmationNeeded ||
-      evidence.hardQuantityCount === 0 ||
-      selectedPageNeedsReview ||
-      evidence.indexedPagesCount < evidence.selectedPagesCount ||
-      (evidence.textPagesCount === 0 && evidence.renderedPagesCount === 0))
-
-  if (planEvidenceNeedsReview && evidence) {
-    pushItem({
-      label: "Plan evidence needs confirmation",
-      message:
-        "Plan readback is estimator review support only. Confirm quantities, scope limits, and selected-page evidence before sending customer-facing output.",
-      details: cleanItems(
-        [
-          `Plan status: ${evidence.label}. ${evidence.summary || ""}`,
-          selectedPageNeedsReview
-            ? "Some selected pages did not read, render, classify, or extract cleanly."
-            : "",
-          evidence.hardQuantityCount === 0
-            ? "Measured quantities still need estimator confirmation."
-            : "",
-        ],
-        2
-      ),
-    })
-  }
-
-  if (priceGuardReview) {
-    const scopeDetails = cleanItems([
-      ...priceGuardReview.missedScopeWarnings,
-      ...priceGuardReview.scopeClarityWarnings,
-    ])
-    const hasPriceGuardReviewItems =
-      scopeDetails.length > 0 ||
-      priceGuardReview.laborMaterialConfidenceNotes.length > 0 ||
-      priceGuardReview.contractorRiskNotes.length > 0 ||
-      priceGuardReview.level !== "strong"
-    if (scopeDetails.length > 0) {
-      pushItem({
-        label: "Scope clarity",
-        message: "PriceGuard found scope wording or missed-scope items to review before sending.",
-        details: scopeDetails,
-      })
-    }
-
-    const exclusionDetails = cleanItems(
-      priceGuardReview.suggestedExclusions.filter(
-        (item) =>
-          hasPriceGuardReviewItems ||
-          !/^excludes work not specifically described in the written scope\.?$/i.test(
-            String(item || "").trim()
-          )
-      )
-    )
-    if (exclusionDetails.length > 0) {
-      pushItem({
-        label: "Assumptions / exclusions",
-        message:
-          "Confirm these customer-facing boundaries are reflected in the scope or proposal notes before sending.",
-        details: exclusionDetails,
-      })
-    }
-
-    const contractorRiskDetails = cleanItems(priceGuardReview.contractorRiskNotes)
-    if (contractorRiskDetails.length > 0) {
-      pushItem({
-        label: "Estimator risk notes",
-        message: "Review contractor-only risk notes before relying on this as send-ready output.",
-        details: contractorRiskDetails,
-      })
-    }
-  }
-
-  const hasScheduleDuration =
-    Number(schedule?.crewDays || 0) > 0 ||
-    Number(schedule?.visits || 0) > 0 ||
-    Number(schedule?.calendarDays?.min || 0) > 0 ||
-    Number(schedule?.calendarDays?.max || 0) > 0
-  const hasScheduleRationale = (schedule?.rationale || []).length > 0
-  if (!schedule || !hasScheduleDuration || !hasScheduleRationale) {
-    pushItem({
-      label: "Schedule assumptions",
-      message:
-        "Schedule details are thin or need estimator confirmation before the customer relies on timing.",
-    })
-  }
-
-  if (priceGuardReview && priceGuardReview.level !== "strong") {
-    const customerReadyDetails = cleanItems(priceGuardReview.customerPriceDefenseNotes, 1)
-    pushItem({
-      label: "Customer-ready review",
-      message:
-        "PriceGuard does not consider this fully send-ready yet. Review scope, assumptions, exclusions, and pricing support first.",
-      details: customerReadyDetails,
-    })
-  }
-
-  return items.slice(0, 6)
-}, [
-  result,
-  customerScopeTradeDriftWarning,
-  customerScopeReviewGuard.warnings,
-  planIntelligence,
-  priceGuardReview,
-  schedule,
-])
-
-const estimatorReviewSummary = useMemo<EstimatorReviewSummary | null>(() => {
-  if (!result) return null
-
-  const compactSummaryItemKeys = new Set<string>()
-  const itemKey = (value: string) => value.toLowerCase()
-  const cleanList = (
-    values: Array<string | null | undefined>,
-    max = 2,
-    options: { globalDedupe?: boolean } = {}
-  ) => {
-    const seen = new Set<string>()
-    const out: string[] = []
-
-    for (const raw of values) {
-      if (out.length >= max) break
-      const value = String(raw || "").replace(/\s+/g, " ").trim()
-      const key = itemKey(value)
-      if (!value || seen.has(key) || (options.globalDedupe && compactSummaryItemKeys.has(key))) {
-        continue
-      }
-      seen.add(key)
-      if (options.globalDedupe) compactSummaryItemKeys.add(key)
-      out.push(value)
-    }
-
-    return out
-  }
-  const hasTheme = (values: string[], pattern: RegExp) =>
-    values.some((value) => pattern.test(value))
-  const measurementOrSurfacePattern = /\b(measur|quantity|quantities|square|sq\s*ft|sqft|footage|area|rooms?|surfaces?|walls?|ceilings?|trim|doors?)\b/i
-  const boundaryPattern = /\b(assumption|exclusion|excluded|exclude|by others|boundary|not included|owner|customer supplied|supplied)\b/i
-
-  const readinessNeedsReview = customerOutputReadinessItems.length > 0
-  const priceGuardNeedsReview = !!priceGuardReview && priceGuardReview.level !== "strong"
-  const profitNeedsReview =
-    profitProtection?.status === "danger" ||
-    profitProtection?.status === "warning" ||
-    (priceGuardReview?.contractorRiskNotes.length || 0) > 0
-  const planEvidence = planIntelligence?.evidenceStrength ?? null
-  const planNeedsReview =
-    !!planEvidence &&
-    (planEvidence.level === "review_only" ||
-      planEvidence.confirmationNeeded ||
-      planEvidence.hardQuantityCount === 0)
-  const photoHasReviewNotes =
-    !!photoAnalysis ||
-    !!photoScopeAssist?.missingScopeFlags.length ||
-    !!photoScopeAssist?.suggestedAdditions.length
-
-  const needsReview =
-    readinessNeedsReview ||
-    priceGuardNeedsReview ||
-    profitNeedsReview ||
-    planNeedsReview
-
-  const priceGuardLabel = priceGuard?.status
-    ? `PriceGuard: ${String(priceGuard.status).replace(/_/g, " ")}`
-    : null
-  const pricingBasisItems = cleanList(
-    [`Pricing source: ${String(pricingSource || "unknown").replace(/_/g, " ")}${priceGuardLabel ? ` · ${priceGuardLabel}` : ""}`],
-    1,
-    { globalDedupe: true }
-  )
-
-  const scopeWarningItems = cleanList(
-    [
-      ...customerOutputReadinessItems
-        .filter((item) =>
-          /scope|unsupported|customer-ready/i.test(`${item.label} ${item.message}`)
-        )
-        .flatMap((item) => [item.message, ...(item.details || [])]),
-      ...(priceGuardReview?.missedScopeWarnings || []),
-      ...(priceGuardReview?.scopeClarityWarnings || []),
-    ],
-    2,
-    { globalDedupe: true }
-  )
-
-  const exclusionItems = cleanList(
-    [
-      ...customerOutputReadinessItems
-        .filter((item) => /exclusion|assumption|boundary/i.test(`${item.label} ${item.message}`))
-        .flatMap((item) => item.details || [item.message]),
-      ...(priceGuardReview?.suggestedExclusions || []),
-      ...(estimateDefenseMode?.exclusionNotes || []),
-    ],
-    2,
-    { globalDedupe: true }
-  )
-
-  const scopeAlreadyCoversMeasurement = hasTheme(scopeWarningItems, measurementOrSurfacePattern)
-  const boundaryAlreadyShown = exclusionItems.length > 0
-  const confirmationItems = cleanList(
-    [
-      ...customerOutputReadinessItems.flatMap((item) => item.details || [item.message]),
-      ...(materialsList?.confirmItems || []),
-      ...(areaScopeBreakdown?.missingConfirmations || []),
-    ].filter((item) => {
-      const text = String(item || "")
-      if (scopeAlreadyCoversMeasurement && measurementOrSurfacePattern.test(text)) return false
-      if (boundaryAlreadyShown && boundaryPattern.test(text)) return false
-      return true
-    }),
-    2,
-    { globalDedupe: true }
-  )
-
-  const planPhotoItems = cleanList(
-    [
-      planEvidence
-        ? `Plan status: ${planEvidence.label}. ${planEvidence.summary || ""}`
-        : null,
-      planNeedsReview
-        ? "Plan-derived quantities remain review-only until confirmed."
-        : null,
-      photoAnalysis?.summary
-        ? `Photo notes: ${photoAnalysis.summary}`
-        : null,
-      ...(photoScopeAssist?.missingScopeFlags || []),
-      ...(photoScopeAssist?.suggestedAdditions || []),
-    ],
-    2,
-    { globalDedupe: true }
-  )
-
-  const strongestProfitWarning =
-    profitProtection?.warnings?.[0] ||
-    priceGuardReview?.contractorRiskNotes?.[0] ||
-    null
-  const profitItems = cleanList(
-    [
-      strongestProfitWarning ||
-        (profitProtection
-          ? `Margin status: ${profitProtection.status.replace(/_/g, " ")} (${profitProtection.grossMarginPct}% gross margin).`
-          : null),
-    ],
-    1,
-    { globalDedupe: true }
-  )
-
-  const sections: EstimatorReviewSummarySection[] = [
-    {
-      title: "Pricing Basis",
-      status: priceGuardVerified || pricingSource === "deterministic" ? "Supported" : "Review",
-      tone: priceGuardVerified || pricingSource === "deterministic" ? "good" : "warning",
-      items: pricingBasisItems,
-    },
-  ]
-  if (scopeWarningItems.length) {
-    sections.push({
-      title: "Scope Warnings",
-      status: "Needs review",
-      tone: "warning",
-      items: scopeWarningItems,
-    })
-  }
-  if (exclusionItems.length) {
-    sections.push({
-      title: "Excluded / By Others",
-      status: "Review boundaries",
-      tone: "warning",
-      items: exclusionItems,
-    })
-  }
-  if (confirmationItems.length) {
-    sections.push({
-      title: "Confirmations Needed",
-      status: "Confirm",
-      tone: "warning",
-      items: confirmationItems,
-    })
-  }
-  if (planPhotoItems.length) {
-    sections.push({
-      title: "Photo / Plan Notes",
-      status: planNeedsReview || photoHasReviewNotes ? "Review support" : "Notes",
-      tone: planNeedsReview ? "warning" : photoHasReviewNotes ? "neutral" : "good",
-      items: planPhotoItems,
-    })
-  }
-  if (profitItems.length && profitNeedsReview) {
-    sections.push({
-      title: "Profit / Margin Checks",
-      status: "Needs review",
-      tone: profitProtection?.status === "danger" ? "danger" : "warning",
-      items: profitItems,
-    })
-  }
-
-  return {
-    headline: needsReview
-      ? "Needs estimator review"
-      : "No additional estimator review items.",
-    status: needsReview ? "needs_review" : "ready",
-    tone: needsReview ? "warning" : "good",
-    summary: needsReview
-      ? "Review the highlighted scope, evidence, confirmation, or margin items before sending."
-      : "No major compact review blockers are surfaced. Detailed diagnostics are still available below.",
-    sections,
-    footer:
-      "Full PriceGuard Review, Customer Output Readiness, line-item detail, and Estimator Diagnostics are available below.",
-  }
-}, [
-  result,
-  customerOutputReadinessItems,
-  priceGuardReview,
-  pricingSource,
-  priceGuard,
-  priceGuardVerified,
-  planIntelligence,
-  photoAnalysis,
-  photoScopeAssist,
-  profitProtection,
-  scopeXRay,
-  estimateDefenseMode,
-  materialsList,
-  areaScopeBreakdown,
-])
+// The question builder only needs concrete customer-scope conflicts here.
+// PriceGuard supplies its own inputs; plan verification belongs to Plan review.
+const customerOutputReadinessItems = useMemo<CustomerOutputReadinessItem[]>(() =>
+  result ? customerScopeReviewGuard.warnings.map((warning) => ({
+    label: warning.label,
+    message: warning.message,
+    details: warning.details,
+  })) : [],
+[result, customerScopeReviewGuard.warnings])
 
 const hasUnregeneratedScopeChanges = useMemo(
   () =>
@@ -4238,15 +3889,6 @@ const photoEvidenceFreshness = useMemo(
       currentEvidenceFingerprint: currentPhotoEvidenceFingerprint,
     }),
   [generatedPhotoEvidenceProvenance, currentPhotoEvidenceFingerprint]
-)
-
-const planEvidenceFreshness = useMemo(
-  () =>
-    classifyPlanEvidenceFreshness({
-      generatedEvidenceFingerprint: generatedPlanEvidenceFingerprint,
-      currentEvidenceFingerprint: currentPlanEvidenceFingerprint,
-    }),
-  [generatedPlanEvidenceFingerprint, currentPlanEvidenceFingerprint]
 )
 
 const photoIntelligenceActions = useMemo(
@@ -4295,7 +3937,7 @@ const smartQuestions = useMemo(
       areaMissingConfirmations: areaScopeBreakdown?.missingConfirmations || [],
       scopeXRayNeedsConfirmation: scopeXRay?.needsConfirmation || [],
       photoScopeAssist,
-      planEvidenceStrength: planIntelligence?.evidenceStrength || null,
+      planEvidenceStrength: null,
       limit: 8,
     }),
   [
@@ -4400,11 +4042,6 @@ const appliedScopeDecisionSentences = useMemo(
   [appliedScopeDecisions, scopeChange]
 )
 
-const unresolvedHighPriorityReviewQuestions = useMemo(
-  () => smartQuestions.filter((question) => question.priority === "high").length,
-  [smartQuestions]
-)
-
 const crewPlanningReadback = useMemo<CrewPlanningReadback | null>(() => {
   if (!result) return null
 
@@ -4454,44 +4091,98 @@ const planEvidenceRequiresRegeneration = useMemo(
   [result, planEvidenceFreshness, jobPlans.length]
 )
 
-const hasUnregeneratedEstimatorInputChanges =
-  hasUnregeneratedScopeChanges ||
-  photoEvidenceRequiresRegeneration ||
-  planEvidenceRequiresRegeneration
-
-const proposalReadiness = useMemo(() => {
-  const hasCriticalCustomerOutputReadinessItem = customerOutputReadinessItems.some((item) =>
-    /unsupported trade wording/i.test(item.label)
+const reviewIssues = useMemo(() => {
+  if (!result) return []
+  const inputs: ReviewIssueInput[] = []
+  const add = (message: string, source: string, title?: string) => {
+    if (message.trim()) inputs.push({ message, source, title })
+  }
+  for (const warning of customerScopeReviewGuard.warnings) {
+    if (warning.reviewActions?.length) {
+      inputs.push(...warning.reviewActions.map((action) => ({
+        ...action, title: warning.label, source: "Customer scope",
+      })))
+      continue
+    }
+    // These guard bullets restate the trades/conflict already named in the message.
+    // Adjacent-work qualifications explain the safe boundary and remain useful.
+    const details = ["Unsupported trade wording", "Excluded scope conflict", "Excluded repair conflict"].includes(warning.label)
+      ? [] : warning.details
+    inputs.push({ message: warning.message, title: warning.label, details, source: "Customer scope" })
+  }
+  const concreteScopeWarnings = generatedResultScopeQuality.warnings.filter((message) =>
+    message !== "Scope description is very short"
   )
-  const hasPlanOrPhotoReviewWarning =
-    customerOutputReadinessItems.some((item) => /plan evidence/i.test(item.label)) ||
-    Boolean(
-      estimatorReviewSummary?.sections.some(
-        (section) => section.title === "Photo / Plan Notes" && section.tone === "warning"
-      )
-    )
+  const detectorLabels = new Set([
+    ...(missedScopeDetector?.likelyMissingScope || []),
+    ...(missedScopeDetector?.recommendedConfirmations || []),
+    ...(profitLeakDetector?.likelyProfitLeaks || []),
+    ...(profitLeakDetector?.pricingReviewPrompts || []),
+  ].map((item) => item.label.trim().toLowerCase()).filter(Boolean))
+  for (const finding of estimatorIntelligenceFindings.findings) {
+    // Plan findings and quantities have their own source-linked summary below.
+    if (["plan_readback", "plan_evidence", "plan_quantity_candidate"].includes(finding.sourceKind)) continue
+    if (["diagnostic_note", "assembly_candidate"].includes(finding.category)) continue
+    if (finding.severity === "info") continue
+    if (finding.sourceKind === "priceguard_review" && detectorLabels.has(finding.summary.trim().toLowerCase())) continue
+    if (finding.summary === "PriceGuard found possible profit leaks. Review the notes before sending this estimate.") continue
+    if (concreteScopeWarnings.length > 0 && finding.summary === "Scope description is short. Add affected rooms, quantities, surfaces, and finish expectations.") continue
+    // These are proposed contract wording, kept with price explanations in diagnostics.
+    // Actual exclusion conflicts still come from the scope guard and detector findings.
+    if (finding.sourceKind === "priceguard_review" && finding.category === "exclusion_or_boundary") continue
+    // Target comparisons are preferences. The live margin and 25% target appear together above.
+    if (reviewIssueCause(finding.title) === "preferred_margin_target" ||
+        reviewIssueCause(finding.summary) === "preferred_margin_target") continue
+    const refs = finding.evidence.flatMap((item) => [
+      item.sheetNumber ? `Sheet ${item.sheetNumber}` : "",
+      item.pageNumber != null ? `Page ${item.pageNumber}` : "",
+      item.photoName ? `Photo ${item.photoName}` : "",
+    ]).filter(Boolean)
+    inputs.push({
+      message: finding.summary,
+      title: finding.title,
+      source: finding.sourceKind.replace(/_/g, " "),
+      affectedScope: refs.length ? [...new Set(refs)].sort().join("; ") : undefined,
+      details: finding.evidence.flatMap((item) => [item.label || "", item.excerpt || ""]).filter(Boolean),
+    })
+  }
+  for (const message of materialsList?.confirmItems || []) add(message, "Materials")
+  for (const message of areaScopeBreakdown?.missingConfirmations || []) add(message, "Affected areas")
+  for (const message of scopeXRay?.needsConfirmation || []) add(message, "Scope details")
+  for (const message of generatedResultScopeQuality.warnings) {
+    if (concreteScopeWarnings.length > 0 && message === "Scope description is very short") continue
+    add(message, "Written scope")
+  }
+  if (!schedule || !(Number(schedule.crewDays || 0) > 0 || Number(schedule.calendarDays?.max || 0) > 0)) {
+    add("Confirm the job duration and scheduling assumptions before promising a completion date.", "Schedule", "Schedule")
+  }
+  const decisionKeys = new Set(scopeDecisions.map((decision) => getReviewIssueKey({
+    message: decision.prompt,
+    cause: decision.category === "materials_responsibility" ? "material_responsibility" : decision.category,
+  })))
+  return consolidateReviewIssues(inputs).filter((issue) => !decisionKeys.has(issue.key))
+}, [result, customerScopeReviewGuard.warnings, estimatorIntelligenceFindings, missedScopeDetector,
+  profitLeakDetector, materialsList,
+  areaScopeBreakdown, scopeXRay, generatedResultScopeQuality.warnings, schedule, scopeDecisions])
 
-  return buildProposalReadiness({
-    hasResult: Boolean(result),
-    hasCustomerScopeDriftWarning: Boolean(customerScopeTradeDriftWarning),
-    customerOutputReadinessItemCount: customerOutputReadinessItems.length,
-    hasCriticalCustomerOutputReadinessItem,
-    estimatorReviewStatus: estimatorReviewSummary?.status ?? (result ? "needs_review" : null),
-    priceGuardLevel: priceGuardReview?.level ?? null,
-    priceGuardScore: priceGuardReview?.score ?? null,
-    unresolvedHighPriorityReviewQuestions,
-    hasPlanOrPhotoReviewWarning,
-    hasUnregeneratedScopeChanges: hasUnregeneratedEstimatorInputChanges,
-  })
-}, [
-  result,
-  customerScopeTradeDriftWarning,
-  customerOutputReadinessItems,
-  estimatorReviewSummary,
-  priceGuardReview,
-  unresolvedHighPriorityReviewQuestions,
-  hasUnregeneratedEstimatorInputChanges,
-])
+const unresolvedScopeDecisionCount = scopeDecisions.filter((decision) => !appliedScopeDecisionSentences[decision.id]).length
+const compactPlanReview = buildPlanReviewSummary({
+  planIntelligence,
+  hasCurrentPlans: jobPlans.length > 0,
+  freshness: planEvidenceFreshness,
+  requiresRegeneration: planEvidenceRequiresRegeneration,
+})
+const unresolvedReviewActionCount = reviewIssues.length + unresolvedScopeDecisionCount + (compactPlanReview?.unresolvedActionCount || 0)
+const optionalPlanScopeActionCount = planCeilingScopeChange ? 1 : 0
+
+const proposalReadiness = useMemo(() => buildProposalReadiness({
+  hasResult: Boolean(result),
+  hasCustomerScopeDriftWarning: Boolean(customerScopeTradeDriftWarning),
+  customerOutputReadinessItemCount: unresolvedReviewActionCount,
+  estimatorReviewStatus: unresolvedReviewActionCount ? "needs_review" : "ready",
+  hasUnregeneratedScopeChanges: hasUnregeneratedScopeChanges || photoEvidenceRequiresRegeneration,
+}), [result, customerScopeTradeDriftWarning, unresolvedReviewActionCount,
+  hasUnregeneratedScopeChanges, photoEvidenceRequiresRegeneration])
 
 const fieldHandoff = useMemo(
   () =>
@@ -5460,10 +5151,9 @@ const requestPayload = {
 let res: Response
 
 if (requestPlanEntries.length > 0) {
-  setStatus(`Preparing ${requestPlanEntries.length} selected plan file${requestPlanEntries.length === 1 ? "" : "s"} for reliable upload...`)
+  setStatus(`Preparing ${requestPlanEntries.length} plan file${requestPlanEntries.length === 1 ? "" : "s"}...`)
 
   const stagedPlans = []
-  const stageNotices: string[] = []
   for (const { plan, evidence } of requestPlanEntries) {
     const staged = await stagePlanForGenerate(
       plan,
@@ -5486,20 +5176,6 @@ if (requestPlanEntries.length > 0) {
           : existing
       )
     )
-    if (staged.selectedPageUploadNote) {
-      stageNotices.push(staged.selectedPageUploadNote)
-    }
-
-    stageNotices.push(
-      buildSelectedPageUploadDebugSummary({
-        mode: staged.selectedPageUploadMode,
-        originalBytes: staged.originalBytes,
-        stagedBytes: staged.bytes,
-        analyzedPages: evidence.selectedSourcePages.length,
-        originalSourcePageCount:
-          staged.originalSourcePageCount ?? evidence.sourcePageCount,
-      })
-    )
 
     stagedPlans.push({
       uploadId: evidence.planId,
@@ -5514,12 +5190,8 @@ if (requestPlanEntries.length > 0) {
     })
   }
 
-  if (stageNotices.length > 0) {
-    setStatus(stageNotices[stageNotices.length - 1])
-  }
-
   requestPayload.plans = stagedPlans
-  setStatus(`Preparing ${requestPlanEntries.length} staged plan file${requestPlanEntries.length === 1 ? "" : "s"} with selected-page transport...`)
+  setStatus("Reviewing selected plan sheets and generating your document...")
 
   res = await fetch("/api/generate", {
     method: "POST",
@@ -10766,11 +10438,13 @@ function ProfitProtectionCard({
 }) {
   if (!profitProtection) return null
 
+  const marginWarnings = profitProtection.warnings.filter((item) => reviewIssueCause(item) !== "preferred_margin_target")
+  const targetComparisons = [...profitProtection.reasons, ...profitProtection.warnings]
+    .filter((item) => reviewIssueCause(item) === "preferred_margin_target")
+  const healthyMargin = Math.round(profitProtection.grossMarginPct) >= 15
   const tone =
-    profitProtection.status === "danger"
+    !healthyMargin
       ? { bg: "#fef2f2", border: "#fecaca", color: "#991b1b" }
-      : profitProtection.status === "warning"
-      ? { bg: "#fff7ed", border: "#fdba74", color: "#9a3412" }
       : { bg: "#ecfdf5", border: "#86efac", color: "#065f46" }
 
   return (
@@ -10806,26 +10480,22 @@ function ProfitProtectionCard({
         }}
       >
         <div style={{ fontWeight: 900, fontSize: 14 }}>
-          {profitProtection.status === "danger"
-            ? "Margin Risk"
-            : profitProtection.status === "warning"
-            ? "Tight Margin"
-            : "Healthy Margin"}
+          {healthyMargin ? "Healthy margin" : "Margin needs review"} · Preferred target: 25%
         </div>
 
         <div style={{ marginTop: 8, lineHeight: 1.6, fontSize: 13 }}>
           <div><strong>Estimated Cost:</strong> ${profitProtection.estimatedCost.toLocaleString()}</div>
           <div><strong>Contract Value:</strong> ${profitProtection.contractValue.toLocaleString()}</div>
           <div><strong>Gross Profit:</strong> ${profitProtection.grossProfit.toLocaleString()}</div>
-          <div><strong>Gross Margin:</strong> {profitProtection.grossMarginPct}%</div>
+          <div><strong>Pre-tax margin:</strong> {profitProtection.grossMarginPct}%</div>
           {profitProtection.minimumSafePrice != null && (
             <div><strong>Minimum Safe Price:</strong> ${profitProtection.minimumSafePrice.toLocaleString()}</div>
           )}
           {profitProtection.targetPrice25 != null && (
-            <div><strong>Target Price @ 25%:</strong> ${profitProtection.targetPrice25.toLocaleString()}</div>
+            <div><strong>Preferred target price @ 25%:</strong> ${profitProtection.targetPrice25.toLocaleString()}</div>
           )}
           {profitProtection.targetPrice30 != null && (
-            <div><strong>Target Price @ 30%:</strong> ${profitProtection.targetPrice30.toLocaleString()}</div>
+            <div><strong>Optional target price @ 30%:</strong> ${profitProtection.targetPrice30.toLocaleString()}</div>
           )}
         </div>
       </div>
@@ -10834,14 +10504,14 @@ function ProfitProtectionCard({
         <div style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 800, fontSize: 14 }}>Why this price holds</div>
           <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
-            {profitProtection.reasons.map((item, i) => (
+            {profitProtection.reasons.filter((item) => reviewIssueCause(item) !== "preferred_margin_target").map((item, i) => (
               <li key={`pp-reason-${i}`}>{item}</li>
             ))}
           </ul>
         </div>
       )}
 
-      {profitProtection.warnings.length > 0 && (
+      {marginWarnings.length > 0 && (
         <div
           style={{
             marginTop: 12,
@@ -10855,12 +10525,16 @@ function ProfitProtectionCard({
             Margin Warnings
           </div>
           <ul style={{ marginTop: 8, paddingLeft: 18, lineHeight: 1.5 }}>
-            {profitProtection.warnings.map((item, i) => (
+            {marginWarnings.map((item, i) => (
               <li key={`pp-warning-${i}`}>{item}</li>
             ))}
           </ul>
         </div>
       )}
+      {targetComparisons.length > 0 && <details style={{ marginTop: 12 }}>
+        <summary style={{ cursor: "pointer", fontSize: 13 }}>Optional target comparisons</summary>
+        <ul>{targetComparisons.map((item) => <li key={item}>{item}</li>)}</ul>
+      </details>}
     </details>
   )
 }
@@ -13477,14 +13151,116 @@ function PlanIntelligenceCard({
   )
 }
 
+function PlanReviewSummary({
+  planIntelligence,
+  hasCurrentPlans,
+  freshness,
+  requiresRegeneration,
+}: {
+  planIntelligence: PlanIntelligence
+  hasCurrentPlans: boolean
+  freshness: PlanEvidenceFreshness
+  requiresRegeneration: boolean
+}) {
+  const summary = buildPlanReviewSummary({ planIntelligence, hasCurrentPlans, freshness, requiresRegeneration })
+  if (!summary) return null
+
+  const visibleFindings = summary.findings.map((item) => ({
+    ...item, text: cleanPlanSummaryText(item.text, 160),
+  })).filter((item) => item.text)
+  const headline = cleanPlanSummaryText(summary.headline, 180)
+  const sourceNote = (sources: Array<{ pageNumber?: number; sourcePageNumber?: number; sheetNumber?: string | null; sheetTitle?: string | null }>) => {
+    const labels = [...new Set(sources.filter((ref) =>
+      Number(ref.sourcePageNumber || ref.pageNumber || 0) > 0 || Boolean(ref.sheetNumber?.trim() || ref.sheetTitle?.trim())
+    ).map(formatPlanSummarySourceReference))].slice(0, 3)
+    return labels.length > 0
+      ? <div style={{ fontSize: 12, color: "#4b5563" }}>Source: {labels.join("; ")}</div>
+      : null
+  }
+  const hasFindings = Boolean(headline || visibleFindings.length || summary.trades.length || summary.rooms.length || summary.tables.length)
+
+  return (
+    <section
+      data-plan-review-summary
+      data-no-print
+      aria-label="Plan review"
+      style={{ marginTop: 14, padding: 12, border: "1px solid #bae6fd", borderRadius: 12, background: "#f0f9ff", fontSize: 13, lineHeight: 1.5, overflowWrap: "anywhere" }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 14, color: "#0f172a" }}>Plan review</div>
+      {summary.status ? (
+        <p role="status" style={{ margin: "6px 0", color: "#92400e", fontWeight: 700 }}>
+          {summary.status}
+        </p>
+      ) : (
+        <>
+          {headline && !visibleFindings.some((item) => item.text === headline) && <p style={{ margin: "4px 0" }}>{headline}</p>}
+          {!hasFindings && <p style={{ margin: "4px 0" }}>No readable scope findings were returned. Check the relevant sheets and enter any verified scope or measurements yourself.</p>}
+          {visibleFindings.length > 0 ? (
+            <>
+              <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                {visibleFindings.slice(0, 3).map((item, index) => <li key={index} style={{ marginTop: 4 }}>{item.text}{sourceNote(item.sources)}</li>)}
+              </ul>
+              {visibleFindings.length > 3 && <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>More plan findings ({visibleFindings.length - 3})</summary>
+                <ul style={{ margin: "4px 0", paddingLeft: 20 }}>{visibleFindings.slice(3).map((item, index) => <li key={index} style={{ marginTop: 4 }}>{item.text}{sourceNote(item.sources)}</li>)}</ul>
+              </details>}
+            </>
+          ) : (
+            <>
+              {summary.trades.length > 0 && <div>Returned trades: {summary.trades.slice(0, 4).join(", ")}</div>}
+              {summary.rooms.length > 0 && <div>Returned rooms / areas: {summary.rooms.slice(0, 4).join(", ")}</div>}
+              {summary.tables.slice(0, 2).map((item, index) => <div key={index}>{item.text}{sourceNote(item.sources)}</div>)}
+            </>
+          )}
+          {summary.needsProcessingReview && <p style={{ margin: "6px 0", color: "#92400e" }}>Check sheet readability and processing limitations in Advanced Diagnostics.</p>}
+          {summary.candidates.length > 0 && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #bae6fd" }}>
+              <div style={{ fontWeight: 800 }}>Unverified quantity clues</div>
+              <div style={{ fontSize: 12 }}>These are not measurements or pricing inputs. Verify against the plans before entering quantities.</div>
+              <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                {summary.candidates.slice(0, 4).map((item) => <li key={item.key} style={{ marginTop: 4 }}>
+                  {cleanPlanSummaryText(item.category, 100)}: {item.quantity == null ? "quantity not established" : `${item.quantity} ${item.unit === "unknown" ? "(unit not established)" : item.unit}`} — unverified{item.needsMeasurement ? "; measurement required" : ""}.
+                  {sourceNote(item.sources)}
+                </li>)}
+              </ul>
+              {summary.candidates.length > 4 && <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>More unverified quantity clues ({summary.candidates.length - 4})</summary>
+                <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                  {summary.candidates.slice(4).map((item) => <li key={item.key} style={{ marginTop: 4 }}>
+                    {cleanPlanSummaryText(item.category, 100)}: {item.quantity == null ? "quantity not established" : `${item.quantity} ${item.unit === "unknown" ? "(unit not established)" : item.unit}`} — unverified{item.needsMeasurement ? "; measurement required" : ""}.
+                    {sourceNote(item.sources)}
+                  </li>)}
+                </ul>
+              </details>}
+            </div>
+          )}
+          {summary.confirmations.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 800 }}>Confirm from the plans</div>
+              <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                {summary.confirmations.slice(0, 3).map((item, index) => <li key={index} style={{ marginTop: 4 }}>{cleanPlanSummaryText(item.text, 160)}{sourceNote(item.sources)}</li>)}
+              </ul>
+              {summary.confirmations.length > 3 && <details style={{ marginTop: 6 }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700 }}>More plan questions ({summary.confirmations.length - 3})</summary>
+                <ul style={{ margin: "4px 0", paddingLeft: 20 }}>{summary.confirmations.slice(3).map((item, index) => <li key={index} style={{ marginTop: 4 }}>{cleanPlanSummaryText(item.text, 160)}{sourceNote(item.sources)}</li>)}</ul>
+              </details>}
+            </div>
+          )}
+        </>
+      )}
+      <div style={{ marginTop: 8, fontSize: 12, color: "#4b5563" }}>
+        Full returned findings and sheet-by-sheet processing details are in Advanced Diagnostics below.
+      </div>
+    </section>
+  )
+}
+
 function PlanAwareEstimatorReadbackCard({
   planIntelligence,
   estimateSections,
-  selectedPagesChosenCount,
 }: {
   planIntelligence: PlanIntelligence
   estimateSections: EstimateStructuredSection[] | null
-  selectedPagesChosenCount?: number
 }) {
   const readback = planIntelligence?.planReadback
   if (!readback) return null
@@ -13512,48 +13288,20 @@ function PlanAwareEstimatorReadbackCard({
   const selectedPageStatuses = (planIntelligence?.pageReadStatuses || []).filter(
     (status) => status.selected
   )
-  const currentSelectedPagesCount =
-    typeof selectedPagesChosenCount === "number" && selectedPagesChosenCount > 0
-      ? selectedPagesChosenCount
-      : null
-  const planReadbackHasContent =
-    keyFlow.length > 0 ||
-    estimatorStory.length > 0 ||
-    readback.areaQuantityReadback.length > 0 ||
-    readback.tradeScopeReadback.length > 0 ||
-    readback.groupedScopeReadback.length > 0 ||
-    pricingCarryReadback.length > 0
-  const selectedPagesProcessedCount =
-    Math.max(
-      selectedPageStatuses.length,
-      evidenceStrength?.selectedPagesCount || 0,
-      currentSelectedPagesCount || 0
-    )
+  // Report returned processing statuses only. The upload selection and the presence
+  // of narrative readback do not establish successful analysis or useful coverage.
+  const selectedPagesProcessedCount = selectedPageStatuses.length
   const selectedPagesReadStatusCount = selectedPageStatuses.filter(
     (status) => status.textStatus === "extracted" || status.imageStatus === "rendered"
   ).length
-  const evidencePagesReadCount = Math.max(
-    evidenceStrength?.textPagesCount || 0,
-    evidenceStrength?.renderedPagesCount || 0
-  )
-  const selectedPagesReadCount =
-    Math.max(
-      selectedPagesReadStatusCount,
-      evidencePagesReadCount,
-      planReadbackHasContent ? 1 : 0
-    )
+  const selectedPagesReadCount = selectedPagesReadStatusCount
   const selectedPagesUsefulStatusCount = selectedPageStatuses.filter(
     (status) =>
       (status.textStatus === "extracted" || status.imageStatus === "rendered") &&
       status.classificationStatus === "classified" &&
       status.failureReasons.length === 0
   ).length
-  const pagesWithUsefulEvidenceCount =
-    Math.max(
-      selectedPagesUsefulStatusCount,
-      evidencePagesReadCount,
-      planReadbackHasContent ? 1 : 0
-    )
+  const pagesWithUsefulEvidenceCount = selectedPagesUsefulStatusCount
   const pagesNeedingReviewCount = selectedPageStatuses.filter(
     (status) =>
       status.failureReasons.length > 0 ||
@@ -13582,11 +13330,6 @@ function PlanAwareEstimatorReadbackCard({
     (status) => status.classificationStatus !== "classified"
   ).length
   const hasPageReadStatusSummary = selectedPageStatuses.length > 0
-  const hasSelectedPageCountGap =
-    currentSelectedPagesCount != null &&
-    (currentSelectedPagesCount > selectedPagesProcessedCount ||
-      currentSelectedPagesCount > selectedPagesReadCount ||
-      currentSelectedPagesCount > pagesWithUsefulEvidenceCount)
   const readableSheetRefs = selectedPageStatuses
     .map((status) => {
       return formatPlanSummarySourceReference(status)
@@ -13736,16 +13479,15 @@ function PlanAwareEstimatorReadbackCard({
               "Plan evidence is available for estimator review, but the readable summary is limited."}
           </div>
           <div style={{ marginTop: 3, color: "#4b5563" }}>
-            This status describes overall plan readback availability. The useful-evidence
-            page count below only counts selected pages with readable, classified compact
-            evidence.
+            Counts below use returned page statuses. Readable, classified pages do not
+            establish complete scope coverage or verified quantities.
           </div>
           <div style={{ marginTop: 4, color: "#4b5563" }}>
-            Selected pages processed: {selectedPagesProcessedCount}
+            Returned page statuses: {selectedPagesProcessedCount}
             {" - "}
             Selected pages read: {selectedPagesReadCount}
             {" - "}
-            Pages with useful evidence: {pagesWithUsefulEvidenceCount}
+            Readable, classified pages: {pagesWithUsefulEvidenceCount}
             {" - "}
             {evidenceStrength.hardQuantityCount > 0 ? "Hard quantities found" : "Measured quantities still need confirmation"}
           </div>
@@ -13753,16 +13495,6 @@ function PlanAwareEstimatorReadbackCard({
             Plan evidence is review-only. Measured quantities still require estimator confirmation,
             and plan-derived candidates are not pricing inputs.
           </div>
-          {hasSelectedPageCountGap && currentSelectedPagesCount != null && (
-            <div style={{ marginTop: 4, color: "#92400e" }}>
-              Current upload selection shows {currentSelectedPagesCount} selected page(s). This
-              summary reflects {selectedPagesProcessedCount} processed page(s), {selectedPagesReadCount}
-              {" "}read page(s), and {pagesWithUsefulEvidenceCount} page(s) with compact useful
-              evidence from the latest readback. Some selected pages may not render, extract text,
-              classify cleanly, or produce compact evidence; re-run Generate after changing the
-              selected pages.
-            </div>
-          )}
           {selectedSheetReferenceText && (
             <div style={{ marginTop: 4, color: "#6b7280" }}>
               Selected sheet references: {selectedSheetReferenceText}
@@ -13779,11 +13511,11 @@ function PlanAwareEstimatorReadbackCard({
             >
               <div style={{ fontWeight: 900, color: "#111827" }}>Pages read</div>
               <div style={{ marginTop: 3 }}>
-                Selected pages processed: {selectedPagesProcessedCount}
+                Returned page statuses: {selectedPagesProcessedCount}
                 {" - "}
                 Selected pages read: {selectedPagesReadCount}
                 {" - "}
-                Pages with useful evidence: {pagesWithUsefulEvidenceCount}
+                Readable, classified pages: {pagesWithUsefulEvidenceCount}
                 {" - "}
                 Pages needing review: {pagesNeedingReviewCount}
                 {" - "}
@@ -14177,249 +13909,6 @@ const accountAccessMessage = !normalizedEmail
         ? "Pro access is active for this email."
         : "Free generation access is active for this email."
       : "Refresh access to check the latest entitlement status.")
-
-function visibleReviewExplanations(items: string[], primaryMessages: string[]) {
-  // This source warning's detail bullets repeat trades already named in its full
-  // message. Other guard warnings can add qualifications and must stay intact.
-  const repeatedWarning = customerScopeReviewGuard.warnings.find(
-    (warning) =>
-      warning.label === "Unsupported trade wording" &&
-      warning.message === customerScopeReviewGuard.summary &&
-      primaryMessages.includes(warning.message)
-  )
-
-  return items
-    .map((text, index) => ({ text, index }))
-    .filter(({ text }) => !repeatedWarning?.details?.includes(text))
-}
-
-function CustomerOutputReadinessPanel({
-  items,
-}: {
-  items: CustomerOutputReadinessItem[]
-}) {
-  if (!items.length) return null
-
-  const hasCriticalScopeDrift = items.some((item) =>
-    /unsupported trade wording/i.test(item.label)
-  )
-
-  return (
-    <details
-      data-no-print
-      open={hasCriticalScopeDrift}
-      style={{
-        marginTop: 14,
-        marginBottom: 14,
-        padding: 12,
-        border: "1px solid #fed7aa",
-        borderRadius: 12,
-        background: "#fff7ed",
-      }}
-    >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontWeight: 900,
-          fontSize: 14,
-          color: "#111827",
-        }}
-      >
-        Customer Output Readiness details
-        <span
-          style={{
-            marginLeft: 8,
-            padding: "2px 7px",
-            border: "1px solid #fed7aa",
-            borderRadius: 999,
-            background: "#fff",
-            color: "#92400e",
-            fontSize: 11,
-            fontWeight: 900,
-            verticalAlign: "middle",
-          }}
-        >
-          {items.length} {items.length === 1 ? "item" : "items"}
-        </span>
-      </summary>
-      <p style={{ margin: "6px 0 0", fontSize: 13, color: "#4b5563", lineHeight: 1.5 }}>
-        Estimator-only source details already summarized above. Price, proposal text,
-        PDFs, and saved estimates are unchanged.
-      </p>
-
-      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-        {items.map((item, index) => {
-          const displayedDetails = visibleReviewExplanations(
-            item.details || [],
-            [item.message]
-          )
-
-          return (
-            <div
-              key={`customer-output-readiness-${item.label}-${index}`}
-              style={{
-                padding: 10,
-                border: "1px solid #fdba74",
-                borderRadius: 8,
-                background: "#fff",
-                minWidth: 0,
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 900, color: "#92400e" }}>
-                {item.label}
-              </div>
-              <div style={{ marginTop: 3, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
-                {item.message}
-              </div>
-              {displayedDetails.length > 0 && (
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.45 }}>
-                  {displayedDetails.map(({ text: detail, index: detailIndex }) => (
-                    <li
-                      key={`customer-output-readiness-${item.label}-${detailIndex}`}
-                      style={{ fontSize: 12, color: "#4b5563" }}
-                    >
-                      {detail}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </details>
-  )
-}
-
-function EstimatorReviewSummaryPanel({
-  summary,
-}: {
-  summary: EstimatorReviewSummary | null
-}) {
-  if (!summary) return null
-
-  const toneStyle = (tone: EstimatorReviewSummaryTone) => {
-    if (tone === "danger") {
-      return { border: "#fecaca", bg: "#fef2f2", color: "#991b1b" }
-    }
-
-    if (tone === "warning") {
-      return { border: "#fdba74", bg: "#fff7ed", color: "#92400e" }
-    }
-
-    if (tone === "good") {
-      return { border: "#bbf7d0", bg: "#f0fdf4", color: "#166534" }
-    }
-
-    return { border: "#e5e7eb", bg: "#f9fafb", color: "#374151" }
-  }
-  const headerTone = toneStyle(summary.tone)
-
-  return (
-    <details
-      data-no-print
-      open={summary.status === "needs_review"}
-      style={{
-        marginTop: 14,
-        marginBottom: 14,
-        padding: 12,
-        border: `1px solid ${headerTone.border}`,
-        borderRadius: 14,
-        background: headerTone.bg,
-      }}
-    >
-      <summary
-        style={{
-          cursor: "pointer",
-          fontWeight: 900,
-          fontSize: 15,
-          color: "#111827",
-        }}
-      >
-        Estimator Review Summary
-        <span
-          style={{
-            marginLeft: 8,
-            padding: "2px 7px",
-            border: `1px solid ${headerTone.border}`,
-            borderRadius: 999,
-            background: "#fff",
-            color: headerTone.color,
-            fontSize: 11,
-            fontWeight: 900,
-            verticalAlign: "middle",
-          }}
-        >
-          {summary.headline}
-        </span>
-      </summary>
-
-      <p style={{ margin: "8px 0 0", fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
-        {summary.summary}
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-          marginTop: 12,
-        }}
-      >
-        {summary.sections.map((section) => {
-          const sectionTone = toneStyle(section.tone)
-          const selectedItems = section.items.slice(0, 2)
-          const displayedItems = visibleReviewExplanations(selectedItems, selectedItems)
-
-          return (
-            <div
-              key={`estimator-review-summary-${section.title}`}
-              style={{
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1.45,
-                }}
-              >
-                <span style={{ fontWeight: 900, color: "#111827" }}>
-                  {section.title}
-                </span>{" · "}
-                <span
-                  style={{
-                    color: sectionTone.color,
-                    fontSize: 12,
-                    fontWeight: 800,
-                  }}
-                >
-                  {section.status}
-                </span>
-              </div>
-
-              <ul style={{ margin: "4px 0 0", paddingLeft: 17, lineHeight: 1.45 }}>
-                {displayedItems.map(({ text: item, index }) => (
-                  <li
-                    key={`estimator-review-summary-${section.title}-${index}`}
-                    style={{ fontSize: 12, color: "#4b5563" }}
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )
-        })}
-      </div>
-
-      <div style={{ marginTop: 10, fontSize: 12, color: "#4b5563", lineHeight: 1.45 }}>
-        {summary.footer}
-      </div>
-    </details>
-  )
-}
-
 
   // -------------------------
   // UI
@@ -15006,9 +14495,7 @@ function EstimatorReviewSummaryPanel({
   </p>
 )}
 
-{!result && (
-  <PriceGuardReviewPanel review={null} hasResult={false} />
-)}
+
 </div>
 
 {result && (
@@ -15019,142 +14506,199 @@ function EstimatorReviewSummaryPanel({
       padding: 16,
       background: "#f5f5f5",
       borderRadius: 8,
-      whiteSpace: "pre-wrap",
+      whiteSpace: "normal",
       lineHeight: 1.6,
       fontSize: 15,
       overflowX: "hidden",
     }}
   >
-    <div
-      style={{
-        marginBottom: 14,
-        padding: 14,
-        border: "1px solid #dbeafe",
-        borderRadius: 14,
-        background: "#f8fbff",
-      }}
-    >
-      <div style={{ fontSize: 12, fontWeight: 900, color: "#1d4ed8", marginBottom: 4 }}>
-        Estimate ready
-      </div>
-      <h3 style={{ margin: 0 }}>
-        {displayedDocumentType} Summary
-      </h3>
-
-      <p
-        style={{
-          fontSize: 13,
-          color: "#4b5563",
-          marginTop: 8,
-          marginBottom: 0,
-          lineHeight: 1.5,
-        }}
-      >
-        Review the customer-facing scope, pricing, schedule, and plan evidence below. Deeper estimator
-        diagnostics are kept in collapsed sections for follow-up review.
+    <div data-result-overview style={{ marginBottom: 14, padding: 14, border: "1px solid #dbeafe", borderRadius: 14, background: "#f8fbff", whiteSpace: "normal" }}>
+      <h3 style={{ margin: 0 }}>{displayedDocumentType} Summary</h3>
+      <p data-scope-summary style={{ margin: "8px 0", fontSize: 14, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+        {generatedResultScopeText.replace(/\s+/g, " ").trim().length > 420
+          ? `${generatedResultScopeText.replace(/\s+/g, " ").trim().slice(0, 420)}…`
+          : generatedResultScopeText}
       </p>
+      <div data-mobile-stack style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12 }}>
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 900 }}>${Number(pricing.total || 0).toLocaleString()}</div>
+          <div style={{ fontSize: 12, color: "#4b5563" }}>{taxEnabled ? `Includes $${Number(taxAmount || 0).toLocaleString()} sales tax` : "Sales tax not applied"}</div>
+          <div data-margin-summary style={{ marginTop: 4, fontSize: 13 }}>
+            {currentProfitMarginPct(pricing) >= 15 ? "Healthy margin" : "Margin needs review"}: {currentProfitMarginPct(pricing)}% pre-tax · Preferred target: 25%
+          </div>
+        </div>
+        <div data-mobile-actions style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <button type="button" onClick={() => {
+            const section = document.querySelector<HTMLElement>("[data-price-editor]")
+            section?.querySelector("details")?.setAttribute("open", "")
+            revealSection(section || null)
+          }}>Edit price &amp; terms</button>
+          <button type="button" onClick={downloadPDF} style={{ background: "#111827", color: "#fff", borderRadius: 8, padding: "10px 14px", fontWeight: 800 }}>Download Estimate PDF</button>
+        </div>
+      </div>
+      <p data-unresolved-review-count style={{ margin: "12px 0 6px", fontSize: 13, fontWeight: 700 }}>
+        {unresolvedReviewActionCount} unresolved review action{unresolvedReviewActionCount === 1 ? "" : "s"}
+        {optionalPlanScopeActionCount > 0 && " · Optional plan scope choice below"}
+      </p>
+      <ProposalReadinessBadge
+        readiness={{ ...proposalReadiness, message: proposalReadiness.status === "review" && !hasUnregeneratedScopeChanges && !photoEvidenceRequiresRegeneration
+          ? "Check the listed review actions before preparing the proposal."
+          : proposalReadiness.message }}
+        onAction={handleProposalReadinessAction}
+      />
     </div>
 
     <ResultCommandSection
-      title="Proposal"
-      summary="Customer-ready scope and scope-update actions."
+      title="Review Before Sending"
+      summary="Answer the relevant scope questions and check each unresolved item before preparing the proposal."
+      dataNoPrint
+      sectionRef={reviewBeforeSendingSectionRef}
     >
-      <div
+      <p style={{ margin: "0 0 8px", fontSize: 13 }}><a href="#written-estimate-scope">Edit written scope</a> to clarify included work.</p>
+      <ScopeDecisionsPanel
+        decisions={scopeDecisions}
+        selections={scopeDecisionSelections}
+        appliedSentences={appliedScopeDecisionSentences}
+        feedback={scopeDecisionFeedback}
+        showScopeUpdatedNotice={
+          scopeDecisionScopeUpdated && hasUnregeneratedScopeChanges
+        }
+        onSelectionChange={updateScopeDecisionSelection}
+        onApply={applyScopeDecisionFromPanel}
+        planDecision={planCeilingScopeChange}
+        onPlanChoice={confirmPlanCeilingScopeChangeFromPanel}
+      />
+
+      <div data-review-actions aria-label="Other review actions" style={{ display: "grid", gap: 8 }}>
+        {reviewIssues.map((issue) => (
+          <div key={issue.key} data-review-issue={issue.key} style={{ padding: "10px 0", borderBottom: "1px solid #e5e7eb", fontSize: 13, lineHeight: 1.5 }}>
+            <div>{issue.message}</div>
+            {issue.details.length > 0 && (
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, color: "#4b5563" }}>Supporting details</summary>
+                <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+                  {issue.details.map((detail) => <li key={detail}>{detail}</li>)}
+                </ul>
+              </details>
+            )}
+          </div>
+        ))}
+        {!unresolvedReviewActionCount && <p style={{ fontSize: 13 }}>No additional scope or pricing questions are surfaced.</p>}
+      </div>
+
+      <PlanReviewSummary
+        planIntelligence={planIntelligence}
+        hasCurrentPlans={jobPlans.length > 0}
+        freshness={planEvidenceFreshness}
+        requiresRegeneration={planEvidenceRequiresRegeneration}
+      />
+
+      <details
+        data-no-print
         style={{
-          padding: 14,
-          border: "1px solid #e5e7eb",
-          borderRadius: 12,
+          marginTop: 14,
+          marginBottom: 14,
+          padding: 12,
+          border: "1px solid #d1d5db",
+          borderRadius: 14,
           background: "#fff",
         }}
       >
-        <div
+        <summary
           style={{
+            cursor: "pointer",
             fontWeight: 900,
-            fontSize: 14,
-            marginBottom: 8,
-            color: "#111827",
+            fontSize: 15,
           }}
         >
-          Customer-Facing Scope
+          Advanced Diagnostics
+        </summary>
+        <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
+          Full estimator review, plan readback, pricing-support details, and technical diagnostics.
         </div>
 
-        <ProposalReadinessBadge
-          readiness={proposalReadiness}
-          onAction={handleProposalReadinessAction}
-        />
-
-        <div
-          data-no-print
-          data-mobile-actions
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            marginBottom: 10,
-          }}
-        >
-          <button
-            type="button"
-            onClick={downloadPDF}
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              padding: "8px 10px",
-              borderRadius: 8,
-            }}
-          >
-            Download Estimate PDF
-          </button>
-
-          <button
-            type="button"
-            onClick={() => void copyProposalText()}
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              padding: "8px 10px",
-              borderRadius: 8,
-            }}
-          >
-            Copy proposal text
-          </button>
-        </div>
-
-        {customerScopeTradeDriftWarning && (
-          <div
-            data-proposal-scope-drift-warning
-            style={{
-              marginBottom: 10,
-              padding: 10,
-              border: "1px solid #fdba74",
-              borderRadius: 8,
-              background: "#fff7ed",
-              color: "#92400e",
-              fontSize: 12,
-              fontWeight: 800,
-              lineHeight: 1.45,
-            }}
-          >
-            {customerScopeTradeDriftWarning}
+        {hasEstimateStatus && (
+          <div data-no-print>
+            <EstimateStatusCard
+              displayedDocumentType={displayedDocumentType}
+              displayedChangeOrderNote={displayedChangeOrderNote}
+              displayedScheduleImpactNote={displayedScheduleImpactNote}
+              changeOrderDetection={changeOrderDetection}
+              scopeSignals={scopeSignals}
+              jobPhotosCount={jobPhotos.length}
+              photoAnalysis={photoAnalysis}
+              photoScopeAssist={photoScopeAssist}
+              planAssistedStatus={null}
+              measureEnabled={measureEnabled}
+              totalSqft={totalSqft}
+              hasMeasurementReference={hasMeasurementReference}
+              estimateConfidence={estimateConfidence}
+            />
           </div>
         )}
 
-        <div
-          style={{
-            whiteSpace: "pre-wrap",
-            lineHeight: 1.6,
-            fontSize: 14,
-            color: "#111",
-          }}
-        >
-          {result.text}
-        </div>
-      </div>
+        {priceGuardReview && (
+          <div style={{ fontSize: 12, marginTop: 12, color: "#4b5563" }}>
+            Pricing support: {String(pricingSource || "unknown").replace(/_/g, " ")}. PriceGuard score: {priceGuardReview.score}/100.
+            Scope and pricing actions are listed above.
+            {(priceGuardReview.customerPriceDefenseNotes.length > 0 || priceGuardReview.suggestedExclusions.length > 0) && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: "pointer" }}>Price explanation &amp; suggested boundary wording</summary>
+                <ul>{priceGuardReview.customerPriceDefenseNotes.map((note) => <li key={note}>{note}</li>)}</ul>
+                {priceGuardReview.suggestedExclusions.length > 0 && <>
+                  <p>Suggested proposal wording to consider for the scope above:</p>
+                  <ul>{priceGuardReview.suggestedExclusions.map((note) => <li key={note}>{note}</li>)}</ul>
+                </>}
+              </details>
+            )}
+          </div>
+        )}
 
+        {(planIntelligence || estimateSkeletonHandoff || estimateStructureConsumption) && (
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+              {planEvidenceFreshness === "current" ? "Detailed plan evidence" : "Historical plan diagnostics (previous estimate)"}
+            </summary>
+        <PlanAwareEstimatorReadbackCard
+          planIntelligence={planIntelligence}
+          estimateSections={estimateSections}
+        />
+
+            <PlanIntelligenceCard planIntelligence={planIntelligence} />
+            {estimateSkeletonHandoff && <EstimateSkeletonHandoffCard estimateSkeletonHandoff={estimateSkeletonHandoff} />}
+            {estimateStructureConsumption && <EstimateStructureConsumptionCard estimateStructureConsumption={estimateStructureConsumption} />}
+          </details>
+        )}
+
+        {hasAdvancedAnalysis && (
+          <AdvancedAnalysisSection
+            photoAnalysis={photoAnalysis}
+            photoScopeAssist={photoScopeAssist}
+            planIntelligence={null}
+            estimateSkeletonHandoff={null}
+            estimateStructureConsumption={null}
+            materialsList={materialsList}
+            areaScopeBreakdown={areaScopeBreakdown}
+            profitProtection={profitProtection}
+            scopeXRay={scopeXRay}
+            missedScopeDetector={missedScopeDetector}
+            profitLeakDetector={profitLeakDetector}
+            estimateDefenseMode={estimateDefenseMode}
+            tradePricingPrepAnalysis={tradePricingPrepAnalysis}
+            estimateConfidence={estimateConfidence}
+            changeOrderSummary={changeOrderSummary}
+            explainChangesReport={explainChangesReport}
+            estimateBreakdown={estimateBreakdown}
+            estimateAssumptions={estimateAssumptions}
+          />
+        )}
+      </details>
     </ResultCommandSection>
 
+    <div data-price-editor>
     <ResultCommandSection
-      title="Price & Profit"
+      title="Edit price & terms"
+      expandable
       summary="Edit the price, protect margin, set tax/deposit terms, and download the estimate."
     >
       <PricingSummarySection
@@ -15212,9 +14756,87 @@ function EstimatorReviewSummaryPanel({
       </details>
     </ResultCommandSection>
 
+    </div>
+
+    <ResultCommandSection
+      title="Full proposal preview"
+      summary="Review the complete proposal text or copy it for your customer."
+      expandable
+    >
+      <div
+        style={{
+          padding: 14,
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          background: "#fff",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: 14,
+            marginBottom: 8,
+            color: "#111827",
+          }}
+        >
+          Customer-Facing Scope
+        </div>
+
+        <div
+          data-no-print
+          data-mobile-actions
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            marginBottom: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={downloadPDF}
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              padding: "8px 10px",
+              borderRadius: 8,
+            }}
+          >
+            Download Estimate PDF
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void copyProposalText()}
+            style={{
+              fontSize: 12,
+              fontWeight: 800,
+              padding: "8px 10px",
+              borderRadius: 8,
+            }}
+          >
+            Copy proposal text
+          </button>
+        </div>
+
+        <div
+          style={{
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.6,
+            fontSize: 14,
+            color: "#111",
+          }}
+        >
+          {result.text}
+        </div>
+      </div>
+
+    </ResultCommandSection>
+
     {(schedule || crewPlanningReadback) && (
       <ResultCommandSection
         title="Schedule & Crew"
+        expandable
         summary="Review duration, edit schedule assumptions, and plan crew execution."
       >
         {schedule && (
@@ -15260,118 +14882,15 @@ function EstimatorReviewSummaryPanel({
       </ResultCommandSection>
     )}
 
-    <ResultCommandSection
-      title="Review Before Sending"
-      summary="One compact estimator review hub. Detailed diagnostics stay collapsed below."
-      dataNoPrint
-      sectionRef={reviewBeforeSendingSectionRef}
-    >
-      <ScopeDecisionsPanel
-        decisions={scopeDecisions}
-        selections={scopeDecisionSelections}
-        appliedSentences={appliedScopeDecisionSentences}
-        feedback={scopeDecisionFeedback}
-        showScopeUpdatedNotice={
-          scopeDecisionScopeUpdated && hasUnregeneratedScopeChanges
-        }
-        onSelectionChange={updateScopeDecisionSelection}
-        onApply={applyScopeDecisionFromPanel}
-        planDecision={planCeilingScopeChange}
-        onPlanChoice={confirmPlanCeilingScopeChangeFromPanel}
-      />
 
-      <EstimatorReviewSummaryPanel summary={estimatorReviewSummary} />
-
-      <CustomerOutputReadinessPanel items={customerOutputReadinessItems} />
-
-      <details
-        data-no-print
-        style={{
-          marginTop: 14,
-          marginBottom: 14,
-          padding: 12,
-          border: "1px solid #d1d5db",
-          borderRadius: 14,
-          background: "#fff",
-        }}
-      >
-        <summary
-          style={{
-            cursor: "pointer",
-            fontWeight: 900,
-            fontSize: 15,
-          }}
-        >
-          Advanced Diagnostics
-        </summary>
-        <div style={{ fontSize: 12, color: "#666", marginTop: 6, lineHeight: 1.5 }}>
-          Full estimator review, plan readback, pricing-support details, and technical diagnostics.
-        </div>
-
-        {hasEstimateStatus && (
-          <div data-no-print>
-            <EstimateStatusCard
-              displayedDocumentType={displayedDocumentType}
-              displayedChangeOrderNote={displayedChangeOrderNote}
-              displayedScheduleImpactNote={displayedScheduleImpactNote}
-              changeOrderDetection={changeOrderDetection}
-              scopeSignals={scopeSignals}
-              jobPhotosCount={jobPhotos.length}
-              photoAnalysis={photoAnalysis}
-              photoScopeAssist={photoScopeAssist}
-              planAssistedStatus={planAssistedStatus}
-              measureEnabled={measureEnabled}
-              totalSqft={totalSqft}
-              hasMeasurementReference={hasMeasurementReference}
-              estimateConfidence={estimateConfidence}
-            />
-          </div>
-        )}
-
-        <EstimatorIntelligenceFindingsPanel result={estimatorIntelligenceFindings} />
-
-        <PriceGuardReviewPanel review={priceGuardReview} hasResult={Boolean(result)} />
-
-        <PlanAwareEstimatorReadbackCard
-          planIntelligence={planIntelligence}
-          estimateSections={estimateSections}
-          selectedPagesChosenCount={jobPlans.reduce(
-            (sum, plan) => sum + countSelectedPlanPages(plan),
-            0
-          )}
-        />
-
-        {hasAdvancedAnalysis && (
-          <AdvancedAnalysisSection
-            photoAnalysis={photoAnalysis}
-            photoScopeAssist={photoScopeAssist}
-            planIntelligence={planIntelligence}
-            estimateSkeletonHandoff={estimateSkeletonHandoff}
-            estimateStructureConsumption={estimateStructureConsumption}
-            materialsList={materialsList}
-            areaScopeBreakdown={areaScopeBreakdown}
-            profitProtection={profitProtection}
-            scopeXRay={scopeXRay}
-            missedScopeDetector={missedScopeDetector}
-            profitLeakDetector={profitLeakDetector}
-            estimateDefenseMode={estimateDefenseMode}
-            tradePricingPrepAnalysis={tradePricingPrepAnalysis}
-            estimateConfidence={estimateConfidence}
-            changeOrderSummary={changeOrderSummary}
-            explainChangesReport={explainChangesReport}
-            estimateBreakdown={estimateBreakdown}
-            estimateAssumptions={estimateAssumptions}
-          />
-        )}
-      </details>
-    </ResultCommandSection>
   </div>
 )}
 
 <div data-no-print>
   <ResultCommandSection
-    title="Job Workflow"
-    summary="Track jobs, approval status, invoices, saved estimates, and recorded job costs."
+    title="Job tools & saved work"
+    expandable
+    summary="Track jobs, approvals, invoices, saved estimates, and recorded costs."
     dataNoPrint
   >
   <JobWorkflowSummary
@@ -15380,6 +14899,7 @@ function EstimatorReviewSummaryPanel({
     money={money}
   />
 
+  <details><summary style={{ cursor: "pointer", fontWeight: 800 }}>Jobs &amp; costs</summary>
   <div ref={jobsDashboardSectionRef}>
   <JobsDashboardSection
   jobs={jobs}
@@ -15415,6 +14935,8 @@ function EstimatorReviewSummaryPanel({
 />
   </div>
 
+</details>
+<details><summary style={{ cursor: "pointer", fontWeight: 800 }}>Job templates</summary>
 <JobTemplatesSection
   templates={jobTemplates}
   templateName={jobTemplateName}
@@ -15427,6 +14949,8 @@ function EstimatorReviewSummaryPanel({
   onDeleteTemplate={removeJobTemplate}
 />
 
+</details>
+<details><summary style={{ cursor: "pointer", fontWeight: 800 }}>Invoices</summary>
 <InvoicesSection
   filteredInvoices={filteredInvoices}
   activeJobSelected={Boolean(activeJobId)}
@@ -15440,6 +14964,8 @@ function EstimatorReviewSummaryPanel({
   INVOICE_KEY={INVOICE_KEY}
 />
 
+</details>
+<details><summary style={{ cursor: "pointer", fontWeight: 800 }}>Saved estimates &amp; approvals</summary>
 <SavedEstimatesSection
   filteredHistory={filteredHistory}
   activeJobSelected={Boolean(activeJobId)}
@@ -15459,9 +14985,12 @@ function EstimatorReviewSummaryPanel({
   setStatus={setStatus}
 />
 
+</details>
+<details><summary style={{ cursor: "pointer", fontWeight: 800 }}>Field Handoff</summary>
 <div ref={fieldHandoffSectionRef}>
   <FieldHandoffSection handoff={fieldHandoff} />
 </div>
+</details>
   </ResultCommandSection>
 
   {!paid && (showUpgrade || remaining <= 0) && (

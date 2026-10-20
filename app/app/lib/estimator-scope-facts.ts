@@ -60,6 +60,7 @@ export type EstimatorScopeFacts = {
 const QUANTITY_LOCATION_PATTERNS = [
   /\b\d+(\.\d+)?\s?(sq\.?\s?ft|sf|square feet|square foot|lf|linear feet|linear foot|ln ft)\b/,
   /\b\d+\s?(rooms?|bedrooms?|bathrooms?|areas?|walls?|ceilings?|doors?|windows?|outlets?|switches?|fixtures?|lights?|receptacles?|circuits?|panels?|sinks?|toilets?|faucets?|vanities?|showers?|sheets?|patches?)\b/,
+  /\b\d+\s+\d+(?:\.\d+)?\s*['’′]?\s*[x×]\s*\d+(?:\.\d+)?\s*['’′]?\s+(?:rooms?|bedrooms?|bathrooms?)\b/,
   /\brooms?\s+\d+[a-z]?\s*(?:-|to|through|thru)\s*\d+[a-z]?\b/,
   /\b(?:room|area|unit|suite)\s+\d+[a-z]?\b/,
   /\bper plans?\b|\bselected sheets?\b/,

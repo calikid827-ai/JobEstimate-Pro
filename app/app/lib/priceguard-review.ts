@@ -116,15 +116,10 @@ function resolvePriceGuardTrade(
   if (selected === "bathroom_tile" || selected === "tile") return "bathroom_tile"
   if (selected === "wallcovering" || selected === "wallpaper") return "wallcovering"
   if (selected === "carpentry") return "carpentry"
-  if (selected === "general_renovation" || selected === "general") {
-    const includedText = normalize(facts.includedWorkText)
-    const wallcoveringOnly =
-      facts.includedTrades.includes("wallcovering") &&
-      facts.includedTrades.length === 1 &&
-      !/\b(tile|grout|waterproof|shower|tub|plumbing|electrical|outlets?|switches?|flooring|lvp|baseboards?|trim install|cabinet|drywall repair|paint walls?|paint ceilings?|demo|rough[-\s]*in)\b/.test(
-        includedText
-      )
-    return wallcoveringOnly ? "wallcovering" : "general_renovation"
+  if (["general_renovation", "general renovation", "general"].includes(selected)) {
+    return facts.includedTrades.length === 1
+      ? facts.includedTrades[0] as PriceGuardTradeGroup
+      : "general_renovation"
   }
 
   if (hasAny(text, ["wallpaper", "wallcovering", "wall covering", "vinyl wallcovering"])) {
@@ -346,16 +341,16 @@ function applyTradeSpecificMissedScopeChecks(args: {
     if (!hasAny(text, ["paint", "drywall", "floor", "flooring", "tile", "plumbing", "electrical", "carpentry", "fixture", "fixtures", "demo", "finish", "finishes"])) {
       addTradeReviewNote(scopeClarityWarnings, "General renovation scope should confirm which trades are included.", score)
     }
-    if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in"])) {
-      addTradeReviewNote(missedScopeWarnings, "Renovation demolition, prep, rough-in, and finish-work limits are not clearly stated.", score)
+    if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in", "patch"])) {
+      addTradeReviewNote(missedScopeWarnings, "Preparation and finish-work limits for the included trades are not clearly stated.", score)
     }
     if (!hasMaterialBoundary(text, facts)) {
-      addTradeReviewNote(scopeClarityWarnings, "Confirm finish selections, fixture responsibility, and material allowances.", score)
+      addTradeReviewNote(scopeClarityWarnings, "Confirm material responsibility, finish selections, and allowances for the included work.", score)
     }
     if (!hasExclusionBoundary(text, facts)) {
       addTradeReviewNote(suggestedExclusions, "Clarify exclusions, allowances, permits, hidden damage, and work by others.", score)
     }
-    if (!hasAny(text, ["schedule", "sequence", "sequencing", "phasing", "rough-in", "inspection", "return trip"])) {
+    if (facts.trueMixedTrades && !hasAny(text, ["schedule", "sequence", "sequencing", "phasing", "rough-in", "inspection", "return trip"])) {
       addTradeReviewNote(contractorRiskNotes, "Multi-trade sequencing or return-trip assumptions should be reviewed before sending.", score)
     }
   }

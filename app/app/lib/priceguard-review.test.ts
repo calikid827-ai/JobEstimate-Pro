@@ -239,6 +239,17 @@ test("PriceGuard treats wallcovering-only general renovation as wallcovering rev
   assert.doesNotMatch(text, /multi-trade sequencing/)
 })
 
+test("PriceGuard treats painting-only general renovation as painting review", () => {
+  const text = reviewText(buildReview({
+    selectedTrade: "general_renovation",
+    scopeText: "Paint 15 10’x12’ bedrooms. Walls and ceilings. Patching any cracks and imperfections. Two coats.",
+    resultText: "Paint bedrooms, walls, and ceilings. Includes two coats, patching, cleanup, and customer approval.",
+  }))
+  assert.match(text, /paint\/material supply/)
+  assert.match(text, /masking\/protection/)
+  assert.doesNotMatch(text, /demolition|rough-in|fixture|multi-trade sequencing/)
+})
+
 test("strong trade scopes avoid trade-specific missed-scope review notes", () => {
   const strongCases = [
     {

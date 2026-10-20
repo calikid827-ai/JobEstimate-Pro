@@ -214,7 +214,11 @@ Plan upload support includes:
 
 - PDF, PNG, JPG, JPEG, and WEBP intake
 - Local PDF page indexing for page selection
-- Range-based PDF page selection with From / To / Select range controls
+- Range-based PDF page selection with From / To / Select range controls; applying a range replaces the selection, and individual page checkboxes can refine it
+- Contractor-focused upload cards show file name, one selected-page count, sheet selection, optional plan instructions, and concise zero-page / large-selection guidance
+- File sizes, browser/server processing methods, and selected-page fallback notes stay accessible in collapsed File & processing details
+- A compact Plan review in Review Before Sending shows returned scope, trades, rooms, source sheets, and quantity-verification reminders outside Advanced Diagnostics
+- The compact review labels stale/unmatched findings and has a safe unavailable-summary fallback; it does not infer coverage from the current upload selection or approve quantity candidates for pricing
 - Large-plan selected-page readiness guidance for all-pages-selected, no-page selections, many selected pages, high selected upload size, and suggested sheet types
 - Selected-page staging and chunked upload
 - Browser-side selected-page PDF export when possible
@@ -240,8 +244,8 @@ Important operational notes:
 
 - Large PDFs should be narrowed with page selection before generation.
 - Use range selection to quickly narrow large PDFs to the sheets that should be reviewed.
-- The upload UI shows readiness guidance for large plan selections and recommends starting with floor plans, finish schedules, elevations, door/window schedules, fixture schedules, and trade-relevant RCP/demo sheets.
-- If selected-page export fails in the browser, the app can fall back to original PDF staging with explicit messaging.
+- The upload UI keeps zero-page and large-selection guidance visible and recommends starting with floor plans, finish schedules, and details for the selected trade. Detailed sheet results and extraction diagnostics remain in Advanced Diagnostics.
+- If selected-page export fails in the browser, the app can fall back to original PDF staging; processing methods and fallback notes are available in File & processing details.
 - If a later selected-page derivation attempt fails, Generate continues with the original staged PDF and selected source pages instead of failing the whole request.
 - Plan intelligence can degrade when a PDF cannot be rendered or indexed cleanly.
 - Evidence-strength, table/schedule extraction, room/finish matrix, repeated room package, trade quantity candidate, and candidate gate readbacks are readiness diagnostics, not a full measured takeoff. Hard quantity extraction is still heuristic.

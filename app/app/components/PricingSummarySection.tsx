@@ -183,11 +183,12 @@ export default function PricingSummarySection({
         }}
       >
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-          Profit Target Mode
+          Profit targets (optional)
         </div>
 
         <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
-          Set markup automatically based on your desired profit margin.
+          Current pre-tax margin: {currentProfitMarginPct(pricing)}%. Preferred target: 25%.
+          Choose a target to adjust markup; these are alternatives.
         </div>
 
         <div data-mobile-actions style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -373,7 +374,7 @@ export default function PricingSummarySection({
                   fontSize: 13,
                 }}
               >
-                ⚠ Margin Risk: Estimated margin {marginPct}%. Most contractors target 15–25%.
+                Margin needs review: {marginPct}% pre-tax. Healthy-margin threshold: 15%; preferred target: 25%.
               </div>
             )
           }
@@ -390,7 +391,7 @@ export default function PricingSummarySection({
                 fontSize: 13,
               }}
             >
-              ✓ Healthy margin: {marginPct}%
+              Healthy margin: {marginPct}% pre-tax. Preferred target: 25%.
             </div>
           )
         })()}

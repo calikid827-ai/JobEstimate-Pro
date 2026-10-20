@@ -224,6 +224,11 @@ function tradeLabel(trade: string): string {
 
 function normalizeTrade(trade: string | null | undefined, scopeText: string): string {
   const selected = normalize(trade)
+  if (["general_renovation", "general renovation", "general"].includes(selected)) {
+    const trades = buildEstimatorScopeFacts(scopeText).includedTrades
+    if (trades.length === 1) return trades[0]
+    return "general_renovation"
+  }
   if (selected) return selected
   const text = normalize(scopeText)
   if (/\bpaint|primer|coats?\b/.test(text)) return "painting"
@@ -325,6 +330,12 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
 
   const hasQuantitySignal = facts.hasQuantityLocationSignal
   const hasMaterialResponsibility = facts.hasMaterialResponsibility
+  const hasFixtureWork = ["electrical", "plumbing", "bathroom_tile"].includes(trade) ||
+    /\bfixtures?\b/.test(facts.includedWorkText)
+  const permitRelevant = facts.hasPermitResponsibility ||
+    ["electrical", "plumbing", "bathroom_tile"].includes(trade) ||
+    facts.includedTrades.some((included) => ["electrical", "plumbing", "bathroom_tile"].includes(included))
+  const demolitionIncluded = /\b(demo|demolition|tear[-\s]*out|remove|removal)\b/.test(facts.includedWorkText)
   const hasScheduleSignal = /\b(day|days|week|weeks|return|visit|phase|schedule|duration|cure|dry|inspection)\b/.test(
     normalize(args.scopeText)
   )
@@ -357,7 +368,11 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
     addQuestion(questions, seen, {
       trade,
       category: "materials_responsibility",
-      prompt: "Who is responsible for supplying the main materials or fixtures?",
+      prompt: hasFixtureWork
+        ? "Who is responsible for supplying the main materials or fixtures?"
+        : trade === "painting"
+          ? "Who is responsible for supplying paint and materials?"
+          : "Who is responsible for supplying the main materials?",
       helpText: "This confirms responsibility for review only; the price is unchanged.",
       source: hasAny(reviewBlob, [/\bconfirm.*material|material.*confirm|fixture|allowance|selection\b/])
         ? "materials_confirm_items"
@@ -395,7 +410,9 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
     addQuestion(questions, seen, {
       trade,
       category: "demo_prep",
-      prompt: "Is demo, prep, repair, or substrate correction included beyond the written scope?",
+      prompt: demolitionIncluded
+        ? "Are demolition, preparation, and repair limits clear for the written scope?"
+        : "Are preparation and repair limits clear for the written scope?",
       helpText: "Condition and prep answers stay estimator-review notes unless the written scope is updated.",
       source: "priceguard_review",
       answerType: "yes_no",
@@ -412,7 +429,9 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
     addQuestion(questions, seen, {
       trade,
       category: "schedule",
-      prompt: "Are return trips, cure/dry time, inspections, or phased access required?",
+      prompt: permitRelevant
+        ? "Are return trips, cure/dry time, inspections, or phased access required?"
+        : "Are return trips, drying time, or access restrictions required?",
       source: "priceguard_review",
       answerType: "yes_no",
       priority: "medium",
@@ -421,7 +440,7 @@ export function buildSmartQuestions(args: BuildSmartQuestionsArgs): SmartQuestio
     })
   }
 
-  if (hasAny(reviewBlob, [/\bpermit|inspection|code\b/])) {
+  if (permitRelevant && hasAny(reviewBlob, [/\bpermit|inspection|code\b/])) {
     addQuestion(questions, seen, {
       trade,
       category: "permit_inspection",

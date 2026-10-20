@@ -241,9 +241,11 @@ function safeDecisionMetadata(
 
 function decisionPrompt(
   kind: SmartQuestionDecisionKind,
-  subjectLabel: string
+  subjectLabel: string,
+  trade: string
 ): string {
   if (kind === "material_responsibility") {
+    if (trade === "painting") return "Who will supply paint and standard painting materials?"
     return "Who will supply the main materials or fixtures?"
   }
   if (kind === "quantity") {
@@ -304,7 +306,7 @@ export function buildActionableScopeDecisions(
         kind: metadata.kind,
         subjectKey: metadata.subjectKey,
         subjectLabel: safeMetadata.subjectLabel,
-        prompt: decisionPrompt(metadata.kind, safeMetadata.subjectLabel),
+        prompt: decisionPrompt(metadata.kind, safeMetadata.subjectLabel, question.trade),
         helpText: decisionHelpText(metadata.kind),
         priority: question.priority,
         choices: safeMetadata.choices,

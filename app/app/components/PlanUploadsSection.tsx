@@ -106,13 +106,14 @@ export default function PlanUploadsSection({
           lineHeight: 1.4,
         }}
       >
-        Upload up to {maxJobPlans} plan files. PDFs are indexed by page so you can choose which sheets to review before pricing. Larger plan PDFs are prepared in smaller steps so selected pages can be analyzed without sending the whole plan set at once. Accepted: PDF, PNG, JPG, JPEG, WEBP.
-        {" "}Generate uploads plan files only after you finish page selection, and large PDFs can fall back to original-PDF processing when selected-page preparation is unavailable.
+        Add plans, choose the sheets for your scope, then Generate. Plan findings help with scope review; quantities still need your verification.
+        <div style={{ marginTop: 4 }}>Up to {maxJobPlans} files: PDF, PNG, JPG, JPEG or WEBP.</div>
         {plansAtLimit ? " Remove a plan to add another file." : ""}
       </div>
 
       <input
         type="file"
+        aria-label="Upload construction plans"
         accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/jpg,image/webp"
         multiple
         disabled={plansAtLimit}
@@ -120,7 +121,7 @@ export default function PlanUploadsSection({
           handlePlanUpload(e.target.files)
           e.currentTarget.value = ""
         }}
-        style={{ marginBottom: jobPlans.length > 0 ? 12 : 0 }}
+        style={{ maxWidth: "100%", marginBottom: jobPlans.length > 0 ? 12 : 0 }}
       />
 
       {jobPlans.length > 0 && (
@@ -182,10 +183,9 @@ export default function PlanUploadsSection({
               }}
             >
               <div
-                data-mobile-grid
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr auto",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
                   gap: 12,
                   alignItems: "start",
                 }}
@@ -207,94 +207,11 @@ export default function PlanUploadsSection({
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
                     {plan.sourceKind === "pdf"
-                      ? `${selectedPages} of ${plan.pages.length} PDF page(s) selected for plan review.`
-                      : "Single image plan selected for plan review."}
+                      ? `${selectedPages} of ${plan.sourcePageCount} pages selected`
+                      : selectedPages > 0
+                        ? "Plan image selected for review"
+                        : "Plan image not selected"}
                   </div>
-                  {plan.sourceKind === "pdf" && (
-                    <>
-                      <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-                        Original PDF: {formatPlanUploadBytes(plan.originalBytes)}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        Selected pages for review: {selectedPages} of {plan.sourcePageCount}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        Estimated selected upload: {formatPlanUploadBytes(displayStagedBytes)}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                        {plan.stagedUploadId ? "Last plan processing method" : "Plan processing"}:{" "}
-                        {getCustomerPlanProcessingLabel(displayMode)}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color:
-                            plan.selectedPageUploadMode === "browser-derived-selected-pages"
-                              ? "#0f766e"
-                              : plan.selectedPageUploadMode === "original-fallback"
-                                ? "#92400e"
-                                : "#666",
-                          marginTop: 2,
-                        }}
-                      >
-                        {getCustomerPlanProcessingSummary({
-                          mode: displayMode,
-                          originalBytes: plan.originalBytes,
-                          stagedBytes: displayStagedBytes,
-                          analyzedPages: selectedPages,
-                          originalSourcePageCount: plan.sourcePageCount,
-                        })}
-                      </div>
-                      {plan.selectedPageUploadNote && (
-                        <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                          {plan.selectedPageUploadNote}
-                        </div>
-                      )}
-                      {selectionReadiness?.shouldShowGuide && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: selectionReadiness.noPagesSelected ? "#991b1b" : "#374151",
-                            marginTop: 6,
-                            padding: 8,
-                            borderRadius: 8,
-                            border: selectionReadiness.noPagesSelected
-                              ? "1px solid #fecaca"
-                              : "1px solid #bfdbfe",
-                            background: selectionReadiness.noPagesSelected
-                              ? "#fef2f2"
-                              : "#eff6ff",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          <div style={{ fontWeight: 800, color: "#111827", marginBottom: 4 }}>
-                            Plan selection readiness
-                          </div>
-                          <div>
-                            {selectionReadiness.summary} Estimated selected upload:{" "}
-                            {formatPlanUploadBytes(
-                              selectionReadiness.estimatedSelectedUploadBytes
-                            )}
-                            .
-                          </div>
-                          {selectionReadiness.mayBeTooManyForReliableAnalysis && (
-                            <div style={{ marginTop: 4, color: "#92400e", fontWeight: 700 }}>
-                              This may be too many pages for reliable, cost-controlled plan
-                              analysis.
-                            </div>
-                          )}
-                          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
-                            {selectionReadiness.guidance.map((item) => (
-                              <li key={item}>{item}</li>
-                            ))}
-                          </ul>
-                          <div style={{ marginTop: 6 }}>
-                            Suggested sheets: {selectionReadiness.suggestedPageTypes.join(", ")}.
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
 
                 <button
@@ -314,20 +231,27 @@ export default function PlanUploadsSection({
                 </button>
               </div>
 
-              <textarea
-                value={plan.note}
-                onChange={(e) => updateJobPlan(plan.id, { note: e.target.value })}
-                placeholder="Optional note"
-                rows={2}
-                style={{
-                  width: "100%",
-                  marginTop: 12,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  resize: "vertical",
-                }}
-              />
+
+              {selectionReadiness?.shouldShowGuide && (
+                <div
+                  role={selectionReadiness.noPagesSelected ? "alert" : undefined}
+                  style={{
+                    fontSize: 12,
+                    color: "#92400e",
+                    marginTop: 10,
+                    padding: 8,
+                    borderRadius: 8,
+                    background: "#fffbeb",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {selectionReadiness.noPagesSelected
+                    ? "Select at least one page, or remove this file before Generate."
+                    : selectionReadiness.mayBeTooManyForReliableAnalysis
+                      ? "This is a large selection. Choose fewer relevant sheets for a faster, more reliable review."
+                      : "For large plan sets, start with the sheets that affect your scope."}
+                </div>
+              )}
 
               {plan.pages.length > 1 && (
                 <div
@@ -340,16 +264,15 @@ export default function PlanUploadsSection({
                   }}
                 >
                   <div
-                    data-mobile-toolbar
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto auto",
+                      display: "flex",
+                      flexWrap: "wrap",
                       gap: 8,
                       alignItems: "center",
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#111" }}>
-                      Indexed pages
+                    <div style={{ flex: "1 1 180px", fontSize: 12, fontWeight: 700, color: "#111" }}>
+                      Choose sheets (PDF page numbers)
                     </div>
 
                     <button
@@ -400,15 +323,14 @@ export default function PlanUploadsSection({
                   </div>
 
                   <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                    Analysis only uses the selected pages from this plan set. Generate stages the selected plan set after page selection, and when possible the staged artifact is reduced to selected PDF pages before deeper sheet reading and pricing.
+                    Start with floor plans, finish schedules and details for your trade. Only selected pages are reviewed.
                   </div>
 
                   {plan.sourceKind === "pdf" && (
                     <div
-                      data-mobile-toolbar
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(80px, 1fr) minmax(80px, 1fr) auto",
+                        display: "flex",
+                        flexWrap: "wrap",
                         gap: 8,
                         alignItems: "end",
                         marginTop: 10,
@@ -417,6 +339,8 @@ export default function PlanUploadsSection({
                       <label
                         style={{
                           display: "grid",
+                          flex: "1 1 90px",
+                          minWidth: 0,
                           gap: 4,
                           fontSize: 11,
                           color: "#4b5563",
@@ -443,6 +367,7 @@ export default function PlanUploadsSection({
                           placeholder="1"
                           style={{
                             width: "100%",
+                            boxSizing: "border-box",
                             padding: "7px 8px",
                             borderRadius: 8,
                             border: "1px solid #d1d5db",
@@ -454,6 +379,8 @@ export default function PlanUploadsSection({
                       <label
                         style={{
                           display: "grid",
+                          flex: "1 1 90px",
+                          minWidth: 0,
                           gap: 4,
                           fontSize: 11,
                           color: "#4b5563",
@@ -480,6 +407,7 @@ export default function PlanUploadsSection({
                           placeholder={String(plan.sourcePageCount)}
                           style={{
                             width: "100%",
+                            boxSizing: "border-box",
                             padding: "7px 8px",
                             borderRadius: 8,
                             border: "1px solid #d1d5db",
@@ -516,7 +444,7 @@ export default function PlanUploadsSection({
                       {rangeValidation.message && (
                         <div
                           style={{
-                            gridColumn: "1 / -1",
+                            width: "100%",
                             fontSize: 12,
                             color: "#92400e",
                           }}
@@ -524,6 +452,12 @@ export default function PlanUploadsSection({
                           {rangeValidation.message}
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {plan.sourceKind === "pdf" && (
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+                      Select range replaces the current selection. Check individual pages to add or remove sheets.
                     </div>
                   )}
 
@@ -570,6 +504,69 @@ export default function PlanUploadsSection({
                     ))}
                   </div>
                 </div>
+              )}
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, marginTop: 12 }}>
+                Instructions for this plan (optional)
+                <textarea
+                  value={plan.note}
+                  onChange={(e) => updateJobPlan(plan.id, { note: e.target.value })}
+                  aria-label={`Instructions for ${plan.name}`}
+                  placeholder="For example: focus on guestroom wall finishes"
+                  rows={2}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    marginTop: 4,
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    resize: "vertical",
+                  }}
+                />
+              </label>
+
+              {plan.sourceKind === "pdf" && (
+                <details style={{ marginTop: 12 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 12, color: "#4b5563", fontWeight: 600 }}>
+                    File &amp; processing details
+                  </summary>
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                    Original PDF: {formatPlanUploadBytes(plan.originalBytes)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                    Estimated selected upload: {formatPlanUploadBytes(displayStagedBytes)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                    {plan.stagedUploadId ? "Last plan processing method" : "Plan processing"}:{" "}
+                    {getCustomerPlanProcessingLabel(displayMode)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color:
+                        plan.selectedPageUploadMode === "browser-derived-selected-pages"
+                          ? "#0f766e"
+                          : plan.selectedPageUploadMode === "original-fallback"
+                            ? "#92400e"
+                            : "#666",
+                      marginTop: 2,
+                    }}
+                  >
+                    {getCustomerPlanProcessingSummary({
+                      mode: displayMode,
+                      originalBytes: plan.originalBytes,
+                      stagedBytes: displayStagedBytes,
+                      analyzedPages: selectedPages,
+                      originalSourcePageCount: plan.sourcePageCount,
+                    })}
+                  </div>
+                  {plan.selectedPageUploadNote && (
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                      {plan.selectedPageUploadNote}
+                    </div>
+                  )}
+                </details>
               )}
             </div>
               )

@@ -40,6 +40,15 @@ export type CustomerScopeReviewWarning = {
   label: string
   message: string
   details?: string[]
+  reviewActions?: CustomerScopeReviewAction[]
+}
+
+export type CustomerScopeReviewAction = {
+  cause: "customer_scope_overpromise"
+  affectedScope: string
+  correctiveAction: "reconcile_customer_scope"
+  message: string
+  details: string[]
 }
 
 export type CustomerScopeReviewGuard = {
@@ -464,8 +473,8 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
   return false
 }
 
-function hasActionableMention(rule: TradeRule, resultText: string, args: BuildCustomerScopeTradeDriftWarningArgs) {
-  return sentenceParts(resultText).some((part) => {
+function actionableMentionParts(rule: TradeRule, resultText: string, args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return sentenceParts(resultText).filter((part) => {
     if (!rule.mentionPattern.test(part)) return false
     if (EXCLUDED_TRADE_PATTERN.test(part)) return false
     if (isNonScopeContextMention(part, rule)) return false
@@ -482,6 +491,10 @@ function hasActionableMention(rule: TradeRule, resultText: string, args: BuildCu
     if (isNormalSupportedRemoval(part, rule, args)) return false
     return true
   })
+}
+
+function hasActionableMention(rule: TradeRule, resultText: string, args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return actionableMentionParts(rule, resultText, args).length > 0
 }
 
 function isTradeSupported(rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
@@ -512,17 +525,17 @@ function unsupportedTradeRules(args: BuildCustomerScopeTradeDriftWarningArgs) {
   )
 }
 
-function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
+function tradeExclusionConflictParts(rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
   const writtenExcludesTrade = sentenceParts(args.writtenScope).some(
     (part) => EXCLUDED_TRADE_PATTERN.test(part) && rule.supportPattern.test(part)
   )
   const facts = writtenScopeFacts(args)
-  if (!writtenExcludesTrade && !factsExcludeTrade(facts, rule) && !factsContextOnlyTrade(facts, rule)) return false
-  if (selectedTradeSupports(rule, args.selectedTrade)) return false
-  if (writtenScopeSupports(rule, args.writtenScope)) return false
+  if (!writtenExcludesTrade && !factsExcludeTrade(facts, rule) && !factsContextOnlyTrade(facts, rule)) return []
+  if (selectedTradeSupports(rule, args.selectedTrade)) return []
+  if (writtenScopeSupports(rule, args.writtenScope)) return []
 
   if (rule.id === "electrical") {
-    return sentenceParts(args.resultText).some(
+    return sentenceParts(args.resultText).filter(
       (part) =>
         ELECTRICAL_TRUE_WORK_PATTERN.test(part) &&
         !EXCLUDED_TRADE_PATTERN.test(part) &&
@@ -530,12 +543,16 @@ function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDr
     )
   }
   if (rule.id === "plumbing") {
-    return sentenceParts(args.resultText).some(
+    return sentenceParts(args.resultText).filter(
       (part) => PLUMBING_SYSTEM_PATTERN.test(part) && !EXCLUDED_TRADE_PATTERN.test(part)
     )
   }
 
-  return hasActionableMention(rule, args.resultText, args)
+  return actionableMentionParts(rule, args.resultText, args)
+}
+
+function tradeExclusionConflict(rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return tradeExclusionConflictParts(rule, args).length > 0
 }
 
 function hasWallFloorRepairExclusionConflict(args: BuildCustomerScopeTradeDriftWarningArgs) {
@@ -553,22 +570,26 @@ function hasWallFloorRepairExclusionConflict(args: BuildCustomerScopeTradeDriftW
   )
 }
 
-function hasPaintingAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningArgs) {
+function paintingAdjacentExpansionParts(args: BuildCustomerScopeTradeDriftWarningArgs) {
   const paintingRule = TRADE_RULES.find((rule) => rule.id === "painting")
   const drywallRule = TRADE_RULES.find((rule) => rule.id === "drywall")
-  if (!paintingRule || !drywallRule) return false
-  if (!isTradeSupported(paintingRule, args)) return false
-  if (isTradeSupported(drywallRule, args)) return false
+  if (!paintingRule || !drywallRule) return []
+  if (!isTradeSupported(paintingRule, args)) return []
+  if (isTradeSupported(drywallRule, args)) return []
   if (MINOR_PAINT_PATCH_PATTERN.test(args.resultText) && !PAINTING_ADJACENT_DRYWALL_PATTERN.test(args.resultText)) {
-    return false
+    return []
   }
 
-  return sentenceParts(args.resultText).some(
+  return sentenceParts(args.resultText).filter(
     (part) =>
       PAINTING_ADJACENT_DRYWALL_PATTERN.test(part) &&
       !EXCLUDED_TRADE_PATTERN.test(part) &&
       !isNonScopeContextMention(part, drywallRule)
   )
+}
+
+function hasPaintingAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningArgs) {
+  return paintingAdjacentExpansionParts(args).length > 0
 }
 
 function hasFlooringAdjacentExpansion(args: BuildCustomerScopeTradeDriftWarningArgs) {
@@ -605,6 +626,32 @@ function buildUnsupportedTradeSummary(unsupportedTrades: TradeRule[]) {
   return `Customer-Facing Scope mentions ${tradeText} work, but ${visibleTradeLabels.length === 1 && extraCount === 0 ? "that trade is" : "those trades are"} not strongly supported by the selected trade, written scope, priced sections, or plan readback. Review this wording before sending.`
 }
 
+function customerScopeReviewActions(
+  args: BuildCustomerScopeTradeDriftWarningArgs,
+  warning: CustomerScopeReviewWarning,
+  rule: TradeRule,
+  matchedParts: readonly string[],
+  message = warning.message
+): CustomerScopeReviewAction[] {
+  // Identity belongs to the existing detector's exact matched promise and its
+  // written responsibility context. A trade name alone cannot establish overlap.
+  const boundaries = sentenceParts(args.writtenScope).filter((part) =>
+    rule.supportPattern.test(part) &&
+    (EXCLUDED_TRADE_PATTERN.test(part) || isNonScopeContextMention(part, rule))
+  )
+  return matchedParts.map((part) => ({
+    cause: "customer_scope_overpromise",
+    affectedScope: JSON.stringify([rule.id, normalize(part), boundaries.map(normalize).sort()]),
+    correctiveAction: "reconcile_customer_scope",
+    message,
+    details: [
+      ...(warning.label.startsWith("Adjacent ") ? warning.details || [] : []),
+      `Generated scope: ${part}`,
+      ...boundaries.map((boundary) => `Written boundary: ${boundary}`),
+    ],
+  }))
+}
+
 export function buildCustomerScopeReviewGuard(
   args: BuildCustomerScopeTradeDriftWarningArgs
 ): CustomerScopeReviewGuard {
@@ -618,11 +665,14 @@ export function buildCustomerScopeReviewGuard(
   for (const rule of TRADE_RULES) {
     if (!tradeExclusionConflict(rule, args)) continue
 
-    addWarning(warnings, {
+    const warning: CustomerScopeReviewWarning = {
       label: "Excluded scope conflict",
       message: `Written scope appears to exclude ${rule.label} work, but Customer-Facing Scope includes ${rule.label} system work. Review before sending.`,
       details: [`Confirm whether ${rule.label} work is excluded, by others, or actually included before customer output.`],
-    })
+    }
+    warning.reviewActions = customerScopeReviewActions(args, warning, rule,
+      tradeExclusionConflictParts(rule, args))
+    addWarning(warnings, warning)
   }
 
   if (hasWallFloorRepairExclusionConflict(args)) {
@@ -635,12 +685,15 @@ export function buildCustomerScopeReviewGuard(
   }
 
   if (hasPaintingAdjacentExpansion(args)) {
-    addWarning(warnings, {
+    const warning: CustomerScopeReviewWarning = {
       label: "Adjacent drywall expansion",
       message:
         "Customer-Facing Scope appears to expand a painting scope into drywall repair, skim coat, texture match, or finish-level work without strong support.",
       details: ["Minor nail-hole patching is okay, but drywall finishing or texture work should be confirmed before sending."],
-    })
+    }
+    const drywall = TRADE_RULES.find((rule) => rule.id === "drywall")!
+    warning.reviewActions = customerScopeReviewActions(args, warning, drywall, paintingAdjacentExpansionParts(args))
+    addWarning(warnings, warning)
   }
 
   if (hasFlooringAdjacentExpansion(args)) {
@@ -653,13 +706,25 @@ export function buildCustomerScopeReviewGuard(
   }
 
   if (unsupportedTrades.length > 0) {
-    addWarning(warnings, {
+    const warning: CustomerScopeReviewWarning = {
       label: "Unsupported trade wording",
       message: buildUnsupportedTradeSummary(unsupportedTrades) || "",
       details: unsupportedTrades
         .slice(0, 2)
         .map((rule) => `Generated customer scope mentions ${rule.label} work without strong typed, priced, or plan-readback support.`),
-    })
+    }
+    // Keep the aggregate detector/summary behavior, but expose each actual promise
+    // separately so another trade or another location cannot be cleared with it.
+    const actionsByTrade = unsupportedTrades.map((rule) => customerScopeReviewActions(
+      args, warning, rule,
+      actionableMentionParts(rule, args.resultText, args),
+      buildUnsupportedTradeSummary([rule]) || warning.message
+    ))
+    // If clause-level identity cannot be established, retain the original warning.
+    if (actionsByTrade.every((actions) => actions.length > 0)) {
+      warning.reviewActions = actionsByTrade.flat()
+    }
+    addWarning(warnings, warning)
   }
 
   const unsupportedSummary = buildUnsupportedTradeSummary(unsupportedTrades)

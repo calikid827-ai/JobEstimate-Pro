@@ -8,6 +8,8 @@ import {
   type SmartQuestion,
 } from "./smart-questions"
 import { buildProposalReadiness } from "./proposal-readiness"
+import { checkScopeQuality } from "./scope-quality-check"
+import { buildPriceGuardReview } from "./priceguard-review"
 
 function questionByCategory(questions: SmartQuestion[], category: string) {
   return questions.find((question) => question.category === category)
@@ -38,6 +40,33 @@ function answerQuestion(
     answeredAt: 1,
   })
 }
+
+test("painting under General Renovation keeps relevant questions without fixture or permit boilerplate", () => {
+  const scopeText = "Paint 15 10’x12’ bedrooms. Walls and ceilings. Patching any cracks and imperfections. Two coats."
+  const scopeQuality = checkScopeQuality(scopeText, "general_renovation")
+  const priceGuardReview = buildPriceGuardReview({
+    hasResult: true, selectedTrade: "general_renovation", scopeText,
+    resultText: "Paint bedrooms with cleanup, masking and protection.",
+    scopeQuality, pricing: { labor: 1500, materials: 300, subs: 0, markup: 30, total: 2340 },
+  })
+  const questions = buildSmartQuestions({
+    selectedTrade: "general_renovation", scopeText,
+    scopeQualityWarnings: scopeQuality.warnings, priceGuardReview, limit: 20,
+  })
+  assert.ok(questions.some((question) => question.category === "materials_responsibility"))
+  assert.equal(questions.some((question) => question.category === "quantity"), false)
+  assert.equal(questions.every((question) => question.trade === "painting"), true)
+  assert.doesNotMatch(questions.map((question) => question.prompt).join(" | "), /demolition|demo,|rough-in|fixture|permit|inspection/i)
+})
+
+test("relevant electrical permit coordination remains a separate question", () => {
+  const questions = buildSmartQuestions({
+    selectedTrade: "general_renovation", scopeText: "Install 4 new electrical outlets.",
+    priceGuardReview: { suggestedExclusions: ["Clarify permit and inspection coordination."] }, limit: 20,
+  })
+  assert.ok(questions.some((question) => question.category === "permit_inspection"))
+  assert.ok(questions.some((question) => question.category === "materials_responsibility"))
+})
 
 test("buildSmartQuestions caps and dedupes high-value questions", () => {
   const questions = buildSmartQuestions({

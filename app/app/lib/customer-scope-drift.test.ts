@@ -6,6 +6,16 @@ import {
   buildCustomerScopeTradeDriftWarning,
 } from "./customer-scope-drift"
 import type { EstimateStructuredSection, ScopeXRay, UiTrade } from "./types"
+import { consolidateReviewIssues, type ReviewIssueInput } from "./review-issues"
+
+function reviewActions(review: ReturnType<typeof buildCustomerScopeReviewGuard>) {
+  const inputs: ReviewIssueInput[] = review.warnings.flatMap((warning): ReviewIssueInput[] =>
+    warning.reviewActions?.length
+      ? warning.reviewActions.map((action) => ({ ...action, title: warning.label, source: "Customer scope" }))
+      : [{ message: warning.message, title: warning.label, details: warning.details, source: "Customer scope" }]
+  )
+  return consolidateReviewIssues(inputs)
+}
 
 const baseScopeXRay = (splitScopes: Array<{ trade: string; scope: string }> = []): ScopeXRay =>
   ({
@@ -100,6 +110,66 @@ function guard({
     planIntelligence,
   })
 }
+
+test("electrical exclusion and unsupported wording share one actual promise action with source boundaries", () => {
+  const review = guard({
+    selectedTrade: "painting",
+    writtenScope: "Paint the bedroom walls. Electrical work by others.",
+    resultText: "Paint the bedroom walls. Install new electrical wiring and outlets.",
+  })
+  // Detection rules and the guard summary remain intact; the displayed actions consolidate.
+  assert.equal(review.warnings.length, 2)
+  assert.match(review.summary || "", /exclude electrical/)
+  const actions = reviewActions(review)
+  assert.equal(actions.length, 1)
+  assert.equal(actions[0].correctiveAction, "reconcile_customer_scope")
+  assert.match(actions[0].message, /exclude electrical/)
+  assert.ok(actions[0].details.some((text) => /not strongly supported/.test(text)))
+  assert.ok(actions[0].details.includes("Generated scope: Install new electrical wiring and outlets."))
+  assert.ok(actions[0].details.includes("Written boundary: Electrical work by others."))
+})
+
+test("adjacent drywall and unsupported wording consolidate while retaining the minor-patching qualification", () => {
+  const actions = reviewActions(guard({
+    selectedTrade: "painting",
+    writtenScope: "Paint 3 bedroom walls. Two coats.",
+    resultText: "Paint 3 bedroom walls. Apply a drywall skim coat and match texture.",
+  }))
+  assert.equal(actions.length, 1)
+  assert.match(actions[0].message, /expand a painting scope/)
+  assert.ok(actions[0].details.some((text) => /Minor nail-hole patching is okay/.test(text)))
+  assert.ok(actions[0].details.some((text) => /not strongly supported/.test(text)))
+})
+
+test("different work and generated locations remain independently actionable when one promise is corrected", () => {
+  const args = {
+    selectedTrade: "painting" as const,
+    writtenScope: "Paint bedroom walls. Electrical by others. Plumbing by others.",
+  }
+  const room101 = "Install new electrical wiring in room 101."
+  const room102 = "Install new electrical wiring in room 102."
+  const plumbing = "Replace plumbing water lines and valves in the bathroom."
+  const all = reviewActions(guard({ ...args, resultText: [room101, room102, plumbing].join(" ") }))
+  assert.equal(all.length, 3)
+  assert.equal(new Set(all.map((action) => action.key)).size, 3)
+  const remaining = reviewActions(guard({ ...args, resultText: [room102, plumbing].join(" ") }))
+  assert.equal(remaining.length, 2)
+  assert.deepEqual(remaining.map((action) => action.key), all.filter((action) =>
+    !action.details.includes(`Generated scope: ${room101}`)
+  ).map((action) => action.key))
+})
+
+test("different written responsibilities are part of conflict identity", () => {
+  const args = {
+    selectedTrade: "painting" as const,
+    resultText: "Install new electrical wiring in room 101.",
+  }
+  const byOthers = reviewActions(guard({ ...args, writtenScope: "Paint walls. Electrical by others." }))
+  const byOwner = reviewActions(guard({ ...args, writtenScope: "Paint walls. Electrical by owner." }))
+  assert.equal(byOthers.length, 1)
+  assert.equal(byOwner.length, 1)
+  assert.notEqual(byOthers[0].key, byOwner[0].key)
+})
 
 test("preserves electrical unsupported drift warning behavior", () => {
   const message = warning({

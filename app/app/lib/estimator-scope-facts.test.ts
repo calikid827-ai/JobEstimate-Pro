@@ -3,6 +3,16 @@ import assert from "node:assert/strict"
 
 import { buildEstimatorScopeFacts } from "./estimator-scope-facts"
 
+test("explicit room counts retain quantity/location support when dimensions appear before the room label", () => {
+  for (const dimensions of ["10’x12’", "10'x12'", "10x12", "10′×12′"]) {
+    const facts = buildEstimatorScopeFacts(`Paint 15 ${dimensions} bedrooms. Walls and ceilings. Two coats.`)
+    assert.equal(facts.hasQuantityLocationSignal, true)
+    assert.deepEqual(facts.includedTrades, ["painting"])
+    assert.equal("measuredQuantities" in facts, false)
+  }
+  assert.equal(buildEstimatorScopeFacts("Paint bedrooms. Walls and ceilings.").hasQuantityLocationSignal, false)
+})
+
 function hasAll<T>(actual: T[], expected: T[]) {
   for (const item of expected) assert.ok(actual.includes(item), `expected ${String(item)} in ${actual.join(", ")}`)
 }

@@ -326,6 +326,20 @@ test("material responsibility wording states responsibility without pricing clai
   )
 })
 
+test("painting material decision avoids unrelated fixture wording while fixture trades retain it", () => {
+  for (const trade of ["painting", "electrical", "plumbing"]) {
+    const decision = buildDecision({ kind: "material_responsibility", subjectKey: "materials", subjectLabel: "Materials" }, {
+      trade, category: "materials_responsibility",
+    })
+    if (trade === "painting") {
+      assert.equal(decision.prompt, "Who will supply paint and standard painting materials?")
+      assert.doesNotMatch(decision.prompt, /fixture/)
+    } else {
+      assert.match(decision.prompt, /fixtures/)
+    }
+  }
+})
+
 test("trusted quantity metadata identifies the basis and fixed unit", () => {
   const decision = buildDecision(
     {

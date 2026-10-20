@@ -2,6 +2,7 @@ import {
   normalizeTypedScope,
   type TypedScopeNormalization,
 } from "./typed-scope-normalization"
+import { buildEstimatorScopeFacts } from "./estimator-scope-facts"
 
 export type ScopeQualityResult = {
   score: number
@@ -54,7 +55,11 @@ function resolveScopeTradeGroup(scope: string, trade?: string): ScopeTradeGroup 
   if (selected === "bathroom_tile" || selected === "tile") return "bathroom_tile"
   if (selected === "wallcovering" || selected === "wallpaper") return "wallcovering"
   if (selected === "carpentry") return "carpentry"
-  if (selected === "general_renovation" || selected === "general") return "general_renovation"
+  if (["general_renovation", "general renovation", "general"].includes(selected)) {
+    const trades = buildEstimatorScopeFacts(scope).includedTrades
+    if (trades.length === 1) return trades[0] as ScopeTradeGroup
+    return "general_renovation"
+  }
 
   if (hasAny(scope, ["wallpaper", "wallcovering", "wall covering", "vinyl wallcovering"])) {
     return "wallcovering"
@@ -367,12 +372,12 @@ function checkGeneralRenovation(text: string, warnings: string[], score: { value
     addWarning(warnings, "Confirm which trades are included in the renovation scope.", score, 14)
   }
 
-  if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in"])) {
-    addWarning(warnings, "Confirm demolition, preparation, rough-in, and finish-work limits.", score, 12)
+  if (!hasAny(text, ["demo", "demolition", "remove", "removal", "repair", "replace", "install", "prep", "rough-in", "rough in", "patch"])) {
+    addWarning(warnings, "Confirm preparation and finish-work limits for the included trades.", score, 12)
   }
 
   if (!hasMaterialResponsibility(text, scope)) {
-    addWarning(warnings, "Confirm finish selections, fixture responsibility, and material allowances.", score, 10)
+    addWarning(warnings, "Confirm material responsibility, finish selections, and allowances for the included work.", score, 10)
   }
 
   if (!hasExclusionBoundary(text, scope)) {
@@ -383,13 +388,22 @@ function checkGeneralRenovation(text: string, warnings: string[], score: { value
 export function checkScopeQuality(scope: string, trade?: string): ScopeQualityResult {
   const text = normalize(scope)
   const typedScope = normalizeTypedScope(scope)
-  const reviewText = typedScope.hasIncludedWork ? typedScope.includedWorkText : ""
+  // Descriptive fragments can explain included work without granting new scope
+  // authority. Boundary and responsibility clauses remain excluded here.
+  const reviewText = typedScope.hasIncludedWork
+    ? typedScope.clauses.filter((clause) =>
+      clause.includedWork || !(
+        clause.excludedByOthers || clause.protectionOnly || clause.coordinationOnly ||
+        clause.existingCondition || clause.materialResponsibility || clause.permitResponsibility
+      )
+    ).map((clause) => clause.text).join(" ")
+    : ""
   const warnings: string[] = []
   const score = { value: 100 }
 
   applySharedWarnings(text, warnings, score, typedScope)
 
-  const group = resolveScopeTradeGroup(typedScope.hasIncludedWork ? reviewText : "", trade)
+  const group = resolveScopeTradeGroup(typedScope.hasIncludedWork ? typedScope.includedWorkText : "", trade)
 
   if (group === "painting") checkPainting(reviewText, warnings, score, typedScope)
   else if (group === "drywall") checkDrywall(reviewText, warnings, score, typedScope)
