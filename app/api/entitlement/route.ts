@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { resolveEntitlement } from "./access"
+import { requireOwner, assertOwnerEmail, ownerAuthFailure, withOwnerResponse, type OwnerAuthAdapter } from "../../lib/owner-auth"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -15,22 +16,14 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 const FREE_LIMIT = 3
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-export async function POST(req: Request) {
+async function entitlementPost(req: Request, client: typeof supabase, auth?: OwnerAuthAdapter) {
   try {
+    const owner = await requireOwner(req, auth)
     const body = await req.json().catch(() => null)
-    const emailRaw = body?.email
+    assertOwnerEmail(owner, body?.email)
+    const email = owner.email
 
-    if (!emailRaw || typeof emailRaw !== "string") {
-      return NextResponse.json({ entitled: false, usage_count: 0, free_limit: FREE_LIMIT })
-    }
-
-    const email = normalizeEmail(emailRaw)
-
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("entitlements")
       .select("active, usage_count, plan, subscription_status, current_period_end, cancel_at_period_end, free_limit")
       .eq("email", email)
@@ -51,7 +44,17 @@ export async function POST(req: Request) {
       free_limit: freeLimit,
     })
   } catch (err) {
+    const authFailure = ownerAuthFailure(err)
+    if (authFailure) return authFailure
     console.error("Entitlement route failed:", err)
     return NextResponse.json({ entitled: false, usage_count: 0, free_limit: FREE_LIMIT })
   }
+}
+
+export async function handleEntitlementPost(req: Request, client: typeof supabase = supabase, auth?: OwnerAuthAdapter) {
+  return withOwnerResponse(() => entitlementPost(req, client, auth))
+}
+
+export async function POST(req: Request) {
+  return handleEntitlementPost(req)
 }

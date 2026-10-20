@@ -1,3 +1,4 @@
+import { withOwnerResponse } from "../../../../lib/owner-auth"
 import { createHash } from "crypto"
 import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
@@ -112,7 +113,7 @@ async function createApprovalInvoiceIfMissing(args: {
   return { created: true, invoice: built.invoice }
 }
 
-export async function handleApprovalSubmitPost(
+async function approvalSubmitPost(
   req: Request,
   { params }: { params: Promise<{ token?: string }> },
   client: typeof supabase = supabase
@@ -235,4 +236,8 @@ export async function POST(
   context: { params: Promise<{ token?: string }> }
 ) {
   return handleApprovalSubmitPost(req, context)
+}
+
+export async function handleApprovalSubmitPost(req: Request, context: { params: Promise<{ token?: string }> }, client: typeof supabase = supabase) {
+  return withOwnerResponse(() => approvalSubmitPost(req, context, client))
 }

@@ -5,8 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
   FREE_LIMIT,
-  EMAIL_KEY,
-  OWNER_SYNC_TOKEN_KEY,
   COMPANY_KEY,
   JOB_KEY,
   INVOICE_KEY,
@@ -92,15 +90,9 @@ import {
   buildPlanPricingCarryReadback,
 } from "./lib/plan-pricing-carry"
 import { buildInvoiceFromEstimate } from "./lib/invoices"
-import {
-  getLocalValue,
-  LEGACY_LOCAL_STORAGE_KEYS,
-  migrateLocalValue,
-  readLocalJson,
-  removeLocalValue,
-  setLocalValue,
-  writeLocalJson,
-} from "./lib/local-persistence"
+import { createOwnerLocalPersistence } from "./lib/local-persistence"
+import { createOwnerBoundFetch, useOwnerSession, type OwnerSessionHandle } from "./lib/owner-session"
+import OwnerAccessSection from "./components/OwnerAccessSection"
 
 import { getPricingMemory } from "./lib/ai-pricing-memory"
 import { compareEstimateToHistory } from "./lib/price-guard"
@@ -1584,6 +1576,33 @@ function ResultCommandSection({
 }
 
 export default function Home() {
+  const session = useOwnerSession()
+  const owner = session.owner
+  if (!owner) {
+    return (
+      <main style={{ maxWidth: 640, margin: "40px auto", padding: 24, fontFamily: "system-ui" }}>
+        <h1>JobEstimate Pro</h1>
+        <OwnerAccessSection session={session} />
+      </main>
+    )
+  }
+  return <OwnerWorkspace key={`${owner.id}:${session.epoch}`} session={session} owner={owner} />
+}
+
+function OwnerWorkspace({ session, owner }: {
+  session: OwnerSessionHandle
+  owner: { id: string; email: string }
+}) {
+const ownerStorage = useMemo(
+  () => createOwnerLocalPersistence(owner.id, () => session.isCurrentOwner(owner.id, session.epoch)),
+  [owner.id, session.epoch, session.isCurrentOwner]
+)
+const { getLocalValue, setLocalValue, readLocalJson, writeLocalJson } = ownerStorage
+const fetch = useMemo(
+  () => createOwnerBoundFetch(session, owner.id, session.epoch),
+  [owner.id, session.epoch, session.ownerFetch, session.isCurrentOwner]
+)
+
 useEffect(() => {
   const expandedForPrint = new Set<HTMLDetailsElement>()
   const beforePrint = () => {
@@ -2196,9 +2215,9 @@ const [actuals, setActuals] = useState<JobActuals[]>([])
 const [crewCount, setCrewCount] = useState<number>(1)
 
   // -------------------------
-// Email (required for entitlement)
+// Owner email comes exclusively from the server-verified session.
 // -------------------------
-const [email, setEmail] = useState("")
+const email = owner.email
 const [paid, setPaid] = useState(false)
 const [remaining, setRemaining] = useState(FREE_LIMIT)
 const [usageCount, setUsageCount] = useState<number | null>(null)
@@ -2234,30 +2253,6 @@ const [jobDetails, setJobDetails] = useState({
   jobAddress: "",
   date: "", // optional override; blank = auto-today in PDF
 })
-
-useEffect(() => {
-  if (typeof window === "undefined") return
-
-  // migrate old key once if it exists
-  const old = migrateLocalValue(LEGACY_LOCAL_STORAGE_KEYS.email, EMAIL_KEY)
-  if (old) {
-    setEmail(old)
-    return
-  }
-
-  const saved = getLocalValue(EMAIL_KEY)
-  if (saved) setEmail(saved)
-}, [])
-
-useEffect(() => {
-  if (typeof window === "undefined") return
-
-  if (email) {
-    setLocalValue(EMAIL_KEY, email)
-  } else {
-    removeLocalValue(EMAIL_KEY)
-  }
-}, [email])
 
    async function checkEntitlementNow() {
   const reqId = ++entitlementReqId.current
@@ -2909,14 +2904,6 @@ function computeChangeOrderSummary(current: EstimateHistoryItem | null) {
 
   useEffect(() => {
   if (typeof window === "undefined") return
-
-  const old = migrateLocalValue(LEGACY_LOCAL_STORAGE_KEYS.company, COMPANY_KEY)
-  if (old) {
-    try {
-      setCompanyProfile(JSON.parse(old))
-    } catch {}
-    return
-  }
 
   setCompanyProfile(readLocalJson(COMPANY_KEY, companyProfile))
 }, [])
@@ -4866,7 +4853,7 @@ async function generate() {
 
   const e = email.trim().toLowerCase()
   if (!e) {
-    setStatus("Please enter the email used at checkout.")
+    setStatus("Sign in to continue.")
     generatingRef.current = false
     return
   }
@@ -6247,7 +6234,7 @@ async function upgrade() {
     const e = email.trim().toLowerCase()
 
     if (!e) {
-      setStatus("Please enter the email used at checkout.")
+      setStatus("Sign in to continue.")
       return
     }
 
@@ -6280,14 +6267,10 @@ window.location.assign(data.url)
 }
 
 async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
-  const localUrl = `${window.location.origin}/approve/${est.id}`
   const ownerEmail = email.trim().toLowerCase()
 
   if (!ownerEmail) {
-    await navigator.clipboard.writeText(localUrl)
-    setStatus(
-      "Local approval link copied. Enter an email to create a shareable approval link that works across devices."
-    )
+    setStatus("Sign in before sharing an approval link.")
     return
   }
 
@@ -6307,21 +6290,14 @@ async function copyApprovalLinkForEstimate(est: EstimateHistoryItem) {
     const data = await res.json().catch(() => null)
     const approvalUrl =
       typeof data?.approvalUrl === "string" ? data.approvalUrl : ""
-    const ownerSyncToken =
-      typeof data?.ownerSyncToken === "string" ? data.ownerSyncToken : ""
-
-    if (!res.ok || !approvalUrl || !ownerSyncToken) {
+    if (!res.ok || !approvalUrl) {
       throw new Error("Server approval link unavailable")
     }
 
-    setLocalValue(OWNER_SYNC_TOKEN_KEY, ownerSyncToken)
     await navigator.clipboard.writeText(approvalUrl)
     setStatus("Shareable approval link copied to clipboard.")
   } catch {
-    await navigator.clipboard.writeText(localUrl)
-    setStatus(
-      "Server approval link unavailable. Local approval link copied instead; it only works on this device."
-    )
+    setStatus("Approval link could not be created. Check your sign-in and try again.")
   }
 }
 
@@ -6329,22 +6305,13 @@ async function syncServerApprovals() {
   const ownerEmail = email.trim().toLowerCase()
 
   if (!ownerEmail) {
-    setStatus("Enter your email to sync server-backed approvals.")
+    setStatus("Sign in to sync server-backed approvals.")
     return
   }
 
   try {
     setStatus("Syncing approvals...")
-    const ownerSyncToken = getLocalValue(OWNER_SYNC_TOKEN_KEY)?.trim() || ""
-
-    if (!ownerSyncToken) {
-      setStatus("Create or copy a shareable approval link before syncing approvals.")
-      return
-    }
-
-    const res = await fetch(
-      `/api/approvals/status?email=${encodeURIComponent(ownerEmail)}&ownerSyncToken=${encodeURIComponent(ownerSyncToken)}`
-    )
+    const res = await fetch("/api/approvals/status")
     const data = await res.json().catch(() => null)
 
     if (!res.ok || !Array.isArray(data?.approvals)) {
@@ -13784,7 +13751,7 @@ const freeRemaining = canShowUsage
   ? Math.max(0, Number(freeLimit) - Number(usageCount))
   : null
 const accountAccessMessage = !normalizedEmail
-  ? "Enter the email you use for checkout and generation to check access."
+  ? "Sign in to check account access."
   : entitlementMessage ||
     (entitlementKnown
       ? paid
@@ -14040,27 +14007,6 @@ const accountAccessMessage = !normalizedEmail
   Professional change orders & estimates — generated instantly.
 </p>
 
-      <input
-  type="email"
-  placeholder="Enter your email to generate documents"
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
-  onBlur={checkEntitlementNow}
-  style={{ width: "100%", padding: 8 }}
-/>
-
-<p
-  style={{
-    fontSize: 12,
-    color: "#c53030",
-    marginTop: 4,
-    marginBottom: 12,
-  }}
-  title="Email is required to generate documents"
->
-  * Required
-</p>
-
 <div
   style={{
     marginBottom: 14,
@@ -14080,9 +14026,7 @@ const accountAccessMessage = !normalizedEmail
     }}
   >
     <div>
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 4 }}>
-        Account & Access
-      </div>
+      <OwnerAccessSection session={session} />
       <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.5 }}>
         <div>
           Email:{" "}
@@ -14871,7 +14815,6 @@ const accountAccessMessage = !normalizedEmail
   downloadInvoicePDF={downloadInvoicePDF}
   computeLiveInvoiceStatus={computeLiveInvoiceStatus}
   updateInvoice={updateInvoice}
-  INVOICE_KEY={INVOICE_KEY}
 />
 
 </details>

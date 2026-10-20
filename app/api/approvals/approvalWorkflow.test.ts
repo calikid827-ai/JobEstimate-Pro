@@ -161,20 +161,23 @@ test("POST /api/approvals reuses an existing proposal for the same owner and loc
   const res = await handleApprovalSnapshotPost(
     new Request("https://jobestimatepro.test/api/approvals", {
       method: "POST",
+      headers: { authorization: "Bearer synthetic-valid" },
       body: JSON.stringify({
         email: "OWNER@EXAMPLE.COM",
         estimate: estimateSnapshot,
         companyProfile: estimateSnapshot.companyProfile,
       }),
     }),
-    client as any
+    client as any,
+    { getUser: async () => ({ data: { user: { id: "owner-1", email: "owner@example.com", email_confirmed_at: "2026-01-01", role: "authenticated" } }, error: null }) }
   )
   const body = await res.json()
 
   assert.equal(res.status, 200)
   assert.equal(body.proposalId, "proposal_existing")
   assert.match(body.approvalUrl, /^https:\/\/jobestimatepro\.test\/approve\//)
-  assert.equal(typeof body.ownerSyncToken, "string")
+  assert.equal("ownerSyncToken" in body, false)
+  assert.equal(calls.some((call) => call.table === "approval_owner_sync_tokens"), false)
   assert.equal(
     calls.some((call) => call.table === "estimate_proposals" && call.action === "insert"),
     false
@@ -360,7 +363,7 @@ test("POST /api/approvals/[token]/approve returns existing invoice on duplicate 
   assert.deepEqual(body.invoice, { id: "invoice_existing" })
 })
 
-test("GET /api/approvals/status rejects missing owner sync token before data lookup", async () => {
+test("GET /api/approvals/status requires a verified session before data lookup", async () => {
   const { handleApprovalStatusGet } = await import("./status/route")
   const { client, calls } = makeSupabaseMock(() => {
     throw new Error("Supabase should not be called without ownerSyncToken")
@@ -372,7 +375,7 @@ test("GET /api/approvals/status rejects missing owner sync token before data loo
   )
   const body = await res.json()
 
-  assert.equal(res.status, 400)
-  assert.equal(body.error, "Email and owner sync token are required.")
+  assert.equal(res.status, 401)
+  assert.equal(body.code, "AUTH_REQUIRED")
   assert.equal(calls.length, 0)
 })

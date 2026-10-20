@@ -1,3 +1,4 @@
+import { withOwnerResponse } from "../../../lib/owner-auth"
 import { createHash } from "crypto"
 import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
@@ -85,7 +86,7 @@ function buildPublicApprovalEstimate(snapshot: unknown, status: string) {
   }
 }
 
-export async function handlePublicApprovalGet(
+async function publicApprovalGet(
   _req: Request,
   { params }: { params: Promise<{ token?: string }> },
   client: typeof supabase = supabase
@@ -143,4 +144,8 @@ export async function GET(
   context: { params: Promise<{ token?: string }> }
 ) {
   return handlePublicApprovalGet(req, context)
+}
+
+export async function handlePublicApprovalGet(req: Request, context: { params: Promise<{ token?: string }> }, client: typeof supabase = supabase) {
+  return withOwnerResponse(() => publicApprovalGet(req, context, client))
 }

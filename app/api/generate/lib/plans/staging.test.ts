@@ -9,12 +9,35 @@ import {
   cleanupStagedPlanUploadSession,
   completeStagedPlanUploadSession,
   finalizeSelectedPageStagedUpload,
+  readStagedPlanUpload,
   stagePlanUpload,
 } from "./staging"
 import { MAX_TOTAL_PLAN_FILE_BYTES, validateCombinedPlanBytes } from "../../../../lib/plan-upload"
 
 const require = createRequire(import.meta.url)
 const PDFDocument = require("pdfkit")
+
+test("temporary upload sessions and staged artifacts stay bound to their verified owner", async () => {
+  const session = await beginStagedPlanUploadSession({
+    ownerId: "verified-a", uploadId: "synthetic-owned", name: "owned.png", mimeType: "image/png",
+    expectedBytes: 3, sourcePageCount: 1, selectedSourcePages: [1],
+  })
+  let stagedId: string | undefined
+  try {
+    await assert.rejects(appendStagedPlanUploadChunk({ ownerId: "verified-b", uploadSessionId: session.uploadSessionId, chunk: new Uint8Array([1]) }), /does not belong/)
+    await assert.rejects(completeStagedPlanUploadSession(session.uploadSessionId, "verified-b"), /does not belong/)
+    await appendStagedPlanUploadChunk({ ownerId: "verified-a", uploadSessionId: session.uploadSessionId, chunk: new Uint8Array([1, 2, 3]) })
+    const staged = await completeStagedPlanUploadSession(session.uploadSessionId, "verified-a")
+    stagedId = staged.stagedUploadId
+    assert.equal(await readStagedPlanUpload(stagedId, "verified-b"), null)
+    assert.equal((await readStagedPlanUpload(stagedId, "verified-a"))?.bytes, 3)
+    const unbound = await stagePlanUpload({ file: new File([new Uint8Array([1])], "legacy.png", { type: "image/png" }), sourcePageCount: 1 })
+    try { assert.equal(await readStagedPlanUpload(unbound.stagedUploadId, "verified-a"), null) } finally { await cleanupStagedPlanUpload(unbound.stagedUploadId) }
+  } finally {
+    await cleanupStagedPlanUploadSession(session.uploadSessionId)
+    if (stagedId) await cleanupStagedPlanUpload(stagedId)
+  }
+})
 
 async function makePdfFile(pages: string[]): Promise<File> {
   const doc = new PDFDocument({ autoFirstPage: false, margin: 36 })

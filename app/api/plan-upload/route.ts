@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireOwner, ownerAuthFailure, withOwnerResponse } from "../../lib/owner-auth"
 
 import { assertSameOrigin } from "../generate/lib/guards"
 import {
@@ -20,7 +21,7 @@ import {
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-async function handleLegacyMultipartUpload(req: NextRequest) {
+async function handleLegacyMultipartUpload(req: NextRequest, ownerId: string) {
   const form = await req.formData()
   const files = Array.from(form.values()).filter((value): value is File => value instanceof File)
 
@@ -50,6 +51,7 @@ async function handleLegacyMultipartUpload(req: NextRequest) {
     validateCombinedPlanBytes(totalBytes)
 
     const manifest = await stagePlanUpload({
+      ownerId,
       file,
       sourcePageCount: file.type === "application/pdf" ? null : 1,
     })
@@ -71,8 +73,9 @@ async function handleLegacyMultipartUpload(req: NextRequest) {
   return NextResponse.json(buildPlanUploadStageSuccessResponse(staged))
 }
 
-export async function POST(req: NextRequest) {
+async function planPost(req: NextRequest) {
   try {
+    const owner = await requireOwner(req)
     if (!assertSameOrigin(req)) {
       return NextResponse.json(
         buildPlanUploadStageErrorResponse("BAD_ORIGIN", "Invalid request origin."),
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     const contentType = String(req.headers.get("content-type") || "").toLowerCase()
     if (!contentType.includes("application/json")) {
-      return await handleLegacyMultipartUpload(req)
+      return await handleLegacyMultipartUpload(req, owner.id)
     }
 
     const body = (await req.json().catch(() => null)) as
@@ -114,6 +117,7 @@ export async function POST(req: NextRequest) {
 
     if (body.action === "begin") {
       const begun = await beginStagedPlanUploadSession({
+        ownerId: owner.id,
         uploadId: typeof body.uploadId === "string" ? body.uploadId : "",
         name: typeof body.name === "string" ? body.name : "plan",
         mimeType: typeof body.mimeType === "string" ? body.mimeType : "",
@@ -160,7 +164,7 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const completed = await completeStagedPlanUploadSession(uploadSessionId)
+      const completed = await completeStagedPlanUploadSession(uploadSessionId, owner.id)
       const finalized = await finalizeSelectedPageStagedUpload({
         stagedUploadId: completed.stagedUploadId,
         selectedSourcePages: completed.selectedSourcePages,
@@ -194,14 +198,17 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   } catch (error: unknown) {
+    const authFailure = ownerAuthFailure(error)
+    if (authFailure) return authFailure
     const normalized = normalizePlanUploadStageError(error)
     console.error("Plan upload staging failed:", error)
     return NextResponse.json(normalized.body, { status: normalized.status })
   }
 }
 
-export async function PUT(req: NextRequest) {
+async function planPut(req: NextRequest) {
   try {
+    const owner = await requireOwner(req)
     if (!assertSameOrigin(req)) {
       return NextResponse.json(
         buildPlanUploadStageErrorResponse("BAD_ORIGIN", "Invalid request origin."),
@@ -222,14 +229,24 @@ export async function PUT(req: NextRequest) {
 
     const bytes = new Uint8Array(await req.arrayBuffer())
     await appendStagedPlanUploadChunk({
+      ownerId: owner.id,
       uploadSessionId,
       chunk: bytes,
     })
 
     return NextResponse.json({ ok: true })
   } catch (error: unknown) {
+    const authFailure = ownerAuthFailure(error)
+    if (authFailure) return authFailure
     const normalized = normalizePlanUploadStageError(error)
     console.error("Plan upload chunk failed:", error)
     return NextResponse.json(normalized.body, { status: normalized.status })
   }
+}
+
+export async function POST(req: NextRequest) {
+  return withOwnerResponse(() => planPost(req))
+}
+export async function PUT(req: NextRequest) {
+  return withOwnerResponse(() => planPut(req))
 }

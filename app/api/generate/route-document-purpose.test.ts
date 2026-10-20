@@ -22,11 +22,13 @@ test("real generation handler honors validated explicit purpose through prompts,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   }
   process.env.OPENAI_API_KEY = "synthetic-local-no-external-api"
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://synthetic-supabase.invalid"
   process.env.SUPABASE_SERVICE_ROLE_KEY = "synthetic-service-role-no-external-api"
   process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000"
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "synthetic-anon-key"
 
   const originalFetch = globalThis.fetch
   const originalCreate = OpenAI.Chat.Completions.prototype.create
@@ -40,6 +42,12 @@ test("real generation handler honors validated explicit purpose through prompts,
   let cachedPayload: Record<string, unknown> | null = null
   globalThis.fetch = async (input) => {
     const url = String(input instanceof Request ? input.url : input)
+    if (url === "https://synthetic-supabase.invalid/auth/v1/user") {
+      return Response.json({ id: "owner-1", email: "test12345@gmail.com", email_confirmed_at: "2026-01-01", role: "authenticated", is_anonymous: false })
+    }
+    if (url === "https://synthetic-supabase.invalid/rest/v1/rpc/consume_free_generation") {
+      return Response.json([{ ok: true, usage_count: 1, free_limit: 3 }])
+    }
     if (cachedPayload && url.startsWith("https://synthetic-supabase.invalid/rest/v1/generation_results?")) {
       return new Response(JSON.stringify({ response: cachedPayload }), {
         headers: { "content-type": "application/json" },
@@ -82,7 +90,7 @@ test("real generation handler honors validated explicit purpose through prompts,
       prompts = []
       return POST(new Request("http://localhost:3000/api/generate", {
         method: "POST",
-        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        headers: { "content-type": "application/json", origin: "http://localhost:3000", authorization: "Bearer synthetic-valid" },
         body: JSON.stringify({
           email: "test12345@gmail.com",
           scopeChange: "Revision: Paint one bedroom wall. Electrical work is not included. Owner will supply paint.",

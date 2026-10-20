@@ -21,6 +21,7 @@ import { deriveSelectedPdfUpload } from "./pdfSelect"
 import type { PlanUpload } from "./types"
 
 type StagedPlanUploadManifest = {
+  ownerId?: string
   stagedUploadId: string
   name: string
   mimeType: string
@@ -48,6 +49,7 @@ const SESSION_SOURCE_FILE = "source.part"
 const PDF_PAGE_SCAN_TAIL = 128
 
 type PlanUploadStageSessionManifest = {
+  ownerId?: string
   uploadSessionId: string
   uploadId: string
   name: string
@@ -61,6 +63,13 @@ type PlanUploadStageSessionManifest = {
   selectedSourcePages: number[] | null
   selectedPageUploadMode: "original" | "browser-derived-selected-pages" | "server-derived-selected-pages" | "original-fallback"
   storedAt: string
+}
+
+
+function assertStagingOwner(storedOwner: string | undefined, requestedOwner: string | undefined) {
+  if (requestedOwner !== undefined && storedOwner !== requestedOwner) {
+    throw Object.assign(new Error("Plan upload does not belong to the signed-in account. Re-upload the plan set."), { status: 403, code: "PLAN_OWNER_MISMATCH" })
+  }
 }
 
 function sanitizeName(name: string): string {
@@ -109,6 +118,7 @@ async function readStageSession(
 }
 
 export async function beginStagedPlanUploadSession(args: {
+  ownerId?: string
   uploadId: string
   name: string
   mimeType: string
@@ -179,6 +189,7 @@ export async function beginStagedPlanUploadSession(args: {
   const uploadSessionId = `plan_upload_session_${crypto.randomUUID()}`
   const tempRoot = await mkdtemp(`${getStagingSessionRoot(uploadSessionId)}-`)
   const manifest: PlanUploadStageSessionManifest = {
+    ownerId: args.ownerId,
     uploadSessionId,
     uploadId: String(args.uploadId || "").trim().slice(0, 160) || uploadSessionId,
     name: sanitizeName(args.name),
@@ -217,6 +228,7 @@ export async function beginStagedPlanUploadSession(args: {
 }
 
 export async function appendStagedPlanUploadChunk(args: {
+  ownerId?: string
   uploadSessionId: string
   chunk: Uint8Array
 }): Promise<{ bytesReceived: number }> {
@@ -228,6 +240,8 @@ export async function appendStagedPlanUploadChunk(args: {
       message: "Plan upload session is missing or expired. Re-upload the plan set.",
     })
   }
+
+  assertStagingOwner(session.ownerId, args.ownerId)
 
   const chunk = args.chunk instanceof Uint8Array ? args.chunk : new Uint8Array()
   if (!chunk.byteLength) {
@@ -246,6 +260,7 @@ export async function appendStagedPlanUploadChunk(args: {
   await appendFile(session.filePath, Buffer.from(chunk))
   session.bytesReceived = nextBytes
   await writeFile(path.join(session.tempRoot, SESSION_FILE), JSON.stringify({
+    ownerId: session.ownerId,
     uploadSessionId: session.uploadSessionId,
     uploadId: session.uploadId,
     name: session.name,
@@ -358,6 +373,7 @@ async function writeStreamedFile(args: {
 }
 
 export async function stagePlanUpload(args: {
+  ownerId?: string
   file: File
   sourcePageCount: number | null
 }): Promise<StagedPlanUploadManifest> {
@@ -382,6 +398,7 @@ export async function stagePlanUpload(args: {
   })
 
   const manifest: StagedPlanUploadManifest = {
+    ownerId: args.ownerId,
     stagedUploadId,
     name: sanitizeName(args.file.name),
     mimeType,
@@ -398,7 +415,8 @@ export async function stagePlanUpload(args: {
 }
 
 export async function completeStagedPlanUploadSession(
-  uploadSessionId: string
+  uploadSessionId: string,
+  ownerId?: string
 ): Promise<
   StagedPlanUploadManifest & {
     filePath: string
@@ -413,6 +431,8 @@ export async function completeStagedPlanUploadSession(
       message: "Plan upload session is missing or expired. Re-upload the plan set.",
     })
   }
+
+  assertStagingOwner(session.ownerId, ownerId)
 
   if (session.bytesReceived !== session.expectedBytes) {
     throw Object.assign(new Error("INCOMPLETE_PLAN_UPLOAD"), {
@@ -430,6 +450,7 @@ export async function completeStagedPlanUploadSession(
   await rename(session.filePath, filePath)
 
   const manifest: StagedPlanUploadManifest = {
+    ownerId: session.ownerId,
     stagedUploadId,
     name: sanitizeName(session.name),
     mimeType: session.mimeType,
@@ -467,7 +488,8 @@ export async function completeStagedPlanUploadSession(
 }
 
 export async function readStagedPlanUpload(
-  stagedUploadId: string
+  stagedUploadId: string,
+  ownerId?: string
 ): Promise<StagedPlanUpload | null> {
   const prefix = `${getStagedUploadRoot(stagedUploadId)}-`
   const parent = path.dirname(prefix)
@@ -489,6 +511,7 @@ export async function readStagedPlanUpload(
 
   try {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as StagedPlanUploadManifest
+    assertStagingOwner(manifest.ownerId, ownerId)
     await stat(filePath)
     return {
       ...manifest,
@@ -519,6 +542,7 @@ export async function updateStagedPlanUpload(args: {
   }
 
   const manifest: StagedPlanUploadManifest = {
+    ownerId: staged.ownerId,
     stagedUploadId: staged.stagedUploadId,
     name: staged.name,
     mimeType: staged.mimeType,

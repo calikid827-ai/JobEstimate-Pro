@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
-import { createHash } from "crypto"
+import { requireOwner, assertOwnerEmail, ownerAuthFailure, withOwnerResponse, type OwnerAuthAdapter } from "../../../lib/owner-auth"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -12,14 +12,6 @@ if (!SUPABASE_URL) throw new Error("NEXT_PUBLIC_SUPABASE_URL missing")
 if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY missing")
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
-function hashOwnerSyncToken(token: string) {
-  return createHash("sha256").update(token).digest("hex")
-}
 
 type ProposalRow = {
   id: string
@@ -41,35 +33,16 @@ type ApprovalInvoiceRow = {
   status: string | null
 }
 
-export async function handleApprovalStatusGet(
+async function approvalStatusGet(
   req: Request,
-  client: typeof supabase = supabase
+  client: typeof supabase,
+  auth?: OwnerAuthAdapter
 ) {
   try {
-    const emailRaw = new URL(req.url).searchParams.get("email")
-    const ownerSyncTokenRaw = new URL(req.url).searchParams.get("ownerSyncToken")
-
-    if (!emailRaw || !ownerSyncTokenRaw) {
-      return NextResponse.json({ error: "Email and owner sync token are required." }, { status: 400 })
-    }
-
-    const ownerEmail = normalizeEmail(emailRaw)
-    const ownerSyncToken = ownerSyncTokenRaw.trim()
-
-    if (!ownerEmail || !ownerSyncToken) {
-      return NextResponse.json({ error: "Email and owner sync token are required." }, { status: 400 })
-    }
-
-    const { data: syncToken, error: syncTokenError } = await client
-      .from("approval_owner_sync_tokens")
-      .select("id")
-      .eq("owner_email", ownerEmail)
-      .eq("token_hash", hashOwnerSyncToken(ownerSyncToken))
-      .maybeSingle()
-
-    if (syncTokenError || !syncToken?.id) {
-      return NextResponse.json({ error: "Approval sync token is invalid." }, { status: 403 })
-    }
+    const owner = await requireOwner(req, auth)
+    const url = new URL(req.url)
+    assertOwnerEmail(owner, url.searchParams.has("email") ? url.searchParams.get("email") : undefined)
+    const ownerEmail = owner.email
 
     const { data: proposals, error: proposalsError } = await client
       .from("estimate_proposals")
@@ -145,9 +118,15 @@ export async function handleApprovalStatusGet(
         }),
     })
   } catch (err) {
+    const authFailure = ownerAuthFailure(err)
+    if (authFailure) return authFailure
     console.error("Approval status route failed:", err)
     return NextResponse.json({ error: "Approval statuses could not be loaded." }, { status: 500 })
   }
+}
+
+export async function handleApprovalStatusGet(req: Request, client: typeof supabase = supabase, auth?: OwnerAuthAdapter) {
+  return withOwnerResponse(() => approvalStatusGet(req, client, auth))
 }
 
 export async function GET(req: Request) {

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-
-const EMAIL_KEY = "jobestimatepro_email"
+import { useOwnerSession } from "../app/lib/owner-session"
 
 export default function SuccessPage() {
+  const session = useOwnerSession()
   const [status, setStatus] = useState<"loading" | "success" | "missing-email" | "error">("loading")
   const [message, setMessage] = useState("Confirming your Pro subscription...")
 
@@ -13,20 +13,25 @@ export default function SuccessPage() {
     let cancelled = false
 
     async function syncEntitlement() {
-      const email = window.localStorage.getItem(EMAIL_KEY)?.trim().toLowerCase() || ""
-
-      if (!email) {
+      if (!session.owner) {
         if (cancelled) return
+        if (session.phase === "checking") {
+          setStatus("loading")
+          setMessage("Verifying your account...")
+          return
+        }
         setStatus("missing-email")
-        setMessage("Return to the app and enter the email address used at checkout so we can confirm your Pro subscription.")
+        setMessage("Return to the app and sign in to confirm your Pro subscription.")
         return
       }
 
       try {
-        const response = await fetch("/api/entitlement", {
+        setStatus("loading")
+        setMessage("Confirming your Pro subscription...")
+        const response = await session.ownerFetch("/api/entitlement", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({}),
         })
 
         if (!response.ok) {
@@ -41,12 +46,12 @@ export default function SuccessPage() {
           setMessage(data?.message || "Your Pro subscription is active. Return to the app to continue.")
         } else {
           setStatus("error")
-          setMessage(data?.message || "Checkout succeeded, but subscription access is still syncing. Return to the app and retry with the email used at checkout.")
+          setMessage(data?.message || "Checkout succeeded, but subscription access is still syncing. Return to the app and retry.")
         }
       } catch {
         if (cancelled) return
         setStatus("error")
-        setMessage("Checkout succeeded, but we could not confirm subscription access yet. Return to the app and retry with the email used at checkout.")
+        setMessage("Checkout succeeded, but we could not confirm subscription access yet. Return to the app and retry.")
       }
     }
 
@@ -55,7 +60,7 @@ export default function SuccessPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [session.owner?.id, session.epoch, session.phase, session.ownerFetch])
 
   const statusColor =
     status === "success"

@@ -1,20 +1,16 @@
 import Stripe from "stripe"
 import { NextResponse } from "next/server"
+import { requireOwner, assertOwnerEmail, ownerAuthFailure, withOwnerResponse, type OwnerAuthAdapter } from "../../lib/owner-auth"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-export async function POST(req: Request) {
+async function checkoutPost(req: Request, auth?: OwnerAuthAdapter) {
   try {
+    const owner = await requireOwner(req, auth)
     const body = await req.json()
-    const email =
-      typeof body?.email === "string"
-        ? body.email.trim().toLowerCase()
-        : ""
-
-    if (!email) {
-      return NextResponse.json({ error: "Email required" }, { status: 400 })
-    }
+    assertOwnerEmail(owner, body?.email)
+    const email = owner.email
 
     const secretKey = process.env.STRIPE_SECRET_KEY
     const priceId = process.env.STRIPE_PRO_MONTHLY_PRICE_ID
@@ -48,10 +44,20 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url })
   } catch (err) {
+    const authFailure = ownerAuthFailure(err)
+    if (authFailure) return authFailure
     console.error("Stripe checkout error:", err)
     return NextResponse.json(
       { error: "Stripe checkout failed" },
       { status: 500 }
     )
   }
+}
+
+export async function handleCheckoutPost(req: Request, auth?: OwnerAuthAdapter) {
+  return withOwnerResponse(() => checkoutPost(req, auth))
+}
+
+export async function POST(req: Request) {
+  return handleCheckoutPost(req)
 }

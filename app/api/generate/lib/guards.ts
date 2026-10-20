@@ -121,7 +121,7 @@ const TradeSchema = z
   })
 
 export const GenerateSchema = z.object({
-  email: z.string().email().max(254),
+  email: z.string().email().max(254).optional(),
 
   requestId: z.string().max(200).optional(),
 

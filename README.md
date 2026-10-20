@@ -4,7 +4,7 @@ JobEstimate Pro is a Next.js estimating app for contractors. It creates estimate
 
 The app currently includes:
 
-- Main estimating workspace at `/app`
+- Main estimating workspace at `/app`, with verified-email owner sign-in in Account & Access
 - Customer approval page at `/approve/[id]`
 - Server-backed approval links with frozen proposal snapshots, server approval submission, status sync, and approval-created invoice sync
 - Stripe checkout success and cancel pages
@@ -79,7 +79,8 @@ node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs -
 
 QA/testing note:
 
-- Use `test12345@gmail.com` for JobEstimate Pro generation/regression QA. Do not default to random or fresh QA emails for normal app workflow testing.
+- Use isolated synthetic Auth/persistence adapters for regression QA; do not send real sign-in emails or use production records. No email has a paid-access bypass. Protected handlers require a server-verified, confirmed, non-anonymous Auth user.
+- Required Auth/email configuration, conservative legacy-data handling, and reviewable private Data API permissions are documented in [Verified owner access setup](docs/owner-identity-setup.md). No hosted configuration or SQL is applied by this repository change.
 
 ## Environment Variables
 
@@ -88,6 +89,7 @@ Required for generation and entitlement checks:
 ```bash
 OPENAI_API_KEY=
 NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
@@ -116,6 +118,7 @@ Notes:
 
 - `NEXT_PUBLIC_SITE_URL` is used by checkout redirects and same-origin request protection.
 - `SUPABASE_SERVICE_ROLE_KEY` is server-only. Do not expose it in client code.
+- Auth uses the public publishable key, with `NEXT_PUBLIC_SUPABASE_ANON_KEY` supported as an existing public-key fallback. Email-code delivery/template setup must be completed before sign-in can work.
 - Current checkout uses the recurring monthly `STRIPE_PRO_MONTHLY_PRICE_ID` with `mode: "subscription"`.
 - A Stripe recurring monthly Pro price has been created, Vercel has `STRIPE_PRO_MONTHLY_PRICE_ID` set, the app was redeployed after adding the env var, and final subscription payment/webhook entitlement verification is still pending.
 - Detailed server logs are development-only in the generate path; production logs should not include customer scope, plan, or pricing details.
@@ -123,7 +126,7 @@ Notes:
 ## API Routes
 
 - `POST /api/generate`
-  - Validates requests, checks same-origin, rate-limits usage, consumes free generation entitlement, runs plan/photo intelligence, calls OpenAI, applies estimator orchestration, and returns pricing/readback outputs.
+  - Requires a verified owner bearer session, validates requests, checks same-origin, rate-limits usage, consumes that owner’s free generation entitlement, runs plan/photo intelligence, calls OpenAI, applies estimator orchestration, and returns pricing/readback outputs.
 
 - `POST /api/plan-upload`
   - Starts and completes staged plan uploads, supports selected-page upload metadata, and returns structured staging errors.
@@ -132,16 +135,16 @@ Notes:
   - Uploads chunks for staged plan uploads.
 
 - `POST /api/checkout`
-  - Creates a Stripe subscription Checkout session for the configured `STRIPE_PRO_MONTHLY_PRICE_ID`.
+  - Requires verified owner sign-in and creates a Stripe subscription Checkout session for that owner and the configured `STRIPE_PRO_MONTHLY_PRICE_ID`.
 
 - `POST /api/webhook`
   - Verifies Stripe webhook signatures, dedupes Stripe events, and updates subscription-aware entitlements for checkout, subscription lifecycle, and invoice events.
 
 - `POST /api/entitlement`
-  - Checks entitlement status by email and returns subscription-aware access fields plus free-limit usage information.
+  - Checks the verified owner’s existing email-keyed entitlement and returns subscription-aware access fields plus free-limit usage information. Supplied mismatching owner emails are rejected.
 
 - `POST /api/approvals`
-  - Saves a frozen customer-safe approval snapshot and returns a shareable `/approve/{token}` link plus an owner sync token for contractor-side status sync.
+  - Requires verified owner sign-in, saves/reuses only that owner’s customer-safe approval snapshot, and returns a shareable `/approve/{token}` link. Sharing does not issue or rotate an account-wide credential.
   - Stores only token hashes server-side.
 
 - `GET /api/approvals/[token]`
@@ -152,9 +155,11 @@ Notes:
   - Saves customer approval/signature, marks the proposal approved, and creates one draft approval invoice snapshot when missing.
   - Handles already-approved submissions and duplicate approval-created invoice creation safely.
 
-- `GET /api/approvals/status?email=...&ownerSyncToken=...`
-  - Syncs approval status and approval-created invoice snapshots back into the app for the current owner email.
-  - Requires the server-issued owner sync token; Supabase stores only its hash.
+- `GET /api/approvals/status`
+  - Requires a verified owner bearer session and syncs only that owner’s approval status and approval-created invoice snapshots. Legacy owner-sync tokens do not authorize requests.
+
+- `GET /api/auth/session`
+  - Validates the access token with Supabase Auth and returns the confirmed, non-anonymous owner ID/email. Protected responses are private/no-store.
 
 ## Stripe Webhook Notes
 
@@ -177,7 +182,7 @@ The checkout route expects:
 - `STRIPE_PRO_MONTHLY_PRICE_ID`
 - `NEXT_PUBLIC_SITE_URL`
 
-The success page refreshes entitlement by posting the saved email from `jobestimatepro_email` to `/api/entitlement`.
+The success page refreshes entitlement through the verified owner session. A saved email or successful redirect does not grant access.
 
 ## Supabase Entitlement / Free Limit
 
@@ -202,11 +207,11 @@ Server-backed approval links require Supabase tables for approval snapshots and 
 - `proposal_approvals`
 - `approval_invoices`
 
-The approval flow stores frozen customer-safe proposal snapshots and hashed approval tokens. Public approval pages read snapshots by token and receive only a minimized customer-safe payload. Customer signatures are saved server-side, and the contractor app can manually sync approved status and approval-created draft invoices back into localStorage using the owner email plus owner sync token.
+The approval flow stores frozen customer-safe proposal snapshots and hashed public approval tokens. Public approval pages read only their linked snapshot. Customer signatures are saved server-side, and verified owners can sync their approved status and approval-created draft invoices into their own device workspace.
 
-The owner sync token is stored client-side in `jobestimatepro_owner_sync_token`. Supabase stores only the hashed token. Proposal reuse, approval rows, and approval-created invoices are duplicate-protected/idempotent where implemented.
+Legacy owner-sync tokens are no longer issued or accepted. Sharing does not rotate owner access. Proposal reuse, approval rows, and approval-created invoices retain their existing duplicate protection where implemented.
 
-This is not full authentication and does not replace user accounts/workspaces. The main contractor workspace remains localStorage-first outside the approval snapshot workflow, and full server-backed jobs/estimates/invoices are not implemented yet.
+Protected owner operations require a server-verified Supabase Auth session. The main contractor workspace remains device-local in a namespace bound to the verified user ID; full server-backed jobs/estimates/invoices are not implemented. Old unscoped local data remains untouched and is not automatically claimed by a signed-in account.
 
 ## Plan Upload And Rendering Notes
 

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto"
 import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
+import { requireOwner, assertOwnerEmail, ownerAuthFailure, withOwnerResponse, type OwnerAuthAdapter } from "../../lib/owner-auth"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -13,15 +14,7 @@ if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY missi
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
-}
-
 function makeApprovalToken() {
-  return randomBytes(32).toString("base64url")
-}
-
-function makeOwnerSyncToken() {
   return randomBytes(32).toString("base64url")
 }
 
@@ -148,42 +141,16 @@ async function findReusableProposal(client: typeof supabase, args: {
   return data?.id ? { id: data.id as string } : null
 }
 
-async function createOwnerSyncToken(client: typeof supabase, ownerEmail: string) {
-  const token = makeOwnerSyncToken()
-  const tokenHash = hashApprovalToken(token)
-
-  const { error } = await client
-    .from("approval_owner_sync_tokens")
-    .upsert(
-      {
-        owner_email: ownerEmail,
-        token_hash: tokenHash,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "owner_email" }
-    )
-
-  if (error) {
-    console.error("Approval owner sync token write failed:", error)
-    return null
-  }
-
-  return token
-}
-
-export async function handleApprovalSnapshotPost(
+async function approvalSnapshotPost(
   req: Request,
-  client: typeof supabase = supabase
+  client: typeof supabase,
+  auth?: OwnerAuthAdapter
 ) {
   try {
+    const owner = await requireOwner(req, auth)
     const body = await req.json().catch(() => null)
-    const emailRaw = body?.email
-
-    if (!emailRaw || typeof emailRaw !== "string") {
-      return NextResponse.json({ error: "Owner email is required." }, { status: 400 })
-    }
-
-    const ownerEmail = normalizeEmail(emailRaw)
+    assertOwnerEmail(owner, body?.email)
+    const ownerEmail = owner.email
     const snapshot = buildCustomerSafeSnapshot(body?.estimate, body?.companyProfile)
 
     if (!ownerEmail || !snapshot) {
@@ -231,12 +198,6 @@ export async function handleApprovalSnapshotPost(
 
     const token = makeApprovalToken()
     const tokenHash = hashApprovalToken(token)
-    const ownerSyncToken = await createOwnerSyncToken(client, ownerEmail)
-
-    if (!ownerSyncToken) {
-      return NextResponse.json({ error: "Approval sync token could not be created." }, { status: 500 })
-    }
-
     const { error: linkError } = await client
       .from("approval_links")
       .insert({
@@ -253,12 +214,17 @@ export async function handleApprovalSnapshotPost(
     return NextResponse.json({
       approvalUrl: `${getSiteUrl(req)}/approve/${token}`,
       proposalId: proposal.id,
-      ownerSyncToken,
     })
   } catch (err) {
+    const authFailure = ownerAuthFailure(err)
+    if (authFailure) return authFailure
     console.error("Approval snapshot route failed:", err)
     return NextResponse.json({ error: "Approval link could not be created." }, { status: 500 })
   }
+}
+
+export async function handleApprovalSnapshotPost(req: Request, client: typeof supabase = supabase, auth?: OwnerAuthAdapter) {
+  return withOwnerResponse(() => approvalSnapshotPost(req, client, auth))
 }
 
 export async function POST(req: Request) {

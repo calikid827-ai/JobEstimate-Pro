@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
 import { createClient } from "@supabase/supabase-js"
+import { requireOwner, assertOwnerEmail, ownerAuthFailure, withOwnerResponse, type OwnerAuthAdapter, type VerifiedOwner } from "../../lib/owner-auth"
 import crypto from "crypto"
 import { createWriteStream } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
@@ -146,9 +147,6 @@ const supabase = createClient(
 // CONSTANTS
 // -----------------------------
 const FREE_LIMIT = 3
-const DEV_ALWAYS_PAID = [
-  "test12345@gmail.com"
-]
 const PRIMARY_MODEL = "gpt-4.1-mini" as const
 const DESCRIPTION_POLISH_MODEL = "gpt-4o" as const
 
@@ -227,12 +225,14 @@ async function writeUploadedPlanFileToTemp(
   }
 }
 
-async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyParseResult> {
+async function readGenerateRequestBody(req: NextRequest, owner: VerifiedOwner): Promise<RequestBodyParseResult> {
   const contentType = req.headers.get("content-type") || ""
   let raw: any
 
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     raw = await readJsonWithLimit<any>(req, 25_000_000)
+    assertOwnerEmail(owner, raw?.email)
+    assertClientPlanReferences(raw)
   } else {
     const form = await req.formData()
     const payloadText = form.get("payload")
@@ -254,6 +254,8 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
       })
     }
 
+    assertOwnerEmail(owner, raw?.email)
+    assertClientPlanReferences(raw)
     const tempUploadRoots: string[] = []
     const stagedUploadIdsToCleanup: string[] = []
     let totalPlanBytes = 0
@@ -328,7 +330,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
           })
         }
 
-        const staged = await readStagedPlanUpload(stagedUploadId)
+        const staged = await readStagedPlanUpload(stagedUploadId, owner.id)
         if (!staged) {
           throw Object.assign(new Error("STALED_PLAN_UPLOAD"), {
             status: 400,
@@ -454,7 +456,7 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
         })
       }
 
-      const staged = await readStagedPlanUpload(stagedUploadId)
+      const staged = await readStagedPlanUpload(stagedUploadId, owner.id)
       if (!staged) {
         throw Object.assign(new Error("STALED_PLAN_UPLOAD"), {
           status: 400,
@@ -557,6 +559,15 @@ async function readGenerateRequestBody(req: NextRequest): Promise<RequestBodyPar
   )
 
   return { raw, tempUploadRoots, stagedUploadIdsToCleanup }
+}
+
+function assertClientPlanReferences(raw: any) {
+  if (Array.isArray(raw?.plans) && raw.plans.some((plan: any) => plan?.transport === "multipart-temp" || plan?.tempFilePath !== undefined)) {
+    throw Object.assign(new Error("Server plan file paths cannot be supplied by clients. Re-upload the plan set."), {
+      status: 400,
+      code: "INVALID_PLAN_REFERENCE",
+    })
+  }
 }
 
 // -----------------------------
@@ -6963,12 +6974,13 @@ return {
 // -----------------------------
 // API HANDLER
 // -----------------------------
-export async function POST(req: NextRequest) {
+async function generatePost(req: NextRequest, auth?: OwnerAuthAdapter) {
   const tempUploadRoots: string[] = []
   const stagedUploadIdsToCleanup: string[] = []
 
   try {
-    
+  const owner = await requireOwner(req, auth)
+
   if (!assertSameOrigin(req)) {
     return jsonError(403, "BAD_ORIGIN", "Invalid request origin.")
   }
@@ -6976,11 +6988,13 @@ export async function POST(req: NextRequest) {
 // Parse JSON with an actual byte limit (stream-safe)
 let raw: any
 try {
-  const parsedBody = await readGenerateRequestBody(req)
+  const parsedBody = await readGenerateRequestBody(req, owner)
   raw = parsedBody.raw
   tempUploadRoots.push(...parsedBody.tempUploadRoots)
   stagedUploadIdsToCleanup.push(...parsedBody.stagedUploadIdsToCleanup)
 } catch (e: any) {
+  const authFailure = ownerAuthFailure(e)
+  if (authFailure) return authFailure
   if (e?.status) {
     const normalized = normalizeGenerateServerError(e)
     return jsonError(normalized.status, normalized.code, normalized.message)
@@ -7044,7 +7058,8 @@ const workDaysPerWeek = clampWorkDaysPerWeek(body.workDaysPerWeek)
 
   body.scopeChange = cleanScopeText(body.scopeChange)
 
-  const normalizedEmail = body.email.trim().toLowerCase()
+  assertOwnerEmail(owner, body.email)
+  const normalizedEmail = owner.email
 
   // -----------------------------
 // IDEMPOTENCY REPLAY (FULL RESPONSE)
@@ -7150,8 +7165,8 @@ const paintScope: PaintScope | null =
 let usage_count = 0
 let free_limit = FREE_LIMIT
 
-// ✅ Dev bypass: do NOT consume free generations for dev/test emails
-if (!DEV_ALWAYS_PAID.includes(normalizedEmail)) {
+// Entitlements always use the server-verified account, including test-looking emails.
+{
   const { data, error } = await supabase.rpc("consume_free_generation", {
     p_email: normalizedEmail,
     p_free_limit: FREE_LIMIT,
@@ -8659,6 +8674,8 @@ return await respondAndCache({
 })
 
   } catch (err) {
+    const authFailure = ownerAuthFailure(err)
+    if (authFailure) return authFailure
     const normalized = normalizeGenerateServerError(err)
     if (ENABLE_DETAILED_SERVER_LOGS) {
       console.error("Generate failed:", err)
@@ -8684,4 +8701,12 @@ return await respondAndCache({
       )
     )
   }
+}
+
+export async function handleGeneratePost(req: NextRequest, auth?: OwnerAuthAdapter) {
+  return withOwnerResponse(() => generatePost(req, auth))
+}
+
+export async function POST(req: NextRequest) {
+  return handleGeneratePost(req)
 }

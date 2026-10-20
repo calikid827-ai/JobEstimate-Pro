@@ -87,3 +87,39 @@ export function migrateLocalValue(fromKey: LocalStorageKey, toKey: LocalStorageK
   removeLocalValue(fromKey)
   return legacyValue
 }
+
+// Device records created before verified sign-in have no proven owner. Leave
+// those keys untouched; never import them merely because an email was entered.
+export function createOwnerLocalPersistence(
+  ownerId: string,
+  canAccess: () => boolean,
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null
+) {
+  if (!ownerId.trim()) throw new Error("A verified owner ID is required.")
+  const prefix = `jobestimatepro_owner:${encodeURIComponent(ownerId)}:`
+  const currentStorage = () => canAccess()
+    ? (storage === undefined ? getStorage() : storage)
+    : null
+  const getLocalValue = (key: LocalStorageKey) => {
+    try { return currentStorage()?.getItem(prefix + key) ?? null } catch { return null }
+  }
+  const setLocalValue = (key: LocalStorageKey, value: string) => {
+    try { currentStorage()?.setItem(prefix + key, value) } catch {}
+  }
+  const removeLocalValue = (key: LocalStorageKey) => {
+    try { currentStorage()?.removeItem(prefix + key) } catch {}
+  }
+  return {
+    getLocalValue,
+    setLocalValue,
+    removeLocalValue,
+    readLocalJson<T>(key: LocalStorageKey, fallback: T): T {
+      const raw = getLocalValue(key)
+      if (!raw) return fallback
+      try { return JSON.parse(raw) as T } catch { return fallback }
+    },
+    writeLocalJson(key: LocalStorageKey, value: unknown) {
+      try { setLocalValue(key, JSON.stringify(value)) } catch {}
+    },
+  }
+}

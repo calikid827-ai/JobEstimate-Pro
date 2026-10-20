@@ -12,7 +12,6 @@ type Props = {
   downloadInvoicePDF: (inv: any) => void
   computeLiveInvoiceStatus: (inv: any) => string
   updateInvoice: (id: string, patch: any) => void
-  INVOICE_KEY: string
 }
 
 export default function InvoicesSection({
@@ -25,7 +24,6 @@ export default function InvoicesSection({
   downloadInvoicePDF,
   computeLiveInvoiceStatus,
   updateInvoice,
-  INVOICE_KEY,
 }: Props) {
   const hasInvoices = filteredInvoices.length > 0
 
@@ -47,7 +45,6 @@ export default function InvoicesSection({
             type="button"
             onClick={() => {
               setInvoices([])
-              localStorage.setItem(INVOICE_KEY, JSON.stringify([]))
               setStatus("All invoices cleared.")
             }}
             style={{ fontSize: 12 }}
@@ -185,7 +182,6 @@ export default function InvoicesSection({
                     onClick={() =>
                       setInvoices((prev) => {
                         const next = prev.filter((x) => x.id !== inv.id)
-                        localStorage.setItem(INVOICE_KEY, JSON.stringify(next))
                         return next
                       })
                     }
