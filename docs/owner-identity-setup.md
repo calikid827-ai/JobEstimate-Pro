@@ -82,6 +82,10 @@ table operations used by those handlers to service_role, and restricts
 before applying it. Missing optional tables are reported as notices; missing
 quota RPC is an error so a partial setup is not mistaken for complete enforcement.
 
+The quota inventory includes `usage_events` with service_role SELECT and INSERT.
+The inspected `usage_events` table has no serial/identity sequence dependency.
+This script does not manage `paid_users` or `increment_usage(text)`.
+
 No new public tables are created. The October 30, 2026 Data API change still means
 future tables need explicit grants; do not fix permission errors with blanket
 anon/authenticated grants or grants on all tables. Any future app-owned tables

@@ -16,6 +16,7 @@ declare
 begin
   for item in select * from (values
     ('entitlements', 'select, insert, update'),
+    ('usage_events', 'select, insert'),
     ('estimate_proposals', 'select, insert, update'),
     ('approval_links', 'select, insert, update'),
     ('proposal_approvals', 'select, insert'),
