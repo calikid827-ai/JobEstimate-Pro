@@ -113,7 +113,7 @@ export class OwnerSessionController {
     const promise = (async () => {
       try {
         const response = await this.fetcher("/api/auth/session", {
-          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", credentials: "omit", redirect: "error", signal: controller.signal,
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", credentials: "same-origin", redirect: "error", signal: controller.signal,
         })
         if (revision !== this.revision) throw new StaleOwnerSessionError()
         const data = await response.json()
@@ -249,7 +249,7 @@ export class OwnerSessionController {
     let returned = false
     const release = () => { this.activeRequests.delete(controller); init.signal?.removeEventListener("abort", onAbort) }
     try {
-      const response = await this.fetcher(input, { ...init, headers, signal: controller.signal, cache: "no-store", credentials: "omit", redirect: "error" })
+      const response = await this.fetcher(input, { ...init, headers, signal: controller.signal, cache: "no-store", credentials: "same-origin", redirect: "error" })
       this.assertCurrent(epoch, owner.id)
       if (response.status === 401) { this.invalidate({ error: "Your session expired. Sign in again." }); throw new Error("Sign in to continue.") }
       returned = true

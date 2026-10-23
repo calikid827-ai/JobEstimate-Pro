@@ -64,17 +64,39 @@ test("OTP sign-in authorizes only the owner returned by the real session endpoin
   assert.equal(app.calls.filter(call => call.url === "/api/auth/session").length, 1)
 })
 
-test("protected requests override supplied credentials, prevent external URLs and use private no-store responses", async () => {
+test("server verification preserves same-origin cookies while enforcing bearer authorization and private transport", async () => {
   const app = fixture("a")
   await app.controller.start()
-  const response = await app.controller.ownerFetch("/api/entitlement", { method: "POST", headers: { Authorization: "Bearer attacker" }, cache: "force-cache" })
-  assert.deepEqual(await response.json(), { private: "Bearer a" })
-  const call = app.calls.at(-1)!
-  assert.equal(new Headers(call.init?.headers).get("Authorization"), "Bearer a")
-  assert.equal(call.init?.cache, "no-store")
-  assert.equal(call.init?.credentials, "omit")
-  assert.equal(call.init?.redirect, "error")
+  app.emit("TOKEN_REFRESHED", "a-refreshed")
+  await tick()
+  const checks = app.calls.filter(call => call.url === "/api/auth/session")
+  assert.equal(checks.length, 2)
+  for (const [index, call] of checks.entries()) {
+    assert.equal(new Headers(call.init?.headers).get("Authorization"), index === 0 ? "Bearer a" : "Bearer a-refreshed")
+    assert.equal(call.init?.credentials, "same-origin")
+    assert.equal(call.init?.cache, "no-store")
+    assert.equal(call.init?.redirect, "error")
+  }
+})
+
+test("protected requests override caller transport policies and authorization while rejecting external URLs", async () => {
+  const app = fixture("a")
+  await app.controller.start()
+  for (const credentials of ["include", "omit"] as const) {
+    const response = await app.controller.ownerFetch("/api/entitlement", {
+      method: "POST", headers: { Authorization: "Bearer attacker" },
+      credentials, cache: "force-cache", redirect: "follow",
+    })
+    assert.deepEqual(await response.json(), { private: "Bearer a" })
+    const call = app.calls.at(-1)!
+    assert.equal(new Headers(call.init?.headers).get("Authorization"), "Bearer a")
+    assert.equal(call.init?.cache, "no-store")
+    assert.equal(call.init?.credentials, "same-origin")
+    assert.equal(call.init?.redirect, "error")
+  }
+  const requestCount = app.calls.length
   await assert.rejects(app.controller.ownerFetch("https://other.example.test/api/private"), /stay on this app/)
+  assert.equal(app.calls.length, requestCount)
 })
 
 test("logout clears access immediately and aborts an outstanding owner's request", async () => {
