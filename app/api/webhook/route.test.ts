@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 import Stripe from "stripe"
 
 process.env.STRIPE_SECRET_KEY ||= "sk_test_webhook_route_test"
@@ -263,6 +265,89 @@ function makeSuccessfulWebhookSupabaseMock() {
     throw new Error(`Unexpected Supabase call: ${call.table}.${call.action}`)
   })
 }
+
+for (const secretState of ["missing", "empty"] as const) {
+  test(`${secretState} webhook secret permits module loading and returns 503 before request or external work`, () => {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      STRIPE_SECRET_KEY: "sk_test_webhook_configuration_test",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+    }
+    if (secretState === "missing") {
+      delete env.STRIPE_WEBHOOK_SECRET
+    } else {
+      env.STRIPE_WEBHOOK_SECRET = ""
+    }
+
+    const result = spawnSync(process.execPath, [
+      "--experimental-strip-types",
+      "--loader", fileURLToPath(new URL("../../../scripts/ts-extensionless-loader.mjs", import.meta.url)),
+      "--input-type=module",
+      "--eval", `
+        import assert from "node:assert/strict"
+        const calls = { headers: 0, body: 0, event: 0, stripe: 0, database: 0, fetch: 0 }
+        const unexpected = (kind) => () => {
+          calls[kind] += 1
+          throw new Error("Unexpected " + kind + " work")
+        }
+        globalThis.fetch = unexpected("fetch")
+        const { POST, createWebhookPostHandler } = await import(${JSON.stringify(new URL("./route.ts", import.meta.url).href)})
+        assert.equal(typeof POST, "function")
+        const request = {
+          headers: { get: unexpected("headers") },
+          text: unexpected("body"),
+        }
+        const post = createWebhookPostHandler({
+          stripe: {
+            webhooks: { constructEvent: unexpected("event") },
+            customers: { retrieve: unexpected("stripe") },
+            subscriptions: { retrieve: unexpected("stripe") },
+          },
+          supabase: { from: unexpected("database") },
+        })
+        for (const handler of [POST, post]) {
+          const response = await handler(request)
+          assert.equal(response.status, 503)
+          assert.deepEqual(await response.json(), { error: "Webhook not configured" })
+        }
+        assert.deepEqual(calls, { headers: 0, body: 0, event: 0, stripe: 0, database: 0, fetch: 0 })
+      `,
+    ], { env, encoding: "utf8", timeout: 15_000 })
+
+    assert.ifError(result.error)
+    assert.equal(result.status, 0, result.stderr || result.stdout)
+  })
+}
+
+test("configured signed webhook processes the entitlement and records the event", async () => {
+  const { createWebhookPostHandler } = await import("./route")
+  process.env.VERCEL_ENV = "preview"
+  const { client, calls } = makeSuccessfulWebhookSupabaseMock()
+  const deps = makeDeps(client)
+  const post = createWebhookPostHandler({
+    ...deps,
+    stripe: { ...deps.stripe, webhooks: webhookTestStripe.webhooks },
+  })
+
+  const response = await post(makeSignedWebhookRequest(makeWebhookEvent({
+    id: "evt_configured_webhook",
+    type: "checkout.session.completed",
+    livemode: false,
+  })))
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { received: true })
+  assert.deepEqual(calls.map((call) => `${call.table}.${call.action}`), [
+    "stripe_webhook_events.select",
+    "entitlements.upsert",
+    "stripe_webhook_events.insert",
+  ])
+  const entitlement = calls.find((call) => call.table === "entitlements")?.payload as any
+  assert.equal(entitlement.plan, "pro")
+  assert.equal(entitlement.active, true)
+  assert.equal(entitlement.stripe_subscription_id, "sub_123")
+})
 
 test("checkout.session.completed activates entitlement before recording the event as processed", async () => {
   const { handleSupportedStripeWebhookEvent } = await import("./route")

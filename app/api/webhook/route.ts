@@ -11,7 +11,6 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY missing")
-if (!STRIPE_WEBHOOK_SECRET) throw new Error("STRIPE_WEBHOOK_SECRET missing")
 if (!SUPABASE_URL) throw new Error("NEXT_PUBLIC_SUPABASE_URL missing")
 if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY missing")
 
@@ -296,6 +295,10 @@ export async function handleSupportedStripeWebhookEvent(event: Stripe.Event, dep
 
 export function createWebhookPostHandler(deps: WebhookRouteDeps = { stripe, supabase }) {
   return async function post(req: Request) {
+    if (!STRIPE_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: "Webhook not configured" }, { status: 503 })
+    }
+
     const sig = req.headers.get("stripe-signature")
     if (!sig) return NextResponse.json({ error: "Missing signature" }, { status: 400 })
 
