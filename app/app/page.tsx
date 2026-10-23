@@ -79,6 +79,16 @@ import {
   normalizeProfitProtection,
 } from "./lib/estimate-utils"
 import { calculateProfitTargetMarkup, currentProfitMarginPct } from "./lib/profit-target"
+import {
+  captureEstimateRevision,
+  normalizeEstimateRevisionRelationship,
+  resolveEstimateRevisionBaseline,
+  normalizeComparisonPricing,
+  reconcileComparisonPricing,
+  normalizeComparisonTax,
+  reconcileComparisonTax,
+  normalizeComparisonPricingSource,
+} from "./lib/estimate-revision"
 import { buildPlanReviewSummary } from "./lib/plan-review-summary"
 import { consolidateReviewIssues, getReviewIssueKey, reviewIssueCause, type ReviewIssueInput } from "./lib/review-issues"
 import {
@@ -3233,6 +3243,16 @@ const activeJobName = useMemo(() => {
 const generatedResultScopeText =
   result && generatedScopeSnapshot != null ? generatedScopeSnapshot : scopeChange
 
+// This comparison guard observes the live context without changing generation's
+// existing request/result behavior. An older request cannot link a new context.
+const revisionContextRef = useRef("")
+revisionContextRef.current = JSON.stringify({
+  ownerId: owner.id,
+  savedEstimateId: lastSavedEstimateIdRef.current,
+  jobKey: revisionJobKey(jobDetails),
+  purpose: resolveEstimateDocumentType({ documentType: documentIntent, changeOrderNo: jobDetails.changeOrderNo }),
+})
+
 const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
   const id = lastSavedEstimateIdRef.current
   if (!id) return null
@@ -3255,6 +3275,8 @@ const currentLoadedEstimate = useMemo<EstimateHistoryItem | null>(() => {
       markup: Number(pricing.markup || 0),
       total: Number(pricing.total || 0),
     },
+    comparisonPricing: reconcileComparisonPricing(base, pricing),
+    comparisonTax: reconcileComparisonTax(base, { enabled: taxEnabled, rate: Number(taxRate || 0) }, base.tax ?? { enabled: false, rate: 7.75 }),
     schedule: schedule ?? null,
     scopeSignals: scopeSignals ?? null,
     photoAnalysis: photoAnalysis ?? null,
@@ -3325,12 +3347,34 @@ const changeOrderSummary = useMemo(() => {
 
 const explainChangesReport = useMemo(() => {
   if (!currentLoadedEstimate?.jobId) return null
+  const saved = history.find((item) => item.id === currentLoadedEstimate.id)
+  if (!saved || revisionJobKey(jobDetails) !== revisionJobKey(saved.jobDetails) ||
+      resolveEstimateDocumentType({ documentType: documentIntent, changeOrderNo: jobDetails.changeOrderNo }) !== saved.documentType ||
+      currentLoadedEstimate.documentType !== saved.documentType) return null
+
+  if (currentLoadedEstimate.documentType === "Estimate") {
+    const previous = resolveEstimateRevisionBaseline({
+      relationship: currentLoadedEstimate.revisionRelationship,
+      ownerId: owner.id,
+      jobId: currentLoadedEstimate.jobId,
+      documentType: currentLoadedEstimate.documentType,
+    })
+    return explainEstimateChanges(
+      previous?.id !== currentLoadedEstimate.id ? previous : null,
+      currentLoadedEstimate,
+      { baselineLabel: previous
+        ? `Immediately preceding saved Estimate · ${new Date(previous.createdAt).toLocaleString()}`
+        : "Previous saved Estimate unavailable" }
+    )
+  }
 
   const original = lockedOriginalEstimateForJob(currentLoadedEstimate.jobId)
   if (!original) return null
 
-  return explainEstimateChanges(original, currentLoadedEstimate)
-}, [currentLoadedEstimate, history, jobs])
+  return explainEstimateChanges(original, currentLoadedEstimate, {
+    baselineLabel: "Original contract Estimate — not the immediately preceding draft",
+  })
+}, [currentLoadedEstimate, history, jobs, owner.id, jobDetails, documentIntent])
 
 const pricingMemory = getPricingMemory(history, trade, generatedResultScopeText)
 const scopeQuality = checkScopeQuality(scopeChange, trade)
@@ -4850,6 +4894,7 @@ async function generate() {
     generatingRef.current = false
     return
   }
+  const requestRevisionContext = revisionContextRef.current
 
   const e = email.trim().toLowerCase()
   if (!e) {
@@ -4878,6 +4923,21 @@ async function generate() {
     generatingRef.current = false
     return
   }
+
+  // Capture only the explicitly open saved draft, before clearing result state.
+  // A matching job name alone never selects a history baseline.
+  const previousSaved = history.find((item) => item.id === lastSavedEstimateIdRef.current) ?? null
+  const requestJob = jobs.find((job) => normalizeJobKey(job) === normalizeJobKey({
+    clientName: jobDetails.clientName?.trim() || "Client",
+    jobName: jobDetails.jobName?.trim() || "Job",
+    jobAddress: jobDetails.jobAddress?.trim() || "",
+  }))
+  const requestRevisionRelationship = captureEstimateRevision({
+    previous: previousSaved,
+    ownerId: owner.id,
+    jobId: requestJob?.id,
+    documentType: requestedDocumentType,
+  })
 
   setLoading(true)
   setStatus("") // prevents duplicate “Generating…” line
@@ -6054,6 +6114,13 @@ const normalizedJobDetails = {
 const estItem: EstimateHistoryItem = {
   id: newId,
   createdAt: Date.now(),
+  revisionEligible: finalDocumentType === "Estimate",
+  revisionRelationship: normalizeEstimateRevisionRelationship({
+    relationship: revisionContextRef.current === requestRevisionContext ? requestRevisionRelationship : null,
+    ownerId: owner.id,
+    jobId,
+    documentType: finalDocumentType,
+  }) ?? undefined,
   jobDetails: normalizedJobDetails,
   jobId,
   documentType: finalDocumentType,
@@ -6069,6 +6136,9 @@ const estItem: EstimateHistoryItem = {
     markup: Number(nextPricing.markup || 0),
     total: Number(nextPricing.total || 0),
   },
+  comparisonPricing: normalizeComparisonPricing(data?.pricing),
+  comparisonTax: normalizeComparisonTax({ enabled: taxEnabled, rate: Number(taxRate || 0) }),
+  comparisonPricingSource: normalizeComparisonPricingSource(nextPricingSource),
   schedule: normalizedSchedule,
 
   scopeSignals: data?.scopeSignals ?? null,
@@ -6460,7 +6530,12 @@ function saveToHistory(item: EstimateHistoryItem) {
 // ✅ Update single history item (patch fields)
 function updateHistoryItem(id: string, patch: Partial<EstimateHistoryItem>) {
   setHistory((prev) => {
-    const next = prev.map((h) => (h.id === id ? { ...h, ...patch } : h))
+    const next = prev.map((h) => (h.id === id ? {
+      ...h,
+      ...patch,
+      ...(patch.pricing ? { comparisonPricing: reconcileComparisonPricing(h, patch.pricing) } : {}),
+      ...(patch.tax ? { comparisonTax: reconcileComparisonTax(h, patch.tax, h.tax ?? { enabled: false, rate: 7.75 }) } : {}),
+    } : h))
     writeLocalJson(HISTORY_KEY, next)
     return next
   })
@@ -6555,6 +6630,17 @@ function normalizeEstimateHistoryItem(x: any): EstimateHistoryItem {
   return {
     id: String(x?.id ?? `${Date.now()}_${Math.random().toString(16).slice(2)}`),
     jobId: String(x?.jobId ?? ""),
+    // Preserve uncertain legacy intent for comparison without reclassifying it.
+    revisionEligible: x?.revisionEligible === false ? false : x?.documentType === "Estimate",
+    revisionRelationship: normalizeEstimateRevisionRelationship({
+      relationship: x?.revisionRelationship,
+      ownerId: owner.id,
+      jobId: x?.jobId,
+      documentType: x?.documentType,
+    }) ?? undefined,
+    comparisonPricing: normalizeComparisonPricing(x?.pricing, x?.comparisonPricing),
+    comparisonTax: normalizeComparisonTax(x?.tax, x?.comparisonTax),
+    comparisonPricingSource: normalizeComparisonPricingSource(x?.pricingSource, x?.comparisonPricingSource),
     createdAt: Number(x?.createdAt ?? Date.now()),
     documentType:
   x?.documentType === "Change Order" ? "Change Order" : "Estimate",
@@ -7223,6 +7309,14 @@ function normalizeJobKey(d: {
   return `${(d.clientName || "").trim().toLowerCase()}|${(d.jobName || "")
     .trim()
     .toLowerCase()}|${(d.jobAddress || "").trim().toLowerCase()}`
+}
+
+function revisionJobKey(details: { clientName: string; jobName: string; jobAddress: string }) {
+  return normalizeJobKey({
+    clientName: details.clientName?.trim() || "Client",
+    jobName: details.jobName?.trim() || "Job",
+    jobAddress: details.jobAddress?.trim() || "",
+  })
 }
 
 function lockOriginalEstimateForJob(jobId: string, estimateId: string) {
@@ -11097,6 +11191,8 @@ function ReviewInsightsCard({
 
       {explainChangesReport && (
         <div
+          data-no-print
+          data-explain-changes
           style={{
             marginTop: 14,
             padding: 12,
@@ -11106,6 +11202,7 @@ function ReviewInsightsCard({
           }}
         >
           <div style={{ fontWeight: 800, fontSize: 14 }}>Explain Changes</div>
+          <p style={{ margin: "8px 0", fontSize: 13 }}>{explainChangesReport.baselineLabel}</p>
 
           {explainChangesReport.summary.length > 0 && (
             <ul style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.5 }}>
@@ -11113,6 +11210,43 @@ function ReviewInsightsCard({
                 <li key={`summary-${i}`}>{item}</li>
               ))}
             </ul>
+          )}
+
+          {explainChangesReport.pricingRows.length > 0 && (
+            <>
+              <p style={{ fontSize: 12, color: "#4b5563" }}>
+                Internal estimating comparison. Previous pricing source: {explainChangesReport.pricingSources.previous ?? "not recorded"}; revised pricing source: {explainChangesReport.pricingSources.revised ?? "not recorded"}.
+              </p>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <caption style={{ textAlign: "left", marginBottom: 6 }}>Previous and revised pricing</caption>
+                  <thead>
+                    <tr>{["Component", "Previous", "Revised", "Change"].map((label) => <th key={label} scope="col" style={{ textAlign: "left", padding: "6px 8px" }}>{label}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {explainChangesReport.pricingRows.map((row) => {
+                      const value = (amount: number | null) => amount == null
+                        ? "Not recorded"
+                        : row.unit === "currency" ? money(amount) : `${amount.toLocaleString()}%`
+                      const delta = row.delta == null ? "Unavailable"
+                        : row.unit === "currency" ? formatDelta(row.delta)
+                        : `${formatSignedNumber(row.delta)} percentage points`
+                      return (
+                        <tr key={row.key} data-comparison-row={row.key}>
+                          <th scope="row" style={{ textAlign: "left", padding: "6px 8px", borderTop: "1px solid #e5e7eb" }}>{row.label}</th>
+                          {[value(row.previous), value(row.revised), delta].map((cell, index) => <td key={index} style={{ padding: "6px 8px", borderTop: "1px solid #e5e7eb" }}>{cell}</td>)}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {explainChangesReport.totalPercentChange != null && (
+                <p style={{ fontSize: 13 }}>Total change: {formatSignedNumber(explainChangesReport.totalPercentChange)}%.</p>
+              )}
+              <p style={{ fontSize: 13 }}>{explainChangesReport.priceReasonStatus}</p>
+              {explainChangesReport.pricingNotes.map((note) => <p key={note} style={{ fontSize: 12, color: "#4b5563" }}>{note}</p>)}
+            </>
           )}
         </div>
       )}

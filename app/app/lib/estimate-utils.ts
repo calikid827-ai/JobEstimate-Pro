@@ -10,6 +10,7 @@ import type {
   ScopeSignals,
   PhotoAnalysis,
 } from "./types"
+import { normalizeComparisonPricingSource, normalizeComparisonTax } from "./estimate-revision"
 
 export function normalizeTrade(t: any): UiTrade {
   if (t === "general renovation") return "general_renovation"
@@ -250,9 +251,20 @@ export function buildActualsPatch(base: JobActuals | null | undefined, patch: Pa
 
 export function explainEstimateChanges(
   original: EstimateHistoryItem | null,
-  current: EstimateHistoryItem | null
+  current: EstimateHistoryItem | null,
+  options: { baselineLabel?: string } = {}
 ): ExplainChangesReport | null {
-  if (!original || !current) return null
+  if (!current) return null
+  const baselineLabel = options.baselineLabel || "Previous estimate"
+  if (!original) {
+    return {
+      baselineLabel,
+      summary: ["No reliable previous saved Estimate is linked to this draft. A price comparison is unavailable."],
+      scopeChanges: [], pricingChanges: [], scheduleChanges: [], adminChanges: [],
+      pricingRows: [], totalPercentChange: null, priceReasonStatus: "", pricingNotes: [],
+      pricingSources: { previous: null, revised: comparisonPricingSource(current) },
+    }
+  }
   if (original.id === current.id) return null
 
   const summary: string[] = []
@@ -261,73 +273,67 @@ export function explainEstimateChanges(
   const scheduleChanges: string[] = []
   const adminChanges: string[] = []
 
-  // -------------------------
-  // Scope text comparison
-  // -------------------------
+  // A wording change establishes neither additional work nor a cause of a price change.
   const originalScope = (original.scopeChange || "").trim()
   const currentScope = (current.scopeChange || "").trim()
+  if (currentScope !== originalScope) {
+    scopeChanges.push("Scope wording changed. Wording alone does not establish added or removed work.")
+  }
 
-  if (currentScope && currentScope !== originalScope) {
-    scopeChanges.push("Scope description was updated from the original estimate.")
-
-    if (currentScope.length > originalScope.length) {
-      scopeChanges.push("The current scope appears to include added work or more detail.")
-    } else if (currentScope.length < originalScope.length) {
-      scopeChanges.push("The current scope appears shorter or more consolidated than the original.")
+  const previousPricing = comparisonPricing(original)
+  const revisedPricing = comparisonPricing(current)
+  const rowDefinitions: [ExplainChangesReport["pricingRows"][number]["key"], string, "currency" | "percentage_points"][] = [
+    ["labor", "Labor", "currency"],
+    ["materials", "Materials", "currency"],
+    ["subs", "Other / mobilization", "currency"],
+    ["markupAmount", "Markup amount", "currency"],
+    ["markupRate", "Markup rate", "percentage_points"],
+    ["taxAmount", "Applicable sales tax", "currency"],
+    ["taxRate", "Applicable sales tax rate", "percentage_points"],
+    ["total", "Total", "currency"],
+  ]
+  const pricingRows = rowDefinitions.map(([key, label, unit]) => {
+    const previous = previousPricing[key]
+    const revised = revisedPricing[key]
+    return {
+      key, label, previous, revised,
+      delta: previous != null && revised != null ? comparisonNumber(roundComparisonAmount(revised - previous)) : null,
+      unit,
     }
+  })
+  const totalDelta = pricingRows.find((row) => row.key === "total")!.delta
+  const totalPercentChange = totalDelta != null && previousPricing.total != null && previousPricing.total !== 0
+    ? comparisonNumber(Math.round((totalDelta / Math.abs(previousPricing.total)) * 1000) / 10)
+    : null
+  const pricingNotes: string[] = []
+  if (previousPricing.usesRecordedTotal) {
+    pricingNotes.push("Previous total is the recorded quoted total; complete pricing and tax inputs are unavailable for recalculation.")
   }
-
-  // -------------------------
-  // Pricing comparison
-  // -------------------------
-  const originalLabor = Number(original.pricing?.labor || 0)
-  const currentLabor = Number(current.pricing?.labor || 0)
-
-  const originalMaterials = Number(original.pricing?.materials || 0)
-  const currentMaterials = Number(current.pricing?.materials || 0)
-
-  const originalSubs = Number(original.pricing?.subs || 0)
-  const currentSubs = Number(current.pricing?.subs || 0)
-
-  const originalMarkup = Number(original.pricing?.markup || 0)
-  const currentMarkup = Number(current.pricing?.markup || 0)
-
-  const originalTotal = Number(original.pricing?.total || 0)
-  const currentTotal = Number(current.pricing?.total || 0)
-
-  const totalDelta = currentTotal - originalTotal
-
-  if (totalDelta !== 0) {
-    pricingChanges.push(
-      totalDelta > 0
-        ? `Total price increased by $${Math.abs(totalDelta).toLocaleString()}.`
-        : `Total price decreased by $${Math.abs(totalDelta).toLocaleString()}.`
-    )
+  if (revisedPricing.usesRecordedTotal) {
+    pricingNotes.push("Revised total is the recorded quoted total; complete pricing and tax inputs are unavailable for recalculation.")
   }
-
-  if (currentLabor !== originalLabor) {
-    pricingChanges.push(
-      `Labor changed from $${originalLabor.toLocaleString()} to $${currentLabor.toLocaleString()}.`
-    )
+  if (pricingRows.some((row) => row.previous == null || row.revised == null)) {
+    pricingNotes.push("Unavailable values remain unknown; they are not treated as zero costs.")
   }
-
-  if (currentMaterials !== originalMaterials) {
-    pricingChanges.push(
-      `Materials changed from $${originalMaterials.toLocaleString()} to $${currentMaterials.toLocaleString()}.`
-    )
+  if (pricingRows.some((row) => row.previous != null && row.revised != null && row.delta == null)) {
+    pricingNotes.push("A numerical delta is unavailable because the amounts exceed supported calculation precision.")
   }
-
-  if (currentSubs !== originalSubs) {
-    pricingChanges.push(
-      `Other / mobilization changed from $${originalSubs.toLocaleString()} to $${currentSubs.toLocaleString()}.`
-    )
+  if (totalDelta != null && previousPricing.total === 0) {
+    pricingNotes.push("A percentage change is unavailable from a zero previous total; the dollar change is shown.")
+  } else if (totalDelta != null && previousPricing.total != null && totalPercentChange == null) {
+    pricingNotes.push("The total percentage change is unavailable because it exceeds supported calculation precision.")
   }
-
-  if (currentMarkup !== originalMarkup) {
-    pricingChanges.push(
-      `Markup changed from ${originalMarkup}% to ${currentMarkup}%.`
-    )
+  for (const row of pricingRows) {
+    if (row.delta == null || row.delta === 0) continue
+    const previous = row.unit === "currency" ? money(row.previous!) : `${row.previous}%`
+    const revised = row.unit === "currency" ? money(row.revised!) : `${row.revised}%`
+    const delta = row.unit === "currency"
+      ? formatDelta(row.delta)
+      : `${formatSignedNumber(row.delta)} percentage points`
+    pricingChanges.push(`${row.label} changed from ${previous} to ${revised} (${delta}).`)
   }
+  if (totalDelta === 0) pricingChanges.push("The total price is unchanged.")
+  const priceReasonStatus = "No supporting reason for a revision price change was recorded. Numerical differences do not establish their cause."
 
   // -------------------------
   // Schedule comparison
@@ -373,16 +379,18 @@ export function explainEstimateChanges(
   // -------------------------
   // Tax / deposit / admin
   // -------------------------
-  const originalTaxEnabled = Boolean(original.tax?.enabled)
-  const currentTaxEnabled = Boolean(current.tax?.enabled)
-  const originalTaxRate = Number(original.tax?.rate || 0)
-  const currentTaxRate = Number(current.tax?.rate || 0)
+  const originalTax = normalizeComparisonTax(original.tax, original.comparisonTax)
+  const currentTax = normalizeComparisonTax(current.tax, current.comparisonTax)
+  const originalTaxEnabled = originalTax.enabled
+  const currentTaxEnabled = currentTax.enabled
+  const originalTaxRate = originalTax.rate
+  const currentTaxRate = currentTax.rate
 
-  if (originalTaxEnabled !== currentTaxEnabled) {
+  if (typeof originalTaxEnabled === "boolean" && typeof currentTaxEnabled === "boolean" && originalTaxEnabled !== currentTaxEnabled) {
     adminChanges.push(
       currentTaxEnabled ? "Sales tax was added." : "Sales tax was removed."
     )
-  } else if (currentTaxEnabled && originalTaxRate !== currentTaxRate) {
+  } else if (originalTaxEnabled && currentTaxEnabled && originalTaxRate != null && currentTaxRate != null && originalTaxRate !== currentTaxRate) {
     adminChanges.push(
       `Sales tax rate changed from ${originalTaxRate}% to ${currentTaxRate}%.`
     )
@@ -416,21 +424,25 @@ export function explainEstimateChanges(
   // Summary lines
   // -------------------------
   if (scopeChanges.length > 0) {
-    summary.push("Scope wording was revised from the original estimate.")
+    summary.push("Scope wording was revised compared with the selected baseline.")
   }
 
   if (pricingChanges.length > 0) {
     summary.push(
-      totalDelta > 0
-        ? "Pricing increased from the original estimate."
-        : totalDelta < 0
-        ? "Pricing decreased from the original estimate."
-        : "Pricing structure changed without changing the final total."
+      totalDelta != null && totalDelta > 0
+        ? "Pricing increased compared with the selected baseline."
+        : totalDelta != null && totalDelta < 0
+        ? "Pricing decreased compared with the selected baseline."
+        : totalDelta == null
+        ? "Known pricing components changed; a total-price comparison is unavailable."
+        : pricingRows.some((row) => row.delta != null && row.delta !== 0)
+        ? "Pricing structure changed without changing the final total."
+        : "Known pricing values are unchanged."
     )
   }
 
   if (scheduleChanges.length > 0) {
-    summary.push("Schedule expectations changed from the original estimate.")
+    summary.push("Schedule expectations changed compared with the selected baseline.")
   }
 
   if (adminChanges.length > 0) {
@@ -438,11 +450,67 @@ export function explainEstimateChanges(
   }
 
   return {
+    baselineLabel,
     summary,
     scopeChanges,
     pricingChanges,
     scheduleChanges,
     adminChanges,
+    pricingRows,
+    totalPercentChange,
+    priceReasonStatus,
+    pricingNotes,
+    pricingSources: {
+      previous: comparisonPricingSource(original),
+      revised: comparisonPricingSource(current),
+    },
+  }
+}
+
+// Comparisons validate availability before calling existing customer-total helpers.
+// Their default-zero behavior remains unchanged for the existing production callers.
+function comparisonNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function roundComparisonAmount(value: number): number {
+  // Large finite dollar differences have no meaningful fractional precision.
+  // Avoid overflowing solely while scaling a finite value for cent rounding.
+  if (Number.isFinite(value) && !Number.isFinite(value * 100)) return value
+  const rounded = Math.round((value + Number.EPSILON) * 100) / 100
+  return Object.is(rounded, -0) ? 0 : rounded
+}
+
+function comparisonPricingSource(estimate: EstimateHistoryItem): NonNullable<EstimateHistoryItem["pricingSource"]> | null {
+  return normalizeComparisonPricingSource(estimate.pricingSource, estimate.comparisonPricingSource)
+}
+
+function comparisonPricing(estimate: EstimateHistoryItem) {
+  // History's editable fields may have legacy zero defaults. Internal availability
+  // metadata, when present, preserves the original distinction between unknown and zero.
+  const source = estimate.comparisonPricing ?? estimate.pricing
+  const labor = comparisonNumber(source?.labor)
+  const materials = comparisonNumber(source?.materials)
+  const subs = comparisonNumber(source?.subs)
+  const markupRate = comparisonNumber(source?.markup)
+  const directCost = labor != null && materials != null && subs != null ? comparisonNumber(labor + materials + subs) : null
+  const tax = normalizeComparisonTax(estimate.tax, estimate.comparisonTax)
+  const canonicalEstimate = directCost != null && markupRate != null
+    ? { ...estimate, pricing: { ...estimate.pricing, labor: labor!, materials: materials!, subs: subs!, markup: markupRate },
+        tax: { enabled: tax.enabled === true, rate: tax.rate ?? 0 } }
+    : null
+  const subtotal = canonicalEstimate ? comparisonNumber(estimateSubtotalBeforeTax(canonicalEstimate)) : null
+  const taxRate = tax.enabled === false ? 0 : tax.enabled === true ? tax.rate : null
+  const canonicalTotal = canonicalEstimate && subtotal != null && taxRate != null ? comparisonNumber(estimateTotalWithTax(canonicalEstimate)) : null
+  const total = canonicalTotal ?? comparisonNumber(source?.total)
+  return {
+    labor, materials, subs, markupRate,
+    markupAmount: subtotal != null && directCost != null ? comparisonNumber(roundComparisonAmount(subtotal - directCost)) : null,
+    taxRate,
+    // Match the editable pricing summary: tax is the rounded total minus rounded pre-tax value.
+    taxAmount: tax.enabled === false ? 0 : canonicalTotal != null && subtotal != null ? comparisonNumber(Math.max(0, canonicalTotal - subtotal)) : null,
+    total,
+    usesRecordedTotal: canonicalTotal == null && total != null,
   }
 }
 

@@ -1,3 +1,5 @@
+import type { EstimateRevisionRelationship } from "./estimate-revision"
+
 export type PaintScope = "walls" | "walls_ceilings" | "full"
 
 export type EffectivePaintScope = PaintScope | "doors_only"
@@ -687,6 +689,12 @@ export type EstimateHistoryItem = {
   id: string
   createdAt: number
   jobId?: string
+  revisionRelationship?: EstimateRevisionRelationship
+  revisionEligible?: boolean
+  // Comparison-only inputs retain unknown legacy values without changing pricing.
+  comparisonPricing?: { labor: number | null; materials: number | null; subs: number | null; markup: number | null; total: number | null }
+  comparisonTax?: { enabled: boolean | null; rate: number | null }
+  comparisonPricingSource?: PricingSource | null
   documentType: DocumentType
   jobDetails: {
     clientName: string
@@ -761,11 +769,27 @@ export type WeekLoad = {
 }
 
 export type ExplainChangesReport = {
+  baselineLabel: string
   summary: string[]
   scopeChanges: string[]
   pricingChanges: string[]
   scheduleChanges: string[]
   adminChanges: string[]
+  pricingRows: {
+    key: "labor" | "materials" | "subs" | "markupAmount" | "markupRate" | "taxAmount" | "taxRate" | "total"
+    label: string
+    previous: number | null
+    revised: number | null
+    delta: number | null
+    unit: "currency" | "percentage_points"
+  }[]
+  totalPercentChange: number | null
+  priceReasonStatus: string
+  pricingNotes: string[]
+  pricingSources: {
+    previous: PricingSource | null
+    revised: PricingSource | null
+  }
 }
 
 export type AreaScopeBreakdown = {
