@@ -62,7 +62,7 @@ test("real generation handler honors validated explicit purpose through prompts,
     const content = isPolish
       ? polishConflict
         ? "This Estimate covers painting. The work is additional to the original contract."
-        : String(prompt.split("SCOPE:\n")[1]?.split("\n\nReturn ONLY")[0] || description).trim()
+        : String(prompt.split("GENERATED DRAFT TO EDIT (not scope authority):\n")[1]?.split("\n\nReturn ONLY")[0] || description).trim()
       : JSON.stringify({
           documentType: "Change Order",
           trade: "painting",

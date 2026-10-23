@@ -26,6 +26,8 @@ import {
 } from "./lib/guards"
 
 import { buildEstimatorContext } from "./lib/estimator/context"
+import { detectTradeStack } from "./lib/estimator/tradeStack"
+import { buildAuthoritativeScopeContext, buildDescriptionPolishPrompt, type DescriptionPolishInput } from "./lib/estimator/descriptionScopeContext"
 import { priceFlooringOnlyAnchor } from "./lib/estimator/flooring-anchor"
 import {
   buildLiveTradePricingInfluence,
@@ -4083,51 +4085,11 @@ function enforcePhaseVisitCrewDaysFloor(args: {
   }
 }
 
-async function polishDescriptionWith4o(args: {
-  description: string
-  documentType: string
-  trade: string
-  documentPurpose?: DocumentPurpose
-}): Promise<string> {
+async function polishDescriptionWith4o(args: DescriptionPolishInput): Promise<string> {
   const d = (args.description || "").trim()
   if (!d || d.length < 20) return d
 
-  const polishPrompt = `
-You are a licensed U.S. construction project manager rewriting scope language for a formal contract document.
-
-TASK:
-Rewrite the following scope description to improve clarity, sequencing language, and contractual tone.
-
-REQUIREMENTS:
-- Do NOT change the meaning or scope.
-- Do NOT add or remove work.
-- Do NOT mention pricing or costs.
-- Do NOT introduce guarantees or warranties.
-- Avoid vague phrases such as "as needed".
-- Avoid banned phrases: ensure, industry standards, quality standards, compliance, durability, aesthetic appeal.
-- Keep professional contract-ready tone.
-- Preserve sequencing language (demo, prep, coordination, etc).
-- Preserve the original level of detail and approximate length (do not shorten).
-- Preserve paragraph breaks and any lists/newlines.
-- Only improve clarity/contract tone; do not compress.
-- Do NOT remove sequencing steps.
-- Do NOT merge multiple steps into one sentence.
-- Opening sentence must still begin with:
-  "This ${args.documentType}"
-${args.documentPurpose === "Estimate"
-  ? "- The contractor explicitly selected Estimate. Do not assert that this work changes an existing contract or is an additional charge to an original contract. Preserve legitimate scope exclusions and references."
-  : args.documentPurpose === "Change Order"
-    ? "- The contractor explicitly selected Change Order. Retain that document purpose."
-    : ""}
-
-TRADE:
-${args.trade}
-
-SCOPE:
-${d}
-
-Return ONLY the rewritten paragraph.
-`
+  const polishPrompt = buildDescriptionPolishPrompt(args)
 
   try {
     const resp = await openai.chat.completions.create({
@@ -5085,86 +5047,7 @@ function validateCrewAndSequencing(args: {
 // -----------------------------
 // TRADE STACK (MULTI-TRADE DETECTOR)
 // -----------------------------
-type TradeStack = {
-  primaryTrade: string
-  trades: string[]        // actual trades only (plumbing/electrical/tile/drywall/carpentry/painting/flooring)
-  activities: string[]    // phases/activities (demo/waterproofing/etc)
-  signals: string[]
-  isMultiTrade: boolean
-}
-
-function detectTradeStack(args: { scopeText: string; primaryTrade: string }): TradeStack {
-const s = (getIncludedScopeText(args.scopeText) || args.scopeText || "").toLowerCase()
-const primary = (args.primaryTrade || "").toLowerCase()
-const hasVanityLight = /\bvanity\s+lights?\b/.test(s)
-const tileTrimContext =
-  /\b(tile|grout|thinset|waterproof|waterproofing|membrane|shower\s+walls?|tub\s+surround|cement\s*board|backer\s*board)\b/.test(s)
-
-const trades: string[] = []
-const activities: string[] = []
-const signals: string[] = []
-
-const addTrade = (t: string, why: string) => {
-    if (!trades.includes(t)) trades.push(t)
-    if (why && !signals.includes(why)) signals.push(why)
-  }
-
-const addActivity = (a: string, why: string) => {
-    if (!activities.includes(a)) activities.push(a)
-    if (why && !signals.includes(why)) signals.push(why)
-  }
-
-const REAL_TRADES = new Set([
-  "painting",
-  "drywall",
-  "flooring",
-  "carpentry",
-  "plumbing",
-  "electrical",
-  "tile",
-])
-
-if (primary && REAL_TRADES.has(primary)) trades.push(primary)
-
-  // --- PHASES/ACTIVITIES (do NOT count as "multi-trade") ---
-  const hasDemo = /\b(demo|demolition|tear\s*out|remove\s+existing|haul\s*away|dispose)\b/.test(s)
-  const hasWaterproof = /\b(waterproof|membrane|pan|curb|cement\s*board|durock|hardie)\b/.test(s)
-
-  if (hasDemo) addActivity("demolition", "Demo detected")
-  if (hasWaterproof) addActivity("waterproofing", "Wet-area waterproofing detected")
-
-  // --- ACTUAL TRADES ---
-  const hasTile = /\b(tile|grout|thinset|porcelain|ceramic|backsplash|tub\s*surround|shower\s+walls?)\b/.test(s)
-  const hasPlumbing =
-    /\b(toilet|sink|faucet|valve|drain|supply)\b/.test(s) ||
-    /\b(shower|tub)\b.{0,40}\b(valve|drain|supply|rough[-\s]*in|plumb(?:ing)?)\b/.test(s) ||
-    /\b(valve|drain|supply|rough[-\s]*in|plumb(?:ing)?)\b.{0,40}\b(shower|tub)\b/.test(s) ||
-    (/\bvanity\b/.test(s) && !hasVanityLight)
-  const hasElectrical = /\b(outlet|switch|recessed|can\s*light|fixture|panel)\b/.test(s)
-  const hasDrywall = /\b(drywall|sheetrock|texture|patch)\b/.test(s)
-  const hasCarpentry =
-    /\b(cabinet|baseboard|framing|blocking|door)\b/.test(s) ||
-    (/\btrim\b/.test(s) && !tileTrimContext)
-
-  if (hasTile) addTrade("tile", "Tile detected")
-  if (hasPlumbing) addTrade("plumbing", "Plumbing work detected")
-  if (hasElectrical) addTrade("electrical", "Electrical work detected")
-  if (hasDrywall) addTrade("drywall", "Drywall work detected")
-  if (hasCarpentry) addTrade("carpentry", "Carpentry work detected")
-
-  const uniqueTrades = trades.filter((t, i) => trades.indexOf(t) === i)
-
-  // Multi-trade now means 2+ REAL trades (not demo/waterproofing)
-  const isMultiTrade = uniqueTrades.length >= 2
-
-  return {
-    primaryTrade: primary || "unknown",
-    trades: uniqueTrades,
-    activities,
-    signals,
-    isMultiTrade,
-  }
-}
+type TradeStack = EstimatorTradeStack
 
 function clampWorkDaysPerWeek(n: any): 5 | 6 | 7 {
   return n === 6 ? 6 : n === 7 ? 7 : 5
@@ -7253,9 +7136,11 @@ if (splitMultiTrade) {
   trade = "general renovation"
 }
 
+const scopeFacts = buildRouteDisplayScopeFacts(scopeChange)
 const tradeStack = detectTradeStack({
   scopeText: scopeChange,
   primaryTrade: trade,
+  scopeFacts,
 })
 
 if (ENABLE_DETAILED_SERVER_LOGS) {
@@ -7322,7 +7207,6 @@ const quantityInputs = getRouteEffectiveQuantityInputs({
 
 const rooms = parseRoomCount(scopeChange)
 const doors = parseDoorCount(scopeChange)
-const scopeFacts = buildRouteDisplayScopeFacts(scopeChange)
 
 const photoEstimateDecision = buildRoutePhotoEstimateDecision({
   trade,
@@ -8096,13 +7980,22 @@ ${intentHint}
 
 INPUTS:
 - Primary Trade Type: ${trade}
-- Trade Stack (coordination): ${tradeStack.trades.join(", ") || "N/A"}
+- Included work trades: ${tradeStack.trades.join(", ") || "N/A"}
 - Activities (sequencing): ${tradeStack.activities?.join(", ") || "N/A"}
 - Stack Signals: ${tradeStack.signals.slice(0, 5).join(" | ") || "N/A"}
 - Job State: ${jobState}
 - Paint Scope: ${looksLikePainting ? effectivePaintScope : "N/A"}
 - Photo Count: ${photos?.length ?? 0}
 - Photo Summary: ${photoAnalysis?.summary ?? "N/A"}
+
+${buildAuthoritativeScopeContext({ scopeText: scopeChange, scopeFacts })}
+
+SCOPE AUTHORITY RULES:
+- Included work trades describe supported work, not a requirement to coordinate with outside trades. General Renovation is a category, not evidence of additional trades.
+- Generic material/fixture supply wording assigns procurement responsibility only; do not infer plumbing, electrical installation, or a separate coordination obligation from it.
+- Preserve exclusions, by-others boundaries, and material responsibility. Do not turn excluded work into contractor coordination without an explicit instruction.
+- Patching holes, preparation, and drying before painting are sequencing of the painting scope, not proof of an outside drywall trade. Preserve these preparation/drying steps.
+- Only describe trade coordination supported by the authoritative written scope; do not invent existing trades or promise coordination from trade labels alone.
 
 COMPLEXITY PROFILE (SYSTEM-LOCKED — FOLLOW STRICTLY):
 - class: ${complexityProfile.class}
@@ -8161,7 +8054,7 @@ ${documentPurpose === "Estimate"
 - Write a thorough, contract-ready scope description with clear sequencing.
 - Length: 180–450 words (or 10–18 sentences).
 - Use line breaks for readability (plain text is fine). No markdown.
-- Include: prep/protection, execution steps, materials/consumables, coordination/visits, cleanup.
+- Include supported prep/protection, execution steps, materials/consumables, visits, and cleanup. Include trade coordination only when supported by the authoritative scope.
 - Do not add pricing, warranties, guarantees, or new scope not implied by the input.
 - No disclaimers or markdown
 
@@ -8202,7 +8095,7 @@ ADVANCED CONTRACT LANGUAGE ENHANCEMENTS (OPTIONAL BUT PREFERRED):
 - Imply scope limits by referencing existing conditions without listing exclusions
 - Avoid absolute guarantees or warranties
 - Use passive contractual phrasing when appropriate (e.g., "Work includes...", "Scope covers...")
-- Where applicable, reference coordination with existing trades or finishes
+- Reference coordination with other trades only when the authoritative scope supports it; protection of existing finishes does not imply another trade.
 - Avoid repeating sentence structures across documents
 
 HARD STYLE RULE:

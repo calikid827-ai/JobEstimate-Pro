@@ -10,6 +10,7 @@ import type {
   TradeStack,
 } from "./types"
 import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
+import type { DescriptionPolishInput } from "./descriptionScopeContext"
 
 export type BasisFinalizeHelpers = {
   normalizeBasisSafe: (basis: EstimateBasis | null) => EstimateBasis | null
@@ -119,11 +120,7 @@ export type DescriptionFinalizeHelpers = {
     description: string,
     cp: ComplexityProfile | null
   ) => string
-  polishDescriptionWith4o: (args: {
-    description: string
-    documentType: string
-    trade: string
-  }) => Promise<string>
+  polishDescriptionWith4o: (args: DescriptionPolishInput) => Promise<string>
 }
 
 export function resolvePricingFromOwner(args: {
@@ -383,6 +380,8 @@ export async function finalizeDescription(args: {
     description,
     documentType: args.draft.documentType,
     trade: args.trade,
+    scopeText: args.scopeText,
+    scopeFacts: args.scopeFacts,
   })
 
   if (args.tradeStack) {
