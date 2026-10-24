@@ -1,4 +1,5 @@
 import { decidePricingOwner } from "./pricingOwner"
+import { getScheduleReviewWarnings } from "./descriptionSchedule"
 import { buildEstimateDefenseMode } from "./estimateDefenseMode"
 import { buildTradeExecutionPricingPrep } from "./tradeExecutionPricingPrep"
 import { buildTradeEstimateGenerationInputs } from "./tradeEstimateGenerationInputs"
@@ -536,18 +537,6 @@ export async function runEstimatorOrchestrator(args: {
 
   args.onEvidenceAuthorityReadback?.(evidenceAuthorityReadback)
 
-  const description = await finalizeDescription({
-  draft,
-  trade: ctx.trade,
-  scopeText: ctx.enrichedScopeText,
-  complexity: ctx.complexityProfile,
-  tradeStack: ctx.tradeStack,
-  scopeFacts: ctx.scopeFacts,
-  basis: finalBasis,
-  workDaysPerWeek: ctx.workDaysPerWeek,
-  helpers: deps.description,
-})
-
   const schedule = deps.buildScheduleBlock({
     basis: finalBasis,
     cp: ctx.complexityProfile,
@@ -558,6 +547,24 @@ export async function runEstimatorOrchestrator(args: {
     workDaysPerWeek: ctx.workDaysPerWeek,
     photoImpact: ctx.photoImpact,
     scopeSignals: ctx.scopeSignals,
+  })
+  const scheduleReviewWarnings = getScheduleReviewWarnings(
+    ctx.scopeFacts.rawText || ctx.scopeChange,
+    schedule
+  )
+  schedule.rationale = Array.from(new Set([...schedule.rationale, ...scheduleReviewWarnings]))
+
+  const description = await finalizeDescription({
+    draft,
+    trade: ctx.trade,
+    scopeText: ctx.enrichedScopeText,
+    complexity: ctx.complexityProfile,
+    tradeStack: ctx.tradeStack,
+    scopeFacts: ctx.scopeFacts,
+    basis: finalBasis,
+    schedule,
+    workDaysPerWeek: ctx.workDaysPerWeek,
+    helpers: deps.description,
   })
 
   const priceGuard = deps.buildPriceGuardReport({
@@ -750,6 +757,13 @@ if (ctx.planIntelligence?.ok) {
       ])
     ).slice(0, 8)
   }
+
+  // Existing review actions surface explicit written requirements that do not
+  // agree with this estimate. Do not change the schedule to hide a conflict.
+  scopeXRay.needsConfirmation = Array.from(new Set([
+    ...scheduleReviewWarnings,
+    ...(scopeXRay.needsConfirmation || []),
+  ])).slice(0, 8)
 
   const payload: EstimatorPayload = {
     documentType: draft.documentType,

@@ -3,6 +3,7 @@ import {
   type EstimatorScopeFacts,
 } from "../../../../app/lib/estimator-scope-facts"
 import type { DocumentPurpose } from "../../../../lib/document-purpose"
+import type { ScheduleBlock } from "./types"
 
 export type DescriptionPolishInput = {
   description: string
@@ -11,6 +12,7 @@ export type DescriptionPolishInput = {
   documentPurpose?: DocumentPurpose
   scopeText: string
   scopeFacts?: EstimatorScopeFacts | null
+  schedule?: ScheduleBlock | null
 }
 
 export function buildAuthoritativeScopeContext(
@@ -52,6 +54,10 @@ REQUIREMENTS:
 - Included trade labels summarize scope clauses; they do not independently authorize separate subcontractors or coordination obligations.
 - Painting patching, surface preparation, and drying between coats are sequencing of included work. Do not turn those steps into coordination with outside drywall or other trades.
 - Preserve genuine included plumbing/electrical work and explicit coordination boundaries when supported by the written scope. Do not assume excluded/by-others work includes contractor coordination.
+- Use the finalized estimated schedule below for visit counts, crew effort, and calendar duration; do not independently infer a different schedule from the draft.
+- Missing schedule fields remain unknown. Estimated visits do not establish crew-days, crew size, calendar duration, or a confirmed start date. Schedule estimates are subject to contractor confirmation.
+- Do not promise completing all work in one visit or mobilization when the schedule estimates return visits. A single mobilization fee or allowance can cover multiple visits; preserve legitimate fee language.
+- Preserve explicit written schedule requirements as requirements. If they conflict with the estimated schedule, retain the review warning rather than promising a replacement schedule.
 - Do NOT mention pricing or costs.
 - Do NOT introduce guarantees or warranties.
 - Avoid vague phrases such as "as needed".
@@ -72,6 +78,15 @@ ${args.documentPurpose === "Estimate"
 
 SELECTED TRADE CATEGORY (not independent evidence of work):
 ${args.trade}
+
+FINALIZED ESTIMATED SCHEDULE (not a confirmed commitment):
+${args.schedule ? JSON.stringify({
+  crewDays: args.schedule.crewDays,
+  visits: args.schedule.visits,
+  calendarDays: args.schedule.calendarDays,
+  workDaysPerWeek: args.schedule.workDaysPerWeek,
+  rationale: args.schedule.rationale,
+}) : "Unavailable; do not invent schedule values."}
 
 ${buildAuthoritativeScopeContext(args)}
 

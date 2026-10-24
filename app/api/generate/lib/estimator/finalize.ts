@@ -7,10 +7,12 @@ import type {
   PhotoPricingImpact,
   Pricing,
   PricingOwnerDecision,
+  ScheduleBlock,
   TradeStack,
 } from "./types"
 import type { EstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import type { DescriptionPolishInput } from "./descriptionScopeContext"
+import { reconcileDescriptionSchedule } from "./descriptionSchedule"
 
 export type BasisFinalizeHelpers = {
   normalizeBasisSafe: (basis: EstimateBasis | null) => EstimateBasis | null
@@ -110,6 +112,7 @@ export type DescriptionFinalizeHelpers = {
     scopeText: string
     tradeStack?: TradeStack | null
     workDaysPerWeek?: 5 | 6 | 7
+    schedule?: ScheduleBlock | null
   }) => string
   appendTradeCoordinationSentence: (
     description: string,
@@ -342,6 +345,7 @@ export async function finalizeDescription(args: {
   tradeStack: TradeStack | null
   scopeFacts?: EstimatorScopeFacts | null
   basis: EstimateBasis | null
+  schedule?: ScheduleBlock | null
   workDaysPerWeek: 5 | 6 | 7
   helpers: DescriptionFinalizeHelpers
 }): Promise<string> {
@@ -367,6 +371,7 @@ export async function finalizeDescription(args: {
     scopeText: args.scopeText,
     tradeStack: args.tradeStack,
     workDaysPerWeek: args.workDaysPerWeek,
+    schedule: args.schedule,
   })
 
   description = appendTradeCoordinationSentence(
@@ -376,12 +381,21 @@ export async function finalizeDescription(args: {
   )
   description = appendPermitCoordinationSentence(description, args.complexity)
 
+  if (args.schedule) {
+    description = reconcileDescriptionSchedule({
+      description,
+      schedule: args.schedule,
+      scopeText: args.scopeFacts?.rawText || args.scopeText,
+    })
+  }
+
   description = await polishDescriptionWith4o({
     description,
     documentType: args.draft.documentType,
     trade: args.trade,
     scopeText: args.scopeText,
     scopeFacts: args.scopeFacts,
+    schedule: args.schedule,
   })
 
   if (args.tradeStack) {
@@ -390,6 +404,16 @@ export async function finalizeDescription(args: {
       args.tradeStack,
       args.scopeFacts ?? null
     )
+  }
+
+  // The provider may contradict the schedule or return its input on failure.
+  // Keep this narrow reconciliation after either outcome, not only in a prompt.
+  if (args.schedule) {
+    description = reconcileDescriptionSchedule({
+      description,
+      schedule: args.schedule,
+      scopeText: args.scopeFacts?.rawText || args.scopeText,
+    })
   }
 
   return syncDescriptionLeadToDocumentType(

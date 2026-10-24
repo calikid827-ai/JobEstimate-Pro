@@ -4,6 +4,7 @@ import test from "node:test"
 import { buildEstimatorScopeFacts } from "../../../../app/lib/estimator-scope-facts"
 import { buildTradeQuantityCandidateGates } from "../plans/tradeQuantityCandidateGates"
 import { runEstimatorOrchestrator, type OrchestratorDeps } from "./orchestrator"
+import { appendExecutionPlanSentence } from "./routePromptAdjacentDiagnostics"
 import type {
   AIResponse,
   ComplexityProfile,
@@ -830,4 +831,132 @@ test("orchestrator builds evidence authority internally without returning it in 
   assert.equal(planCandidate?.authority, "future_measured_takeoff_candidate")
   assert.equal(planCandidate?.pricingAuthoritative, false)
   assert.equal(planCandidate?.pricingEligibleNow, false)
+})
+
+const paintingScheduleScope = "Paint 10 bedrooms that are 10x12. Walls and Ceilings. Patch any holes and imperfections. Two coats."
+
+test("orchestrator builds the schedule once after final basis and photo adjustments and shares that exact object", async () => {
+  const deps = makeDeps()
+  const events: string[] = []
+  const schedule: ScheduleBlock = {
+    startDate: "2026-04-22",
+    crewDays: 4,
+    visits: 2,
+    calendarDays: { min: 5, max: 7 },
+    workDaysPerWeek: 5,
+    rationale: ["patch/texture dry time before paint"],
+  }
+  let scheduleCalls = 0
+  let appendSchedule: ScheduleBlock | null | undefined
+  let polishSchedule: ScheduleBlock | null | undefined
+  deps.pricing.enforcePhaseVisitCrewDaysFloor = ({ pricing, basis }) => ({
+    pricing,
+    basis: { ...basis!, crewDays: 3.5, quantities: { ...basis!.quantities, days: 3.5 } },
+    applied: true,
+    note: "Synthetic final phase adjustment",
+  })
+  deps.buildScheduleBlock = (input) => {
+    scheduleCalls++
+    events.push("schedule")
+    assert.equal(input.basis?.crewDays, 4, "schedule sees the final phase floor plus photo adjustment")
+    assert.equal(input.basis?.quantities.days, 4)
+    assert.equal(input.photoImpact?.extraCrewDays, 0.5)
+    return schedule
+  }
+  deps.description.appendExecutionPlanSentence = (input) => {
+    appendSchedule = input.schedule
+    return appendExecutionPlanSentence(input)
+  }
+  deps.description.polishDescriptionWith4o = async (input) => {
+    events.push("polish")
+    polishSchedule = input.schedule
+    assert.match(input.description, /5[–-]7 calendar day/i)
+    return input.description
+  }
+  deps.buildScopeXRay = (input) => {
+    assert.strictEqual(input.schedule, schedule)
+    return makeScopeXRay()
+  }
+  const pricing = makePricing({ labor: 1000, materials: 250, subs: 175, markup: 20, total: 1710 })
+  const payload = await runEstimatorOrchestrator({
+    ctx: makeContext({
+      scopeChange: paintingScheduleScope,
+      enrichedScopeText: paintingScheduleScope,
+      scopeFacts: buildEstimatorScopeFacts(paintingScheduleScope),
+      complexityProfile: { ...complexity, class: "simple", requireDaysBasis: false, minCrewDays: 0.5 },
+      photoImpact: { ...photoImpact, extraCrewDays: 0.5 },
+    }),
+    aiDraft: { ...aiDraft, pricing, estimateBasis: makeBasis() },
+    deps,
+    includeDebugEstimateBasis: true,
+  })
+  assert.equal(scheduleCalls, 1)
+  assert.deepEqual(events, ["schedule", "polish"])
+  assert.strictEqual(appendSchedule, schedule)
+  assert.strictEqual(polishSchedule, schedule)
+  assert.strictEqual(payload.schedule, schedule)
+  assert.equal(payload.estimateBasis?.crewDays, 4)
+  assert.deepEqual(payload.pricing, pricing)
+})
+
+test("orchestrator preserves known visits without inventing effort or calendar values and leaves identical mocked prices unchanged", async () => {
+  const schedule: ScheduleBlock = {
+    startDate: "2026-04-22",
+    crewDays: null,
+    visits: 2,
+    calendarDays: null,
+    workDaysPerWeek: 5,
+    rationale: [],
+  }
+  const pricing = makePricing({ labor: 1000, materials: 250, subs: 175, markup: 20, total: 1710 })
+  const descriptions = [
+    {
+      draft: "This Estimate covers painting. All work will be completed in a single visit.",
+      polish: null,
+    },
+    {
+      draft: "This Estimate covers painting and drying between coats.",
+      polish: "This Estimate covers painting. All work will be completed in one mobilization.",
+    },
+    {
+      draft: "This Estimate covers painting. A single mobilization allowance of $175 covers the estimated visits.",
+      polish: null,
+    },
+  ]
+  for (const variant of descriptions) {
+    const deps = makeDeps()
+    let scheduleCalls = 0
+    deps.buildScheduleBlock = () => { scheduleCalls++; return schedule }
+    deps.description.appendExecutionPlanSentence = appendExecutionPlanSentence
+    deps.description.polishDescriptionWith4o = async (input) => {
+      assert.strictEqual(input.schedule, schedule)
+      return variant.polish ?? input.description
+    }
+    const payload = await runEstimatorOrchestrator({
+      ctx: makeContext({
+        scopeChange: paintingScheduleScope,
+        enrichedScopeText: paintingScheduleScope,
+        scopeFacts: buildEstimatorScopeFacts(paintingScheduleScope),
+        complexityProfile: { ...complexity, class: "simple", requireDaysBasis: false, minCrewDays: 0.5 },
+        rooms: 10,
+      }),
+      aiDraft: {
+        ...aiDraft,
+        pricing,
+        description: variant.draft,
+        estimateBasis: makeBasis({ units: ["rooms"], quantities: { rooms: 10 }, crewDays: undefined }),
+      },
+      deps,
+      includeDebugEstimateBasis: true,
+    })
+    assert.equal(scheduleCalls, 1)
+    assert.strictEqual(payload.schedule, schedule)
+    assert.deepEqual(payload.pricing, pricing)
+    assert.equal(payload.schedule.crewDays, null)
+    assert.equal(payload.schedule.calendarDays, null)
+    assert.match(payload.text, /(?:approximately|estimated)[^.]*2[^.]*site visit/i)
+    assert.doesNotMatch(payload.text, /all work will be completed in (?:a single|one) (?:visit|mobilization)/i)
+    assert.doesNotMatch(payload.text, /\d+(?:\.\d+)? crew-days?|\d+[–-]\d+ calendar days?|start(?:ing)? (?:on )?2026-04-22/i)
+    if (variant.draft.includes("allowance")) assert.match(payload.text, /single mobilization allowance of \$175/)
+  }
 })

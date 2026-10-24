@@ -1,4 +1,6 @@
 import { getIncludedScopeText } from "../priceguard/scopeSplitter"
+import { buildScheduleReadback } from "./descriptionSchedule"
+import type { ScheduleBlock } from "./types"
 import type {
   EstimatorScopeFacts,
   EstimatorScopeTrade,
@@ -377,6 +379,7 @@ export function appendExecutionPlanSentence(args: {
   includedScopeText?: string
   tradeStack?: RoutePromptTradeStack | null
   workDaysPerWeek?: 5 | 6 | 7
+  schedule?: ScheduleBlock | null
 }): string {
   let d = (args.description || "").trim()
   if (!d) return d
@@ -385,6 +388,13 @@ export function appendExecutionPlanSentence(args: {
     d,
     args.documentType as "Change Order" | "Estimate" | "Change Order / Estimate"
   )
+
+  // Production finalization supplies the schedule already built after all basis
+  // adjustments. Do not independently infer visits or duration in that path.
+  if (args.schedule !== undefined) {
+    const readback = args.schedule ? buildScheduleReadback(args.schedule) : ""
+    return readback && !d.includes(readback) ? `${d} ${readback}`.trim() : d
+  }
 
   const cp = args.cp
   const b = args.basis
