@@ -120,6 +120,7 @@ import {
 import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
+import PlanStudySection from "./components/PlanStudySection"
 import InvoicesSection from "./components/InvoicesSection"
 import JobTemplatesSection from "./components/JobTemplatesSection"
 import RateCardSection from "./components/RateCardSection"
@@ -14476,6 +14477,8 @@ const accountAccessMessage = !normalizedEmail
   loading={loading}
   status={status}
 />
+
+<PlanStudySection key={`${owner.id}:${session.epoch}`} fetcher={fetch} ownerKey={`${owner.id}:${session.epoch}`} />
 
 {loading && (
   <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>

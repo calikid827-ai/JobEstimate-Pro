@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Keep native canvas bindings and PDF.js's relative Node worker in their installed packages.
+  serverExternalPackages: ["@napi-rs/canvas", "pdfjs-dist"],
 };
 
 export default nextConfig;

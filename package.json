@@ -11,11 +11,13 @@
     "test:estimator": "node --experimental-strip-types --loader ./scripts/ts-extensionless-loader.mjs --test"
   },
   "dependencies": {
+    "@napi-rs/canvas": "1.0.13",
     "@supabase/supabase-js": "^2.91.0",
     "jspdf": "^4.1.0",
     "next": "^16.1.6",
     "openai": "^6.16.0",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "6.4.299",
     "pdfkit": "^0.17.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",

@@ -1,0 +1,2 @@
+# Authored PDF fixtures are binary documents; preserve their cross-reference bytes.
+tests/fixtures/plan-study/*.pdf binary
