@@ -319,3 +319,247 @@ test("same-owner token refresh retains existing workspace-bound requests", async
   assert.equal(app.controller.isCurrentOwner("owner-a", epoch), true)
   assert.deepEqual(await (await boundFetch("/api/entitlement")).json(), { private: "Bearer a-refreshed" })
 })
+
+test("synchronous repeated sends and stale same-email form callbacks share one accepted challenge", async () => {
+  const app = fixture()
+  const sent = deferred<{ error: { message: string } | null }>()
+  let requests = 0
+  app.auth.signInWithOtp = () => { requests += 1; return requests === 1 ? sent.promise : Promise.resolve({ error: { message: "Synthetic 429" } }) }
+  await app.controller.start()
+  const phases: string[] = []
+  app.controller.subscribe(state => phases.push(state.phase))
+  const first = app.controller.signIn(" A@EXAMPLE.TEST ")
+  const duplicates = Array.from({ length: 5 }, () => app.controller.signIn("a@example.test"))
+  assert.equal(requests, 1)
+  sent.resolve({ error: null })
+  await Promise.all([first, ...duplicates])
+  await app.controller.signIn("a@example.test")
+  assert.equal(requests, 1)
+  assert.deepEqual(phases, ["sending", "code_sent"])
+  assert.equal(app.controller.getState().pendingEmail, "a@example.test")
+  assert.equal(app.controller.getState().error, null)
+})
+
+test("a reentrant state listener cannot send a second OTP before the first Auth call", async () => {
+  const app = fixture()
+  let requests = 0
+  app.auth.signInWithOtp = async () => { requests += 1; return { error: null } }
+  await app.controller.start()
+  app.controller.subscribe(state => { if (state.phase === "sending") void app.controller.signIn("a@example.test") })
+  await app.controller.signIn("a@example.test")
+  assert.equal(requests, 1)
+  assert.equal(app.controller.getState().phase, "code_sent")
+})
+
+for (const phase of ["sending", "code_sent"] as const) {
+  test(`SIGNED_OUT during ${phase} revokes prior access without discarding the unauthenticated challenge`, async () => {
+    const app = fixture("a")
+    const sent = deferred<{ error: null }>()
+    app.auth.signInWithOtp = () => sent.promise
+    await app.controller.start()
+    const old = await app.controller.ownerFetch("/api/entitlement")
+    const sending = app.controller.signIn("b@example.test")
+    if (phase === "code_sent") { sent.resolve({ error: null }); await sending }
+    const epoch = app.controller.getState().epoch
+    app.emit("SIGNED_OUT", null)
+    assert.equal(app.controller.getState().phase, phase)
+    assert.equal(app.controller.getState().pendingEmail, "b@example.test")
+    assert.equal(app.controller.getState().owner, null)
+    assert.ok(app.controller.getState().epoch > epoch)
+    await assert.rejects(old.json(), StaleOwnerSessionError)
+    await assert.rejects(app.controller.ownerFetch("/api/entitlement"), /Sign in/)
+    if (phase === "sending") { sent.resolve({ error: null }); await sending }
+    assert.equal(app.controller.getState().phase, "code_sent")
+    await app.controller.verify("01234567")
+    assert.equal(app.controller.getState().owner?.id, "owner-b")
+  })
+}
+
+test("SIGNED_OUT still immediately invalidates a signed-in owner and outstanding private requests", async () => {
+  const response = deferred<Response>()
+  let signal: AbortSignal | null | undefined
+  const app = fixture("a", async (input, init) => {
+    if (String(input) === "/api/auth/session") return Response.json({ owner: { id: "owner-a", email: "a@example.test" } })
+    signal = init?.signal
+    return response.promise
+  })
+  await app.controller.start()
+  const pending = app.controller.ownerFetch("/api/entitlement")
+  await tick()
+  app.emit("SIGNED_OUT", null)
+  assert.equal(app.controller.getState().owner, null)
+  assert.equal(app.controller.getState().phase, "signed_out")
+  assert.equal(app.controller.getState().pendingEmail, "")
+  assert.equal(signal?.aborted, true)
+  response.resolve(Response.json({ old: true }))
+  await assert.rejects(pending, StaleOwnerSessionError)
+})
+
+for (const abandon of ["cancel", "signOut", "stop"] as const) {
+  test(`${abandon} deliberately clears a pending challenge and blocks its late success`, async () => {
+    const app = fixture()
+    const sent = deferred<{ error: null }>()
+    app.auth.signInWithOtp = () => sent.promise
+    await app.controller.start()
+    const sending = app.controller.signIn("a@example.test")
+    await app.controller[abandon]()
+    sent.resolve({ error: null })
+    await sending
+    app.emit("SIGNED_IN", "a")
+    await tick()
+    assert.equal(app.controller.getState().pendingEmail, "")
+    assert.equal(app.controller.getState().owner, null)
+    assert.equal(app.controller.getState().phase, "signed_out")
+  })
+}
+
+for (const staleFirst of [true, false]) {
+  test(`cancelled send failure ${staleFirst ? "before" : "after"} the new success cannot erase its challenge`, async () => {
+    const app = fixture()
+    const old = deferred<{ error: { message: string } | null }>()
+    const current = deferred<{ error: { message: string } | null }>()
+    let requests = 0
+    app.auth.signInWithOtp = () => ++requests === 1 ? old.promise : current.promise
+    await app.controller.start()
+    const a = app.controller.signIn("a@example.test")
+    app.controller.cancel()
+    const b = app.controller.signIn("b@example.test")
+    if (staleFirst) { old.resolve({ error: { message: "Synthetic 429" } }); await a }
+    await app.controller.signIn("b@example.test")
+    assert.equal(requests, 2, "settling the old flow must not unlock the current flow")
+    current.resolve({ error: null }); await b
+    if (!staleFirst) { old.resolve({ error: { message: "Synthetic 429" } }); await a }
+    assert.equal(app.controller.getState().phase, "code_sent")
+    assert.equal(app.controller.getState().pendingEmail, "b@example.test")
+    assert.equal(app.controller.getState().error, null)
+  })
+}
+
+for (const restoration of ["absent", "old session", "error"] as const) {
+  test(`delayed initial ${restoration} restoration cannot replace a newly accepted challenge`, async () => {
+    const app = fixture()
+    const restored = deferred<Awaited<ReturnType<OwnerAuthPort["getSession"]>>>()
+    app.auth.getSession = () => restored.promise
+    const starting = app.controller.start()
+    await app.controller.signIn("a@example.test")
+    restored.resolve({ data: { session: restoration === "old session" ? session("b") : null }, error: restoration === "error" ? { message: "Synthetic restoration failure" } : null })
+    await starting
+    assert.equal(app.controller.getState().phase, "code_sent")
+    assert.equal(app.controller.getState().pendingEmail, "a@example.test")
+    assert.equal(app.controller.getState().owner, null)
+    assert.equal(app.calls.length, 0)
+  })
+}
+
+test("stopped subscriptions and queued Auth callbacks cannot affect a restarted controller", async () => {
+  const app = fixture()
+  const callbacks: ((event: string, value: ReturnType<typeof session>) => void)[] = []
+  app.auth.onAuthStateChange = callback => { callbacks.push(callback); return { data: { subscription: { unsubscribe() {} } } } }
+  await app.controller.start()
+  callbacks[0]("SIGNED_IN", session("a"))
+  app.controller.stop()
+  await app.controller.start()
+  await app.controller.signIn("b@example.test")
+  const epoch = app.controller.getState().epoch
+  callbacks[0]("SIGNED_OUT", null)
+  callbacks[0]("TOKEN_REFRESHED", session("a"))
+  await tick()
+  assert.equal(app.controller.getState().phase, "code_sent")
+  assert.equal(app.controller.getState().pendingEmail, "b@example.test")
+  assert.equal(app.controller.getState().epoch, epoch)
+  assert.equal(app.calls.length, 0)
+  app.controller.stop()
+  callbacks[1]("SIGNED_IN", session("b"))
+  await tick()
+  assert.equal(app.controller.getState().owner, null)
+  assert.equal(app.calls.length, 0)
+})
+
+test("duplicate code verification submits all eight digits as a string only once", async () => {
+  const app = fixture()
+  const verified = deferred<Awaited<ReturnType<OwnerAuthPort["verifyOtp"]>>>()
+  const requests: Parameters<OwnerAuthPort["verifyOtp"]>[0][] = []
+  app.auth.verifyOtp = request => { requests.push(request); return verified.promise }
+  await app.controller.start()
+  await app.controller.signIn("a@example.test")
+  const first = app.controller.verify(" 01234567 ")
+  const duplicate = app.controller.verify("01234567")
+  await app.controller.signIn("a@example.test")
+  assert.equal(requests.length, 1)
+  assert.deepEqual(requests[0], { email: "a@example.test", token: "01234567", type: "email" })
+  verified.resolve({ data: { session: session("a") }, error: null })
+  await Promise.all([first, duplicate])
+  assert.equal(app.controller.getState().owner?.id, "owner-a")
+  assert.equal(app.calls.filter(call => call.url === "/api/auth/session").length, 1)
+})
+
+for (const retryImmediately of [false, true]) {
+  test(`SIGNED_OUT rejects queued session events after a failed code${retryImmediately ? ", even with an immediate deliberate retry" : ""}`, async () => {
+    const app = fixture()
+    const retry = deferred<Awaited<ReturnType<OwnerAuthPort["verifyOtp"]>>>()
+    let verifications = 0
+    app.auth.verifyOtp = async () => ++verifications === 1
+      ? { data: { session: null }, error: { message: "Synthetic wrong code" } }
+      : retry.promise
+    await app.controller.start()
+    await app.controller.signIn("a@example.test")
+    await app.controller.verify("01234567")
+    app.emit("SIGNED_IN", "b")
+    app.emit("SIGNED_OUT", null)
+    const verifying = retryImmediately ? app.controller.verify("01234567") : undefined
+    await tick()
+    assert.equal(app.controller.getState().owner, null)
+    assert.equal(app.calls.length, 0, "the pre-sign-out callback must not reach server verification")
+    assert.equal(app.controller.getState().pendingEmail, "a@example.test")
+    assert.equal(app.controller.getState().phase, retryImmediately ? "verifying" : "code_sent")
+    if (retryImmediately) {
+      retry.resolve({ data: { session: session("a") }, error: null })
+      await verifying
+      assert.equal(app.controller.getState().owner?.id, "owner-a")
+    } else {
+      assert.equal(app.controller.getState().error, "Synthetic wrong code")
+    }
+  })
+}
+
+test("real send failures remain visible and release the guard for a deliberate retry", async () => {
+  const app = fixture()
+  let requests = 0
+  app.auth.signInWithOtp = async () => ++requests === 1 ? { error: { message: "Synthetic rate limit; try again later." } } : { error: null }
+  await app.controller.start()
+  await app.controller.signIn("a@example.test")
+  assert.equal(app.controller.getState().phase, "signed_out")
+  assert.equal(app.controller.getState().error, "Synthetic rate limit; try again later.")
+  await tick()
+  assert.equal(requests, 1, "failure must not schedule any automatic retry")
+  await app.controller.signIn("a@example.test")
+  assert.equal(requests, 2)
+  assert.equal(app.controller.getState().phase, "code_sent")
+})
+
+test("invalid email and thrown send failures do not leave the single-flight guard locked", async () => {
+  const app = fixture()
+  let requests = 0
+  app.auth.signInWithOtp = async () => { if (++requests === 1) throw new Error("Synthetic offline failure"); return { error: null } }
+  await app.controller.start()
+  await app.controller.signIn("invalid")
+  assert.equal(requests, 0)
+  await app.controller.signIn("a@example.test")
+  assert.equal(app.controller.getState().error, "Synthetic offline failure")
+  await app.controller.signIn("a@example.test")
+  assert.equal(requests, 2)
+  assert.equal(app.controller.getState().phase, "code_sent")
+})
+
+test("start, repeated starts, stop and restart never request an email without signIn", async () => {
+  const app = fixture()
+  let requests = 0
+  app.auth.signInWithOtp = async () => { requests += 1; return { error: null } }
+  await Promise.all([app.controller.start(), app.controller.start()])
+  app.controller.stop()
+  await app.controller.start()
+  await app.controller.signOut()
+  await tick()
+  assert.equal(requests, 0)
+  assert.equal(app.controller.getState().owner, null)
+})

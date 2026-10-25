@@ -39,8 +39,11 @@ export class OwnerSessionController {
   private revision = 0
   private flowRevision = 0
   private subscription: { unsubscribe(): void } | null = null
+  private subscriptionRevision = 0
   private started = false
   private acceptAuthEvents = true
+  private sendingFlow: number | null = null
+  private verifyingFlow: number | null = null
   private pendingVerification: { token: string; promise: Promise<void> } | null = null
   private auth: OwnerAuthPort
   private fetcher: typeof fetch
@@ -67,17 +70,28 @@ export class OwnerSessionController {
   async start() {
     if (this.started) return
     this.started = true
+    const subscriptionRevision = ++this.subscriptionRevision
     this.subscription = this.auth.onAuthStateChange((event, session) => {
+      if (!this.started || subscriptionRevision !== this.subscriptionRevision) return
       if (event === "SIGNED_OUT") {
-        this.flowRevision += 1
-        this.invalidate()
+        // SDK session cleanup can arrive while an unauthenticated email challenge is pending.
+        // Always revoke private access while retaining only the unauthenticated send/code-entry state.
+        if (!this.state.owner && this.state.pendingEmail && ["sending", "code_sent"].includes(this.state.phase)) {
+          const { phase, pendingEmail, error } = this.state
+          this.acceptAuthEvents = false
+          this.invalidate({ phase, pendingEmail, error })
+        } else {
+          this.flowRevision += 1
+          this.invalidate()
+        }
         return
       }
       // Do not await auth SDK calls while its auth-state callback holds the SDK lock.
       if (this.acceptAuthEvents && session?.access_token) {
         if (event === "SIGNED_IN" && this.state.owner && session.access_token !== this.verifiedToken) this.invalidate({ phase: "checking" })
         const flow = this.flowRevision
-        queueMicrotask(() => { if (this.acceptAuthEvents && flow === this.flowRevision) void this.verifySession(session).catch(() => {}) })
+        const epoch = this.state.epoch
+        queueMicrotask(() => { if (this.started && subscriptionRevision === this.subscriptionRevision && this.acceptAuthEvents && flow === this.flowRevision && epoch === this.state.epoch) void this.verifySession(session).catch(() => {}) })
       }
     }).data.subscription
     const revision = this.revision
@@ -95,6 +109,7 @@ export class OwnerSessionController {
   /** Invalidates pending callbacks and requests without deleting another session's data. */
   stop() {
     this.started = false
+    this.subscriptionRevision += 1
     this.subscription?.unsubscribe()
     this.subscription = null
     this.flowRevision += 1
@@ -142,25 +157,32 @@ export class OwnerSessionController {
 
   signIn = async (input: string) => {
     const email = input.trim().toLowerCase()
+    // Guard before notifying React or calling Auth: repeated form callbacks can precede a render.
+    if (this.sendingFlow === this.flowRevision || this.verifyingFlow === this.flowRevision || (this.state.phase === "code_sent" && email === this.state.pendingEmail)) return
     this.flowRevision += 1
     this.acceptAuthEvents = false
     const flow = this.flowRevision
+    this.sendingFlow = flow
     this.invalidate({ phase: "sending", pendingEmail: email })
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { this.update({ phase: "signed_out", error: "Enter a valid account email." }); return }
     try {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { this.update({ phase: "signed_out", error: "Enter a valid account email." }); return }
       const result = await this.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
       if (flow !== this.flowRevision) return
       if (result.error) throw new Error(result.error.message)
       this.update({ phase: "code_sent", error: null })
     } catch (error) {
       if (flow === this.flowRevision) this.update({ phase: "signed_out", error: error instanceof Error ? error.message : "Unable to send a sign-in code." })
+    } finally {
+      // A cancelled older request must not release a newer flow's guard.
+      if (this.sendingFlow === flow) this.sendingFlow = null
     }
   }
 
   verify = async (input: string) => {
     const email = this.state.pendingEmail
-    if (!email) return
+    if (!email || this.state.phase !== "code_sent" || this.verifyingFlow === this.flowRevision) return
     const flow = this.flowRevision
+    this.verifyingFlow = flow
     this.acceptAuthEvents = true
     this.update({ phase: "verifying", error: null })
     try {
@@ -171,6 +193,8 @@ export class OwnerSessionController {
       await this.verifySession(result.data.session)
     } catch (error) {
       if (flow === this.flowRevision && !this.state.owner) this.update({ phase: "code_sent", pendingEmail: email, error: error instanceof Error ? error.message : "Unable to verify your code." })
+    } finally {
+      if (this.verifyingFlow === flow) this.verifyingFlow = null
     }
   }
 
