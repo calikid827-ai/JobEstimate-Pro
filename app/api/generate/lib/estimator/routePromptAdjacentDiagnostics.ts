@@ -1,6 +1,7 @@
 import { getIncludedScopeText } from "../priceguard/scopeSplitter"
 import { buildScheduleReadback } from "./descriptionSchedule"
 import type { ScheduleBlock } from "./types"
+import { detectTradeStack } from "./tradeStack"
 import type {
   EstimatorScopeFacts,
   EstimatorScopeTrade,
@@ -326,6 +327,58 @@ export function estimateCalendarDaysRange(args: {
   return { minDays, maxDays: Math.max(minDays, maxDays), rationale }
 }
 
+function hasWrittenCoordinationRequirement(facts: EstimatorScopeFacts): boolean {
+  return facts.clauses.flatMap((clause) => clause.text.split(/\s+but\s+/i)).some((clause) => {
+    if (!/\bcoordinat(?:e|es|ed|ing|ion)\b/i.test(clause)) return false
+    // Coordinating included paint prep/drying alone is internal sequencing.
+    // Unknown explicit duties remain intact; do not infer participants from a
+    // fixed role list or discard an expressly written coordination target.
+    const internalPaintingSequence = /\bcoordinat(?:e|es|ed|ing|ion)\b.{0,45}\b(?:surface\s+prep(?:aration)?|patching|sanding|drying|dry\s+time)\b/i.test(clause) &&
+      /\b(?:paint|painting|coats?)\b/i.test(clause)
+    if (internalPaintingSequence && !/\b(?:with|GC|general\s+contractor|access|other|outside|separate)\b/i.test(clause)) return false
+    // Installation by others does not negate a separately assigned duty to
+    // coordinate access. Denials beside coordination itself are not authority.
+    if (/\b(?:no|without|exclude[sd]?|excluding)\b[^.;]{0,45}\bcoordinat(?:e|es|ed|ing|ion)\b/i.test(clause) ||
+        /\b(?:not|never)\s+(?:(?:be\s+)?(?:required|responsible|expected|obliged)\s+(?:to|for)\s+)?(?:provide\s+)?(?:any\s+)?coordinat(?:e|es|ed|ing|ion)\b/i.test(clause)) return false
+    if (/\bcoordinat(?:e|es|ed|ing)\b/i.test(clause)) return true
+    if (/\b(?:contractor|we)\b.{0,35}\b(?:responsible\s+for|(?:must|shall|will)\s+provide)\s+coordination\b/i.test(clause)) return true
+    return !/\bcoordination\b[^.;]{0,100}\b(?:not\s+(?:included|required|assigned)|excluded|by\s+others|by\s+owner)\b/i.test(clause)
+  })
+}
+
+function reconcileGenericTradeCoordination(
+  description: string,
+  facts: EstimatorScopeFacts | null | undefined,
+  hasMixedWork: boolean
+): string {
+  if (!facts || hasMixedWork || hasWrittenCoordinationRequirement(facts)) return description
+
+  // Known generic readback only; this is not a blacklist of coordination words.
+  const generic = /\bcoordination\s+with\s+(?:the\s+)?(?:other|outside)\s+trades?\s+(?:is\s+)?(?:strictly\s+)?limited\s+to\s+(?:the\s+)?scope\s+(?:described|listed|specified)\b/i
+  return description.split(/((?<=[.!?;])\s+|\n+)/).map((sentence) => {
+    const match = generic.exec(sentence)
+    if (!match) return sentence
+    const before = sentence.slice(0, match.index)
+    if (/\b(?:no|without|not|exclude[sd]?|excluding)\s+(?:any\s+)?$/i.test(before)) return sentence
+    const prefix = before.replace(/(?:,?\s*(?:and|while|with|along\s+with|as\s+well\s+as))\s*$/i, "").trim()
+    const suffix = sentence.slice(match.index + match[0].length).trim()
+    const punctuation = /[.!?;]$/.exec(suffix)?.[0] || "."
+    const finish = (text: string) => text ? /[.!?;]$/.test(text) ? text : text + punctuation : ""
+    if (!suffix || /^[.!?;]$/.test(suffix)) return finish(prefix)
+
+    const rest = suffix.replace(/^(?:,\s*)?(?:and|but|while)\s+/i, "")
+    if (/^(?:does\s+not|will\s+not|is\s+not|must\s+not)\b/i.test(rest)) {
+      // Keep the negative boundary while removing its unsupported positive lead.
+      return [finish(prefix), `Coordination ${rest}`].filter(Boolean).join(" ")
+    }
+    if (rest !== suffix && /^(?:the\s+)?(?:GC|general\s+contractor|owner|customer|contractor|we|site\s+access|access|patch(?:ing)?|sand(?:ing)?|dry(?:ing)?|preparation|mask(?:ing)?|protect(?:ion)?|paint(?:ing)?|cleanup)\b/i.test(rest)) {
+      return [finish(prefix), rest[0].toUpperCase() + rest.slice(1)].filter(Boolean).join(" ")
+    }
+    // Unknown continuations are left for review rather than deleting work.
+    return sentence
+  }).join("").replace(/[ \t]{2,}/g, " ").trim()
+}
+
 export function appendTradeCoordinationSentence(
   desc: string,
   stack: RoutePromptTradeStack | null,
@@ -334,7 +387,17 @@ export function appendTradeCoordinationSentence(
   let d = (desc || "").trim()
   if (!d) return d
 
+  // Shared facts tag painting patch prep as drywall. Reuse actual work-trade
+  // detection rather than treating that tag alone as an outside-trade duty.
+  const hasMixedWork = scopeFacts ? detectTradeStack({
+    scopeText: scopeFacts.rawText,
+    primaryTrade: stack?.primaryTrade || "",
+    scopeFacts,
+  }).isMultiTrade : Boolean(stack?.isMultiTrade)
+  d = reconcileGenericTradeCoordination(d, scopeFacts, hasMixedWork)
+
   if (!stack?.isMultiTrade) return d
+  if (scopeFacts && !hasMixedWork) return d
 
   const alreadyMentionsCoordination =
     /\bcoordination\b/i.test(d) ||

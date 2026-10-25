@@ -111,6 +111,105 @@ function guard({
   })
 }
 
+const paintingPatchFixture = "Paint 10 bedrooms that are 10x12. Walls and Ceilings. Patch any holes and imperfections. Two coats."
+const contractorMaterialSentence = "Contractor will supply the main materials and fixtures listed in this scope."
+// Only “drywall compounds” is captured report evidence. These surrounding
+// generated sentences are reconstructed synthetic fixtures, not recovered output.
+const syntheticCompoundPreparation = "Patch holes and imperfections using appropriate drywall compounds, followed by sanding before painting."
+
+test("included painting patch material is not a new drywall trade in the initial or supplier-clarified scope", () => {
+  for (const writtenScope of [paintingPatchFixture, `${paintingPatchFixture} ${contractorMaterialSentence}`]) {
+    const review = guard({ writtenScope, resultText: syntheticCompoundPreparation })
+    assert.equal(review.summary, null)
+    assert.deepEqual(review.warnings, [])
+    assert.deepEqual(reviewActions(review), [])
+  }
+})
+
+test("patch compound exception requires included patch authority rather than the trade selector or supplier wording", () => {
+  for (const selectedTrade of ["general_renovation", "painting"] as const) {
+    for (const writtenScope of [
+      "Paint bedroom walls. Two coats.",
+      `Paint bedroom walls. Two coats. ${contractorMaterialSentence}`,
+      "Paint bedroom walls. Drywall patching by others.",
+      "Paint bedroom walls. Excludes wall repairs.",
+      "Paint bedroom walls. Do not patch holes or imperfections.",
+      "Paint bedroom walls without patching.",
+    ]) {
+      const review = guard({ selectedTrade, writtenScope, resultText: syntheticCompoundPreparation })
+      assert.ok(review.warnings.some((item) => /drywall|repair/i.test(item.message)), writtenScope)
+      assert.ok(reviewActions(review).length > 0, writtenScope)
+    }
+  }
+})
+
+test("an unrelated texture exclusion does not withdraw included hole-patching material authority", () => {
+  const review = guard({
+    writtenScope: `${paintingPatchFixture} Texture matching is excluded.`,
+    resultText: syntheticCompoundPreparation,
+  })
+  assert.deepEqual(review.warnings, [])
+  for (const boundary of ["All repairs are by others.", "Repairs to walls are excluded.", "No repairs are included."]) {
+    const conflict = guard({ writtenScope: `${paintingPatchFixture} ${boundary}`, resultText: syntheticCompoundPreparation })
+    assert.ok(reviewActions(conflict).length > 0, boundary)
+  }
+})
+
+test("compound material wording cannot mask substantive drywall commitments in the same synthetic sentence", () => {
+  for (const expansion of [
+    "install new drywall sheets",
+    "replace damaged drywall sheets",
+    "install replacement sheets",
+    "skim coat all wall surfaces",
+    "apply full-surface skim-coating",
+    "apply a Level 5 finish",
+    "match texture across the ceiling",
+    "apply texture matching across the ceiling",
+    "demolish existing drywall",
+    "demolish the bedroom walls",
+  ]) {
+    for (const preparation of [
+      "Light patching of existing drywall surfaces with drywall compounds",
+      "Patch holes using drywall compounds",
+    ]) {
+      const resultText = `${preparation} and ${expansion}.`
+      const review = guard({ writtenScope: paintingPatchFixture, resultText })
+      assert.ok(review.warnings.some((item) => /drywall/i.test(item.message)), resultText)
+      const actions = reviewActions(review)
+      assert.ok(actions.some((action) => action.details.includes(`Generated scope: ${resultText}`)), resultText)
+      if (!expansion.startsWith("demolish")) assert.equal(actions.length, 1, resultText)
+    }
+  }
+})
+
+test("synthetic substantive action verbs remain warnings without another drywall noun", () => {
+  for (const expansion of [
+    "installs new sheets",
+    "replaces damaged sheets",
+    "hangs new panels",
+    "removes existing panels",
+    "demolishes the partition",
+  ]) {
+    const resultText = `The contractor patches holes using drywall compounds and ${expansion}.`
+    const review = guard({ writtenScope: paintingPatchFixture, resultText })
+    assert.ok(review.warnings.some((item) => /drywall/i.test(item.message)), resultText)
+    assert.ok(reviewActions(review).some((action) => action.details.includes(`Generated scope: ${resultText}`)), resultText)
+  }
+})
+
+test("removing the patch-material false positive preserves independent patch extent and quantity actions", () => {
+  const review = guard({ writtenScope: paintingPatchFixture, resultText: syntheticCompoundPreparation })
+  const independent = [
+    { message: "Confirm exact patch / texture extent.", cause: "patch_extent", affectedScope: "bedroom holes" },
+    { message: "Confirm exact measured quantities before final approval.", cause: "measured_quantity", affectedScope: "bedroom walls and ceilings" },
+  ]
+  const actions = consolidateReviewIssues([...reviewActions(review), ...independent])
+  assert.equal(actions.length, 2)
+  assert.deepEqual(actions.map((action) => action.message), independent.map((action) => action.message))
+  assert.equal(consolidateReviewIssues(actions.filter((action) => action.cause !== "patch_extent")).length, 1)
+  assert.equal(consolidateReviewIssues(actions.filter((action) => action.cause !== "measured_quantity")).length, 1)
+})
+
 test("electrical exclusion and unsupported wording share one actual promise action with source boundaries", () => {
   const review = guard({
     selectedTrade: "painting",

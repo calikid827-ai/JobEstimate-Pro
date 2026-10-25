@@ -473,11 +473,45 @@ function isNonScopeContextMention(part: string, rule: TradeRule) {
   return false
 }
 
+function patchMaterialContextOnly(part: string, args: BuildCustomerScopeTradeDriftWarningArgs): boolean | null {
+  const material = /\b(?:drywall|sheetrock|gypsum)\s+(?:patching\s+)?compounds?\b/gi
+  if (!material.test(part)) return null
+
+  // A material name is not authority for the rest of the sentence. Remove only
+  // that mention, then keep any substantive drywall promise actionable.
+  const remainder = part.replace(material, "patch material")
+  const drywall = TRADE_RULES.find((rule) => rule.id === "drywall")!
+  if (drywall.mentionPattern.test(remainder) ||
+      /\b(?:install(?:s|ed|ation|ing)?|replac(?:e[sd]?|ement|ing)|hang(?:s|ing)?|remov(?:e[sd]?|al|ing))\b.{0,70}\b(?:sheets?|boards?|panels?)\b|\b(?:sheets?|boards?|panels?)\b.{0,70}\b(?:install(?:s|ed|ation|ing)?|replac(?:e[sd]?|ement|ing)|hang(?:s|ing)?|remov(?:e[sd]?|al|ing))\b|\b(?:skim(?:s|med|ming)?|textur(?:e[sd]?|ing)|finish[-\s]*level|demol(?:ish(?:es|ed|ing)?|ition)|demo|tear[-\s]*out)\b/i.test(remainder)) {
+    return false
+  }
+
+  const facts = writtenScopeFacts(args)
+  const patch = /\bpatch(?:ing|es)?\b|\b(?:repair(?:ing|s)?|fill(?:ing)?)\b.{0,45}\b(?:holes?|cracks?|imperfections?)\b/i
+  const deniedPatch = /\b(?:do(?:es)?\s+not|don['’]t|never|without|no)\s+(?:include\s+)?(?:patch(?:ing|es)?|repairs?|fill(?:ing)?)\b/i
+  const included = facts.clauses.some((clause) =>
+    clause.includedWork && patch.test(clause.text) &&
+    !EXCLUDED_TRADE_PATTERN.test(clause.text) && !deniedPatch.test(clause.text)
+  )
+  const excluded = facts.clauses.some((clause) =>
+    (clause.excludedByOthers || EXCLUDED_TRADE_PATTERN.test(clause.text) || deniedPatch.test(clause.text)) &&
+    (patch.test(clause.text) || /\b(?:drywall|sheetrock|gypsum|wall|ceiling)\s+repairs?\b|\b(?:all|any|no)\s+repairs?\b|\brepairs?\s+(?:(?:are\s+)?(?:excluded|by\s+others)|(?:to|of)\s+(?:the\s+)?(?:walls?|ceilings?|drywall|sheetrock|gypsum))\b/i.test(clause.text))
+  )
+  return included && !excluded
+}
+
+function isNonScopeReviewContext(part: string, rule: TradeRule, args: BuildCustomerScopeTradeDriftWarningArgs) {
+  // Unlike substrate/context wording, patch material needs explicit included
+  // patch authority. Missing/excluded authority and mixed work remain warnings.
+  const materialContext = rule.id === "drywall" ? patchMaterialContextOnly(part, args) : null
+  return materialContext ?? isNonScopeContextMention(part, rule)
+}
+
 function actionableMentionParts(rule: TradeRule, resultText: string, args: BuildCustomerScopeTradeDriftWarningArgs) {
   return sentenceParts(resultText).filter((part) => {
     if (!rule.mentionPattern.test(part)) return false
     if (EXCLUDED_TRADE_PATTERN.test(part)) return false
-    if (isNonScopeContextMention(part, rule)) return false
+    if (isNonScopeReviewContext(part, rule, args)) return false
     if (
       rule.id === "demolition" &&
       /\bprior\s+to\s+demolition\b/i.test(part) &&
@@ -584,7 +618,7 @@ function paintingAdjacentExpansionParts(args: BuildCustomerScopeTradeDriftWarnin
     (part) =>
       PAINTING_ADJACENT_DRYWALL_PATTERN.test(part) &&
       !EXCLUDED_TRADE_PATTERN.test(part) &&
-      !isNonScopeContextMention(part, drywallRule)
+      !isNonScopeReviewContext(part, drywallRule, args)
   )
 }
 

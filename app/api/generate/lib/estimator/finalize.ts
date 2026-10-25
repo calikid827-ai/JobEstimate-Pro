@@ -398,13 +398,13 @@ export async function finalizeDescription(args: {
     schedule: args.schedule,
   })
 
-  if (args.tradeStack) {
-    description = appendTradeCoordinationSentence(
-      description,
-      args.tradeStack,
-      args.scopeFacts ?? null
-    )
-  }
+  // Reconcile the known generic residual after either polish or its fallback,
+  // including single-trade requests without a stack.
+  description = appendTradeCoordinationSentence(
+    description,
+    args.tradeStack,
+    args.scopeFacts ?? null
+  )
 
   // The provider may contradict the schedule or return its input on failure.
   // Keep this narrow reconciliation after either outcome, not only in a prompt.

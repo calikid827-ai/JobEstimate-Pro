@@ -372,3 +372,81 @@ test("appendPermitCoordinationSentence appends permit coordination when complexi
 
   assert.match(description, /permit\/inspection coordination/i)
 })
+
+const paintingRegression = "Paint 10 bedrooms that are 10x12. Walls and Ceilings. Patch any holes and imperfections. Two coats."
+// Only this fragment was reported evidence. All surrounding proposal sentences
+// in these regressions are reconstructed synthetic fixtures, not recovered output.
+const reportedCoordinationFragment = "Coordination with other trades is limited to the scope described"
+
+test("known generic coordination residual is removed for painting and its supplier clarification", () => {
+  for (const written of [paintingRegression, `${paintingRegression} Contractor will supply the main materials and fixtures listed in this scope.`]) {
+    const description = `This Estimate covers painting bedroom walls and ceilings. ${reportedCoordinationFragment}. Patching and drying between coats are included.`
+    for (const stack of [null, tradeStack({ primaryTrade: "general renovation", trades: ["painting"], isMultiTrade: false })]) {
+      const result = appendTradeCoordinationSentence(description, stack, scopeFacts(written))
+      assert.doesNotMatch(result, /coordination with other trades/i)
+      assert.match(result, /painting bedroom walls and ceilings/)
+      assert.match(result, /Patching and drying between coats are included/)
+      assert.equal(appendTradeCoordinationSentence(result, stack, scopeFacts(written)), result)
+    }
+  }
+})
+
+test("shared sentences retain supported preparation, drying, and GC access after bounded residual removal", () => {
+  const descriptions = [
+    "This Estimate covers patching, sanding and drying between coats, with coordination with other trades limited to the scope described. Two coats are applied to bedroom walls and ceilings.",
+    `This Estimate covers painting. ${reportedCoordinationFragment}, and the GC will provide access to the rooms.`,
+    `This Estimate covers preparation and drying while ${reportedCoordinationFragment.toLowerCase()}.`,
+  ]
+  for (const description of descriptions) {
+    const result = appendTradeCoordinationSentence(description, null, scopeFacts(paintingRegression))
+    assert.doesNotMatch(result, /coordination with other trades/i)
+    if (description.includes("patching")) assert.match(result, /patching, sanding and drying between coats/)
+    if (description.includes("GC")) assert.match(result, /The GC will provide access to the rooms/)
+    if (description.includes("preparation")) assert.match(result, /preparation and drying/)
+    assert.doesNotMatch(result, /,\s*[.;]|while\s*[.;]|with\s*[.;]/)
+  }
+})
+
+test("written coordination, including access around by-others installation, is preserved", () => {
+  const writtenRequirements = [
+    `${paintingRegression} Coordinate site access with the GC and electrician. Electrical installation by others.`,
+    `${paintingRegression} Electrical installation by others; contractor must coordinate access with the electrician.`,
+    `${paintingRegression} Coordinate access with the electrician and electrical installation is by others.`,
+    `${paintingRegression} Contractor is responsible for coordination with the electrician while electrical installation is by others.`,
+    `${paintingRegression} Coordinate with the MEP subcontractor before painting. MEP installation is by others.`,
+  ]
+  for (const written of writtenRequirements) {
+    const description = `This Estimate covers painting. ${reportedCoordinationFragment}. Coordinate site access with the GC and electrician; electrical installation is by others.`
+    assert.equal(appendTradeCoordinationSentence(description, null, scopeFacts(written)), description)
+  }
+  const mixed = `This Estimate covers the included trades. ${reportedCoordinationFragment}.`
+  assert.equal(appendTradeCoordinationSentence(mixed, null, scopeFacts(scopes.trueMixed)), mixed)
+})
+
+test("negative coordination boundaries do not authorize positive boilerplate and remain intact", () => {
+  for (const boundary of [
+    "No coordination with other trades is included.",
+    "Contractor is not required to coordinate with other trades.",
+    "Contractor is not required to provide coordination with other trades.",
+    "Coordination with other trades is by others.",
+  ]) {
+    const result = appendTradeCoordinationSentence(
+      `This Estimate covers painting. ${reportedCoordinationFragment}. ${boundary}`,
+      null, scopeFacts(`${paintingRegression} ${boundary}`)
+    )
+    assert.equal(result, `This Estimate covers painting. ${boundary}`)
+  }
+  const suffix = "and does not extend to additional drywall or finishing trades beyond the specified patching."
+  const result = appendTradeCoordinationSentence(`This Estimate covers painting. ${reportedCoordinationFragment} ${suffix}`, null, scopeFacts(paintingRegression))
+  assert.doesNotMatch(result, /coordination with other trades/i)
+  assert.match(result, /Coordination does not extend to additional drywall or finishing trades beyond the specified patching/)
+})
+
+test("written coordination of painting drying sequences does not authorize outside-trade boilerplate", () => {
+  const sequence = "Coordinate drying between coats before applying the next coat."
+  const result = appendTradeCoordinationSentence(
+    `This Estimate covers painting. ${reportedCoordinationFragment}. ${sequence}`,
+    null, scopeFacts(`${paintingRegression} ${sequence}`)
+  )
+  assert.equal(result, `This Estimate covers painting. ${sequence}`)
+})
