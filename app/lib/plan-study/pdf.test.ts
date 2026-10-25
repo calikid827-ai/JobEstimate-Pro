@@ -1,7 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import { createHash } from "node:crypto"
-import { readFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { spawnSync } from "node:child_process"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib"
 import { createCanvas } from "@napi-rs/canvas"
 import { createAuthoredPackage, createReplacementAddendum } from "../../../tests/fixtures/plan-study/authored-package"
@@ -170,4 +174,67 @@ test("annotation appearances and XFA content remain explicitly unsupported rathe
   const bytes = new Uint8Array(await xfa.save())
   assert.equal((await inspectPdf(bytes)).pageCount, 1)
   await assert.rejects(preparePdfPage(bytes, 1), /PDF_XFA_UNSUPPORTED/)
+})
+
+type FontProcessReport = {
+  systemFontLoadingGateVerified: boolean; nativeFontFamilies: number; nativeProbeInk: number; externalAttempts: number
+  resourceReads: string[]; preparationError: string | null
+  pages: { name: string; sha256: string; extraction: string; render: string; extracted: string; regionInk: Record<string, number> }[]
+}
+async function fontlessProcess(mode: string): Promise<FontProcessReport> {
+  const directory = await mkdtemp(path.join(tmpdir(), "plan-study-font-regression-"))
+  try {
+    const result = spawnSync(process.execPath, [
+      "--experimental-strip-types", "--loader", fileURLToPath(new URL("../../../scripts/ts-extensionless-loader.mjs", import.meta.url)),
+      fileURLToPath(new URL("../../../tests/helpers/plan-study-font-process.mjs", import.meta.url)), mode, directory,
+    ], { cwd: directory, env: { PATH: process.env.PATH, NODE_ENV: "test", DISABLE_SYSTEM_FONTS_LOAD: "1" }, encoding: "utf8", timeout: 120000, maxBuffer: 4 * 1024 * 1024 })
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 0, result.stderr)
+    const report = JSON.parse(result.stdout) as FontProcessReport
+    assert.equal(report.systemFontLoadingGateVerified, true)
+    assert.equal(report.nativeFontFamilies, 0)
+    assert.equal(report.externalAttempts, 0)
+    return report
+  } finally { await rm(directory, { recursive: true, force: true }) }
+}
+
+test("fresh fontless production preparation paints both authored headings, notes and boundaries", async () => {
+  const report = await fontlessProcess("authored")
+  assert.equal(report.pages.length, 2)
+  assert.match(report.pages[0].extracted, /F101.*Flooring and electrical work are by others/)
+  assert.match(report.pages[1].extracted, /A201.*Coordinate access with GC/)
+  for (const page of report.pages) {
+    assert.equal(page.extraction, "complete")
+    assert.equal(page.render, "complete")
+    assert.ok(page.regionInk.heading > 300, "heading glyphs must be painted above the diagram")
+    assert.ok(page.regionInk.roomNotes > 1000, "room/finish notes must be painted above the diagram")
+    assert.ok(page.regionInk.boundaryNote > 100, "by-others/GC boundary note must remain visible")
+    assert.notEqual(page.sha256, "d10075ed1c254bac6be356c0dd0fde66f1fb47e6782d54e1eee2e244d5cc5d2d", "the reproduced textless image must not recur")
+  }
+  assert.notEqual(report.pages[0].sha256, report.pages[1].sha256)
+})
+
+test("bundled fonts paint standard Helvetica, Times, Courier, Symbol and Dingbats variants without native fonts", async () => {
+  const report = await fontlessProcess("standard-variants")
+  assert.equal(report.pages.length, 14)
+  for (const page of report.pages) assert.ok(page.regionInk.glyphs > 100, `${page.name} must paint glyphs`)
+  assert.ok(new Set(report.resourceReads).size >= 14, "the full standard font families must use bundled resources")
+})
+
+for (const mode of ["missing-resource", "empty-resource"]) {
+  test(`${mode} fails explicitly rather than publishing a successful textless render`, async () => {
+    const report = await fontlessProcess(mode)
+    assert.ok(report.resourceReads.includes("LiberationSans-Regular.ttf"))
+    assert.equal(report.preparationError, "PDF_STANDARD_FONT_DATA_UNAVAILABLE")
+    assert.deepEqual(report.pages, [])
+  })
+}
+
+test("legitimate blank and raster-only pages still prepare without requesting unavailable font resources", async () => {
+  const report = await fontlessProcess("empty-pages")
+  assert.equal(report.pages.length, 2)
+  assert.deepEqual(report.resourceReads, [])
+  for (const page of report.pages) { assert.equal(page.extraction, "empty"); assert.equal(page.render, "complete") }
+  assert.equal(report.pages[0].regionInk.page, 0)
+  assert.ok(report.pages[1].regionInk.page > 100)
 })

@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto"
+import { readFile } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import { inflateSync } from "node:zlib"
 import { PDFArray, PDFBool, PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream } from "pdf-lib"
 import { createCanvas } from "@napi-rs/canvas"
@@ -10,6 +12,12 @@ const MAX_PAGE_TEXT = 40_000
 const MAX_CONTENT_BYTES = 8 * 1024 * 1024
 const MAX_IMAGE_BYTES = 40 * 1024 * 1024
 const MAX_PACKAGE_IMAGE_BYTES = 64 * 1024 * 1024
+// The complete standard-14 resource set in pinned PDF.js 6.4.299.
+const STANDARD_FONT_FILES = new Set([
+  "FoxitDingbats.pfb", "FoxitFixed.pfb", "FoxitFixedBold.pfb", "FoxitFixedBoldItalic.pfb", "FoxitFixedItalic.pfb",
+  "FoxitSerif.pfb", "FoxitSerifBold.pfb", "FoxitSerifBoldItalic.pfb", "FoxitSerifItalic.pfb", "FoxitSymbol.pfb",
+  "LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf", "LiberationSans-Italic.ttf", "LiberationSans-BoldItalic.ttf",
+])
 
 function number(dict: PDFDict, key: string, fallback?: number): number {
   const value = dict.context.lookup(dict.get(PDFName.of(key)))
@@ -175,11 +183,43 @@ export async function preparePdfPage(bytes: Uint8Array, pageNumber: number) {
   // Inspect executable drawing content before PDF.js can omit unsupported inline images.
   validateContent(await PDFDocument.load(bytes, { updateMetadata: false }))
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs")
+  let fontDirectory: string
+  try {
+    // Resolve at runtime: Turbopack turns a statically imported require.resolve into a module ID.
+    const { createRequire } = process.getBuiltinModule("node:module")
+    const pdfModulePath = createRequire(import.meta.url).resolve("pdfjs-dist/legacy/build/pdf.mjs")
+    fontDirectory = join(dirname(pdfModulePath), "..", "..", "standard_fonts")
+  } catch {
+    throw new Error("PDF_STANDARD_FONT_DATA_UNAVAILABLE")
+  }
+  let fontResourceFailed = false
+  class BundledFontDataFactory {
+    async fetch({ kind, filename }: { kind: string; filename: string }): Promise<Uint8Array> {
+      // CMap/Wasm resources remain unconfigured; no remote resource fetch is introduced.
+      if (kind !== "standardFontDataUrl") throw new Error("PDF_BINARY_RESOURCE_UNAVAILABLE")
+      try {
+        if (!STANDARD_FONT_FILES.has(filename)) throw new Error("UNEXPECTED_FONT_RESOURCE")
+        const data = await readFile(join(fontDirectory, filename))
+        if (!data.byteLength) throw new Error("EMPTY_FONT_RESOURCE")
+        return new Uint8Array(data)
+      } catch {
+        fontResourceFailed = true
+        throw new Error("PDF_STANDARD_FONT_DATA_UNAVAILABLE")
+      }
+    }
+  }
+  const assertFontResources = () => {
+    // PDF.js catches font fetch failures and can still resolve a textless render.
+    if (fontResourceFailed) throw new Error("PDF_STANDARD_FONT_DATA_UNAVAILABLE")
+  }
   const loading = pdfjs.getDocument({
     data: new Uint8Array(bytes),
     enableXfa: false,
     useWasm: false,
-    useSystemFonts: true,
+    useSystemFonts: false,
+    standardFontDataUrl: `${fontDirectory}/`,
+    BinaryDataFactory: BundledFontDataFactory,
+    useWorkerFetch: false,
     disableFontFace: true,
     disableAutoFetch: true,
     disableStream: true,
@@ -195,11 +235,13 @@ export async function preparePdfPage(bytes: Uint8Array, pageNumber: number) {
     // Surface rejected content operations before rendering; a partially painted
     // canvas is not sufficient evidence that this page was prepared completely.
     await page.getOperatorList({ intent: "display", annotationMode: pdfjs.AnnotationMode.DISABLE })
+    assertFontResources()
     const natural = page.getViewport({ scale: 1 })
     if (!Number.isFinite(natural.width * natural.height) || natural.width <= 0 || natural.height <= 0) throw new Error("PDF_PAGE_SIZE_INVALID")
     const scale = Math.min(1.5, MAX_RENDER_SIDE / natural.width, MAX_RENDER_SIDE / natural.height, Math.sqrt((MAX_RENDER_PIXELS - 2 * MAX_RENDER_SIDE - 1) / (natural.width * natural.height)))
     const viewport = page.getViewport({ scale })
     const content = await page.getTextContent({ disableNormalization: false })
+    assertFontResources()
     const blocks: TextBlock[] = []
     let characters = 0
     for (const item of content.items) {
@@ -232,6 +274,7 @@ export async function preparePdfPage(bytes: Uint8Array, pageNumber: number) {
       annotationMode: pdfjs.AnnotationMode.DISABLE,
       background: "rgb(255,255,255)",
     }).promise
+    assertFontResources()
     return {
       blocks,
       png: new Uint8Array(canvas.toBuffer("image/png")),
