@@ -231,6 +231,12 @@ import {
   PlanSelectedPageUploadMode,
   readPlanUploadStageErrorMessage,
 } from "../lib/plan-upload"
+import { safePdfImgTag } from "../lib/safe-image-data-url"
+import {
+  classifyStoredSignature,
+  pickSyncedSignatureDataUrl,
+  renderCustomerSignatureBlockHtml,
+} from "./lib/approval-signature"
 
 const ENABLE_CLIENT_DEBUG_LOGS = process.env.NODE_ENV !== "production"
 
@@ -6449,10 +6455,10 @@ async function syncServerApprovals() {
                 approvedAt: Number.isFinite(approvedAtMs)
                   ? approvedAtMs
                   : item.approval?.approvedAt,
-                signatureDataUrl:
-                  typeof serverApproval.signature_data_url === "string"
-                    ? serverApproval.signature_data_url
-                    : item.approval?.signatureDataUrl,
+                signatureDataUrl: pickSyncedSignatureDataUrl(
+                  serverApproval.signature_data_url,
+                  item.approval?.signatureDataUrl
+                ),
               }
             : {
                 status: "pending" as const,
@@ -7558,7 +7564,8 @@ function loadHistoryItem(item: EstimateHistoryItem) {
      approval?.approvedAt
     ? new Date(approval.approvedAt).toLocaleString()
     : ""
-    const approvedSignature = approval?.signatureDataUrl?.trim() || ""
+    // Raw stored value; classifyStoredSignature validates it untrimmed.
+    const approvedSignature = approval?.signatureDataUrl
     const showPriceGuardNote =
     pdfShowPriceGuard && documentType !== "Change Order"
 
@@ -8223,11 +8230,7 @@ function loadHistoryItem(item: EstimateHistoryItem) {
               <div class="brandTag">Professional change orders & estimates — generated instantly.</div>
             </div>
             <div class="company">
-  ${
-    companyLogo
-      ? `<img src="${companyLogo}" style="max-height:42px; margin-bottom:6px;" />`
-      : ""
-  }
+  ${safePdfImgTag(companyLogo, "logo", { style: "max-height:42px; margin-bottom:6px;" })}
 
   <div style="font-weight:700; font-size:16px; color:#111;">
     ${esc(companyName)}
@@ -8387,34 +8390,7 @@ ${
             : ""
         }
 
-        ${
-          approvedSignature
-            ? `
-              <div style="margin:8px 0 10px;">
-                <div style="font-size:11px; color:#333; margin-bottom:4px;">
-                  Customer Signature
-                </div>
-                <img
-                  src="${approvedSignature}"
-                  alt="Customer signature"
-                  style="max-width:220px; max-height:90px; border-bottom:1px solid #111; display:block;"
-                />
-              </div>
-            `
-            : `
-              <div class="approvalGrid">
-                <div class="approvalField">
-                  <div class="approvalLine"></div>
-                  <div class="approvalHint">Customer Signature</div>
-                </div>
-
-                <div class="approvalField">
-                  <div class="approvalLine"></div>
-                  <div class="approvalHint">Date</div>
-                </div>
-              </div>
-            `
-        }
+        ${renderCustomerSignatureBlockHtml(classifyStoredSignature(approvedSignature))}
       `
       : `
         <div class="approvalGrid">

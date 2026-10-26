@@ -3,6 +3,7 @@ import { createHash } from "crypto"
 import { NextResponse } from "next/server.js"
 import { createClient } from "@supabase/supabase-js"
 import { buildInvoiceFromEstimate } from "../../../../app/lib/invoices"
+import { isSafePngSignatureDataUrl } from "../../../../lib/safe-image-data-url"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -138,6 +139,11 @@ async function approvalSubmitPost(
 
     if (!approvedBy || !signatureDataUrl) {
       return NextResponse.json({ error: "Approver name and signature are required." }, { status: 400 })
+    }
+
+    // Validate the value exactly as sent, before any database call.
+    if (!isSafePngSignatureDataUrl(body?.signatureDataUrl)) {
+      return NextResponse.json({ error: "Signature could not be read. Please sign again." }, { status: 400 })
     }
 
     const tokenHash = hashApprovalToken(token)
