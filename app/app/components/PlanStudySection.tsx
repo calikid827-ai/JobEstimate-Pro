@@ -1,16 +1,26 @@
 "use client"
 
-import { lazy, Suspense, useState } from "react"
+import { lazy, Suspense, useEffect, useState } from "react"
 import type { Citation, Finding, Study } from "../../lib/plan-study/types"
 import { activePages, STUDY_LIMITS } from "../../lib/plan-study/types"
 import { buildStudyBriefing } from "../../lib/plan-study/briefing"
 import { formatPlanUploadBytes } from "../../lib/plan-upload"
 import { usePlanStudy } from "../lib/use-plan-study"
+import { eligibleStudyDecisions } from "../lib/source-linked-draft"
 const PlanStudyEvidenceViewer = lazy(() => import("./PlanStudyEvidenceViewer"))
 
 const buttonStyle = { padding: "9px 12px", border: "1px solid #cbd5e1", borderRadius: 8, background: "#fff", minHeight: 44, cursor: "pointer", fontWeight: 650 } as const
 const boxStyle = { padding: 12, border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff" } as const
 const kindLabels: Record<Finding["kind"], string> = { requirement: "Source requirement", assumption: "Assumption", conflict: "Conflict to resolve", boundary: "Boundary / exclusion", question: "Unanswered question" }
+
+export type StudyDraftSelection = {
+  ownerId: string
+  enabled: boolean
+  onSelect: (study: Study, findingId: string, decisionIds: string[]) => void
+  replacementItems?: Array<{ id: string; studyId: string; findingId: string }>
+  onReplace?: (study: Study, findingId: string, decisionIds: string[], itemId: string) => void
+  onStudyObserved?: (study: Study) => void
+}
 
 function citationLabel(study: Study, citation: Citation): string {
   const document = study.documents.find((item) => item.id === citation.documentVersionId)
@@ -33,7 +43,43 @@ function AnswerForm({ finding, study, busy, onSave }: { finding: Finding; study:
   </form>
 }
 
-function FindingRecord({ finding, study, busy, allowAnswer, onEvidence, onAnswer }: { finding: Finding; study: Study; busy: boolean; allowAnswer: boolean; onEvidence: (citation: Citation) => void; onAnswer: (answer: string) => void }) {
+function FindingDraftSelection({ finding, study, busy, selection }: { finding: Finding; study: Study; busy: boolean; selection: StudyDraftSelection }) {
+  const [selectedDecisionIds, setSelectedDecisionIds] = useState<string[]>([])
+  const decisions = eligibleStudyDecisions(study, finding.id)
+  const matchingItems = (selection.replacementItems || []).filter((item) => item.studyId === study.id && item.findingId === finding.id)
+  const replacementItem = matchingItems.length === 1 ? matchingItems[0] : undefined
+  const matchingOwner = selection.ownerId === study.ownerId
+  const enabled = selection.enabled && matchingOwner && !busy
+  const unavailableReason = !matchingOwner ? "This study belongs to a different owner."
+    : !selection.enabled ? "Choose a job and create or reopen an internal draft first."
+    : busy ? "Wait for the recorded study operation to finish." : undefined
+  return <fieldset data-study-draft-selection={finding.id} disabled={!enabled} title={unavailableReason} style={{ marginTop: 12, padding: 10, border: "1px solid #cbd5e1", borderRadius: 8 }}>
+    <legend style={{ fontWeight: 650 }}>Internal draft handoff</legend>
+    <p style={{ margin: "0 0 8px", fontSize: 13 }}>Add this finding with its recorded evidence. Select any saved answers to retain with it. The draft item starts unresolved; this does not confirm scope, quantities or company costs.</p>
+    {decisions.length ? decisions.map((decision) => {
+      const inputId = `draft-study-answer-${encodeURIComponent(study.id)}-${encodeURIComponent(finding.id)}-${encodeURIComponent(decision.id)}`
+      return <label key={decision.id} htmlFor={inputId} style={{ display: "flex", alignItems: "start", gap: 8, margin: "8px 0", overflowWrap: "anywhere" }}>
+        <input id={inputId} type="checkbox" checked={selectedDecisionIds.includes(decision.id)} onChange={(event) => {
+          const checked = event.currentTarget.checked
+          setSelectedDecisionIds((current) => checked ? [...current.filter((id) => id !== decision.id), decision.id] : current.filter((id) => id !== decision.id))
+        }} />
+        <span>Include saved answer: {decision.answer}</span>
+      </label>
+    }) : <p style={{ fontSize: 13 }}>No current saved answers are available for this finding. The finding can still be added as unresolved.</p>}
+    <button type="button" disabled={!enabled} style={buttonStyle} onClick={() => {
+      if (enabled) selection.onSelect(study, finding.id, [...selectedDecisionIds])
+    }}>Add finding to internal draft</button>
+    {replacementItem && selection.onReplace && <div style={{ marginTop: 10 }}>
+      <p style={{ margin: "0 0 8px", fontSize: 13 }}>This finding already has a draft item at the entered location. Replace its retained evidence with this finding and only the answers selected above. Entered scope and costs remain; the item becomes unresolved and needs scope/quantity confirmation and direct-cost approval again. Saved revisions remain unchanged.</p>
+      <button type="button" disabled={!enabled} style={buttonStyle} onClick={() => {
+        if (enabled) selection.onReplace?.(study, finding.id, [...selectedDecisionIds], replacementItem.id)
+      }}>Replace retained evidence on draft item</button>
+    </div>}
+    {unavailableReason && <p style={{ margin: "8px 0 0", fontSize: 13 }}>{unavailableReason}</p>}
+  </fieldset>
+}
+
+function FindingRecord({ finding, study, busy, allowAnswer, draftSelection, onEvidence, onAnswer }: { finding: Finding; study: Study; busy: boolean; allowAnswer: boolean; draftSelection?: StudyDraftSelection; onEvidence: (citation: Citation) => void; onAnswer: (answer: string) => void }) {
   const uniqueIdentity = study.findings.filter((item) => item.id === finding.id).length === 1
   return <article data-study-finding={finding.id} style={boxStyle}>
     <div style={{ fontSize: 12, color: "#475569" }}>{kindLabels[finding.kind]} · {finding.trade}</div>
@@ -44,15 +90,21 @@ function FindingRecord({ finding, study, busy, allowAnswer, onEvidence, onAnswer
     {(finding.kind === "question" || finding.kind === "conflict") && (uniqueIdentity && allowAnswer
       ? <AnswerForm key={`${finding.id}:${study.revision}`} finding={finding} study={study} busy={busy} onSave={onAnswer} />
       : <p>Answer entry is unavailable until this finding’s identity and source provenance can be established. Existing answers remain in Saved study answers.</p>)}
+    {draftSelection && uniqueIdentity && allowAnswer && <FindingDraftSelection key={`${study.ownerId}:${study.id}:${study.revision}:${finding.id}`} finding={finding} study={study} busy={busy} selection={draftSelection} />}
   </article>
 }
 
 /** Internal study tools never mutate Estimate scope, measurements, prices or customer output. */
-export default function PlanStudySection({ fetcher, ownerKey }: { fetcher: typeof fetch; ownerKey: string }) {
+export default function PlanStudySection({ fetcher, ownerKey, draftSelection }: { fetcher: typeof fetch; ownerKey: string; draftSelection?: StudyDraftSelection }) {
   const state = usePlanStudy(fetcher, ownerKey)
   const [title, setTitle] = useState("Painting and wallcovering plan study")
   const [evidence, setEvidence] = useState<Citation | null>(null)
   const study = state.study
+  const observedOwnerId = draftSelection?.ownerId
+  const onStudyObserved = draftSelection?.onStudyObserved
+  useEffect(() => {
+    if (study && study.ownerId === observedOwnerId) onStudyObserved?.(study)
+  }, [study, observedOwnerId, onStudyObserved])
   const pages = study ? activePages(study) : []
   const prepared = pages.filter((page) => page.rendering === "complete" && ["complete", "empty"].includes(page.extraction)).length
   const analyzed = pages.filter((page) => page.analysis === "complete").length
@@ -63,7 +115,7 @@ export default function PlanStudySection({ fetcher, ownerKey }: { fetcher: typeo
   const reviewStepsRecorded = study?.synthesis === "complete" && pages.length > 0 && incomplete === 0
   const briefing = study ? buildStudyBriefing(study) : null
   const coverageComplete = reviewStepsRecorded && limited === 0 && study?.synthesisReviewStatus === "complete" && Boolean(briefing?.synthesis)
-  const findingRecord = (finding: Finding, index: number, allowAnswer = true) => study && <FindingRecord key={`${finding.id}:${index}`} finding={finding} study={study} busy={state.busy} allowAnswer={allowAnswer} onEvidence={setEvidence} onAnswer={(answer) => { void state.answer(finding.id, answer) }} />
+  const findingRecord = (finding: Finding, index: number, allowAnswer = true) => study && <FindingRecord key={`${finding.id}:${index}`} finding={finding} study={study} busy={state.busy} allowAnswer={allowAnswer} draftSelection={draftSelection} onEvidence={setEvidence} onAnswer={(answer) => { void state.answer(finding.id, answer) }} />
 
   return <details data-plan-study data-no-print style={{ marginTop: 16, ...boxStyle }} onToggle={(event) => { if (event.currentTarget.open && !state.loaded && !state.busy) void state.list() }}>
     <summary style={{ cursor: "pointer", fontWeight: 800, minHeight: 32 }}>Study a plan package · painting &amp; wallcovering</summary>
