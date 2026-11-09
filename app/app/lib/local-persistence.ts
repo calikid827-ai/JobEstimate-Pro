@@ -11,6 +11,7 @@ import {
   JOB_KEY,
   JOB_TEMPLATES_KEY,
   OWNER_SYNC_TOKEN_KEY,
+  PROPOSAL_SNAPSHOT_KEY,
   RATE_CARD_KEY,
 } from "./constants"
 
@@ -28,6 +29,7 @@ export const LOCAL_STORAGE_KEYS = {
   rateCard: RATE_CARD_KEY,
   ownerSyncToken: OWNER_SYNC_TOKEN_KEY,
   draftRevisions: DRAFT_REVISION_KEY,
+  proposalSnapshots: PROPOSAL_SNAPSHOT_KEY,
 } as const
 
 export type CheckedLocalResult<T> = { ok: true; value: T } | { ok: false; error: string }

@@ -8,7 +8,9 @@ import type { createOwnerLocalPersistence } from "../lib/local-persistence"
 import { createSourceLinkedDraftStore } from "../lib/source-linked-draft-store"
 import { approveCosts, calculateDraft, checkStudyFreshness, confirmQuantity, createContractorItem, createDraft, importStudySelection, replaceStudySelection, snapshotStudySelection, updateDraftItem, workingCopy } from "../lib/source-linked-draft"
 import { calculateProfitTargetMarkup } from "../lib/profit-target"
+import type { ProposalProfile } from "../lib/customer-proposal-types"
 import PlanStudySection from "./PlanStudySection"
+import CustomerProposalSection from "./CustomerProposalSection"
 
 type Props = {
   ownerId: string
@@ -18,6 +20,7 @@ type Props = {
   isCurrent: () => boolean
   fetcher: typeof fetch
   defaults: DraftCommercial
+  companyProfile?: ProposalProfile
 }
 const box = { border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, marginTop: 12 } as const
 const button = { padding: "9px 12px", minHeight: 44, border: "1px solid #94a3b8", borderRadius: 7, background: "white", cursor: "pointer" } as const
@@ -28,7 +31,7 @@ const dollars = (value: number) => new Intl.NumberFormat("en-US", { style: "curr
 const numberOrUnknown = (value: string) => value.trim() ? Number(value) : null
 const problemText = (error: unknown) => error instanceof Error ? error.message : "The draft could not be updated."
 
-/** This workspace never supplies legacy result/history, PDFs, approvals or invoices. */
+/** Drafts and proposal snapshots stay separate from legacy results and issuance. */
 export default function SourceLinkedDraftSection(props: Props) {
   const [jobId, setJobId] = useState("")
   const selectedJobRef = useRef("")
@@ -48,7 +51,7 @@ export default function SourceLinkedDraftSection(props: Props) {
   </section>
 }
 
-function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, defaults, job, currentJob }: Props & { job: Job; currentJob: (id: string) => boolean }) {
+function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, defaults, companyProfile, job, currentJob }: Props & { job: Job; currentJob: (id: string) => boolean }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const draftRef = useRef(draft)
   const mounted = useRef(true)
@@ -194,7 +197,7 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
     {notice && <p role="status">{notice}</p>}
     {draft && <div data-draft-id={draft.id} style={box}>
       <h4 style={{ marginTop: 0 }}>Internal draft for {draft.job.name}</h4>
-      <p role="status">{saved?.fingerprint === JSON.stringify(draft) ? `Saved in this browser · revision ${saved.id}` : "Unsaved working copy"}. No customer PDF, sharing or invoice is available for these drafts.</p>
+      <p role="status">{saved?.fingerprint === JSON.stringify(draft) ? `Saved in this browser · revision ${saved.id}` : "Unsaved working copy"}. Customer PDF export uses a separate saved proposal snapshot. No sharing or invoice is available here.</p>
       <label>Draft title<input aria-label="Draft title" value={draft.title} style={input} disabled={busy} onChange={(event) => change({ ...draft, title: event.target.value })} /></label>
       <div style={{ ...grid, marginTop: 10 }}>
         <label>Location for added scope<input aria-label="Location for added scope" value={importLocation} style={input} disabled={busy} onChange={(event) => setImportLocation(event.target.value)} placeholder="Room, area or work location" /></label>
@@ -235,6 +238,7 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
       </div>
       {recorded && <details style={{ marginTop: 12 }}><summary>Recorded saved revision — {recorded.id}</summary><p>Saved {new Date(recorded.savedAt).toLocaleString()}. Recorded priced total: {dollars(recorded.calculation.total)}{recorded.calculation.partial ? " (partial)" : ""}. These historical calculations remain unchanged; the working copy separately checks source freshness.</p><p>Predecessor revision: {recorded.parentRevisionId || "None"}.</p></details>}
     </div>}
+    {recorded ? <CustomerProposalSection key={`${ownerKey}:${job.id}:${recorded.id}`} ownerId={ownerId} jobId={job.id} revision={recorded} workingDraft={draft} storage={storage} isCurrent={accessible} companyProfile={companyProfile || { name: "", address: "", phone: "", email: "", license: "" }} /> : <p>Save or open an estimate revision to review a customer proposal and export its PDF.</p>}
     <PlanStudySection fetcher={fetcher} ownerKey={`${ownerKey}:${job.id}`} draftSelection={{ ownerId, enabled: Boolean(draft) && !busy && accessible(), onSelect: selectStudy, replacementItems, onReplace: replaceStudy, onStudyObserved: observeStudy }} />
   </>
 }

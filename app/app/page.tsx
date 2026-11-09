@@ -14460,6 +14460,7 @@ const accountAccessMessage = !normalizedEmail
   ownerKey={`${owner.id}:${session.epoch}`}
   jobs={jobs}
   storage={ownerStorage}
+  companyProfile={companyProfile}
   isCurrent={() => session.isCurrentOwner(owner.id, session.epoch)}
   fetcher={fetch}
   defaults={{ markupPct: rateCard.markupPct, taxEnabled: rateCard.tax.enabled, taxRate: rateCard.tax.rate, depositEnabled: rateCard.deposit.enabled, depositType: rateCard.deposit.type, depositValue: rateCard.deposit.value }}
