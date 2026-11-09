@@ -2,7 +2,39 @@
 
 Shared work file for any agent picking up work in this repo. Read it fully before starting. Dylan is the only merge point.
 
-## Repository state when this handoff was written
+## Active checkpoint — 2026-11-09
+
+The accepted Source-Linked Estimate Draft V1 implementation is committed as `49fb91bc49ea2267f4e22dfed57f586155ef2adc` (`Connect Plan Study to source-linked estimate drafts`), with direct parent `5768eccc54c8e6b4b78ad0e3c1cc2cfa6bf6df27`. This handoff accompanies the approved homepage/documentation checkpoint above that estimator commit; it does not predict its own future commit SHA.
+
+| Item | Current checkpoint |
+|---|---|
+| Repository / branch | `calikid827-ai/JobEstimate-Pro` / `codex/owner-identity-preview` |
+| Accepted estimator | Source-linked internal drafts reachable in `/app`; 13 implementation/test files, 2,223 insertions / 6 deletions in `49fb91b` |
+| Homepage | User-approved navy/blue-and-white redesign; existing `/app` navigation retained; advanced connected plan-to-proposal capabilities explicitly labeled as in development |
+| Additional commit authorized | `Refresh homepage and update estimating workflow handoff`; only `app/page.tsx` and `HANDOFF.md` |
+| Publication | Not asserted here. A feature-branch push is authorized only after live ancestry checks and current authoritative configuration establish that it will not trigger an automatic deployment. Report the actual outcome in the closing session; do not amend this file after committing merely to record a push. |
+| Main branches | Local main was `22a30b91c4152b953f6ada2a86ed56bf3ee37895`; live remote main was `1db694c87d252a3599be390ce07d1bbdfdfe09b3` at this checkpoint's preflight. Preserve both independently. |
+
+**Current authorization takes precedence over historical instructions below.** Dylan explicitly authorized committing the previously protected homepage and handoff edits in this checkpoint. Earlier directions to leave those files unstaged/uncommitted are historical restrictions for earlier tasks, not a prohibition on this authorized two-file commit. No redesign, additional feature, customer-proposal phase, main-branch merge, deployment or deployment-setting change is authorized.
+
+### Accepted internal draft workflow and boundaries
+
+- Choose an existing job, create or reopen an internal draft, explicitly select Study findings and saved answers or enter contractor-written scope, confirm scope/quantity, separately approve direct costs, review deterministic pricing, and save a new browser revision. Existing Study viewing remains available without choosing a job or creating a draft; this milestone adds no job-management system.
+- Retain exact finding, answer, citation, attempt and source-version/hash identities with the selected evidence. Imported findings begin unresolved; Study answers do not approve quantities or company costs. Contractor-written scope remains labeled as contractor input.
+- Reopening retains historical calculations while the working copy checks source freshness. A changed selected answer can be explicitly replaced on the exact existing working item, preserving its identity and entered inputs while clearing both approvals and requiring confirmation again. Ordinary duplicate imports remain rejected. Earlier saved revisions remain unchanged.
+- Saving is owner/job scoped, append-only through checked writes and readback, and requires browser Web Locks. Storage or locking failure is visible and leaves the working draft unsaved. Browser-local records are not cloud backup or a tamper-proof issued-document archive.
+- These drafts do not enter legacy generated-result/history, customer PDF, approval-link, invoice or sending paths. This milestone does not fix the separate disclosure, stale-approval or other historical audit findings below. No automatic measured takeoff or AI repricing authority was added.
+
+### Validation provenance and open limits
+
+- **Accepted estimator results [PREVIOUSLY-RUN; not rerun for the homepage checkpoint]:** the original focused suite passed 76/76. The final acceptance correction's affected domain suite passed 23/23 in normal mode and the same 23/23 in installed Zod interpreter mode. Final actual-component browser acceptance passed 15/15 with synthetic dependencies and blocked transport, including evidence replacement, immutable historical revisions and both queued-save regressions. Its final guard record had zero CSP events, browser transport attempts, Node outgoing connections or browser errors.
+- **Historical browser limitation:** the earlier broad no-guard-events assertion failed on a CSP event without source context. It remains unattributed retrospectively. A later instrumented diagnostic traced its own fresh event to the installed Zod `Function` capability probe; configuring the isolated harness's supported interpreter mode resolved that fresh harness violation without weakening CSP or transport protection. Do not relabel the earlier run as a complete pass.
+- **Normal TypeScript [PREVIOUSLY-RUN]:** `tsc --noEmit --incremental false` failed with the known TS2344 diagnostic at `.next/dev/types/app/api/entitlement/route.ts:14`, involving the extra `handleEntitlementPost` export. The acceptance run reported no new implementation diagnostics. No entitlement route, generated types or TypeScript configuration was changed to suppress it. This is not a passing normal typecheck.
+- **Workspace lint [PREVIOUSLY-RUN]:** `/app` retained the same 16 errors and 39 warnings as its baseline. Targeted non-page estimator lint passed. Do not describe whole-application lint as clean.
+- **Homepage checks [EXECUTED for this checkpoint]:** installed ESLint initially found five unescaped JSX apostrophes. Escaping those text nodes preserved their visible wording; the final targeted homepage lint passed with zero errors/warnings, and the installed TypeScript TSX parser reported zero syntax diagnostics. Parsing is not a typecheck or build. The accepted estimator suite was not repeated for this homepage commit.
+- Synthetic acceptance does not establish real-project, real-model, actual Auth, PDF, mobile-browser or production behavior. The historical T1 browser/PDF cases below remain open; internal-draft browser checks do not close them. No new hosted customer-data access, sign-in, provider calls, uploads, document preparation, allowance changes, SQL, dependency installation or builds are part of this checkpoint.
+
+## Historical repository state when this handoff was written — 2026-10-26
 
 | Item | Value |
 |---|---|
@@ -13,7 +45,7 @@ Shared work file for any agent picking up work in this repo. Read it fully befor
 | Written / updated | 2026-10-26 |
 | Inputs | `AUDIT_REPORT.md` (read-only audit at the same HEAD) and direct reads of current source |
 
-**Before starting any task:** confirm branch and HEAD still match, or note the difference in the Log. Do not edit `AUDIT_REPORT.md`.
+**Before starting any task:** verify the actual branch and HEAD against the applicable current task checkpoint, and record differences rather than restoring an older state. The table above is historical. Do not edit `AUDIT_REPORT.md`.
 
 ## Evidence labels
 
@@ -47,9 +79,11 @@ Keep these apart in every report back.
 
 ## Status
 
+These audit-task rows retain their historical task status and evidence; old publication statements describe those recorded checkpoints. Use the active checkpoint above and the closing session report for current authorization and publication state.
+
 | Task | Title | Status |
 |---|---|---|
-| T1 | D-01: approval-signature validation and safe PDF image rendering | **Committed locally:** `3bd36cc36bb77dc3c72f93e2a7ac2389d568260a`. Decisions 1-3 accepted; independent source review found no blocking issues. Browser/PDF cases remain unverified: the saved/managed browser policy blocked the authorized localhost controls. No push or deployment |
+| T1 | D-01: approval-signature validation and safe PDF image rendering | **Committed locally:** `3bd36cc36bb77dc3c72f93e2a7ac2389d568260a` (docs in `538b91c`). Decisions 1-3 accepted; independent source review found no blocking issues. **Browser/PDF cases still unverified.** First attempt: browser policy blocked localhost controls. Second attempt (2026-10-26): the Claude built-in browser pane blocked the app's PDF popup, including on Dylan's own click. A manual Chrome checklist is prepared; awaiting Dylan's observations. No push or deployment |
 | T2a | D-02: debug-header containment | Ready to scope; one decision (4) |
 | T2b | D-02: quota and replay guarantee | Blocked on verified RPC semantics (R1) and decision 5 |
 | T3 | D-14: server-owned approval timestamps | Not started; decision 6 |
@@ -650,3 +684,92 @@ If the catalog shows anything readable or writable with the public key, stop and
   - **Cleanup [EXECUTED NOW]:** staging QA logout returned HTTP 204; the local QA server stopped and no listener remained on port 3217. Temporary privileged key, password, access/refresh session data, and public-key files were removed or cleared. The QA account remains in staging for a later authorized retry; no account deletion or other database cleanup was performed. Agent-created browser tabs were closed.
   - **Implementation commit [EXECUTED NOW]:** `3bd36cc36bb77dc3c72f93e2a7ac2389d568260a`, `Validate approval signatures and escape PDF images`, parent `4dbbc9a811467bc330179b9171b6788ad7f97b1e`; exactly eight files, 757 insertions / 40 deletions. The original audit is preserved unchanged for the separate documentation commit with this handoff.
   - **Remaining work:** resolve the browser's saved/managed CDP permission for the intended localhost site, then rerun the five actual app/PDF cases with a verified staging session and synthetic owner-scoped data. No later implementation task was started.
+- 2026-10-26: **T1 browser/PDF verification, second attempt (Claude): PDF popup blocked; five cases not run.** Start state: branch `codex/owner-identity-preview`, HEAD `538b91c11aa2fa23dcd7ec7e19d1aa6bf9c9676d` (on top of `3bd36cc`), clean tree, nothing staged. No commit, staging, push, or deployment. No other task started.
+  - **Environment [EXECUTED NOW]:**
+    - Next.js 16.1.6 `dev --webpack` on `127.0.0.1:3217`, launched with `env -i` so no inherited tokens reached it.
+    - Every `.env.local` key overridden at launch; `.env.local` unchanged. Next's env loader never applies a `.env.local` value for a key already in the environment (checked in `@next/env`).
+    - Staging only: Supabase URL `https://aazacbrnkitvsjnlbrcy.supabase.co` (project "JobEstimate Pro Staging", confirmed read-only through the Supabase connector) and the staging **publishable** key, which is public.
+    - `NEXT_PUBLIC_SITE_URL` and `ALLOWED_ORIGIN_HOSTS` set to the loopback origin.
+    - Service-role, OpenAI, and Stripe secret slots set to non-credential placeholders; Stripe price and webhook values blank; telemetry off. The real staging service key was not needed and not used; `/api/entitlement` failed closed and showed "Free".
+    - The compiled dev client bundles referenced staging in 3 files and production in 0. An old production build in `.next/server` (Oct 24) still contains production references; the dev server doesn't use it.
+  - **Network [EXECUTED NOW]:**
+    - Server: an outbound allowlist guard (loopback, staging Supabase, Google Fonts), inherited by Next's child processes.
+    - Self-test before launch: OpenAI, production Supabase (`aqkqrsstouhioishcios`), and Stripe were blocked; staging was reachable.
+    - During QA: 4 connections, all to staging Supabase; 1 blocked npm-registry check; no production, AI, or Stripe connection.
+    - Browser: the built-in pane offers no browser-level network restriction. Its captured request log showed only `127.0.0.1` traffic, and it omitted the staging auth calls that sign-in must have made. So it is **not** proof of browser-side isolation.
+  - **Authentication [OBSERVED NOW]:**
+    - The recorded QA account (`d62cd3a9-…`) could not complete normal sign-in: the app signs in only by emailed code, `example.test` cannot receive mail, and the earlier cleanup deleted its password. It was not used.
+    - No account was created, and Claude sent no sign-in codes.
+    - Dylan signed in manually with an existing staging account he controls (owner `e8a3c9e9-cf66-487f-ac21-9278672bdd84`). The server verified the session, and the workspace rendered.
+  - **Browser:** the Claude desktop app's built-in browser pane, not Chrome. It loaded `127.0.0.1:3217` without a permission refusal.
+  - **Synthetic data [EXECUTED NOW]:**
+    - Three approved synthetic estimates:
+      - a valid 8,947-byte synthetic PNG signature;
+      - an unreadable attribute-breakout string, carrying a harmless marker that would reveal any execution;
+      - no signature.
+    - A synthetic company profile with a PNG logo; an SVG logo was prepared for the unsupported case.
+    - All stored only in that owner's local namespace on the QA origin. SHA-256 hashes were verified after storing.
+    - The repo's validators classified them valid / unreadable / absent, PNG logo allowed, SVG logo rejected.
+    - The estimates loaded in Saved Estimates with APPROVED badges. That is not one of the PDF cases.
+  - **Blocker [OBSERVED NOW]:**
+    - "Download Estimate PDF" produced the app's own message, "Pop-up blocked. Please allow pop-ups to download the PDF."; `window.open` returned nothing and no tab opened.
+    - Repeated with Dylan's own click: still blocked.
+    - No `window.open` override, redirect into the main page, alternate browser, auth bypass, or fake owner response was used.
+
+    | Requested case | Browser/PDF result |
+    |---|---|
+    | Valid signature | Not run: built-in pane blocked the PDF popup |
+    | Unreadable stored signature | Not run: same blocker |
+    | Absent signature | Not run: same blocker |
+    | Allowed logo | Not run: same blocker |
+    | Unsupported logo | Not run: same blocker; SVG logo never loaded |
+
+    No PDF popup or print preview was opened, so the browser/PDF limitation stays open. Renderer and unit results are not substituted for these cases.
+  - **No data changes:** no estimate generated, no AI invoked, no approval submitted, no invoice created. No server-side data writes; staging traffic was auth verification plus the failed entitlement lookups.
+  - **Cleanup [EXECUTED NOW]:**
+    - Signed out through the app (`scope: "local"`, so other staging sessions were untouched); the auth key is gone.
+    - Removed all 9 keys of that owner's namespace on the QA origin, both the synthetic records and the empty defaults the app created at sign-in. The origin's local storage is empty.
+    - Closed the agent tab; stopped the dev server and a temporary loopback payload server (port 3218, which served the synthetic payload); no listener remains on 3217 or 3218.
+    - Deleted the protected temp directory (launcher, guard, payload, logs).
+    - Preserved files matched their pre-QA hashes: `.env.local`, `tsconfig.json`, `next-env.d.ts`, `package.json`, `package-lock.json`, `next.config.ts`, and `tsconfig.tsbuildinfo` (`b9266d04782844b2b46de80cccbb59c7772ae2b0`). The dev server updated the gitignored `.next/dev` cache.
+  - **Automated results:** previously executed and not rerun: 26/26 focused tests, 1,169/1,169 non-live tests, TypeScript exit 0, lint 64 pre-existing / 0 new.
+  - **Remaining work:**
+    - Run the five cases in a browser that allows this app's `window.open` popup and print preview, with a verified staging session.
+    - The recorded QA account needs a usable normal sign-in path, or Dylan signs in again.
+- 2026-10-26: **T1 manual Chrome checklist prepared (DIY path); browser/PDF limitation still open.** HEAD `538b91c`; `HANDOFF.md` is the only modified file. No browser was automated. No other browser or session, `window.open` override, authentication change, application-code change, account creation, staging, commit, push, or deployment.
+  - **Materials (temporary, outside the repo):** session scratchpad folder `t1-manual-qa/`, containing `CHECKLIST.md`, `launch-staging-qa.sh`, `net-guard.mjs`, `seed-estimates.js`, `logo-allowed.png`, `logo-unsupported.svg`, and `cleanup-local-data.js`. The checklist ends with deleting the folder.
+  - **Launch procedure (new, not the earlier command):**
+    - Port 3219; `env -i`; every `.env.local` key overridden, and `.env.local` untouched.
+    - Staging Supabase `aazacbrnkitvsjnlbrcy` with its public publishable key; `NEXT_PUBLIC_SITE_URL` and `ALLOWED_ORIGIN_HOSTS` set to `127.0.0.1:3219`.
+    - Service-role, OpenAI, and Stripe secrets are non-credential placeholders; telemetry off.
+    - Server outbound guard allowlist: loopback, staging Supabase, Google Fonts.
+    - On exit, prints the `Entitlement lookup error` count, the outbound hosts, and a preserved-file hash check.
+    - Recorded expectation: the placeholder service-role key makes `/api/entitlement` fail closed, so the app shows "Free". That is not a real entitlement result.
+  - **Fixture setup:**
+    - Dylan signs in normally with an existing staging account he controls.
+    - A console snippet stores three synthetic approved estimates (valid PNG signature, unreadable marker string, no signature) only under that owner's namespace on `127.0.0.1:3219`. It finds the namespace from key names only, never reads or changes the auth session, and refuses another origin, a missing namespace, or existing non-QA estimates.
+    - The PNG and SVG logos are uploaded through the real Business Settings file input.
+    - The cleanup snippet runs only after sign-out, checks the auth key's name only, and removes `jobestimatepro_owner:*` keys.
+  - **What Claude executed now [EXECUTED NOW]:**
+    - Built the fixtures and checked them with the repo's own helpers: signature 8,947-byte 360×90 PNG → `valid` (SHA-256 `0792562e…`); marker → `unreadable`; missing → `absent`; PNG logo 180×48 → allowed; SVG logo → rejected.
+    - Ran both snippets in Node against a mock `localStorage` that counts auth-key value reads: seed and cleanup succeeded; each refusal path triggered; 0 auth-value reads.
+    - Smoke-tested the launcher with no browser: Next ready on `127.0.0.1:3219`; `/app` returned 200; `/api/entitlement` without a session returned 401; the guard loaded in both processes and blocked only the npm-registry check; the dev bundle referenced staging, not production.
+    - Stopped the launcher: the exit summary printed 0 entitlement errors (no sign-in) and all 7 preserved files OK, including build info `b9266d04782844b2b46de80cccbb59c7772ae2b0`; no listener remained.
+  - **Expected results:** derived from source review of `downloadPDF()` and the T1 helpers. These are not observations:
+    - valid → signature image;
+    - unreadable → "Signature on file could not be displayed", no image;
+    - absent → blank "Customer Signature" / "Date" lines;
+    - PNG logo → image above the company name;
+    - SVG logo → omitted, company name kept.
+
+    Each has a matching print-preview check.
+  - **Evidence status:**
+    - Dylan's manual Chrome observations: **pending**.
+    - Earlier automated results: unchanged and not rerun (26/26 focused tests, 1,169/1,169 non-live tests, TypeScript exit 0, lint 64 pre-existing / 0 new).
+    - The browser/PDF limitation stays open until Dylan reports.
+
+- 2026-11-09: **Accepted internal drafts and approved homepage/documentation checkpoint.** The accepted estimator commit is `49fb91bc49ea2267f4e22dfed57f586155ef2adc`, parent `5768eccc54c8e6b4b78ad0e3c1cc2cfa6bf6df27`. Dylan authorized including the existing homepage and handoff edits in one additional ordinary local commit, superseding their earlier protected/uncommitted status. The approved navy/blue-and-white design, `/app` navigation and in-development capability labels are preserved; five JSX apostrophes were escaped solely to resolve targeted lint findings.
+  - **Executed for this checkpoint:** verified the actual branch/HEAD, initially empty index and exactly two remaining modified paths; read both pending diffs; targeted homepage ESLint passed after the minimal corrections; the installed TypeScript TSX parser reported zero syntax diagnostics. No estimator tests, normal typecheck, build or preview restart was performed for this homepage checkpoint.
+  - **Accepted prior evidence:** the estimator's 76-test initial suite, 23-test final affected suite in each of two Zod modes, 15 final synthetic browser assertions, known normal TypeScript failure and unchanged `/app` lint findings remain separately recorded above. No real-project, real-model, Auth, PDF, mobile or production validation is claimed.
+  - **Read-only deployment safeguard observed for this checkpoint:** the existing authenticated Vercel dashboard shows `jobestimatepro` connected to `calikid827-ai/JobEstimate-Pro`, Preview branch tracking disabled with no unsaved setting change, Production tracking only `main`, no custom environments and no deploy hooks. Inspected repository trees contain no deployment workflow definitions. This supports an ordinary feature-branch publication without an automatic deployment under the observed configuration; it does not prevent someone from changing settings or manually deploying later. No sign-in, setting change or deployment test was initiated.
+  - **Publication boundary:** commit only these two files above the accepted estimator history. A later push of the exact final feature tip requires live ancestor verification and a proven no-automatic-deployment safeguard. No publication success is claimed in this entry; the actual commit identity, push result and final Git state belong in the closing session report. Do not edit the committed handoff just to add that result.

@@ -1,812 +1,990 @@
+
 "use client"
 
 import Link from "next/link"
 
-const sectionStyle = {
-  marginTop: 56,
-  paddingTop: 26,
-  borderTop: "1px solid #eee",
-}
+const workflow = [
+  {
+    number: "01",
+    title: "Upload Plans",
+    description:
+      "Bring construction drawings, specifications, and project documents into one place.",
+  },
+  {
+    number: "02",
+    title: "Understand Scope",
+    description:
+      "Use AI-assisted plan review to identify relevant work, requirements, and unanswered questions.",
+  },
+  {
+    number: "03",
+    title: "Build Estimate",
+    description:
+      "Develop quantities and pricing using your company's approved estimating information.",
+  },
+  {
+    number: "04",
+    title: "Review Pricing",
+    description:
+      "Check costs, scope coverage, calculations, and potential underbidding risks.",
+  },
+  {
+    number: "05",
+    title: "Generate Proposal",
+    description:
+      "Prepare a clear, professional proposal based on your reviewed and approved estimate.",
+  },
+]
 
-const cardStyle = {
-  padding: 18,
-  border: "1px solid #eee",
-  borderRadius: 16,
-  background: "#fff",
-}
+const benefits = [
+  {
+    number: "01",
+    title: "Understand the Job",
+    description:
+      "Construction plans contain critical details. Keep drawing requirements, scope questions, and estimating decisions connected.",
+  },
+  {
+    number: "02",
+    title: "Estimate With Your Numbers",
+    description:
+      "Your labor rates, material costs, subcontractors, and profit targets should drive your estimate—not invented AI pricing.",
+  },
+  {
+    number: "03",
+    title: "Catch Potential Problems",
+    description:
+      "Identify possible missed scope, pricing concerns, unclear responsibilities, and quantities needing verification.",
+  },
+  {
+    number: "04",
+    title: "Create Better Proposals",
+    description:
+      "Turn your estimating work into organized, customer-friendly documents without starting from scratch.",
+  },
+]
 
-const buttonStyle = {
-  padding: "14px 18px",
-  fontSize: 16,
-  background: "#000",
-  color: "#fff",
-  border: "none",
-  borderRadius: 12,
-  cursor: "pointer",
-  fontWeight: 900,
-  boxShadow: "0 14px 30px rgba(0,0,0,0.16)",
-}
+const tools = [
+  {
+    title: "Estimates",
+    description:
+      "Develop job scopes, review pricing, and prepare professional estimating documents.",
+  },
+  {
+    title: "PriceGuard™",
+    description:
+      "Get an additional review of potential scope gaps and pricing risks.",
+  },
+  {
+    title: "Plan Review",
+    description:
+      "Examine uploaded project information and identify items that may need confirmation.",
+  },
+  {
+    title: "Change Orders",
+    description:
+      "Document added work and organize changes to the original scope.",
+  },
+  {
+    title: "Customer Approvals",
+    description:
+      "Keep pricing, approval documents, and customer decisions organized.",
+  },
+  {
+    title: "Invoices",
+    description:
+      "Support the transition from estimated and approved work to billing.",
+  },
+]
+
+const trades = [
+  "General Contractors",
+  "Remodelers",
+  "Painting Contractors",
+  "Drywall Contractors",
+  "Wallcovering Installers",
+  "Flooring Contractors",
+  "Tile Contractors",
+  "Handymen",
+  "Property Maintenance",
+  "Small Construction Businesses",
+]
 
 export default function HomePage() {
   return (
-    <main
-      style={{
-        maxWidth: 980,
-        margin: "70px auto",
-        padding: "0 22px 80px",
-        fontFamily:
-          'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"',
-        color: "#0b0b0b",
-      }}
-    >
-      {/* TOP BAR */}
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 14,
-          padding: "10px 0 26px",
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 900,
-            letterSpacing: "-0.3px",
-            lineHeight: 1.1,
-          }}
-        >
-          JobEstimate <span style={{ color: "#111" }}>Pro</span>
-        </div>
+    <main className="jep">
+      <style>{`
+        .jep {
+          --navy: #10243e;
+          --blue: #2563eb;
+          --text: #17263a;
+          --muted: #64748b;
+          --border: #e2e8f0;
+          --light: #f8fafc;
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#666" }}>
-            Built for real contractors
-          </span>
-          <Link href="/app">
-            <button
-              style={{
-                padding: "10px 14px",
-                fontSize: 14,
-                background: "#111",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              Open App
-            </button>
+          font-family: system-ui, -apple-system,
+            BlinkMacSystemFont, "Segoe UI",
+            Arial, sans-serif;
+          background: #ffffff;
+          color: var(--text);
+          min-height: 100vh;
+          line-height: 1.5;
+        }
+
+        .jep * {
+          box-sizing: border-box;
+        }
+
+        .jep a {
+          text-decoration: none;
+        }
+
+        .jep-container {
+          width: min(1120px, calc(100% - 40px));
+          margin: auto;
+        }
+
+        .jep-header {
+          border-bottom: 1px solid var(--border);
+          background: #ffffff;
+        }
+
+        .jep-nav {
+          min-height: 82px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .jep-logo {
+          font-size: 25px;
+          font-weight: 950;
+          letter-spacing: -1.2px;
+          color: var(--navy);
+          line-height: 1.1;
+        }
+
+        .jep-logo span {
+          color: var(--blue);
+        }
+
+        .jep-nav-actions {
+          display: flex;
+          gap: 20px;
+          align-items: center;
+        }
+
+        .jep-nav-link {
+          color: #475569;
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .jep-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          min-height: 50px;
+          padding: 13px 22px;
+          border-radius: 11px;
+          font-size: 15px;
+          line-height: 1.3;
+          font-weight: 850;
+          transition: background .2s, transform .2s;
+        }
+
+        .jep-button:hover {
+          transform: translateY(-2px);
+        }
+
+        .jep-primary {
+          background: var(--blue);
+          color: #ffffff;
+        }
+
+        .jep-primary:hover {
+          background: #1d4ed8;
+        }
+
+        .jep-dark-button {
+          background: var(--navy);
+          color: #ffffff;
+        }
+
+        .jep-outline {
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          color: var(--navy);
+        }
+
+        .jep-white-button {
+          background: #ffffff;
+          color: var(--navy);
+        }
+
+        .jep-hero {
+          padding: 95px 0 90px;
+          background:
+            radial-gradient(
+              ellipse at 90% 10%,
+              rgba(37,99,235,.10),
+              transparent 55%
+            ),
+            linear-gradient(180deg, #ffffff, #f7faff);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .jep-eyebrow {
+          display: inline-block;
+          padding: 8px 14px;
+          color: #1d4ed8;
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          border-radius: 100px;
+          font-size: 12px;
+          font-weight: 900;
+          letter-spacing: .7px;
+          text-transform: uppercase;
+        }
+
+        .jep-hero h1 {
+          max-width: 930px;
+          margin: 26px 0 22px;
+          color: var(--navy);
+          font-size: clamp(44px, 7vw, 80px);
+          font-weight: 950;
+          line-height: 1.06;
+          letter-spacing: -3px;
+        }
+
+        .jep-blue {
+          color: var(--blue);
+        }
+
+        .jep-hero-description {
+          max-width: 740px;
+          font-size: clamp(17px, 2.3vw, 21px);
+          color: #526174;
+          line-height: 1.7;
+        }
+
+        .jep-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-top: 30px;
+        }
+
+        .jep-hero-note {
+          color: var(--muted);
+          margin-top: 19px;
+          font-size: 13px;
+        }
+
+        .jep-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 38px;
+        }
+
+        .jep-tag {
+          background: #ffffff;
+          border: 1px solid var(--border);
+          border-radius: 100px;
+          padding: 9px 14px;
+          color: #334155;
+          font-size: 13px;
+          font-weight: 750;
+        }
+
+        .jep-section {
+          padding: 85px 0;
+        }
+
+        .jep-soft {
+          background: var(--light);
+          border-top: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+        }
+
+        .jep-label {
+          color: var(--blue);
+          font-size: 12px;
+          font-weight: 950;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          margin-bottom: 13px;
+        }
+
+        .jep-heading {
+          max-width: 820px;
+          margin: 0;
+          color: var(--navy);
+          font-size: clamp(32px, 5vw, 48px);
+          line-height: 1.14;
+          letter-spacing: -1.7px;
+          font-weight: 950;
+        }
+
+        .jep-description {
+          max-width: 750px;
+          margin: 17px 0 0;
+          color: var(--muted);
+          font-size: 17px;
+          line-height: 1.75;
+        }
+
+        .jep-card {
+          background: #ffffff;
+          border: 1px solid var(--border);
+          border-radius: 18px;
+          padding: 25px;
+          min-width: 0;
+        }
+
+        .jep-steps {
+          display: grid;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+          gap: 13px;
+          margin-top: 35px;
+        }
+
+        .jep-step {
+          padding: 20px 17px;
+        }
+
+        .jep-number {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 43px;
+          height: 43px;
+          border-radius: 12px;
+          background: #eff6ff;
+          color: var(--blue);
+          font-weight: 950;
+        }
+
+        .jep-card-title {
+          margin: 19px 0 9px;
+          font-size: 18px;
+          color: var(--navy);
+          line-height: 1.3;
+          font-weight: 900;
+        }
+
+        .jep-card-description {
+          margin: 0;
+          font-size: 14px;
+          line-height: 1.7;
+          color: var(--muted);
+        }
+
+        .jep-note {
+          margin-top: 24px;
+          padding: 17px 20px;
+          border-radius: 12px;
+          border: 1px solid #bfdbfe;
+          background: #eff6ff;
+          color: #334155;
+          font-size: 14px;
+          line-height: 1.7;
+        }
+
+        .jep-feature-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+          margin-top: 35px;
+        }
+
+        .jep-feature-card {
+          padding: 30px;
+        }
+
+        .jep-feature-card h3 {
+          margin: 12px 0 10px;
+          font-size: 22px;
+          font-weight: 900;
+          letter-spacing: -.5px;
+          color: var(--navy);
+        }
+
+        .jep-feature-card p {
+          margin: 0;
+          color: var(--muted);
+          font-size: 15px;
+          line-height: 1.75;
+        }
+
+        .jep-feature-number {
+          color: var(--blue);
+          font-size: 13px;
+          font-weight: 950;
+        }
+
+        .jep-dark-panel {
+          background: var(--navy);
+          border-radius: 25px;
+          padding: 48px;
+          color: #ffffff;
+        }
+
+        .jep-dark-panel h2 {
+          margin: 0;
+          font-size: clamp(32px, 5vw, 48px);
+          line-height: 1.12;
+          letter-spacing: -1.5px;
+          font-weight: 950;
+        }
+
+        .jep-dark-panel p {
+          max-width: 720px;
+          margin: 18px 0 0;
+          color: #d3deeb;
+          font-size: 17px;
+          line-height: 1.75;
+        }
+
+        .jep-checks {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 13px;
+          margin-top: 27px;
+        }
+
+        .jep-check {
+          padding: 15px 17px;
+          border: 1px solid rgba(255,255,255,.14);
+          border-radius: 12px;
+          background: rgba(255,255,255,.06);
+          font-size: 14px;
+          font-weight: 750;
+        }
+
+        .jep-tool-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 16px;
+          margin-top: 35px;
+        }
+
+        .jep-tool-grid .jep-card-title {
+          margin-top: 0;
+        }
+
+        .jep-trades {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-top: 30px;
+        }
+
+        .jep-trade {
+          padding: 13px 17px;
+          border: 1px solid var(--border);
+          border-radius: 11px;
+          background: #ffffff;
+          font-size: 14px;
+          font-weight: 800;
+          color: #334155;
+        }
+
+        .jep-cta {
+          text-align: center;
+          background:
+            linear-gradient(135deg, #10243e, #1c4270);
+          color: #ffffff;
+          padding: 82px 25px;
+          border-radius: 25px;
+        }
+
+        .jep-cta h2 {
+          max-width: 800px;
+          margin: auto;
+          font-size: clamp(34px, 5vw, 55px);
+          font-weight: 950;
+          letter-spacing: -1.7px;
+          line-height: 1.12;
+        }
+
+        .jep-cta p {
+          max-width: 680px;
+          margin: 20px auto 0;
+          color: #d8e3f0;
+          line-height: 1.75;
+          font-size: 17px;
+        }
+
+        .jep-cta-actions {
+          display: flex;
+          justify-content: center;
+          margin-top: 30px;
+        }
+
+        .jep-footer {
+          padding: 30px 0;
+          margin-top: 35px;
+          border-top: 1px solid var(--border);
+        }
+
+        .jep-footer-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 14px;
+        }
+
+        .jep-footer-text {
+          color: var(--muted);
+          font-size: 12px;
+        }
+
+        @media (max-width: 950px) {
+          .jep-steps {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .jep-tool-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 640px) {
+          .jep-container {
+            width: calc(100% - 32px);
+          }
+
+          .jep-nav {
+            min-height: 72px;
+          }
+
+          .jep-logo {
+            font-size: 21px;
+          }
+
+          .jep-nav-link {
+            display: none;
+          }
+
+          .jep-nav .jep-button {
+            padding: 10px 13px;
+            min-height: 42px;
+            font-size: 13px;
+          }
+
+          .jep-hero {
+            padding: 65px 0;
+          }
+
+          .jep-hero h1 {
+            font-size: clamp(39px, 10vw, 54px);
+            letter-spacing: -1.8px;
+          }
+
+          .jep-section {
+            padding: 65px 0;
+          }
+
+          .jep-steps,
+          .jep-feature-grid,
+          .jep-tool-grid,
+          .jep-checks {
+            grid-template-columns: 1fr;
+          }
+
+          .jep-step {
+            padding: 22px;
+          }
+
+          .jep-dark-panel {
+            padding: 30px 23px;
+            border-radius: 19px;
+          }
+
+          .jep-cta {
+            padding: 58px 22px;
+          }
+
+          .jep-actions .jep-button {
+            width: 100%;
+          }
+
+          .jep-footer-content {
+            justify-content: center;
+            text-align: center;
+          }
+        }
+      `}</style>
+
+      {/* HEADER */}
+      <header className="jep-header">
+        <div className="jep-container jep-nav">
+          <Link href="/" className="jep-logo">
+            JobEstimate <span>Pro</span>
           </Link>
+
+          <div className="jep-nav-actions">
+            <a href="#how-it-works" className="jep-nav-link">
+              How It Works
+            </a>
+
+            <Link href="/app" className="jep-button jep-dark-button">
+              Open App
+            </Link>
+          </div>
         </div>
       </header>
 
       {/* HERO */}
-      <section
-        style={{
-          padding: "38px 26px",
-          borderRadius: 22,
-          border: "1px solid #e7e7e7",
-          background:
-            "linear-gradient(180deg, rgba(0,0,0,0.025), rgba(0,0,0,0.00))",
-          boxShadow: "0 18px 40px rgba(0,0,0,0.06)",
-          textAlign: "center",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: "clamp(38px, 7vw, 72px)",
-            margin: "0 0 16px",
-            lineHeight: 0.98,
-            letterSpacing: "-1.7px",
-            fontWeight: 950,
-          }}
-        >
-          Stop Underbidding Jobs.
-          <br />
-          Send Professional Estimates Faster.
-        </h1>
+      <section className="jep-hero">
+        <div className="jep-container">
+          <div className="jep-eyebrow">
+            AI-Assisted Construction Estimating
+          </div>
 
-        <p
-          style={{
-            fontSize: 18,
-            color: "#444",
-            maxWidth: 780,
-            margin: "0 auto",
-            lineHeight: 1.55,
-          }}
-        >
-          Create estimates, change orders, approval links, and invoices from
-          simple job scopes — with built-in PriceGuard™ checks to help flag
-          missing scope and low pricing risks before you send.
-        </p>
+          <h1>
+            From Construction Plans to{" "}
+            <span className="jep-blue">
+              Professional Estimates.
+            </span>
+          </h1>
 
-        <div
-          style={{
-            marginTop: 24,
-            display: "flex",
-            gap: 12,
-            justifyContent: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <Link href="/app">
-            <button style={buttonStyle}>Start Free</button>
-          </Link>
+          <p className="jep-hero-description">
+            Meet the construction estimating platform we&apos;re building
+            for real contractors. Bring your plans and project scope
+            together, review important requirements, develop pricing,
+            and create professional proposals with greater confidence.
+          </p>
 
-          <a href="#how-it-works" style={{ textDecoration: "none" }}>
-            <button
-              style={{
-                padding: "14px 18px",
-                fontSize: 16,
-                background: "#fff",
-                color: "#111",
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                cursor: "pointer",
-                fontWeight: 900,
-              }}
+          <div className="jep-actions">
+            <Link href="/app" className="jep-button jep-primary">
+              Open JobEstimate Pro
+            </Link>
+
+            <a
+              href="#how-it-works"
+              className="jep-button jep-outline"
             >
               See How It Works
-            </button>
-          </a>
-        </div>
+            </a>
+          </div>
 
-        <div style={{ marginTop: 10, fontSize: 13, color: "#666" }}>
-          3 free estimates. No credit card required.
-        </div>
+          <div className="jep-hero-note">
+            Start with the existing estimating tools.
+            Advanced plan-to-proposal features are in development.
+          </div>
 
-        {/* Trust chips */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            justifyContent: "center",
-            flexWrap: "wrap",
-            marginTop: 24,
-          }}
-        >
-          {[
-            "🛡️ PriceGuard™ checks",
-            "🔗 Approval links",
-            "✅ Print-ready PDFs",
-            "🧾 Change orders",
-            "📄 Invoices",
-          ].map((t) => (
-            <div
-              key={t}
-              style={{
-                fontSize: 13,
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: "1px solid #e9e9e9",
-                background: "#fff",
-                color: "#111",
-                fontWeight: 750,
-              }}
-            >
-              {t}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* PAIN SECTION */}
-      <section style={sectionStyle}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "clamp(30px, 5vw, 46px)",
-            lineHeight: 1.05,
-            letterSpacing: "-0.8px",
-          }}
-        >
-          Contractors Lose Money on Missed Scope
-        </h2>
-
-        <p
-          style={{
-            color: "#555",
-            fontSize: 17,
-            lineHeight: 1.6,
-            maxWidth: 740,
-            marginTop: 12,
-          }}
-        >
-          One forgotten detail can wipe out the profit on a job. JobEstimate Pro
-          helps you slow down the estimate before the customer sees it, so you
-          can catch the items that usually get missed.
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 14,
-            marginTop: 18,
-          }}
-        >
-          {[
-            "Doors, trim, ceilings, closets, and prep",
-            "Demo, protection, haul-off, and cleanup",
-            "Labor hours that were too low",
-            "Materials, markup, tax, and deposits",
-            "Change orders that were never approved",
-            "Vague scopes that cause client pushback",
-          ].map((item) => (
-            <div key={item} style={cardStyle}>
-              <div style={{ fontWeight: 850, lineHeight: 1.4 }}>✓ {item}</div>
-            </div>
-          ))}
+          <div className="jep-tags">
+            <div className="jep-tag">Plan Intelligence</div>
+            <div className="jep-tag">Smart Estimating</div>
+            <div className="jep-tag">PriceGuard™</div>
+            <div className="jep-tag">Professional Proposals</div>
+            <div className="jep-tag">Change Orders</div>
+          </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section id="how-it-works" style={sectionStyle}>
-        <h2
-          style={{
-            marginBottom: 16,
-            fontSize: "clamp(30px, 5vw, 44px)",
-            letterSpacing: "-0.7px",
-          }}
-        >
-          How It Works
-        </h2>
+      <section
+        id="how-it-works"
+        className="jep-section jep-soft"
+      >
+        <div className="jep-container">
+          <div className="jep-label">
+            The JobEstimate Pro Vision
+          </div>
 
-        <div style={{ display: "grid", gap: 12 }}>
-          {[
-            {
-              n: "1",
-              title: "Enter the scope",
-              text: "Describe the job, change order, or added work in plain language.",
-            },
-            {
-              n: "2",
-              title: "Review pricing",
-              text: "Adjust labor, materials, subcontractors, markup, tax, deposit, and totals.",
-            },
-            {
-              n: "3",
-              title: "Check PriceGuard™",
-              text: "Review possible missed scope, low pricing risks, quantity issues, and minimum charge problems.",
-            },
-            {
-              n: "4",
-              title: "Send for approval",
-              text: "Download a professional PDF or send a customer approval link for signature.",
-            },
-            {
-              n: "5",
-              title: "Create invoice",
-              text: "Turn approved work into an invoice without starting over.",
-            },
-          ].map((s) => (
-            <div
-              key={s.n}
-              style={{
-                display: "flex",
-                gap: 14,
-                alignItems: "flex-start",
-                padding: 16,
-                borderRadius: 16,
-                border: "1px solid #eee",
-                background: "#fafafa",
-              }}
-            >
-              <div
-                style={{
-                  minWidth: 38,
-                  width: 38,
-                  height: 38,
-                  borderRadius: 11,
-                  background: "#111",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 950,
-                }}
-              >
-                {s.n}
-              </div>
-              <div>
-                <div style={{ fontWeight: 950, fontSize: 18 }}>{s.title}</div>
-                <div style={{ color: "#555", marginTop: 4, lineHeight: 1.55 }}>
-                  {s.text}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* PRICEGUARD */}
-      <section style={sectionStyle}>
-        <div
-          style={{
-            padding: "28px 22px",
-            borderRadius: 22,
-            background: "#0b0b0b",
-            color: "#fff",
-            boxShadow: "0 18px 44px rgba(0,0,0,0.18)",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "clamp(32px, 5vw, 48px)",
-              lineHeight: 1.05,
-              letterSpacing: "-0.9px",
-            }}
-          >
-            Protect Your Profit With PriceGuard™
+          <h2 className="jep-heading">
+            One Complete Estimating Workflow.
           </h2>
 
-          <p
-            style={{
-              color: "#d7d7d7",
-              lineHeight: 1.6,
-              fontSize: 17,
-              maxWidth: 760,
-              marginTop: 12,
-            }}
-          >
-            PriceGuard™ helps review your estimate for common underbidding
-            risks before you send it to the customer.
+          <p className="jep-description">
+            We&apos;re building JobEstimate Pro around how contractors
+            actually estimate work—from understanding project
+            documents to preparing a proposal ready for review.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 12,
-              marginTop: 20,
-            }}
-          >
-            {[
-              "Missing scope items",
-              "Low pricing risks",
-              "Quantity issues",
-              "Minimum charge problems",
-              "Trade-specific labor assumptions",
-              "State-based labor adjustments",
-              "Pricing consistency checks",
-              "Editable pricing controls",
-            ].map((item) => (
-              <div
-                key={item}
-                style={{
-                  padding: 14,
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  fontWeight: 800,
-                }}
-              >
-                ✓ {item}
+          <div className="jep-steps">
+            {workflow.map((step) => (
+              <div className="jep-card jep-step" key={step.number}>
+                <div className="jep-number">
+                  {step.number}
+                </div>
+
+                <h3 className="jep-card-title">
+                  {step.title}
+                </h3>
+
+                <p className="jep-card-description">
+                  {step.description}
+                </p>
               </div>
             ))}
           </div>
 
-          <p
-            style={{
-              color: "#bdbdbd",
-              lineHeight: 1.55,
-              fontSize: 13,
-              marginTop: 18,
-            }}
-          >
-            PriceGuard™ does not replace your judgment. It gives you a second
-            set of eyes before you send the estimate.
-          </p>
-        </div>
-      </section>
-
-      {/* PREVIEW */}
-      <section style={sectionStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "clamp(30px, 5vw, 44px)",
-              letterSpacing: "-0.7px",
-            }}
-          >
-            Professional Output
-          </h2>
-          <div style={{ fontSize: 13, color: "#666" }}>
-            Clear scope. Pricing summary. Approval-ready.
+          <div className="jep-note">
+            <strong>In development:</strong> The connected
+            plan-to-proposal workflow shown above is our product
+            direction. Available features and capabilities may
+            differ while development and validation continue.
           </div>
         </div>
-
-        <p
-          style={{
-            color: "#555",
-            lineHeight: 1.6,
-            fontSize: 16,
-            maxWidth: 720,
-            marginTop: 10,
-          }}
-        >
-          Generate a professional estimate your client can understand — with
-          clear scope, pricing, approval language, and signature-ready output.
-        </p>
-
-        <div
-          style={{
-            marginTop: 16,
-            borderRadius: 18,
-            overflow: "hidden",
-            border: "1px solid #e7e7e7",
-            background: "#fff",
-            boxShadow: "0 26px 60px rgba(0,0,0,0.12)",
-          }}
-        >
-          <img
-            src="/screenshot.png"
-            alt="Example of a professional contractor estimate generated by JobEstimate Pro"
-            style={{
-              width: "100%",
-              display: "block",
-            }}
-          />
-        </div>
       </section>
 
-      {/* APPROVALS + INVOICES */}
-      <section style={sectionStyle}>
-        <h2
-          style={{
-            marginBottom: 16,
-            fontSize: "clamp(30px, 5vw, 44px)",
-            letterSpacing: "-0.7px",
-          }}
-        >
-          From Estimate to Approval to Invoice
-        </h2>
+      {/* WHY JOBESTIMATE PRO */}
+      <section className="jep-section">
+        <div className="jep-container">
+          <div className="jep-label">
+            Built Around Real Construction Work
+          </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 14,
-          }}
-        >
-          {[
-            {
-              title: "Get Work Approved Faster",
-              text: "Send a customer-safe approval link, collect a signature, sync approval status, and keep the job moving.",
-            },
-            {
-              title: "Create Change Orders",
-              text: "Document added work clearly so you are not relying on memory, texts, or verbal agreements.",
-            },
-            {
-              title: "Estimate to Invoice",
-              text: "Create standard invoices, deposit invoices, balance invoices, and invoice PDFs without starting over.",
-            },
-          ].map((c) => (
-            <div key={c.title} style={cardStyle}>
-              <div style={{ fontWeight: 950, fontSize: 20 }}>{c.title}</div>
-              <div
-                style={{
-                  marginTop: 8,
-                  color: "#555",
-                  lineHeight: 1.6,
-                  fontSize: 15,
-                }}
-              >
-                {c.text}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* PLAN REVIEW */}
-      <section style={sectionStyle}>
-        <div
-          style={{
-            padding: 22,
-            borderRadius: 20,
-            border: "1px solid #eee",
-            background: "#fafafa",
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "clamp(28px, 5vw, 42px)",
-              letterSpacing: "-0.7px",
-            }}
-          >
-            Upload Plans for a Second Set of Eyes
+          <h2 className="jep-heading">
+            Better Estimates Start With
+            Understanding the Job.
           </h2>
 
-          <p
-            style={{
-              color: "#555",
-              lineHeight: 1.6,
-              fontSize: 16,
-              maxWidth: 760,
-              marginTop: 10,
-            }}
-          >
-            Upload plan pages so JobEstimate Pro can help review estimate
-            evidence, summarize what was checked, and flag items that may need
-            confirmation.
+          <p className="jep-description">
+            A professional-looking proposal means nothing if
+            important work was overlooked or the pricing doesn&apos;t
+            cover the job. Our focus is helping contractors make
+            informed estimating decisions before sending a bid.
           </p>
 
-          <p
-            style={{
-              color: "#777",
-              lineHeight: 1.55,
-              fontSize: 13,
-              marginTop: 10,
-            }}
-          >
-            Plan Review Assistant helps support your estimate. It does not
-            replace field verification, measured takeoff, or your professional
-            judgment.
+          <div className="jep-feature-grid">
+            {benefits.map((benefit) => (
+              <div
+                className="jep-card jep-feature-card"
+                key={benefit.number}
+              >
+                <div className="jep-feature-number">
+                  {benefit.number}
+                </div>
+
+                <h3>{benefit.title}</h3>
+                <p>{benefit.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* PLAN INTELLIGENCE */}
+      <section className="jep-section jep-soft">
+        <div className="jep-container">
+          <div className="jep-label">
+            Plan Intelligence
+          </div>
+
+          <h2 className="jep-heading">
+            Understand the Plans Before
+            You Price the Work.
+          </h2>
+
+          <p className="jep-description">
+            Plan Study is being developed to help contractors
+            review construction documents, connect findings to
+            source information, and identify questions that
+            could affect project scope.
           </p>
+
+          <div className="jep-feature-grid">
+            {[
+              {
+                title: "Drawing Requirements",
+                text: "Review relevant notes, finish information, and project instructions.",
+              },
+              {
+                title: "Source References",
+                text: "Keep important findings connected to the documents supporting them.",
+              },
+              {
+                title: "Scope Questions",
+                text: "Identify unclear responsibilities, conflicts, and missing information.",
+              },
+              {
+                title: "Document Revisions",
+                text: "Work toward tracking changes without losing the original project decisions.",
+              },
+            ].map((item) => (
+              <div className="jep-card" key={item.title}>
+                <h3 className="jep-card-title">
+                  {item.title}
+                </h3>
+
+                <p className="jep-card-description">
+                  {item.text}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="jep-note">
+            Plan analysis assists professional review. It does
+            not guarantee complete scope detection or replace
+            field verification, measured takeoffs, or
+            contractor judgment.
+          </div>
+        </div>
+      </section>
+
+      {/* PRICEGUARD */}
+      <section className="jep-section">
+        <div className="jep-container">
+          <div className="jep-dark-panel">
+            <div
+              className="jep-label"
+              style={{ color: "#93c5fd" }}
+            >
+              PriceGuard™
+            </div>
+
+            <h2>
+              Stop Guessing.
+              <br />
+              Start Protecting Your Profit.
+            </h2>
+
+            <p>
+              PriceGuard™ is designed to give contractors
+              another opportunity to review their estimates
+              before sending them to customers.
+            </p>
+
+            <div className="jep-checks">
+              {[
+                "Potential missed scope",
+                "Low pricing concerns",
+                "Quantity issues",
+                "Labor assumptions",
+                "Material and subcontractor costs",
+                "Pricing consistency",
+                "Markup and profit considerations",
+                "Unresolved estimating questions",
+              ].map((item) => (
+                <div className="jep-check" key={item}>
+                  ✓ {item}
+                </div>
+              ))}
+            </div>
+
+            <p style={{ fontSize: 13 }}>
+              PriceGuard™ is a review aid, not a guarantee
+              of profitability, complete scope coverage,
+              or accurate pricing.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* EXISTING TOOL AREAS */}
+      <section className="jep-section jep-soft">
+        <div className="jep-container">
+          <div className="jep-label">
+            More Than an Estimate
+          </div>
+
+          <h2 className="jep-heading">
+            Tools for the Work Behind
+            Every Construction Job.
+          </h2>
+
+          <p className="jep-description">
+            JobEstimate Pro brings estimating and project
+            documentation tools together while we continue
+            developing the connected AI workflow.
+          </p>
+
+          <div className="jep-tool-grid">
+            {tools.map((tool) => (
+              <div className="jep-card" key={tool.title}>
+                <h3 className="jep-card-title">
+                  {tool.title}
+                </h3>
+
+                <p className="jep-card-description">
+                  {tool.description}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* BUILT FOR */}
-      <section style={sectionStyle}>
-        <h2
-          style={{
-            marginBottom: 16,
-            fontSize: "clamp(30px, 5vw, 44px)",
-            letterSpacing: "-0.7px",
-          }}
-        >
-          Built for Real Contractors
-        </h2>
+      <section className="jep-section">
+        <div className="jep-container">
+          <div className="jep-label">
+            Who It&apos;s For
+          </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {[
-            "Handymen",
-            "Remodelers",
-            "Painters",
-            "Drywall contractors",
-            "Flooring installers",
-            "Tile contractors",
-            "Property maintenance crews",
-            "Small construction businesses",
-          ].map((trade) => (
-            <div
-              key={trade}
-              style={{
-                padding: 15,
-                border: "1px solid #eee",
-                borderRadius: 14,
-                background: "#fff",
-                fontWeight: 900,
-              }}
-            >
-              {trade}
-            </div>
-          ))}
+          <h2 className="jep-heading">
+            Built for Real Contractors.
+          </h2>
+
+          <p className="jep-description">
+            Whether you&apos;re pricing a small repair or
+            reviewing a large renovation, the goal is
+            to give contractors a practical estimating
+            assistant that works with their trade,
+            pricing, and project requirements.
+          </p>
+
+          <div className="jep-trades">
+            {trades.map((trade) => (
+              <div className="jep-trade" key={trade}>
+                {trade}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* PRICING */}
-      <section style={sectionStyle}>
-        <h2
-          style={{
-            marginBottom: 8,
-            fontSize: "clamp(30px, 5vw, 44px)",
-            letterSpacing: "-0.7px",
-            textAlign: "center",
-          }}
-        >
-          Simple Pre-Launch Pricing
-        </h2>
+      {/* FINAL CTA */}
+      <section className="jep-section">
+        <div className="jep-container">
+          <div className="jep-cta">
+            <h2>
+              Understand the Scope.
+              <br />
+              Price the Work.
+              <br />
+              Win With Confidence.
+            </h2>
 
-        <p
-          style={{
-            margin: "0 auto",
-            color: "#555",
-            textAlign: "center",
-            maxWidth: 620,
-            lineHeight: 1.6,
-          }}
-        >
-          Try JobEstimate Pro free. Upgrade when you are ready to use it on real
-          jobs.
-        </p>
+            <p>
+              Better construction estimating starts
+              with better information. Explore JobEstimate Pro
+              as we build toward a complete
+              AI-assisted estimating experience.
+            </p>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 16,
-            marginTop: 22,
-          }}
-        >
-          <div style={cardStyle}>
-            <div style={{ fontWeight: 950, fontSize: 24 }}>Free</div>
-            <div
-              style={{
-                fontSize: 38,
-                fontWeight: 950,
-                letterSpacing: "-0.8px",
-                marginTop: 8,
-              }}
-            >
-              $0
-            </div>
-            <div style={{ color: "#555", marginTop: 6 }}>Test it out first.</div>
-
-            <ul
-              style={{
-                paddingLeft: 20,
-                marginTop: 16,
-                color: "#333",
-                lineHeight: 1.8,
-              }}
-            >
-              <li>3 free estimates</li>
-              <li>Basic estimate generation</li>
-              <li>PDF download</li>
-              <li>PriceGuard™ preview</li>
-            </ul>
-
-            <Link href="/app">
-              <button
-                style={{
-                  ...buttonStyle,
-                  width: "100%",
-                  marginTop: 10,
-                  boxShadow: "none",
-                }}
+            <div className="jep-cta-actions">
+              <Link
+                href="/app"
+                className="jep-button jep-white-button"
               >
-                Start Free
-              </button>
-            </Link>
-          </div>
-
-          <div
-            style={{
-              ...cardStyle,
-              border: "2px solid #111",
-              boxShadow: "0 18px 40px rgba(0,0,0,0.08)",
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: 24 }}>Founder Access</div>
-            <div
-              style={{
-                fontSize: 38,
-                fontWeight: 950,
-                letterSpacing: "-0.8px",
-                marginTop: 8,
-              }}
-            >
-              $99
+                Open JobEstimate Pro
+              </Link>
             </div>
-            <div style={{ color: "#555", marginTop: 6 }}>
-              One-time early access.
-            </div>
-
-            <ul
-              style={{
-                paddingLeft: 20,
-                marginTop: 16,
-                color: "#333",
-                lineHeight: 1.8,
-              }}
-            >
-              <li>Pro access during early launch</li>
-              <li>Unlimited estimates</li>
-              <li>Change orders</li>
-              <li>Approval links</li>
-              <li>Invoices</li>
-              <li>Full PriceGuard™ checks</li>
-              <li>Plan Review Assistant</li>
-              <li>Future updates during early launch</li>
-            </ul>
-
-            <Link href="/app">
-              <button
-                style={{
-                  ...buttonStyle,
-                  width: "100%",
-                  marginTop: 10,
-                  boxShadow: "none",
-                }}
-              >
-                Claim Founder Access
-              </button>
-            </Link>
           </div>
         </div>
-
-        <p
-          style={{
-            color: "#777",
-            fontSize: 13,
-            textAlign: "center",
-            lineHeight: 1.55,
-            marginTop: 14,
-          }}
-        >
-          Founder pricing is best if your current Stripe checkout is still
-          one-time payment mode. Switch this section to Pro monthly after
-          subscription billing is fully implemented.
-        </p>
-      </section>
-
-      {/* BOTTOM CTA */}
-      <section
-        style={{
-          marginTop: 56,
-          paddingTop: 26,
-          borderTop: "1px solid #eee",
-          textAlign: "center",
-        }}
-      >
-        <h2
-          style={{
-            marginBottom: 8,
-            fontSize: "clamp(32px, 5vw, 48px)",
-            letterSpacing: "-0.9px",
-            lineHeight: 1.05,
-          }}
-        >
-          Stop Guessing. Start Estimating With Confidence.
-        </h2>
-
-        <p
-          style={{
-            margin: "0 auto",
-            color: "#555",
-            maxWidth: 680,
-            lineHeight: 1.6,
-            fontSize: 16,
-          }}
-        >
-          Build the estimate, review the pricing, send it for approval, and
-          create the invoice without fighting templates.
-        </p>
-
-        <Link href="/app">
-          <button
-            style={{
-              ...buttonStyle,
-              marginTop: 18,
-            }}
-          >
-            Open JobEstimate Pro
-          </button>
-        </Link>
       </section>
 
       {/* FOOTER */}
-      <footer
-        style={{
-          marginTop: 60,
-          paddingTop: 18,
-          borderTop: "1px solid #eee",
-        }}
-      >
-        <div style={{ fontSize: 12, color: "#777", textAlign: "center" }}>
-          Professional estimates. Real-world jobs. Built to protect your profit.
+      <footer className="jep-footer">
+        <div className="jep-container jep-footer-content">
+          <div className="jep-logo" style={{ fontSize: 19 }}>
+            JobEstimate <span>Pro</span>
+          </div>
+
+          <div className="jep-footer-text">
+            Built for real contractors.
+            Designed for smarter estimating.
+          </div>
         </div>
       </footer>
     </main>
