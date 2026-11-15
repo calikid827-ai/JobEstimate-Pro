@@ -1,0 +1,47 @@
+# Retained project files: local implementation and required hosted setup
+
+This implementation does not apply SQL, create a bucket, change access policies or contact a hosted project during tests. Until its separate setup is authorized, production routes return `PROJECT_LIBRARY_NOT_CONFIGURED`; originals are never silently kept only in localStorage.
+
+## Minimum setup requiring authorization
+
+1. Review `database/project-library-v1.sql` against the target project and apply it only after separate authorization. It defines a private original bucket, owner/project metadata, service-role-only Data API access and atomic compare-and-swap writes. No anonymous/authenticated metadata grant or public bucket is introduced.
+2. Confirm the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and public Supabase URL identify that intended project. Do not expose the service role to a browser or put it in a `NEXT_PUBLIC_` variable.
+3. Configure/verify Storage CORS for the app origin and TUS methods/headers (`POST`, `HEAD`, `PATCH`, `Tus-Resumable`, `Upload-Length`, `Upload-Metadata`, `Upload-Offset`, `x-signature`, `Content-Type`) and exposed `Location`, `Upload-Offset`. Confirm the plan's bucket/upload/egress/storage limits support the intended package. No capacity is inferred from local tests.
+4. Verify owner/project route isolation, private original download, expiration and resumed transfer behavior in an authorized non-customer hosted test before calling the hosted workflow ready. Real database RLS, Storage behavior, Auth and capacity remain unverified by local adapters.
+
+The app metadata API validates the existing verified owner session. It never trusts owner IDs supplied by a browser. The caller's local job ID identifies a project namespace only under that owner. A different owner's same project ID has a separate namespace and cannot retrieve the first owner's inventory or originals.
+
+## Actual transfers
+
+Metadata registration records original filename, relative folder/archive path, SHA-256, size, version, replaced-source identity and duplicate-content identity. New source versions use unique object keys and never upsert originals. Duplicate content is flagged without deleting records. A selected source version makes the earlier version historical; existing estimate evidence must be rechecked against the active version.
+
+The server signs one immutable object path. The browser's direct TUS client uses that narrow `x-signature` capability against Storage; app owner credentials and service keys are not forwarded to Storage. POST creates the upload, HEAD obtains the authoritative offset, PATCH sends 6 MiB chunks, and the app stores the session URL with the owner/project file record. Session URLs are checked against the authorized storage origin and path. Redirects are rejected. Originals never pass through an estimate/generation request.
+
+Transfer errors affect one file. Retrying or reselecting the same original resumes from the storage-confirmed offset. After a refresh, the browser needs the original reselected because its bytes are deliberately not stored in browser localStorage. Finished records stay finished. Expired session URLs can create a fresh session; previously acknowledged chunks at that expired storage session may need retransmission. Supabase signed tokens and upload sessions have provider-controlled expiration. Completion reads the retained original and verifies its actual size, SHA-256 and signature/type before marking uploaded. Uploaded does not imply prepared or reviewed.
+
+Supabase TUS/signature/chunk conventions were checked against the installed SDK and [official resumable-upload documentation](https://supabase.com/docs/guides/storage/uploads/resumable-uploads). No new dependency was installed. The small native TUS adapter is tested against controlled HTTP semantics; it is not claimed to be a fully general TUS client implementation.
+
+## Intake and archive boundaries
+
+- 10,000 retained source records and 25 GiB reserved original bytes per owner/project; all historical versions count toward the limits.
+- These are joint bounds, not a promise that 10,000 full-text records fit. The current whole-inventory API also limits compact serialized UTF-8 metadata (including all prepared text and the next revision) to **3 MiB** before every service write. A rejected registration/preparation returns an explicit 413 budget error and preserves originals and previous records/results. The review-only SQL adds a 4 MiB canonical-jsonb-text safety bound for formatting overhead. Larger or denser inventories require paginated metadata before this ceiling can be raised; local bulk results do not establish 10,000-file full-text or hosted response capacity.
+- 100 MiB per original; 3 simultaneous transfers. Hash registration is sequential to avoid multiple full-file hash buffers. Browser SHA-256 needs one bounded full-file buffer; transfer chunks are 6 MiB.
+- Bulk selection and `webkitdirectory` folder selection; multi-file and ZIP fallbacks. Filename and relative path are retained separately. Object keys use validated identities rather than supplied folder paths.
+- ZIP uses the already installed `fflate` parser, with metadata preflight and bounded streaming expansion. Absolute/parent/backslash/control/duplicate paths, unknown methods, incomplete contents and expansion beyond 2,000 entries / 256 MiB / 100× ratio are rejected. Input is fed in 1 KiB chunks; decoded bytes are counted before retaining each part. Nothing is written to archive-provided filesystem paths or executed. Links are never followed. Nested archives are retained as originals but not recursively expanded. The original ZIP is selected alongside supported child files; child paths retain the archive name and internal path. Unsupported/empty entries are listed rather than silently called uploaded.
+- PDF, JPEG, PNG, GIF, WebP, TXT, CSV, ZIP, DOCX, XLSX, DWG and DXF originals can be retained. Unsupported executable/unknown file types are rejected before transfer. Magic bytes must agree for PDF, common images and ZIP containers. Office/CAD originals require external conversion before preparation. The ZIP container is retained; its separately extracted supported members are prepared as their own source records, rather than treating the archive itself as a reviewed document.
+
+## Recoverable preparation and coverage
+
+One file/page is prepared per API call. The UI processes one operation at a time, retaining prior page results. A server-process semaphore bounds decoder memory, and the production adapter additionally takes an atomic owner-wide database lease across projects. The two-minute lease outlasts the route's 60-second deployment duration; expired worker recovery and actual platform termination still require hosted validation. Contending requests receive an explicit busy result rather than starting another decode. Page failures can be individually retried; unrelated original uploads and prepared pages remain intact. Reprocessing the same successful file is idempotent. Results are bound to immutable file ID, version and SHA-256. New sources do not inherit prior extracted text or review claims.
+
+PDF preparation supports up to 1,000 pages per original, 10,000 prepared page records and 16 MiB of extracted characters per project. Every page number is inventoried and gets its own text/result or visible failure; no selected pages stand in for an entire package. Embedded text is extracted by installed PDF.js with local bundled fonts, no remote fonts/OCR/models, and an 80,000-character per-page cap without truncation. An empty/scanned page remains an explicit visual/OCR exception. Actual layout measurement, handwriting recognition and vision analysis are not supplied by this adapter.
+
+TXT/CSV preparation is UTF-8 only, at most 8 MiB and 80,000 characters, with no silent truncation. JPEG/PNG processing validates dimensions before decoding (60 megapixel cap), retains the original and creates a JPEG processing copy no larger than 1,600 pixels on its long side. Image dimensions and processing-copy dimensions are recorded. GIF/WebP originals remain available but their current preparation is unsupported/fails visibly. No photo locations, counts of rooms, quantities or scope are inferred.
+
+Library pages retain `review: pending`: extraction/processing is not substantive review. The bid/change-order workflow must separately show which exact source pages its supported deterministic analysis considered, which observations need a contractor decision, and which files/pages remain unreviewed. No package-level complete label is derived from an upload or preparation counter.
+
+## Controlled local services
+
+`createProjectLibraryHandlers({store,auth})` is explicit dependency injection for test servers. Production routes instantiate only `SupabaseProjectLibraryStore`; no environment flag, browser field or request action selects a local/synthetic store. `ProjectLibraryStore` supplies owner/project metadata, CAS persistence, signed transfer tickets, original download and optional processing-copy writes. Local tests can back this interface with filesystem bytes and run the exact browser/native TUS client over loopback HTTP. Such results demonstrate local behavior, not hosted capacity or actual Auth.
+
+No dependency installation, schema application, provider call, allowance consumption or hosted account operation is performed by this file or the local test fixture.

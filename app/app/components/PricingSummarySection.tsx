@@ -34,6 +34,7 @@ type Props = {
   isUserEdited: boolean
 
   downloadPDF: () => void
+  pdfUnavailableReason?: string
 }
 
 export default function PricingSummarySection({
@@ -68,6 +69,7 @@ export default function PricingSummarySection({
   isUserEdited,
 
   downloadPDF,
+  pdfUnavailableReason,
 }: Props) {
   return (
     <>
@@ -414,6 +416,8 @@ export default function PricingSummarySection({
       <button
         type="button"
         onClick={downloadPDF}
+        disabled={Boolean(pdfUnavailableReason)}
+        title={pdfUnavailableReason}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = "#111"
         }}
@@ -434,7 +438,7 @@ export default function PricingSummarySection({
           boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
         }}
       >
-        Download Estimate PDF
+        {pdfUnavailableReason ? "Legacy customer PDF unavailable" : "Download Estimate PDF"}
       </button>
     </>
   )

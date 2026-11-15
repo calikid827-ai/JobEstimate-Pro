@@ -12,6 +12,18 @@ export type DraftCommercial = {
 export type DraftJob = { id: string; name: string; clientName: string; address: string }
 export type DraftApproval = { ownerId: string; at: number; fingerprint: string }
 export type SourceFreshness = "unverified" | "current" | "changed" | "unavailable"
+export type ProjectSelectionSnapshot = {
+  ownerId: string
+  projectId: string
+  preparationId: string
+  sources: Array<{ fileId: string; sourceVersion: number; sourceSha256: string; name: string; relativePath: string; pageNumber: number; quote: string }>
+  equation: string
+  pricingProfile: {
+    id: string; version: number; approvedBy: string; approvedAt: number
+    rule: { id: string; surface: "walls" | "ceilings" | "doors"; substrate: string; condition: string; coats: number; unit: "sqft" | "doors"; labor: number; materials: number; other: number } | null
+  }
+  limitations: string[]
+}
 export type StudySelectionSnapshot = {
   studyId: string
   ownerId: string
@@ -32,6 +44,7 @@ export type StudySelectionSnapshot = {
 export type DraftSource =
   | { kind: "contractor"; origin: "written_scope" | "approved_assumption"; note: string }
   | { kind: "study"; snapshot: StudySelectionSnapshot; freshness: SourceFreshness }
+  | { kind: "project"; snapshot: ProjectSelectionSnapshot; freshness: SourceFreshness }
 export type DraftCosts = {
   unit: DraftUnit | "hour"
   labor: number | null

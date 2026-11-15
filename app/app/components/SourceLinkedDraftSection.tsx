@@ -11,6 +11,7 @@ import { calculateProfitTargetMarkup } from "../lib/profit-target"
 import type { ProposalProfile } from "../lib/customer-proposal-types"
 import PlanStudySection from "./PlanStudySection"
 import CustomerProposalSection from "./CustomerProposalSection"
+import { checkProjectFreshness, fetchCurrentProjectInventory } from "../lib/automatic-bid"
 
 type Props = {
   ownerId: string
@@ -141,10 +142,21 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
         return { id, study: response.ok && body?.study?.id === id && body.study.ownerId === ownerId ? body.study as Study : null }
       } catch { return { id, study: null } }
     }))
+    const projectIds = [...new Set(captured.items.flatMap((item) => item.source.kind === "project" ? [item.source.snapshot.projectId] : []))]
+    const projects = await Promise.all(projectIds.map(async (id) => {
+      try {
+        return { id, inventory: await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible) }
+      } catch { return { id, inventory: null } }
+    }))
     if (!accessible()) return
     const current = draftRef.current
     if (current && current.id === captured.id) {
       const items = current.items.map((item) => {
+        if (item.source.kind === "project") {
+          const source = item.source
+          const observed = projects.find(result => result.id === source.snapshot.projectId)
+          return updateDraftItem(item, { source: { ...source, freshness: checkProjectFreshness(source.snapshot, observed?.inventory || null) } })
+        }
         if (item.source.kind !== "study") return item
         const source = item.source
         const observed = results.find((result) => result.id === source.snapshot.studyId)
@@ -161,6 +173,8 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
     if (!captured || !accessible()) return
     setBusy(true); setProblem(""); setNotice("")
     try {
+      if (captured.items.some(item => item.source.kind === "project")) await verifyProjectSources()
+      if (!accessible() || draftRef.current !== captured) throw new Error("The draft changed during source verification. Review it before saving.")
       const result = await store.save(captured)
       if (!accessible()) return
       if (!result.ok) { setProblem(result.error); return }
@@ -175,6 +189,20 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
       }
     } catch (error) { if (accessible()) setProblem(problemText(error)) }
     finally { if (accessible()) setBusy(false) }
+  }
+  async function verifyProjectSources() {
+    const captured = draftRef.current
+    if (!captured || !accessible()) throw new Error("Reopen the current project draft before preparing a proposal.")
+    const projectIds = [...new Set(captured.items.flatMap(item => item.disposition !== "excluded" && item.source.kind === "project" ? [item.source.snapshot.projectId] : []))]
+    for (const id of projectIds) {
+      const inventory = await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible)
+      if (!accessible() || draftRef.current !== captured) throw new Error("The draft changed during source verification. Review it again.")
+      if (captured.items.some(item => item.disposition !== "excluded" && item.source.kind === "project" && item.source.snapshot.projectId === id && checkProjectFreshness(item.source.snapshot, inventory) !== "current")) {
+        const items = captured.items.map(item => item.source.kind === "project" && item.source.snapshot.projectId === id ? updateDraftItem(item, { source: { ...item.source, freshness: checkProjectFreshness(item.source.snapshot, inventory) } }) : item)
+        change({ ...captured, items })
+        throw new Error("Project source versions changed. Check sources, reconfirm the affected work and save a new estimate revision.")
+      }
+    }
   }
 
   return <>
@@ -238,14 +266,14 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
       </div>
       {recorded && <details style={{ marginTop: 12 }}><summary>Recorded saved revision — {recorded.id}</summary><p>Saved {new Date(recorded.savedAt).toLocaleString()}. Recorded priced total: {dollars(recorded.calculation.total)}{recorded.calculation.partial ? " (partial)" : ""}. These historical calculations remain unchanged; the working copy separately checks source freshness.</p><p>Predecessor revision: {recorded.parentRevisionId || "None"}.</p></details>}
     </div>}
-    {recorded ? <CustomerProposalSection key={`${ownerKey}:${job.id}:${recorded.id}`} ownerId={ownerId} jobId={job.id} revision={recorded} workingDraft={draft} storage={storage} isCurrent={accessible} companyProfile={companyProfile || { name: "", address: "", phone: "", email: "", license: "" }} /> : <p>Save or open an estimate revision to review a customer proposal and export its PDF.</p>}
+    {recorded ? <CustomerProposalSection key={`${ownerKey}:${job.id}:${recorded.id}`} ownerId={ownerId} jobId={job.id} revision={recorded} workingDraft={draft} storage={storage} isCurrent={accessible} verifySources={draft?.items.some(item => item.source.kind === "project") ? verifyProjectSources : undefined} companyProfile={companyProfile || { name: "", address: "", phone: "", email: "", license: "" }} /> : <p>Save or open an estimate revision to review a customer proposal and export its PDF.</p>}
     <PlanStudySection fetcher={fetcher} ownerKey={`${ownerKey}:${job.id}`} draftSelection={{ ownerId, enabled: Boolean(draft) && !busy && accessible(), onSelect: selectStudy, replacementItems, onReplace: replaceStudy, onStudyObserved: observeStudy }} />
   </>
 }
 
-function DraftItemEditor({ item, index, line, disabled, onPatch, onQuantity, onCosts }: { item: DraftItem; index: number; line?: DraftItemCalculation; disabled: boolean; onPatch: (patch: Partial<DraftItem>) => void; onQuantity: () => void; onCosts: () => void }) {
+export function DraftItemEditor({ item, index, line, disabled, onPatch, onQuantity, onCosts }: { item: DraftItem; index: number; line?: DraftItemCalculation; disabled: boolean; onPatch: (patch: Partial<DraftItem>) => void; onQuantity: () => void; onCosts: () => void }) {
   return <fieldset disabled={disabled} data-draft-item={item.id} style={box}>
-    <legend>Item {index + 1} · {item.source.kind === "study" ? "Plan Study-linked scope" : item.source.origin === "approved_assumption" ? "Contractor-supplied assumption" : "Contractor-written scope"}</legend>
+    <legend>Item {index + 1} · {item.source.kind === "study" ? "Plan Study-linked scope" : item.source.kind === "project" ? "Project file takeoff" : item.source.origin === "approved_assumption" ? "Contractor-supplied assumption" : "Contractor-written scope"}</legend>
     <div style={grid}>
       <label>Trade<input aria-label={`Item ${index + 1} trade`} value={item.trade} style={input} onChange={(event) => onPatch({ trade: event.target.value })} /></label>
       <label>Work location<input aria-label={`Item ${index + 1} location`} value={item.location} style={input} onChange={(event) => onPatch({ location: event.target.value })} /></label>
@@ -256,14 +284,17 @@ function DraftItemEditor({ item, index, line, disabled, onPatch, onQuantity, onC
     {item.source.kind === "contractor" ? <div style={grid}>
       <label>Contractor input type<select aria-label={`Item ${index + 1} input type`} value={item.source.origin} style={input} onChange={(event) => onPatch({ source: { kind: "contractor", origin: event.target.value as "written_scope" | "approved_assumption", note: item.source.kind === "contractor" ? item.source.note : "" } })}><option value="written_scope">Written scope</option><option value="approved_assumption">Contractor assumption</option></select></label>
       <label>Contractor source note<input aria-label={`Item ${index + 1} source note`} value={item.source.note} style={input} onChange={(event) => onPatch({ source: { ...item.source as Extract<DraftItem["source"], { kind: "contractor" }>, note: event.target.value } })} /></label>
-    </div> : <details><summary>Retained Study evidence · {item.source.freshness}</summary>
+    </div> : item.source.kind === "project" ? <details><summary>Project source and calculation · {item.source.freshness}</summary>
+      {item.source.snapshot.sources.map((source, i) => <div key={i}><p>{source.relativePath} · version {source.sourceVersion} · page {source.pageNumber}.</p><p>{source.quote}</p><p style={{ overflowWrap: "anywhere" }}>Original hash: {source.sourceSha256}.</p></div>)}
+      <p>Calculation: {item.source.snapshot.equation}</p><p>Pricing profile {item.source.snapshot.pricingProfile.id} · version {item.source.snapshot.pricingProfile.version}.</p>
+    </details> : <details><summary>Retained Study evidence · {item.source.freshness}</summary>
       <p>{item.source.snapshot.studyTitle} · source revision {item.source.snapshot.sourceRevision} · {item.source.snapshot.classification} record. Recorded classification: {item.source.snapshot.finding.kind}.</p>
       <p>{item.source.snapshot.finding.title}: {item.source.snapshot.finding.detail}</p>
       {item.source.snapshot.finding.citations.map((citation, i) => <p key={i} style={{ overflowWrap: "anywhere" }}>Document {citation.documentVersionId} · page {citation.pageId} · hash {citation.sourceSha256}{citation.anchor.kind === "text" ? ` · “${citation.anchor.quote}”` : " · retained image-region citation"}</p>)}
       {item.source.snapshot.decisions.length ? <ul>{item.source.snapshot.decisions.map((decision) => <li key={decision.id}>Selected answer {decision.id}: {decision.answer}</li>)}</ul> : <p>No saved Study answer was selected. Answers never approve quantities or costs.</p>}
       <ul>{[...item.source.snapshot.synthesisLimitations, ...item.source.snapshot.finding.limitations, ...item.source.snapshot.documents.flatMap((document) => document.pages.flatMap((page) => page.issue ? [page.issue] : []))].map((limit, i) => <li key={i}>{limit}</li>)}</ul>
     </details>}
-    {item.source.kind === "study" && <p role="status">Source freshness: {item.source.freshness}. Historical evidence remains retained; only established current evidence can support new pricing.</p>}
+    {item.source.kind !== "contractor" && <p role="status">Source freshness: {item.source.freshness}. Historical evidence remains retained; only established current evidence can support new pricing.</p>}
     <div style={grid}>
       <label>Quantity<input aria-label={`Item ${index + 1} quantity`} type="number" min={0} step="any" value={item.quantity ?? ""} style={input} onChange={(event) => onPatch({ quantity: numberOrUnknown(event.target.value) })} /></label>
       <label>Work unit<select aria-label={`Item ${index + 1} unit`} value={item.unit} style={input} onChange={(event) => { const unit = event.target.value as DraftUnit; onPatch(unit === "lump_sum" ? { unit, quantity: 1, costs: { ...item.costs, unit } } : { unit }) }}>{units.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}</select></label>

@@ -49,8 +49,8 @@ function same(a: unknown, b: unknown): boolean { return stable(a) === stable(b) 
 function estimateContent(draft: Draft) {
   // A source check may only update freshness without changing the saved quote.
   // Every actual input, evidence snapshot and approval remains part of equality.
-  return { ...draft, basedOnRevisionId: null, items: draft.items.map((item) => item.source.kind === "study"
-    ? { ...item, source: { kind: "study", snapshot: item.source.snapshot } } : item) }
+  return { ...draft, basedOnRevisionId: null, items: draft.items.map((item) => item.source.kind !== "contractor"
+    ? { ...item, source: { kind: item.source.kind, snapshot: item.source.snapshot } } : item) }
 }
 const boundedCoverage = "Readiness covers only the selected quoted items. It does not establish complete review of the plan package or project."
 
@@ -69,7 +69,7 @@ export function assessProposalReadiness(context: ProposalContext): ProposalReadi
     if (!same(estimateContent(working), estimateContent(revision.draft))) blockers.push("The estimate has unsaved changes. Save a new estimate revision before using changed scope, evidence, quantities or pricing.")
     for (const [index, item] of working.items.entries()) {
       if (item.disposition === "excluded") continue
-      if (item.source.kind === "study" && item.source.freshness !== "current") blockers.push(`Item ${index + 1}: source evidence is ${item.source.freshness}. Use the draft's source check or evidence replacement and reconfirmation, then save a new estimate revision when inputs or recorded pricing change.`)
+      if (item.source.kind !== "contractor" && item.source.freshness !== "current") blockers.push(`Item ${index + 1}: source evidence is ${item.source.freshness}. Use the draft's source check or evidence replacement and reconfirmation, then save a new estimate revision when inputs or recorded pricing change.`)
     }
   }
   const included = revision.draft.items.filter((item) => item.disposition === "included")
@@ -87,6 +87,7 @@ export function assessProposalReadiness(context: ProposalContext): ProposalReadi
   }
   if (revision.calculation.partial) blockers.push("The saved revision has a partial priced amount, not a complete price for the selected scope. Resolve its items and save a new estimate revision.")
   for (const item of revision.draft.items) {
+    if (item.source.kind === "project") { limitations.push(...item.source.snapshot.limitations); continue }
     if (item.source.kind !== "study") continue
     const source = item.source.snapshot
     if (source.synthesisReviewStatus !== "complete") limitations.push("The retained Study does not establish complete package coverage.")

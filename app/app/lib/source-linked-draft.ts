@@ -56,6 +56,13 @@ const snapshotSchema = z.object({
   synthesisLimitations: z.array(text).max(100), modelLabel: text.nullable(),
 }).strict()
 const approvalSchema = z.object({ ownerId: identity, at: z.number().finite().positive(), fingerprint: z.string().min(1).max(1_000_000) }).strict()
+const projectSnapshotSchema = z.object({
+  ownerId: identity, projectId: identity, preparationId: identity,
+  sources: z.array(z.object({ fileId: identity, sourceVersion: integer, sourceSha256: hash, name: text, relativePath: text, pageNumber: integer, quote: text.min(1) }).strict()).min(1).max(100),
+  equation: text.min(1),
+  pricingProfile: z.object({ id: identity, version: integer, approvedBy: identity, approvedAt: z.number().finite().positive(), rule: z.object({ id: identity, surface: z.enum(["walls", "ceilings", "doors"]), substrate: text.min(1), condition: text.min(1), coats: z.number().int().min(1).max(6), unit: z.enum(["sqft", "doors"]), labor: number, materials: number, other: number }).strict().nullable() }).strict(),
+  limitations: z.array(text).max(100),
+}).strict()
 const itemSchema = z.object({
   id: identity, trade: text, location: text, description: text, scopeDecision: text,
   disposition: z.enum(["included", "excluded", "unresolved"]), quantity: number.nullable(), unit,
@@ -64,6 +71,7 @@ const itemSchema = z.object({
   source: z.union([
     z.object({ kind: z.literal("contractor"), origin: z.enum(["written_scope", "approved_assumption"]), note: text }).strict(),
     z.object({ kind: z.literal("study"), snapshot: snapshotSchema, freshness: z.enum(["unverified", "current", "changed", "unavailable"]) }).strict(),
+    z.object({ kind: z.literal("project"), snapshot: projectSnapshotSchema, freshness: z.enum(["unverified", "current", "changed", "unavailable"]) }).strict(),
   ]),
   quantityConfirmation: approvalSchema.nullable(), costApproval: approvalSchema.nullable(),
 }).strict()
@@ -190,7 +198,7 @@ export function checkStudyFreshness(snapshot: StudySelectionSnapshot, currentStu
 
 function itemFingerprint(item: DraftItem, kind: "quantity" | "cost" = "cost") {
   const { source } = item
-  const evidence = source.kind === "study" ? { kind: source.kind, snapshot: source.snapshot } : source
+  const evidence = source.kind !== "contractor" ? { kind: source.kind, snapshot: source.snapshot } : source
   const fields = { id: item.id, trade: item.trade, location: item.location, description: item.description, scopeDecision: item.scopeDecision, disposition: item.disposition, quantity: item.quantity, unit: item.unit, measurementBasis: item.measurementBasis, source: evidence }
   // Exact canonical contents avoid collision-based acceptance of changed approvals.
   return `v1:${stable(kind === "quantity" ? fields : { ...fields, costs: item.costs })}`
@@ -203,6 +211,7 @@ export function parseDraft(value: unknown): Draft | null {
   if (!unique(draft.items.map((item) => item.id))) return null
   for (const item of draft.items) {
     if (item.source.kind === "study" && (item.source.snapshot.ownerId !== draft.ownerId || !validSnapshot(item.source.snapshot))) return null
+    if (item.source.kind === "project" && (item.source.snapshot.ownerId !== draft.ownerId || item.source.snapshot.projectId !== draft.job.id || item.source.snapshot.pricingProfile.approvedBy !== draft.ownerId)) return null
     for (const [kind, stamp] of [["quantity", item.quantityConfirmation], ["cost", item.costApproval]] as const) {
       if (stamp && (stamp.ownerId !== draft.ownerId || stamp.fingerprint !== itemFingerprint(item, kind))) return null
     }
@@ -271,7 +280,7 @@ export function updateDraftItem(item: DraftItem, patch: Partial<DraftItem>): Dra
   const next = { ...clone(item), ...clone(patch) }
   const parsed = itemSchema.safeParse(next)
   if (!parsed.success) throw new Error("The item contains invalid or unsupported values.")
-  const changedSource = next.source.kind === "study" && next.source.freshness === "changed"
+  const changedSource = next.source.kind !== "contractor" && next.source.freshness === "changed"
   const quantityChanged = itemFingerprint(next, "quantity") !== itemFingerprint(item, "quantity") || changedSource
   const costsChanged = itemFingerprint(next) !== itemFingerprint(item) || changedSource
   return { ...next, quantityConfirmation: quantityChanged ? null : next.quantityConfirmation, costApproval: costsChanged ? null : next.costApproval }
@@ -284,6 +293,9 @@ function scopeReasons(item: DraftItem): string[] {
   if (item.source.kind === "study") {
     if (item.source.freshness !== "current") reasons.push(`Study source is ${item.source.freshness}; verify current evidence before pricing.`)
     if (item.source.snapshot.finding.kind !== "requirement" && !item.scopeDecision.trim()) reasons.push("Record an explicit scope decision for this question, conflict, boundary or assumption.")
+  } else if (item.source.kind === "project") {
+    if (item.source.freshness !== "current") reasons.push(`Project source is ${item.source.freshness}; verify current files before pricing.`)
+    if (!item.scopeDecision.trim()) reasons.push("Review the supported takeoff scope before quoting it.")
   } else if (item.source.origin === "approved_assumption" && !item.scopeDecision.trim()) reasons.push("Record the contractor decision approving this assumption.")
   return reasons
 }
@@ -305,7 +317,7 @@ function costReasons(item: DraftItem) {
   return reasons
 }
 function approval(item: DraftItem, ownerId: string, at: number, kind: "quantity" | "cost"): DraftApproval {
-  if (!ownerId.trim() || !Number.isFinite(at) || at <= 0 || item.source.kind === "study" && item.source.snapshot.ownerId !== ownerId) throw new Error("The confirmation must belong to the current owner.")
+  if (!ownerId.trim() || !Number.isFinite(at) || at <= 0 || item.source.kind !== "contractor" && item.source.snapshot.ownerId !== ownerId) throw new Error("The confirmation must belong to the current owner.")
   return { ownerId, at, fingerprint: itemFingerprint(item, kind) }
 }
 export function confirmQuantity(item: DraftItem, ownerId: string, at = Date.now()): DraftItem {
@@ -383,5 +395,5 @@ export function parseDraftRevision(value: unknown): DraftRevision | null {
 export function workingCopy(revision: DraftRevision): Draft {
   const valid = parseDraftRevision(revision)
   if (!valid) throw new Error("The saved draft revision is invalid.")
-  return { ...valid.draft, basedOnRevisionId: valid.id, items: valid.draft.items.map((item) => item.source.kind === "study" ? { ...item, source: { ...item.source, freshness: "unverified" } } : item) }
+  return { ...valid.draft, basedOnRevisionId: valid.id, items: valid.draft.items.map((item) => item.source.kind !== "contractor" ? { ...item, source: { ...item.source, freshness: "unverified" } } : item) }
 }

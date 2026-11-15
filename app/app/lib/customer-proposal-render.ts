@@ -6,6 +6,13 @@ const unitLabels: Record<CustomerScopeRow["unit"], string> = { sqft: "sq ft", li
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 const quantity = (item: CustomerScopeRow) => `${String(item.quantity)} ${unitLabels[item.unit]}`
 const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+export type CustomerDocumentOptions = { kind?: "proposal" | "change_order_draft" }
+function labels(options: CustomerDocumentOptions = {}) {
+  if (options.kind !== undefined && options.kind !== "proposal" && options.kind !== "change_order_draft") throw new Error("Unsupported customer document kind.")
+  return options.kind === "change_order_draft"
+    ? { title: "Proposed change order draft", heading: "PROPOSED CHANGE ORDER DRAFT", subtitle: "Proposed added work and price — not an agreement", scope: "Proposed added work", subtotal: "Change price before tax", total: "Proposed change price", size: 18 }
+    : { title: "Proposal", heading: "PROPOSAL", subtitle: "Scope of work and price", scope: "Included scope", subtotal: "Selling price before tax", total: "Total price", size: 22 }
+}
 
 function customerModel(value: CustomerProposal): CustomerProposal {
   const parsed = parseCustomerProposal(value)
@@ -13,21 +20,23 @@ function customerModel(value: CustomerProposal): CustomerProposal {
   return parsed
 }
 
-function summary(customer: CustomerProposal): Array<{ label: string; value: string; total?: boolean }> {
+function summary(customer: CustomerProposal, options?: CustomerDocumentOptions): Array<{ label: string; value: string; total?: boolean }> {
   const { pricing } = customer
+  const document = labels(options)
   return [
-    { label: "Selling price before tax", value: money(pricing.subtotal) },
+    { label: document.subtotal, value: money(pricing.subtotal) },
     { label: `Tax (${String(pricing.taxRate)}%)`, value: money(pricing.taxAmount) },
     ...(pricing.roundingAdjustment ? [{ label: "Rounding adjustment", value: money(pricing.roundingAdjustment) }] : []),
-    { label: "Total price", value: money(pricing.total), total: true },
+    { label: document.total, value: money(pricing.total), total: true },
     { label: "Requested deposit", value: money(pricing.depositDue) },
     { label: "Remaining after deposit", value: money(pricing.remaining) },
   ]
 }
 
 /** Customer-only fragment. Every value is allowlisted and escaped before HTML. */
-export function renderCustomerProposalHtml(value: CustomerProposal): string {
+export function renderCustomerProposalHtml(value: CustomerProposal, options?: CustomerDocumentOptions): string {
   const customer = customerModel(value)
+  const document = labels(options)
   const section = (title: string, content: string) => content.trim() ? `<section class="jep-customer-section"><h3>${title}</h3><p>${escape(content)}</p></section>` : ""
   const contact = [customer.company.address, customer.company.phone, customer.company.email, customer.company.license ? `License: ${customer.company.license}` : ""].filter(Boolean)
   return `<article class="jep-customer-proposal" aria-label="Customer proposal">
@@ -41,19 +50,20 @@ export function renderCustomerProposalHtml(value: CustomerProposal): string {
 .jep-customer-proposal .jep-customer-summary{margin:24px 0 0 auto;width:100%;max-width:390px;border:1px solid #c8d7e8}.jep-customer-proposal .jep-customer-summary div{display:flex;justify-content:space-between;gap:14px;padding:10px 12px;border-bottom:1px solid #e0e8f1}.jep-customer-proposal .jep-customer-summary dt{margin:0}.jep-customer-proposal .jep-customer-summary dd{margin:0;font-weight:700;white-space:nowrap}.jep-customer-proposal .jep-customer-summary .jep-customer-total{background:#102a48;color:#fff;font-size:20px}.jep-customer-proposal .jep-customer-deposit-note{font-size:12px;color:#455b73;margin-top:12px}
 @media print{.jep-customer-proposal{border:0;max-width:none}.jep-customer-proposal thead{display:table-header-group}.jep-customer-proposal tr{break-inside:avoid}.jep-customer-proposal h3{break-after:avoid}.jep-customer-proposal .jep-customer-summary{break-inside:avoid}}
 </style>
-<header class="jep-customer-banner"><h2>PROPOSAL</h2><p>Scope of work and price</p></header>
+<header class="jep-customer-banner"><h2>${document.heading}</h2><p>${document.subtitle}</p></header>
 <div class="jep-customer-body"><div class="jep-customer-company">${escape(customer.company.name)}</div>${contact.map((line) => `<p>${escape(line)}</p>`).join("")}
 <dl class="jep-customer-info">${[["Customer", customer.customer.name], ["Project", customer.project.name], ["Project address", customer.project.address], ["Proposal date", customer.date], ["Reference", customer.reference]].filter(([, text]) => text.trim()).map(([label, text]) => `<div><dt>${label}</dt><dd>${escape(text)}</dd></div>`).join("")}</dl>
-<section class="jep-customer-section"><h3>Included scope</h3><table class="jep-customer-scope"><thead><tr><th scope="col">Trade</th><th scope="col">Location</th><th scope="col">Work included</th><th scope="col">Quantity</th></tr></thead><tbody>${customer.scope.map((item) => `<tr><td>${escape(item.trade)}</td><td>${escape(item.location)}</td><td>${escape(item.description)}</td><td>${escape(quantity(item))}</td></tr>`).join("")}</tbody></table></section>
+<section class="jep-customer-section"><h3>${document.scope}</h3><table class="jep-customer-scope"><thead><tr><th scope="col">Trade</th><th scope="col">Location</th><th scope="col">Work included</th><th scope="col">Quantity</th></tr></thead><tbody>${customer.scope.map((item) => `<tr><td>${escape(item.trade)}</td><td>${escape(item.location)}</td><td>${escape(item.description)}</td><td>${escape(quantity(item))}</td></tr>`).join("")}</tbody></table></section>
 ${customer.exclusions.length ? `<section class="jep-customer-section"><h3>Exclusions</h3><ul class="jep-customer-exclusions">${customer.exclusions.map((item) => `<li>${item.location ? `<strong>${escape(item.location)}:</strong> ` : ""}${escape(item.description)}</li>`).join("")}</ul></section>` : ""}
 ${section("Clarifications", customer.clarifications)}${section("Allowances", customer.allowances)}${section("Schedule", customer.schedule)}${section("Terms", customer.terms)}
-<dl class="jep-customer-summary">${summary(customer).map((row) => `<div${row.total ? ' class="jep-customer-total"' : ""}><dt>${row.label}</dt><dd>${row.value}</dd></div>`).join("")}</dl>
+<dl class="jep-customer-summary">${summary(customer, options).map((row) => `<div${row.total ? ' class="jep-customer-total"' : ""}><dt>${row.label}</dt><dd>${row.value}</dd></div>`).join("")}</dl>
 <p class="jep-customer-deposit-note">The requested deposit is included in the total. It is not a record of payment.</p></div></article>`
 }
 
 /** Local PDF bytes from the same safe model used by the on-screen preview. */
-export async function renderCustomerProposalPdf(value: CustomerProposal): Promise<Uint8Array> {
+export async function renderCustomerProposalPdf(value: CustomerProposal, options?: CustomerDocumentOptions): Promise<Uint8Array> {
   const customer = customerModel(value)
+  const document = labels(options)
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
   const doc = await PDFDocument.create({ updateMetadata: false })
   const regular = await doc.embedFont(StandardFonts.Helvetica)
@@ -70,7 +80,7 @@ export async function renderCustomerProposalPdf(value: CustomerProposal): Promis
     const unsupported = Array.from(text).find((char) => !["\n", "\r", "\t"].includes(char) && !characters.has(char.codePointAt(0)!))
     if (unsupported) throw new Error(`PDF export cannot display U+${unsupported.codePointAt(0)!.toString(16).toUpperCase()} in ${field} with its installed font. A Unicode-capable font is needed for this text. The saved proposal has not changed.`)
   }
-  doc.setTitle("Proposal")
+  doc.setTitle(document.title)
   doc.setAuthor(customer.company.name)
   doc.setSubject("")
   doc.setKeywords([])
@@ -88,8 +98,8 @@ export async function renderCustomerProposalPdf(value: CustomerProposal): Promis
     if (doc.getPageCount() >= 500) throw new Error("This proposal exceeds 500 PDF pages. Reduce the selected document scope before exporting; no partial PDF was exported.")
     page = doc.addPage([width, height])
     page.drawRectangle({ x: 0, y: height - 74, width, height: 74, color: navy })
-    page.drawText("PROPOSAL", { x: margin, y: height - 37, size: 22, font: bold, color: white })
-    page.drawText(doc.getPageCount() === 1 ? "Scope of work and price" : "Continued", { x: margin, y: height - 56, size: 10, font: regular, color: rgb(.83, .9, 1) })
+    page.drawText(document.heading, { x: margin, y: height - 37, size: document.size, font: bold, color: white })
+    page.drawText(doc.getPageCount() === 1 ? document.subtitle.replace("—", "-") : "Continued", { x: margin, y: height - 56, size: 10, font: regular, color: rgb(.83, .9, 1) })
     y = height - 98
   }
   const ensure = (space: number) => { if (y - space < bottom) newPage() }
@@ -143,17 +153,17 @@ export async function renderCustomerProposalPdf(value: CustomerProposal): Promis
     y -= 27
   }
   ensure(90)
-  scopeHeader("Included scope")
+  scopeHeader(document.scope)
   for (const [rowIndex, item] of customer.scope.entries()) {
     const columns = [item.trade, item.location, item.description, quantity(item)].map((text, index) => wrap(text, columnWidths[index] - padding * 2, regular, rowSize))
     const length = Math.max(...columns.map((column) => column.length))
     const fullHeight = length * rowLeading + padding * 2
     // Keep ordinary rows together. Only oversized rows split across pages.
-    if (fullHeight <= height - 98 - bottom - 53 && y - fullHeight < bottom) { newPage(); scopeHeader("Included scope - continued") }
+    if (fullHeight <= height - 98 - bottom - 53 && y - fullHeight < bottom) { newPage(); scopeHeader(`${document.scope} - continued`) }
     let offset = 0
     while (offset < length) {
       let count = Math.min(length - offset, Math.floor((y - bottom - padding * 2) / rowLeading))
-      if (count < 1) { newPage(); scopeHeader(offset ? `Included scope - row ${rowIndex + 1} continued` : "Included scope - continued"); count = Math.min(length - offset, Math.floor((y - bottom - padding * 2) / rowLeading)) }
+      if (count < 1) { newPage(); scopeHeader(offset ? `${document.scope} - row ${rowIndex + 1} continued` : `${document.scope} - continued`); count = Math.min(length - offset, Math.floor((y - bottom - padding * 2) / rowLeading)) }
       const rowHeight = count * rowLeading + padding * 2
       page.drawRectangle({ x: margin, y: y - rowHeight, width: contentWidth, height: rowHeight, color: rowIndex % 2 ? pale : white })
       let x = margin
@@ -171,7 +181,7 @@ export async function renderCustomerProposalPdf(value: CustomerProposal): Promis
   }
   for (const [title, text] of [["Clarifications", customer.clarifications], ["Allowances", customer.allowances], ["Schedule", customer.schedule], ["Terms", customer.terms]]) if (text.trim()) { heading(title); paragraph(text, { after: 8 }) }
 
-  const rows = summary(customer), summaryWidth = 348, summaryX = width - margin - summaryWidth
+  const rows = summary(customer, options), summaryWidth = 348, summaryX = width - margin - summaryWidth
   const depositNote = "The requested deposit is included in the total. It is not a record of payment."
   ensure(rows.reduce((space, row) => space + (row.total ? 32 : 22), 0) + 28 + wrap(depositNote, contentWidth, regular, 9).length * 13.05)
   y -= 14
@@ -188,7 +198,7 @@ export async function renderCustomerProposalPdf(value: CustomerProposal): Promis
   const pages = doc.getPages()
   for (const [index, current] of pages.entries()) {
     current.drawLine({ start: { x: margin, y: 48 }, end: { x: width - margin, y: 48 }, thickness: .6, color: lineColor })
-    current.drawText("Proposal", { x: margin, y: 32, size: 8, font: regular, color: muted })
+    current.drawText(document.title, { x: margin, y: 32, size: 8, font: regular, color: muted })
     const label = `Page ${index + 1} of ${pages.length}`
     current.drawText(label, { x: width - margin - regular.widthOfTextAtSize(label, 8), y: 32, size: 8, font: regular, color: muted })
   }

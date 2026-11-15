@@ -1,7 +1,9 @@
 import {
   ACTUALS_KEY,
+  AUTOMATIC_BID_KEY,
   BUDGET_KEY,
   COMPANY_KEY,
+  CHANGE_ORDER_DRAFT_KEY,
   CREW_KEY,
   DRAFT_REVISION_KEY,
   EMAIL_KEY,
@@ -30,6 +32,8 @@ export const LOCAL_STORAGE_KEYS = {
   ownerSyncToken: OWNER_SYNC_TOKEN_KEY,
   draftRevisions: DRAFT_REVISION_KEY,
   proposalSnapshots: PROPOSAL_SNAPSHOT_KEY,
+  automaticBids: AUTOMATIC_BID_KEY,
+  projectChangeOrders: CHANGE_ORDER_DRAFT_KEY,
 } as const
 
 export type CheckedLocalResult<T> = { ok: true; value: T } | { ok: false; error: string }

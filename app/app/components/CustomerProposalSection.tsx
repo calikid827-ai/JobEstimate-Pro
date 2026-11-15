@@ -16,6 +16,7 @@ type Props = {
   companyProfile: ProposalProfile
   storage: ReturnType<typeof createOwnerLocalPersistence>
   isCurrent: () => boolean
+  verifySources?: () => Promise<void>
 }
 const box = { border: "1px solid #cbd5e1", borderRadius: 10, padding: 12, marginTop: 12 } as const
 const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 } as const
@@ -77,6 +78,8 @@ export default function CustomerProposalSection(props: Props) {
     if (!accessible() || busy || !reviewed) return
     setBusy(true); setProblem(""); setNotice("")
     try {
+      await latest.current.verifySources?.()
+      if (!accessible()) return
       const created = createProposalSnapshot(currentContext(), details)
       const result = await store.save(created)
       if (!accessible()) return
@@ -91,9 +94,12 @@ export default function CustomerProposalSection(props: Props) {
     if (!captured || !canExport || !accessible()) return
     setBusy(true); setProblem(""); setNotice("")
     try {
+      await latest.current.verifySources?.()
+      if (!accessible()) return
       const checked = validateProposalSnapshotForContext(captured, currentContext())
       if (!checked.ready) throw new Error(checked.blockers.join(" "))
       const bytes = await renderCustomerProposalPdf(captured.customer)
+      await latest.current.verifySources?.()
       if (!accessible()) return
       const afterRender = validateProposalSnapshotForContext(captured, currentContext())
       if (!afterRender.ready) throw new Error("The estimate changed while preparing the PDF. Check and save the estimate before exporting.")

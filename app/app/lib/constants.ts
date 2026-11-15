@@ -14,6 +14,8 @@ export const JOB_TEMPLATES_KEY = "jobestimatepro_templates_v1"
 export const RATE_CARD_KEY = "jobestimatepro_rate_card_v1"
 export const DRAFT_REVISION_KEY = "jobestimatepro_source_linked_drafts_v1"
 export const PROPOSAL_SNAPSHOT_KEY = "jobestimatepro_customer_proposals_v1"
+export const AUTOMATIC_BID_KEY = "jobestimatepro_automatic_bid_v1"
+export const CHANGE_ORDER_DRAFT_KEY = "jobestimatepro_project_change_orders_v1"
 
 export const PAINT_SCOPE_OPTIONS = [
   { label: "Walls only", value: "walls" },

@@ -121,6 +121,7 @@ import SavedEstimatesSection from "./components/SavedEstimatesSection"
 import JobsDashboardSection from "./components/JobsDashboardSection"
 import EstimateBuilderSection from "./components/EstimateBuilderSection"
 import SourceLinkedDraftSection from "./components/SourceLinkedDraftSection"
+import ProjectWorkflowSection from "./components/ProjectWorkflowSection"
 import InvoicesSection from "./components/InvoicesSection"
 import JobTemplatesSection from "./components/JobTemplatesSection"
 import RateCardSection from "./components/RateCardSection"
@@ -239,6 +240,8 @@ import {
 } from "./lib/approval-signature"
 
 const ENABLE_CLIENT_DEBUG_LOGS = process.env.NODE_ENV !== "production"
+// Retain the historical template for its separate audit, but block every customer export entry.
+const LEGACY_CUSTOMER_PDF_UNAVAILABLE = "This legacy template includes internal estimating details. Use the customer-safe project proposal or change-draft workflow."
 
 type ShotType =
   | "overview"
@@ -7540,6 +7543,10 @@ function loadHistoryItem(item: EstimateHistoryItem) {
   }
 
   function downloadPDF() {
+    if (LEGACY_CUSTOMER_PDF_UNAVAILABLE) {
+      setStatus(LEGACY_CUSTOMER_PDF_UNAVAILABLE)
+      return
+    }
     if (!result) {
       setStatus("Generate a document first, then download the PDF.")
       return
@@ -14115,7 +14122,7 @@ const accountAccessMessage = !normalizedEmail
     color: "#555",
   }}
 >
-  Professional change orders & estimates — generated instantly.
+  Prepare bids and change drafts from your project files.
 </p>
 
 <div
@@ -14208,6 +14215,45 @@ const accountAccessMessage = !normalizedEmail
     {accountAccessMessage}
   </div>
 </div>
+
+<ProjectWorkflowSection
+  key={`project:${owner.id}:${session.epoch}`}
+  ownerId={owner.id}
+  ownerKey={`${owner.id}:${session.epoch}`}
+  jobs={jobs}
+  selectedProjectId={activeJobId}
+  onProjectChange={setActiveJobId}
+  onProjectsChange={setJobs}
+  storage={ownerStorage}
+  isCurrent={() => session.isCurrentOwner(owner.id, session.epoch)}
+  fetcher={fetch}
+  defaults={{ markupPct: rateCard.markupPct, taxEnabled: rateCard.tax.enabled, taxRate: rateCard.tax.rate, depositEnabled: rateCard.deposit.enabled, depositType: rateCard.deposit.type, depositValue: rateCard.deposit.value }}
+  companyProfile={companyProfile}
+  onOpenLegacyChangeOrder={(projectId) => {
+    if (latestEstimateForJob(projectId) || lockedOriginalEstimateForJob(projectId)) {
+      startChangeOrderFromJob(projectId)
+      setStatus("Legacy change draft only: its copied estimate is not established as the agreed scope. Scope comparison has not been verified. Use the project change workflow to choose an explicit baseline and prepare a customer-safe PDF.")
+    } else {
+      const project = jobs.find((item) => item.id === projectId)
+      if (!project) return
+      setDocumentIntent("Change Order")
+      setDocumentType("Change Order")
+      setJobDetails({ clientName: project.clientName, jobName: project.jobName, jobAddress: project.jobAddress, changeOrderNo: "", date: "" })
+      setScopeChange("")
+      setResult(null)
+      setGeneratedScopeSnapshot(null)
+      resetTransientScopeDecisions()
+      setStatus("Change draft only: no agreed legacy baseline is available. Scope comparison has not been verified. Use the project change workflow for a customer-safe PDF.")
+    }
+    const tools = document.getElementById("manual-estimating-tools")
+    tools?.setAttribute("open", "")
+    tools?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }}
+/>
+
+<details id="manual-estimating-tools" style={{ marginTop: 18, padding: 12, border: "1px solid #cbd5e1", borderRadius: 12 }}>
+<summary style={{ cursor: "pointer", fontWeight: 700 }}>Manual tools, saved revisions and existing generator</summary>
+<p>Use these controls for corrections and older work. The project workflow above retains the shared files and prepares customer-safe documents.</p>
 
 {/* -------------------------
     ⚙️ Business Settings (Collapsed)
@@ -14472,6 +14518,7 @@ const accountAccessMessage = !normalizedEmail
   </p>
 )}
 
+</details>
 
 </div>
 
@@ -14510,7 +14557,7 @@ const accountAccessMessage = !normalizedEmail
             section?.querySelector("details")?.setAttribute("open", "")
             revealSection(section || null)
           }}>Edit price &amp; terms</button>
-          <button type="button" onClick={downloadPDF} style={{ background: "#111827", color: "#fff", borderRadius: 8, padding: "10px 14px", fontWeight: 800 }}>Download Estimate PDF</button>
+          <button type="button" disabled title={LEGACY_CUSTOMER_PDF_UNAVAILABLE} style={{ background: "#e5e7eb", color: "#4b5563", borderRadius: 8, padding: "10px 14px", fontWeight: 800 }}>Legacy customer PDF unavailable</button>
         </div>
       </div>
       <p data-unresolved-review-count style={{ margin: "12px 0 6px", fontSize: 13, fontWeight: 700 }}>
@@ -14703,6 +14750,7 @@ const accountAccessMessage = !normalizedEmail
         pdfPriceGuardLabel={pdfPriceGuardLabel}
         isUserEdited={isUserEdited}
         downloadPDF={downloadPDF}
+        pdfUnavailableReason={LEGACY_CUSTOMER_PDF_UNAVAILABLE}
       />
 
       <EstimateSectionsCard
@@ -14771,7 +14819,8 @@ const accountAccessMessage = !normalizedEmail
         >
           <button
             type="button"
-            onClick={downloadPDF}
+            disabled
+            title={LEGACY_CUSTOMER_PDF_UNAVAILABLE}
             style={{
               fontSize: 12,
               fontWeight: 800,
@@ -14779,7 +14828,7 @@ const accountAccessMessage = !normalizedEmail
               borderRadius: 8,
             }}
           >
-            Download Estimate PDF
+            Legacy customer PDF unavailable
           </button>
 
           <button
