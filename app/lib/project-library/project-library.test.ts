@@ -5,7 +5,7 @@ import { zipSync } from "fflate"
 import { expandProjectZip } from "./archive"
 import { createProjectLibraryClient, runProjectQueue, uploadProjectOriginal } from "./client"
 import { createProjectLibraryHandlers } from "./handlers"
-import { assertProjectInventoryBudget, completeProjectUpload, emptyInventory, prepareProjectFile, recordUploadSession, registerProjectFile } from "./service"
+import { assertProjectRecordBudgets, completeProjectUpload, emptyInventory, prepareProjectFile, recordUploadSession, registerProjectFile } from "./service"
 import { PROJECT_LIMITS, ProjectLibraryError, type ProjectFile, type ProjectInventory, type ProjectLibraryStore } from "./types"
 import { safeRelativePath } from "./validation"
 
@@ -169,10 +169,11 @@ test("lost final upload response recovers verified retained bytes without creati
   const handlers = createProjectLibraryHandlers({ store, auth })
   const calls: string[] = []
   const fetcher: typeof fetch = async (_url, init) => {
-    const body = JSON.parse(String(init?.body)); calls.push(body.action)
+    const body = init?.body ? JSON.parse(String(init.body)) : null; calls.push(body?.action || "list")
     return handlers.files(new Request("http://local.test/api/projects/x/files", { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), Authorization: "Bearer synthetic" } }), project)
   }
   const client = createProjectLibraryClient(fetcher, project, () => true, async () => { throw Error("No storage request should be needed") })
+  await client.list(); calls.length = 0
   const result = await client.upload(new Blob([bytes]), retained.files[0])
   assert.equal(result.inventory.files[0].status, "uploaded")
   assert.deepEqual(calls, ["complete"])
@@ -205,40 +206,98 @@ test("actual owner handler rejects missing auth and foreign file access before t
   assert.equal(denied.headers.get("Cache-Control"), "private, no-store, max-age=0")
 })
 
-test("serialized inventory budget measures UTF-8 bytes and includes the next revision", () => {
-  const value = emptyInventory(owner, project)
-  // Synthetic existing page payload for an exact boundary, independent of the
-  // service's byte counter. JSON overhead is measured with Node Buffer here.
-  const overhead = Buffer.byteLength(JSON.stringify({ ...value, revision: 10, files: [{ text: "" }] }), "utf8")
-  const text = "é".repeat(Math.floor((PROJECT_LIMITS.maxInventoryBytes - overhead) / 2))
-  const boundary = { ...value, files: [{ text }] } as unknown as ProjectInventory
-  const exactBytes = Buffer.byteLength(JSON.stringify({ ...boundary, revision: 10 }), "utf8")
-  assert.ok(exactBytes <= 3 * 1024 ** 2)
-  assertProjectInventoryBudget(boundary, 10)
-  const over = { ...value, files: [{ text: text + "é" }] } as unknown as ProjectInventory
-  assert.throws(() => assertProjectInventoryBudget(over, 10), error => error instanceof ProjectLibraryError && error.status === 413 && error.code === "PROJECT_INVENTORY_LIMIT")
-})
-
-test("oversized registration and prepared text fail before writes while originals and prior inventory remain intact", async () => {
+test("inventory pagination and exact content retrieval preserve more than the old aggregate ceiling", async () => {
   const { store, originals, records, input } = fixture()
   const contents = new TextEncoder().encode("S".repeat(80000)), registered = await registerProjectFile(store, owner, project, input("pending-text", "Dense.txt", contents))
   originals.set(registered.file.objectKey, contents)
   await completeProjectUpload(store, owner, project, registered.file.id)
   const base = await store.get(owner, project)
-  const denseRecords = Array.from({ length: 39 }, (_, index) => ({ ...registered.file, id: `retained-${index}`, objectKey: `synthetic-retained-${index}`, pages: [{ pageNumber: 1, text: "X".repeat(79000), extraction: "complete" as const, review: "pending" as const }] }))
-  const dense = { ...base, files: [...denseRecords, ...base.files] }
-  assert.ok(Buffer.byteLength(JSON.stringify(dense)) < PROJECT_LIMITS.maxInventoryBytes)
-  records.set(`${owner}:${project}`, structuredClone(dense))
-  const before = JSON.stringify(await store.get(owner, project))
-  await assert.rejects(prepareProjectFile(store, owner, project, registered.file.id), error => error instanceof ProjectLibraryError && error.status === 413 && error.code === "PROJECT_INVENTORY_LIMIT")
-  assert.equal(JSON.stringify(await store.get(owner, project)), before)
+  const denseRecords: ProjectFile[] = Array.from({ length: 40 }, (_, index) => ({ ...registered.file, id: `retained-${index}`, objectKey: `${owner}/${project}/retained-${index}/original`, status: "uploaded", preparation: "prepared", pages: [{ pageNumber: 1, text: "X".repeat(79000), extraction: "complete", review: "pending" }] }))
+  records.set(`${owner}:${project}`, { ...base, files: [...denseRecords, ...base.files] })
+  const prepared = await prepareProjectFile(store, owner, project, registered.file.id)
+  assert.ok(Buffer.byteLength(JSON.stringify(prepared)) > 3 * 1024 ** 2)
+  assert.equal(prepared.files.find(file => file.id === registered.file.id)!.preparation, "prepared")
+  const auth = { getUser: async () => ({ data: { user: { id: owner, email: "synthetic@example.test", email_confirmed_at: "2026-11-16", role: "authenticated" } }, error: null }) }
+  const handlers = createProjectLibraryHandlers({ store, auth }), replies: number[] = []
+  const fetcher: typeof fetch = async (url, init) => {
+    const response = await handlers.files(new Request(new URL(String(url), "http://local.test"), { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), Authorization: "Bearer synthetic" } }), project)
+    replies.push(Buffer.byteLength(await response.clone().text()))
+    return response
+  }
+  const client = createProjectLibraryClient(fetcher, project, () => true)
+  const inventory = (await client.list()).inventory
+  assert.equal(inventory.files.length, 41)
+  assert.ok(inventory.files.every(file => file.pages.length === 0 && file.contentStatus === "not_loaded"))
+  const source = await client.source(registered.file.id)
+  assert.equal(source.file.pages[0].text, "")
+  assert.equal(source.file.pages[0].contentLoaded, false)
+  const content = await client.content(registered.file.id, 1)
+  assert.equal(content.page.text, "S".repeat(80000))
+  assert.equal(content.page.contentLoaded, true)
+  assert.equal(content.sourceSha256, registered.file.sha256)
+  assert.ok(replies.every(size => size <= PROJECT_LIMITS.maxResponseBytes))
   assert.deepEqual(originals.get(registered.file.objectKey), contents)
-  // Construct a separate near-cap retained state to exercise registration too.
-  const filled = structuredClone(dense)
-  const gap = PROJECT_LIMITS.maxInventoryBytes - Buffer.byteLength(JSON.stringify(filled))
-  filled.files[0].pages[0].text += "Z".repeat(gap - 5)
-  records.set(`${owner}:${project}`, filled)
-  const beforeRegister = JSON.stringify(await store.get(owner, project))
-  await assert.rejects(registerProjectFile(store, owner, project, input("over-budget", "Another.txt")), error => error instanceof ProjectLibraryError && error.status === 413 && error.code === "PROJECT_INVENTORY_LIMIT")
-  assert.equal(JSON.stringify(await store.get(owner, project)), beforeRegister)
+})
+
+test("record and page limits stay bounded without an aggregate inventory ceiling", () => {
+  const file = fixture().input()
+  const value = { ...file, id: file.selectionId, ownerId: owner, projectId: project, sourceVersion: 1, active: true, status: "uploaded", preparation: "prepared", pageCount: 1, pages: [{ pageNumber: 1, text: "Z".repeat(80000), extraction: "complete", review: "pending" }], createdAt: "synthetic", objectKey: `${owner}/${project}/${file.selectionId}/original` } as ProjectFile
+  assertProjectRecordBudgets([value])
+  assert.throws(() => assertProjectRecordBudgets([{ ...value, pages: [{ ...value.pages[0], text: "Z".repeat(80001) }] }]), /80,000/)
+  assert.throws(() => assertProjectRecordBudgets([{ ...value, issue: "X".repeat(17000) }]), /16 KiB/)
+})
+
+test("large metadata discovery is bounded, complete, revision-pinned and does not repeat text", async () => {
+  const { store, records, input } = fixture(), first = await registerProjectFile(store, owner, project, input())
+  const files = Array.from({ length: 2600 }, (_, index): ProjectFile => ({ ...first.file, id: `source-${String(index).padStart(5, "0")}`, relativePath: `${"folder".repeat(170)}/source-${index}.txt`, active: index % 3 !== 0, sourceVersion: index + 1 }))
+  records.set(`${owner}:${project}`, { ...first.inventory, files })
+  assert.ok(Buffer.byteLength(JSON.stringify(files)) > 3 * 1024 ** 2)
+  const auth = { getUser: async () => ({ data: { user: { id: owner, email: "synthetic@example.test", email_confirmed_at: "2026-11-16", role: "authenticated" } }, error: null }) }, handlers = createProjectLibraryHandlers({ store, auth })
+  let requests = 0, peak = 0
+  const fetcher: typeof fetch = async (url, init) => {
+    requests++
+    const response = await handlers.files(new Request(new URL(String(url), "http://local.test"), { ...init, headers: { Authorization: "Bearer synthetic" } }), project)
+    peak = Math.max(peak, Buffer.byteLength(await response.clone().text()))
+    return response
+  }
+  const client = createProjectLibraryClient(fetcher, project, () => true), result = await client.list()
+  assert.equal(result.inventory.files.length, 2600)
+  assert.equal(requests, 52)
+  assert.equal(new Set(result.inventory.files.map(file => file.id)).size, 2600)
+  assert.equal(result.inventory.files.filter(file => !file.active).length, files.filter(file => !file.active).length)
+  assert.ok(peak < PROJECT_LIMITS.maxResponseBytes)
+  const oldCursor = (await client.page(undefined, 1)).nextCursor!
+  records.set(`${owner}:${project}`, { ...result.inventory, revision: result.inventory.revision + 1 })
+  await assert.rejects(client.page(oldCursor), /changed/)
+})
+
+test("page metadata is separately paginated, exact historical content survives replacements and foreign access fails", async () => {
+  const { store, records, input } = fixture(), first = await registerProjectFile(store, owner, project, input())
+  const pages = Array.from({ length: 105 }, (_, index) => ({ pageNumber: index + 1, text: `SYNTHETIC PAGE ${index + 1}: exact retained evidence`, extraction: "complete" as const, review: "pending" as const }))
+  records.set(`${owner}:${project}`, { ...first.inventory, files: [{ ...first.file, status: "uploaded", preparation: "prepared", pageCount: 105, pages }] })
+  let caller = owner, metadataRequests = 0
+  const auth = { getUser: async () => ({ data: { user: { id: caller, email: "synthetic@example.test", email_confirmed_at: "2026-11-16", role: "authenticated" } }, error: null }) }, handlers = createProjectLibraryHandlers({ store, auth })
+  const fetcher: typeof fetch = async (url, init) => {
+    if (String(url).includes("view=pages")) metadataRequests++
+    return handlers.files(new Request(new URL(String(url), "http://local.test"), { ...init, headers: { Authorization: "Bearer synthetic" } }), project)
+  }
+  const client = createProjectLibraryClient(fetcher, project, () => true), source = await client.source(first.file.id)
+  assert.equal(metadataRequests, 2)
+  assert.equal(source.file.pages.length, 105)
+  assert.ok(source.file.pages.every(page => page.contentLoaded === false && !page.text))
+  await registerProjectFile(store, owner, project, input("replacement", "package/Schedule.txt", new TextEncoder().encode("replacement content")))
+  const retained = await client.content(first.file.id, 105)
+  assert.equal(retained.active, false)
+  assert.equal(retained.page.text, pages[104].text)
+  assert.equal(retained.sourceSha256, first.file.sha256)
+  caller = "foreign-owner"
+  await assert.rejects(client.content(first.file.id, 105), /unavailable/)
+  assert.equal((await client.list()).inventory.files.length, 0)
+})
+
+test("repeated mutation during traversal stops after three complete-list attempts", async () => {
+  let calls = 0
+  const fetcher: typeof fetch = async () => { calls++; return Response.json({ code: "PROJECT_CHANGED", error: "Project changed during discovery" }, { status: 409 }) }
+  await assert.rejects(createProjectLibraryClient(fetcher, project, () => true).list(), /changed/)
+  assert.equal(calls, 3)
 })

@@ -56,13 +56,34 @@ const snapshotSchema = z.object({
   synthesisLimitations: z.array(text).max(100), modelLabel: text.nullable(),
 }).strict()
 const approvalSchema = z.object({ ownerId: identity, at: z.number().finite().positive(), fingerprint: z.string().min(1).max(1_000_000) }).strict()
+const projectSourceSchema = z.object({
+  fileId: identity, sourceVersion: integer, sourceSha256: hash, name: text, relativePath: text, pageNumber: integer, quote: text,
+  anchor: z.union([
+    z.object({ kind: z.literal("text"), quote: text.min(1) }).strict(),
+    z.object({ kind: z.literal("image"), bounds, visibleText: text.nullable() }).strict(),
+  ]).optional(), imageSha256: hash.optional(), citationId: identity.optional(), analysisRunId: identity.optional(),
+}).strict().refine((source) => source.anchor?.kind === "image"
+  ? Boolean(source.imageSha256) && source.quote === (source.anchor.visibleText ?? "")
+  : Boolean(source.quote.trim()) && (!source.anchor || source.anchor.quote === source.quote) && source.imageSha256 === undefined,
+"Text evidence needs its actual quotation; visual evidence needs its typed region and image identity")
 const projectSnapshotSchema = z.object({
   ownerId: identity, projectId: identity, preparationId: identity,
-  sources: z.array(z.object({ fileId: identity, sourceVersion: integer, sourceSha256: hash, name: text, relativePath: text, pageNumber: integer, quote: text.min(1) }).strict()).min(1).max(100),
+  sources: z.array(projectSourceSchema).min(1).max(100),
+  analyses: z.array(z.object({
+    runId: identity, resultIdentity: hash, interpretationFingerprint: z.string().min(1).max(200000), modelLabel: identity,
+    findingIds: z.array(identity).max(100), workIds: z.array(identity).max(100), citationIds: z.array(identity).min(1).max(100),
+    sourceVersions: z.array(z.object({ fileId: identity, sourceVersion: integer, sourceSha256: hash, pageNumber: integer }).strict()).min(1).max(12),
+  }).strict()).min(1).max(20).optional(),
   equation: text.min(1),
   pricingProfile: z.object({ id: identity, version: integer, approvedBy: identity, approvedAt: z.number().finite().positive(), rule: z.object({ id: identity, surface: z.enum(["walls", "ceilings", "doors"]), substrate: text.min(1), condition: text.min(1), coats: z.number().int().min(1).max(6), unit: z.enum(["sqft", "doors"]), labor: number, materials: number, other: number }).strict().nullable() }).strict(),
   limitations: z.array(text).max(100),
-}).strict()
+}).strict().refine((snapshot) => {
+  const runs = snapshot.analyses ?? []
+  if (new Set(runs.map(run => run.runId)).size !== runs.length) return false
+  return snapshot.sources.every(source => source.analysisRunId || source.citationId || source.anchor
+    ? Boolean(source.analysisRunId && source.citationId && runs.some(run => run.runId === source.analysisRunId && run.citationIds.includes(source.citationId!)))
+    : true)
+}, "Analysis evidence must retain its exact recorded run and citation association")
 const itemSchema = z.object({
   id: identity, trade: text, location: text, description: text, scopeDecision: text,
   disposition: z.enum(["included", "excluded", "unresolved"]), quantity: number.nullable(), unit,

@@ -11,7 +11,7 @@ import { calculateProfitTargetMarkup } from "../lib/profit-target"
 import type { ProposalProfile } from "../lib/customer-proposal-types"
 import PlanStudySection from "./PlanStudySection"
 import CustomerProposalSection from "./CustomerProposalSection"
-import { checkProjectFreshness, fetchCurrentProjectInventory } from "../lib/automatic-bid"
+import { checkProjectFreshness, fetchCurrentProjectInventory, verifyAnalysisBindings, invalidateAnalysisApprovals } from "../lib/automatic-bid"
 
 type Props = {
   ownerId: string
@@ -145,7 +145,10 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
     const projectIds = [...new Set(captured.items.flatMap((item) => item.source.kind === "project" ? [item.source.snapshot.projectId] : []))]
     const projects = await Promise.all(projectIds.map(async (id) => {
       try {
-        return { id, inventory: await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible) }
+        const snapshots = captured.items.flatMap(item => item.source.kind === "project" && item.source.snapshot.projectId === id ? [item.source.snapshot] : [])
+        const inventory = await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible, { references: snapshots.flatMap(snapshot => snapshot.sources) })
+        await verifyAnalysisBindings(fetcher, ownerId, id, snapshots, accessible)
+        return { id, inventory }
       } catch { return { id, inventory: null } }
     }))
     if (!accessible()) return
@@ -195,7 +198,10 @@ function JobDraftWorkspace({ ownerId, ownerKey, storage, isCurrent, fetcher, def
     if (!captured || !accessible()) throw new Error("Reopen the current project draft before preparing a proposal.")
     const projectIds = [...new Set(captured.items.flatMap(item => item.disposition !== "excluded" && item.source.kind === "project" ? [item.source.snapshot.projectId] : []))]
     for (const id of projectIds) {
-      const inventory = await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible)
+      const snapshots = captured.items.flatMap(item => item.disposition !== "excluded" && item.source.kind === "project" && item.source.snapshot.projectId === id ? [item.source.snapshot] : [])
+      const inventory = await fetchCurrentProjectInventory(fetcher, ownerId, id, accessible, { references: snapshots.flatMap(snapshot => snapshot.sources) })
+      try { await verifyAnalysisBindings(fetcher, ownerId, id, snapshots, accessible) }
+      catch (error) { if (accessible() && draftRef.current === captured) change(invalidateAnalysisApprovals(captured)); throw error }
       if (!accessible() || draftRef.current !== captured) throw new Error("The draft changed during source verification. Review it again.")
       if (captured.items.some(item => item.disposition !== "excluded" && item.source.kind === "project" && item.source.snapshot.projectId === id && checkProjectFreshness(item.source.snapshot, inventory) !== "current")) {
         const items = captured.items.map(item => item.source.kind === "project" && item.source.snapshot.projectId === id ? updateDraftItem(item, { source: { ...item.source, freshness: checkProjectFreshness(item.source.snapshot, inventory) } }) : item)
@@ -285,7 +291,8 @@ export function DraftItemEditor({ item, index, line, disabled, onPatch, onQuanti
       <label>Contractor input type<select aria-label={`Item ${index + 1} input type`} value={item.source.origin} style={input} onChange={(event) => onPatch({ source: { kind: "contractor", origin: event.target.value as "written_scope" | "approved_assumption", note: item.source.kind === "contractor" ? item.source.note : "" } })}><option value="written_scope">Written scope</option><option value="approved_assumption">Contractor assumption</option></select></label>
       <label>Contractor source note<input aria-label={`Item ${index + 1} source note`} value={item.source.note} style={input} onChange={(event) => onPatch({ source: { ...item.source as Extract<DraftItem["source"], { kind: "contractor" }>, note: event.target.value } })} /></label>
     </div> : item.source.kind === "project" ? <details><summary>Project source and calculation · {item.source.freshness}</summary>
-      {item.source.snapshot.sources.map((source, i) => <div key={i}><p>{source.relativePath} · version {source.sourceVersion} · page {source.pageNumber}.</p><p>{source.quote}</p><p style={{ overflowWrap: "anywhere" }}>Original hash: {source.sourceSha256}.</p></div>)}
+      {item.source.snapshot.sources.map((source, i) => <div key={i}><p>{source.relativePath} · version {source.sourceVersion} · page {source.pageNumber}.</p><p>{source.anchor?.kind === "image" ? `Visual evidence region (${source.anchor.bounds.x}, ${source.anchor.bounds.y}, ${source.anchor.bounds.width}, ${source.anchor.bounds.height}); model transcription: ${source.anchor.visibleText ?? "none"}. This is not a verified measurement.` : source.quote}</p><p style={{ overflowWrap: "anywhere" }}>Original hash: {source.sourceSha256}.</p></div>)}
+      {item.source.snapshot.analyses?.map(analysis => <p key={analysis.runId}>Recorded AI interpretation {analysis.runId}: {analysis.modelLabel}. Exact findings {analysis.findingIds.join(", ")}. Quantity and cost authority come from contractor review.</p>)}
       <p>Calculation: {item.source.snapshot.equation}</p><p>Pricing profile {item.source.snapshot.pricingProfile.id} · version {item.source.snapshot.pricingProfile.version}.</p>
     </details> : <details><summary>Retained Study evidence · {item.source.freshness}</summary>
       <p>{item.source.snapshot.studyTitle} · source revision {item.source.snapshot.sourceRevision} · {item.source.snapshot.classification} record. Recorded classification: {item.source.snapshot.finding.kind}.</p>

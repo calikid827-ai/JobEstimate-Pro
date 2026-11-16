@@ -1,4 +1,4 @@
-import { PROJECT_LIMITS, type ProjectFile, type ProjectInventory, type UploadTicket } from "./types"
+import { PROJECT_LIMITS, type ProjectFile, type ProjectInventory, type ProjectInventoryPage, type ProjectPageContent, type ProjectPageMetadata, type UploadTicket } from "./types"
 
 function checkCurrent(isCurrent: () => boolean, signal?: AbortSignal) {
   if (signal?.aborted || !isCurrent()) throw new Error("Project or owner changed. Transfer stopped; reselect the original to resume its retained upload.")
@@ -60,21 +60,96 @@ export async function uploadProjectOriginal(options: {
 
 export function createProjectLibraryClient(fetcher: typeof fetch, projectId: string, isCurrent: () => boolean, transferFetcher: typeof fetch = (input, init) => globalThis.fetch(input, init)) {
   const endpoint = `/api/projects/${encodeURIComponent(projectId)}/files`
-  async function request<T>(body?: Record<string, unknown>): Promise<T> {
+  let cached: ProjectInventory | null = null, metadataTail = Promise.resolve()
+  async function exclusive<T>(run: () => Promise<T>): Promise<T> {
+    const previous = metadataTail
+    let release = () => {}
+    metadataTail = new Promise<void>(resolve => { release = resolve })
+    await previous
+    try { return await run() } finally { release() }
+  }
+  async function raw<T>(body?: Record<string, unknown>, query = ""): Promise<T> {
     for (let attempt = 0; attempt < 6; attempt++) {
       checkCurrent(isCurrent)
-      const response = await fetcher(endpoint, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined)
+      const response = await fetcher(endpoint + query, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" } : { cache: "no-store" })
       const result = await response.json()
       checkCurrent(isCurrent)
       if (response.ok) return result as T
       // Metadata CAS conflicts retry fresh server state; no file is uploaded twice.
-      if (response.status === 409 && result.code === "PROJECT_CHANGED" && attempt < 5) continue
-      throw new Error(typeof result.error === "string" ? result.error : `Project operation failed (${response.status}).`)
+      if (body && response.status === 409 && result.code === "PROJECT_CHANGED" && attempt < 5) continue
+      const error = new Error(typeof result.error === "string" ? result.error : `Project operation failed (${response.status}).`) as Error & { code?: string }
+      error.code = typeof result.code === "string" ? result.code : undefined
+      throw error
     }
     throw new Error("Project inventory changed repeatedly. Refresh and retry the individual file.")
   }
+  async function discover(): Promise<{ inventory: ProjectInventory }> {
+    for (let restart = 0; restart < 3; restart++) {
+      try {
+        let cursor: string | null = null, inventory: ProjectInventory | null = null, total: number | null = null
+        const seen = new Set<string>()
+        do {
+          const page: ProjectInventoryPage = await raw(undefined, cursor ? `?cursor=${encodeURIComponent(cursor)}` : "")
+          if (!page.inventory || page.inventory.projectId !== projectId || !Array.isArray(page.inventory.files) || page.inventory.files.length > PROJECT_LIMITS.inventoryPageSize) throw new Error("Project inventory page is invalid.")
+          if (!inventory) inventory = { ...page.inventory, files: [] }
+          if (inventory.revision !== page.inventory.revision || inventory.ownerId !== page.inventory.ownerId) throw Object.assign(new Error("The project changed during discovery."), { code: "PROJECT_CHANGED" })
+          for (const file of page.inventory.files) {
+            if (seen.has(file.id) || file.ownerId !== inventory.ownerId || file.projectId !== projectId || file.pages.some(value => value.text.length)) throw new Error("Project discovery returned repeated, foreign or unbounded source content.")
+            seen.add(file.id); inventory.files.push(file)
+          }
+          total = page.totalFiles ?? inventory.files.length
+          if (!Number.isSafeInteger(total) || total < 0 || total > PROJECT_LIMITS.maxFiles || inventory.files.length > total) throw new Error("Project inventory total is invalid.")
+          const next = page.nextCursor ?? null
+          if (next && (!page.inventory.files.length || next === cursor)) throw new Error("Project discovery made no progress.")
+          cursor = next
+        } while (cursor)
+        if (!inventory || inventory.files.length !== total) throw new Error("Project discovery is incomplete. Refresh to keep every source record accessible.")
+        cached = inventory
+        return { inventory }
+      } catch (error) { if ((error as { code?: string }).code !== "PROJECT_CHANGED" || restart === 2) throw error }
+    }
+    throw new Error("The project changed repeatedly during discovery. Pause transfers and refresh the library.")
+  }
+  async function request<T>(body: Record<string, unknown>): Promise<T> {
+    return exclusive(async () => {
+      const result = await raw<T & { mutation?: boolean; inventory?: ProjectInventory; totalFiles?: number }>(body)
+      if (result.mutation && result.inventory) {
+        const delta = result.inventory
+        if (delta.projectId !== projectId || delta.files.some(file => file.ownerId !== delta.ownerId || file.projectId !== projectId || file.pages.some(page => page.text.length))) throw new Error("The project mutation returned foreign or unbounded data.")
+        if (cached && cached.ownerId === delta.ownerId && cached.revision === delta.revision - 1) {
+          const changed = new Map(delta.files.map(file => [file.id, file]))
+          cached = { ...delta, files: [...cached.files.map(file => changed.get(file.id) ?? file), ...delta.files.filter(file => !cached!.files.some(old => old.id === file.id))].sort((a, b) => a.id.localeCompare(b.id)) }
+          if (cached.files.length !== result.totalFiles) cached = (await discover()).inventory
+        } else if (!cached || cached.ownerId !== delta.ownerId || cached.revision !== delta.revision) cached = (await discover()).inventory
+        return { ...result, inventory: cached } as T
+      }
+      return result
+    })
+  }
   return {
-    list: () => request<{ inventory: ProjectInventory }>(),
+    list: () => exclusive(discover),
+    page: (cursor?: string, limit?: number) => raw<ProjectInventoryPage>(undefined, `?${new URLSearchParams({ ...(cursor ? { cursor } : {}), ...(limit ? { limit: String(limit) } : {}) })}`),
+    source: (fileId: string) => exclusive(async () => {
+      for (let restart = 0; restart < 3; restart++) {
+        try {
+          let cursor: string | null = null, result: ProjectPageMetadata | null = null
+          do {
+            const page: ProjectPageMetadata = await raw(undefined, `?${new URLSearchParams({ view: "pages", fileId, ...(cursor ? { cursor } : {}) })}`)
+            if (page.file.id !== fileId || page.file.projectId !== projectId || page.file.pages.length > PROJECT_LIMITS.pageMetadataPageSize || page.file.pages.some(item => item.text.length || item.contentLoaded !== false)) throw new Error("Source page metadata is invalid.")
+            if (!result) result = { ...page, file: { ...page.file, pages: [] } }
+            if (page.revision !== result.revision || page.file.sha256 !== result.file.sha256 || page.file.sourceVersion !== result.file.sourceVersion) throw Object.assign(new Error("Source changed during page discovery."), { code: "PROJECT_CHANGED" })
+            if (page.file.pages.some(item => result!.file.pages.some(old => old.pageNumber === item.pageNumber))) throw new Error("Source page discovery repeated a page.")
+            result.file.pages.push(...page.file.pages)
+            if (page.nextCursor && (!page.file.pages.length || page.nextCursor === cursor)) throw new Error("Source page discovery made no progress.")
+            cursor = page.nextCursor
+          } while (cursor)
+          if (!result || result.file.pages.length !== result.totalPages) throw new Error("Source page discovery is incomplete.")
+          return { file: result.file, revision: result.revision }
+        } catch (error) { if ((error as { code?: string }).code !== "PROJECT_CHANGED" || restart === 2) throw error }
+      }
+      throw new Error("Source changed repeatedly. Refresh it before reviewing.")
+    }),
+    content: (fileId: string, pageNumber: number) => raw<ProjectPageContent>(undefined, `?${new URLSearchParams({ view: "content", fileId, pageNumber: String(pageNumber) })}`),
     register: (file: { name: string; relativePath: string; size: number; sha256: string; mimeType: string; selectionId: string }) => request<{ inventory: ProjectInventory; file: ProjectFile }>({ action: "register", file }),
     prepare: (fileId: string, pageNumber?: number) => request<{ inventory: ProjectInventory }>({ action: "prepare", fileId, ...(pageNumber !== undefined ? { pageNumber } : {}) }),
     download: (fileId: string) => request<{ url: string }>({ action: "download", fileId }),

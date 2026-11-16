@@ -4,15 +4,17 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ProjectInventory } from "../../lib/project-library/types"
 import type { Job } from "../lib/types"
 import type { createOwnerLocalPersistence } from "../lib/local-persistence"
-import type { Draft, DraftCommercial, DraftRevision } from "../lib/source-linked-draft-types"
+import type { Draft, DraftCommercial, DraftRevision, ProjectSelectionSnapshot } from "../lib/source-linked-draft-types"
+import type { ProjectAnalysisRecord } from "../../lib/project-analysis/types"
 import type { ApprovedPricingProfile, AutomaticBidPreparation, PricingRule } from "../lib/automatic-bid-types"
 import type { ProposalProfile } from "../lib/customer-proposal-types"
-import { approvePricingProfile, approveAutomaticCosts, automaticReviewFingerprint, checkProjectFreshness, confirmAutomaticQuantities, createAutomaticDraft, discoverAutomaticLocations, fetchCurrentProjectInventory, prepareAutomaticBid, refreshAutomaticDraftSources } from "../lib/automatic-bid"
+import { approvePricingProfile, approveAutomaticCosts, automaticReviewFingerprint, checkProjectFreshness, confirmAutomaticQuantities, createAutomaticDraft, discoverAutomaticLocations, fetchCurrentProjectInventory, prepareAutomaticBid, refreshAutomaticDraftSources, verifyAnalysisBindings, invalidateAnalysisApprovals } from "../lib/automatic-bid"
 import { createAutomaticBidStore } from "../lib/automatic-bid-store"
 import { createSourceLinkedDraftStore } from "../lib/source-linked-draft-store"
 import { approveCosts, calculateDraft, confirmQuantity, updateDraftItem, workingCopy } from "../lib/source-linked-draft"
 import { DraftItemEditor } from "./SourceLinkedDraftSection"
 import CustomerProposalSection from "./CustomerProposalSection"
+import ProjectAnalysisSection from "./ProjectAnalysisSection"
 
 type Props = {
   ownerId: string; ownerKey: string; job: Job; inventory: ProjectInventory | null
@@ -44,6 +46,7 @@ export default function AutomaticBidSection(props: Props) {
   const [locations, setLocations] = useState("")
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [preparation, setPreparation] = useState<AutomaticBidPreparation | null>(null)
+  const [analyses, setAnalyses] = useState<ProjectAnalysisRecord[]>([])
   const [draft, setDraft] = useState<Draft | null>(null)
   const draftRef = useRef<Draft | null>(null)
   const [recorded, setRecorded] = useState<DraftRevision | null>(null)
@@ -57,29 +60,42 @@ export default function AutomaticBidSection(props: Props) {
   const currentDraft = draft ? refreshAutomaticDraftSources(draft, inventory) : null
   const calculation = useMemo(() => { try { return currentDraft ? calculateDraft(currentDraft) : null } catch { return null } }, [currentDraft])
   const activeFiles = inventory?.files.filter((file) => file.active) ?? []
+  const suggestedLocations = [...new Set(analyses.flatMap(record => record.result?.takeoffInputs.flatMap(work => work.location && work.location.origin !== "observation" ? [work.location.value] : []) ?? []))]
   const profileInputsMatch = Boolean(profile && profileName.trim() === profile.name && rules.length === profile.rules.length && rules.every((rule, index) => {
     const saved = profile.rules[index]
     return rule.id === saved.id && rule.surface === saved.surface && rule.substrate.trim() === saved.substrate && rule.condition.trim() === saved.condition && ["coats", "labor", "materials", "other"].every((field) => rule[field as "coats" | "labor" | "materials" | "other"].trim() !== "" && Number(rule[field as "coats" | "labor" | "materials" | "other"]) === saved[field as "coats" | "labor" | "materials" | "other"])
   }))
   const job = useMemo(() => ({ id: props.job.id, name: props.job.jobName, clientName: props.job.clientName, address: props.job.jobAddress }), [props.job.id, props.job.jobName, props.job.clientName, props.job.jobAddress])
-  function change(next: Draft) { draftRef.current = next; setDraft(next); setQuantityReview(""); setCostReview(""); setNotice("") }
+  const change = useCallback((next: Draft) => {
+    draftRef.current = next; setDraft(next); setQuantityReview(""); setCostReview(""); setNotice("")
+    const eligible = new Set(next.items.filter(item => item.source.kind === "project" && item.quantity !== null && item.disposition !== "excluded").map(item => item.id))
+    setSelectedItems(current => current.filter(id => eligible.has(id)))
+  }, [])
   const loadRevisions = useCallback(() => { const result = revisionStore.list(props.job.id); if (result.ok) setRevisions(result.revisions); else setProblem(result.error) }, [revisionStore, props.job.id])
-  const loadCurrentInventory = useCallback(async () => {
+  const loadCurrentInventory = useCallback(async (options?: { references?: ProjectSelectionSnapshot["sources"]; fileIds?: string[] }, publish = true) => {
     try {
-      const current = await fetchCurrentProjectInventory(latest.current.fetcher, props.ownerId, props.job.id, accessible)
+      const current = await fetchCurrentProjectInventory(latest.current.fetcher, props.ownerId, props.job.id, accessible, options)
       if (!accessible()) throw new Error("The current project changed.")
-      setObservedInventory(current); latest.current.onInventory?.(current)
+      if (publish) { setObservedInventory(current); latest.current.onInventory?.(current) }
       return current
     } catch (error) { if (accessible()) setObservedInventory(null); throw error }
   }, [props.ownerId, props.job.id, accessible])
   const verifySources = useCallback(async () => {
-    const current = await loadCurrentInventory()
     const working = draftRef.current
     if (!working || !accessible()) throw new Error("Reopen the current estimate before verifying its project sources.")
+    const snapshots = working.items.flatMap(item => item.disposition !== "excluded" && item.source.kind === "project" ? [item.source.snapshot] : [])
+    // Publish only after checking the captured working copy. Otherwise the
+    // inventory effect can update freshness while the analysis GET is pending
+    // and mistake that refresh for a concurrent contractor edit.
+    const current = await loadCurrentInventory({ references: snapshots.flatMap(snapshot => snapshot.sources) }, false)
+    try { await verifyAnalysisBindings(latest.current.fetcher, props.ownerId, props.job.id, snapshots, accessible) }
+    catch (error) { if (accessible() && draftRef.current === working) change(invalidateAnalysisApprovals(working)); throw error }
+    if (!accessible() || draftRef.current !== working) throw new Error("The estimate changed while checking its sources. Review the current working copy.")
     const checked = refreshAutomaticDraftSources(working, current)
     if (JSON.stringify(checked) !== JSON.stringify(working)) { draftRef.current = checked; setDraft(checked); setQuantityReview(""); setCostReview("") }
+    setObservedInventory(current); latest.current.onInventory?.(current)
     if (working.items.some((item) => item.disposition !== "excluded" && item.source.kind === "project" && checkProjectFreshness(item.source.snapshot, current) !== "current")) throw new Error("Project files changed or are unavailable. Refresh the affected evidence, reconfirm quantities and costs, and save a new estimate revision before creating or exporting the proposal.")
-  }, [loadCurrentInventory, accessible])
+  }, [loadCurrentInventory, accessible, props.ownerId, props.job.id, change])
   useEffect(() => {
     const saved = profileStore.listProfiles()
     if (!saved.ok) { setProblem(saved.error); return }
@@ -115,19 +131,23 @@ export default function AutomaticBidSection(props: Props) {
     } catch (error) { if (accessible()) setProblem(message(error)) }
     finally { if (accessible()) setBusy(false) }
   }
-  async function prepare() {
+  async function prepare(selectedAnalyses = analyses) {
     if (!accessible() || busy || !profile || !profileInputsMatch || !inventory) return
     setBusy(true); setProblem(""); setNotice("")
     try {
-      const capturedInventory = await loadCurrentInventory()
+      const references = selectedAnalyses.flatMap(record => record.result?.citations.map(citation => ({ fileId: citation.fileId, sourceVersion: citation.sourceVersion, sourceSha256: citation.sourceSha256, name: "", relativePath: "", pageNumber: citation.pageNumber, quote: citation.anchor.kind === "text" ? citation.anchor.quote : citation.anchor.visibleText ?? "", anchor: citation.anchor })) ?? [])
+      const capturedInventory = await loadCurrentInventory({ fileIds: selectedFiles, references })
       if (!accessible()) return
-      const result = await prepareAutomaticBid({ ownerId: props.ownerId, job, inventory: capturedInventory, selectedFileIds: selectedFiles, locations: locations.split(/\n|,/), profile })
+      const suggested = selectedAnalyses.flatMap(record => record.result?.takeoffInputs.flatMap(work => work.location && work.location.origin !== "observation" ? [work.location.value] : []) ?? [])
+      const chosenLocations = locations.trim() ? locations.split(/\n|,/) : [...new Set(selectedAnalyses.length ? suggested : discoverAutomaticLocations(capturedInventory))]
+      if (!locations.trim()) setLocations(chosenLocations.join("\n"))
+      const result = await prepareAutomaticBid({ ownerId: props.ownerId, job, inventory: capturedInventory, selectedFileIds: selectedFiles, locations: chosenLocations, profile, analyses: selectedAnalyses })
       if (!accessible()) return
       const existing = revisionStore.list(job.id)
       if (!existing.ok) throw new Error(existing.error)
       const prior = existing.revisions.find((revision) => revision.draftId === `automatic-${result.id}`)
       const next = prior ? refreshAutomaticDraftSources(workingCopy(prior), capturedInventory) : createAutomaticDraft(result, job, props.defaults)
-      setPreparation(result); setRecorded(prior ?? null); change(next); setSelectedItems(result.candidates.map((candidate) => candidate.id)); setNotice(prior ? "This exact preparation already has a saved revision. Reopened it instead of adding duplicate work." : `${result.candidates.length} supported takeoff items prepared; ${result.exceptions.length} decisions remain. Review before confirming quantities and costs.`)
+      setPreparation(result); setRecorded(prior ?? null); change(next); setSelectedItems(result.candidates.filter(candidate => !candidate.pricingIssue).map((candidate) => candidate.id)); setNotice(prior ? "This exact preparation already has a saved revision. Reopened it instead of adding duplicate work." : `${result.candidates.length} supported takeoff items prepared; ${result.exceptions.length} decisions remain. Review before confirming quantities and costs.`)
     } catch (error) { if (accessible()) setProblem(message(error)) }
     finally { if (accessible()) setBusy(false) }
   }
@@ -136,7 +156,10 @@ export default function AutomaticBidSection(props: Props) {
     if (!captured || !accessible() || busy) return
     setBusy(true); setProblem(""); setNotice("")
     try {
-      const currentInventory = await loadCurrentInventory()
+      const snapshots = captured.items.flatMap(item => item.disposition !== "excluded" && item.source.kind === "project" ? [item.source.snapshot] : [])
+      const currentInventory = await loadCurrentInventory({ references: snapshots.flatMap(snapshot => snapshot.sources) })
+      try { await verifyAnalysisBindings(latest.current.fetcher, props.ownerId, props.job.id, snapshots, accessible) }
+      catch (error) { if (accessible() && draftRef.current === captured) change(invalidateAnalysisApprovals(captured)); throw error }
       if (!accessible()) return
       const checked = refreshAutomaticDraftSources(captured, currentInventory)
       if (JSON.stringify(checked) !== JSON.stringify(captured)) { change(checked); throw new Error("Source versions changed. Review affected quantities and costs before saving.") }
@@ -172,23 +195,32 @@ export default function AutomaticBidSection(props: Props) {
         <p>{activeFiles.length} active project files. Select relevant documents for this bounded bid; unselected files and all unreviewed photos remain visible in coverage.</p>
         <details><summary>Relevant project documents · {selectedFiles.length} selected</summary>{activeFiles.map((file) => <label key={file.id} style={{ display: "block" }}><input type="checkbox" aria-label={`Bid source ${file.relativePath}`} disabled={busy} checked={selectedFiles.includes(file.id)} onChange={(event) => setSelectedFiles((current) => event.target.checked ? [...current, file.id] : current.filter((id) => id !== file.id))} /> {file.relativePath} · v{file.sourceVersion} · {file.status} / {file.preparation}</label>)}</details>
         <label>Locations to quote · one per line<textarea aria-label="Bid locations" style={input} rows={4} value={locations} disabled={busy} onChange={(event) => setLocations(event.target.value)} /></label>
-        <p>Locations found in explicit room schedules are suggested automatically. Check the selected locations. Supported takeoff uses stated feet/square feet and paint conditions; arbitrary drawing measurement, OCR and photo interpretation are not implemented.</p>
+        {suggestedLocations.length > 0 && <div><p>Locations proposed from the selected recorded evidence:</p>{suggestedLocations.map(location => <label key={location} style={{ display: "block" }}><input type="checkbox" aria-label={`Quote proposed location ${location}`} disabled={busy} checked={locations.split(/\n|,/).some(value => value.trim().toLowerCase() === location.trim().toLowerCase())} onChange={event => setLocations(current => {
+          const chosen = current.split(/\n|,/).map(value => value.trim()).filter(Boolean).filter(value => value.toLowerCase() !== location.trim().toLowerCase())
+          return (event.target.checked ? [...chosen, location] : chosen).join("\n")
+        })} /> {location}</label>)}</div>}
+        <p>Source-backed room schedules and selected AI work records can suggest locations without retyping. Check the quoted locations. Printed dimensions can propose takeoff; photos supply visible conditions or location clues, not invented measurements or room identities.</p>
       </>}
+      <ProjectAnalysisSection ownerId={props.ownerId} projectId={props.job.id} inventory={inventory} selectedFileIds={selectedFiles} fetcher={props.fetcher} isCurrent={accessible} disabled={busy} onRecords={setAnalyses} onCompleted={records => {
+        if (!accessible()) return
+        if (!draftRef.current && profile && profileInputsMatch) { void prepare(records) }
+        else setNotice("Recorded AI inputs are selected. Prepare the bid to use them with your approved pricing profile; existing working edits and saved revisions are preserved.")
+      }} />
       <button type="button" style={button} disabled={busy || !profile || !profileInputsMatch || !inventory} onClick={() => { void prepare() }}>{busy ? "Preparing or saving…" : "Prepare painting bid"}</button>
     </section>
     <label style={{ display: "block", marginTop: 12 }}>Saved prepared estimate revision<select aria-label="Saved prepared estimate revision" style={input} disabled={busy} value={recorded?.id ?? ""} onChange={(event) => {
       const selected = revisions.find((revision) => revision.id === event.target.value)
       if (!selected || !accessible()) return
-      setRecorded(selected); setPreparation(null); change(refreshAutomaticDraftSources(workingCopy(selected), inventory)); setSelectedItems(selected.draft.items.filter((item) => item.source.kind === "project").map((item) => item.id))
+      setRecorded(selected); setPreparation(null); change(refreshAutomaticDraftSources(workingCopy(selected), inventory)); setSelectedItems(selected.draft.items.filter((item) => item.source.kind === "project" && item.disposition === "included" && item.quantity !== null && item.costs.labor !== null && item.costs.materials !== null && item.costs.other !== null).map((item) => item.id))
     }}><option value="">Choose a saved revision</option>{revisions.filter((revision) => revision.draftId.startsWith("automatic-")).map((revision) => <option key={revision.id} value={revision.id}>{revision.draft.title} · {revision.id}</option>)}</select></label>
     {preparation && <section data-bid-preparation={preparation.id} style={box}><h4>{preparation.candidates.length} supported takeoff items · {preparation.exceptions.length} decisions</h4><p>Prepared locations: {preparation.locations.join(", ")} · {preparation.profile.name} v{preparation.profile.version}. Prepare again to apply a different selection.</p>
-      <p>{preparation.coverage.textPagesChecked} of {preparation.coverage.pagesTotal} known PDF pages checked for schedule text. {preparation.coverage.unreviewedPhotos} photos remain unreviewed. Upload and text extraction are not full scope review.</p>
+      <p>{preparation.coverage.textPagesChecked} of {preparation.coverage.pagesTotal} known PDF pages checked by deterministic schedule extraction. {preparation.coverage.unreviewedPhotos} photos are outside that deterministic check; recorded AI target coverage is shown separately above. Upload and text extraction are not full scope review.</p>
       <details open={preparation.exceptions.length > 0}><summary>Decisions and unsupported work</summary>{preparation.exceptions.length ? <ul>{preparation.exceptions.map((issue) => <li key={issue.id}>{issue.location}{issue.surface ? ` · ${issue.surface}` : ""}: {issue.message}</li>)}</ul> : <p>No extraction exception in the selected schedule records. Package coverage still remains bounded.</p>}</details>
       <details><summary>Source coverage and calculation details</summary><ul>{preparation.coverage.limitations.map((value) => <li key={value}>{value}</li>)}</ul><ul>{preparation.coverage.records.map((record, i) => <li key={i}>{activeFiles.find((file) => file.id === record.fileId)?.relativePath ?? record.fileId} · v{record.sourceVersion}{record.pageNumber ? ` · page ${record.pageNumber}` : ""} · {record.state}: {record.reason}</li>)}</ul></details>
     </section>}
     {currentDraft && <section aria-label="Prepared estimate review" style={box}><h4>Decisions → Proposal</h4>
       <p>Review supported items together. Exceptions stay unresolved until corrected or explicitly excluded in the correction editor. Unresolved work prevents a complete customer quote.</p>
-      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Select</th><th>Location / work</th><th>Quantity / equation</th><th>Rate source</th><th>Review</th></tr></thead><tbody>{currentDraft.items.filter((item) => item.source.kind === "project").map((item) => <tr key={item.id}><td><input type="checkbox" aria-label={`Review prepared ${item.location} ${item.id}`} checked={selectedItems.includes(item.id)} disabled={busy} onChange={(event) => { setSelectedItems((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id)); setQuantityReview(""); setCostReview("") }} /></td><td>{item.location}: {item.description}</td><td>{item.quantity} {item.unit}<details><summary>Evidence and equation</summary><p>{item.measurementBasis}</p>{item.source.kind === "project" && item.source.snapshot.sources.map((source, i) => <p key={i}>{source.relativePath} · v{source.sourceVersion} · page {source.pageNumber}: {source.quote}</p>)}</details></td><td>{item.costs.source}</td><td>{item.quantityConfirmation ? "Quantity confirmed" : "Quantity pending"}; {item.costApproval ? "costs approved" : "costs pending"}</td></tr>)}</tbody></table></div>
+      <div style={{ overflowX: "auto" }}><table><thead><tr><th>Select</th><th>Location / work</th><th>Quantity / equation</th><th>Rate source</th><th>Review</th></tr></thead><tbody>{currentDraft.items.filter((item) => item.source.kind === "project").map((item) => <tr key={item.id}><td><input type="checkbox" aria-label={`Review prepared ${item.location} ${item.id}`} checked={selectedItems.includes(item.id)} disabled={busy || item.disposition === "excluded" || item.quantity === null} onChange={(event) => { setSelectedItems((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id)); setQuantityReview(""); setCostReview("") }} /></td><td>{item.location}: {item.description}</td><td>{item.quantity ?? "Needs a decision"} {item.unit}<details><summary>Evidence and equation</summary><p>{item.measurementBasis}</p>{item.source.kind === "project" && item.source.snapshot.sources.map((source, i) => <p key={i}>{source.relativePath} · v{source.sourceVersion} · page {source.pageNumber}: {source.anchor?.kind === "image" ? "Retained visible-region citation; proposed interpretation requires review." : source.quote}</p>)}</details></td><td>{item.costs.source}</td><td>{item.quantityConfirmation ? "Quantity confirmed" : "Quantity pending"}; {item.costApproval ? "costs approved" : "costs pending"}</td></tr>)}</tbody></table></div>
       <label style={{ display: "block" }}><input aria-label="Reviewed takeoff sources and quantities" type="checkbox" checked={quantityReview === automaticReviewFingerprint(currentDraft)} disabled={busy} onChange={(event) => setQuantityReview(event.target.checked ? automaticReviewFingerprint(currentDraft) : "")} /> I reviewed the selected scope, source references and quantity equations.</label>
       <button type="button" style={button} disabled={busy || !quantityReview || !selectedItems.length} onClick={() => { try { change(confirmAutomaticQuantities(currentDraft, selectedItems, quantityReview, props.ownerId)) } catch (error) { setProblem(message(error)) } }}>Confirm selected takeoff</button>
       <label style={{ display: "block" }}><input aria-label="Reviewed matched pricing costs" type="checkbox" checked={costReview === automaticReviewFingerprint(currentDraft)} disabled={busy} onChange={(event) => setCostReview(event.target.checked ? automaticReviewFingerprint(currentDraft) : "")} /> I reviewed the exact matched cost rules for the selected work.</label>

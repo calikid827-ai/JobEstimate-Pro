@@ -1,4 +1,5 @@
 import type { Finding, StudyDecision, StudyAttempt } from "../../lib/plan-study/types"
+import type { AnalysisCitation, AnalysisSourceRef } from "../../lib/project-analysis/types"
 
 export type DraftUnit = "sqft" | "linear_ft" | "doors" | "lump_sum"
 export type DraftCommercial = {
@@ -12,11 +13,23 @@ export type DraftCommercial = {
 export type DraftJob = { id: string; name: string; clientName: string; address: string }
 export type DraftApproval = { ownerId: string; at: number; fingerprint: string }
 export type SourceFreshness = "unverified" | "current" | "changed" | "unavailable"
+export type ProjectAnalysisBinding = {
+  runId: string
+  resultIdentity: string
+  interpretationFingerprint: string
+  modelLabel: string
+  findingIds: string[]
+  workIds: string[]
+  citationIds: string[]
+  /** Every target and context page used by the interpretation remains a dependency. */
+  sourceVersions: AnalysisSourceRef[]
+}
 export type ProjectSelectionSnapshot = {
   ownerId: string
   projectId: string
   preparationId: string
-  sources: Array<{ fileId: string; sourceVersion: number; sourceSha256: string; name: string; relativePath: string; pageNumber: number; quote: string }>
+  sources: Array<{ fileId: string; sourceVersion: number; sourceSha256: string; name: string; relativePath: string; pageNumber: number; quote: string; anchor?: AnalysisCitation["anchor"]; imageSha256?: string; citationId?: string; analysisRunId?: string }>
+  analyses?: ProjectAnalysisBinding[]
   equation: string
   pricingProfile: {
     id: string; version: number; approvedBy: string; approvedAt: number

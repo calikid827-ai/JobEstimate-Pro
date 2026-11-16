@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createProjectLibraryClient, projectFileHash, runProjectQueue } from "../../lib/project-library/client"
 import { expandProjectZip } from "../../lib/project-library/archive"
-import { PROJECT_LIMITS, type ProjectFile, type ProjectInventory } from "../../lib/project-library/types"
+import { PROJECT_LIMITS, type ProjectFile, type ProjectInventory, type ProjectPage } from "../../lib/project-library/types"
 import { mimeForName, safeRelativePath } from "../../lib/project-library/validation"
 
 type Props = { ownerId: string; projectId: string; fetcher: typeof fetch; isCurrent: () => boolean; onInventory: (inventory: ProjectInventory) => void; transferFetcher?: typeof fetch }
@@ -23,6 +23,8 @@ export default function ProjectFilesSection(props: Props) {
   const [inventory, setInventory] = useState<ProjectInventory | null>(null), inventoryRef = useRef<ProjectInventory | null>(null)
   const [selected, setSelected] = useState<Selected[]>([]), selectedRef = useRef<Selected[]>([])
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState(""), [page, setPage] = useState(0)
+  const [pageRecords, setPageRecords] = useState<Record<string, ProjectFile>>({})
+  const [pageText, setPageText] = useState<Record<string, ProjectPage>>({})
   const acceptInventory = useCallback((value: ProjectInventory) => {
     if (!current() || value.ownerId !== props.ownerId || value.projectId !== props.projectId) return
     if (inventoryRef.current && inventoryRef.current.revision > value.revision) return
@@ -119,6 +121,27 @@ export default function ProjectFilesSection(props: Props) {
     } catch (cause) { if (current()) setError(problem(cause)) }
     finally { active.current = null; if (current()) setBusy(false) }
   }
+  async function loadPages(file: ProjectFile) {
+    if (!current()) return
+    try {
+      const result = await client.source(file.id)
+      if (!current()) return
+      if (result.file.sourceVersion !== file.sourceVersion || result.file.sha256 !== file.sha256) throw new Error("The source changed. Refresh the project library before opening its page records.")
+      setPageRecords(previous => ({ ...previous, [file.id]: result.file }))
+    } catch (cause) { if (current()) setError(problem(cause)) }
+  }
+  async function loadText(file: ProjectFile, number: number) {
+    if (!current()) return
+    try {
+      const result = await client.content(file.id, number)
+      if (!current()) return
+      if (result.ownerId !== props.ownerId || result.projectId !== props.projectId || result.fileId !== file.id || result.sourceVersion !== file.sourceVersion || result.sourceSha256 !== file.sha256 || result.page.pageNumber !== number) throw new Error("The exact page source could not be verified. Refresh the library.")
+      // Keep only eight explicitly opened pages in the view cache. Originals and
+      // all retained page content remain available on the server, without truncation.
+      const key = `${file.id}:${file.sourceVersion}:${number}`
+      setPageText(previous => Object.fromEntries([...Object.entries(previous).filter(([id]) => id !== key), [key, result.page]].slice(-8)))
+    } catch (cause) { if (current()) setError(problem(cause)) }
+  }
   const files = inventory?.files || [], shown = files.slice(page * 50, page * 50 + 50)
   const uploaded = files.filter(file => file.status === "uploaded").length, prepared = files.filter(file => file.preparation === "prepared").length
   if (!props.isCurrent()) return null
@@ -126,7 +149,7 @@ export default function ProjectFilesSection(props: Props) {
     <h3>Project files</h3>
     <p>Keep the job package here once, then reuse it for bids and change orders. Originals are retained in private project storage, not browser-only storage.</p>
     <p>{files.length} retained source records · {uploaded} uploaded · {prepared} prepared · {files.filter(file => file.preparation === "failed" || file.status === "failed").length} failed · {files.filter(file => file.preparation === "unsupported").length} unsupported for preparation. Prepared files and page text are not a completed scope review.</p>
-    <details><summary>File limits and processing coverage</summary><p>Joint limits: 10,000 records / 25 GiB originals per project, plus 3 MiB of combined inventory and prepared text; larger or denser inventories need pagination. Originals: 100 MiB each; 3 concurrent transfers and 1 preparation operation. ZIP: 2,000 entries / 256 MiB expanded / 100× ratio, no nested expansion. PDF: 1,000 pages per file. Photos are not counted as rooms.</p></details>
+    <details><summary>File limits and processing coverage</summary><p>Inventory is retrieved in bounded pages; prepared source text is fetched only when needed. Limits: 10,000 records / 25 GiB originals per project, 100 MiB per original, 3 concurrent transfers and 1 preparation operation. ZIP: 2,000 entries / 256 MiB expanded / 100× ratio, no nested expansion. PDF: 1,000 pages per file. Photos are not counted as rooms.</p></details>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
       <label>Bulk files<input aria-label="Project files selection" type="file" multiple disabled={busy} style={input} onChange={event => { void choose(event.target.files); event.target.value = "" }} /></label>
       <label>Folder<input aria-label="Project folder selection" type="file" multiple {...{ webkitdirectory: "" }} disabled={busy} style={input} onChange={event => { void choose(event.target.files); event.target.value = "" }} /></label>
@@ -143,9 +166,9 @@ export default function ProjectFilesSection(props: Props) {
     <div style={{ overflowX: "auto" }}><table style={{ width: "100%", marginTop: 14, textAlign: "left" }}><thead><tr><th>Source</th><th>Transfer / preparation</th><th>Coverage / next action</th></tr></thead><tbody>{shown.map(file => <tr key={file.id}>
       <td style={{ overflowWrap: "anywhere" }}>{file.relativePath}<br />v{file.sourceVersion} · {file.active ? "current source" : "historical source"} · {size(file.size)}{file.duplicateOfId && <p>Duplicate content of {file.duplicateOfId}; separate record retained.</p>}</td>
       <td>{file.status} / {file.preparation}{file.image && <p>{file.image.width}×{file.image.height} original; processing copy {file.image.processingWidth}×{file.image.processingHeight}</p>}{file.issue && <p role="status">{file.issue}</p>}</td>
-      <td>{file.pages.length} prepared page records / {file.pageCount ?? "unknown"} total · scope review pending.
+      <td>{file.pageStats ? file.pageStats.prepared + file.pageStats.failed : file.pages.length} prepared page records / {file.pageCount ?? "unknown"} total · scope review pending.
         {file.status === "uploaded" && <><button type="button" style={button} disabled={busy} onClick={() => { void client.download(file.id).then(result => { if (current()) { const link = document.createElement("a"); link.href = result.url; link.rel = "noopener noreferrer"; link.target = "_blank"; link.click() } }).catch(cause => { if (current()) setError(problem(cause)) }) }}>Open retained original</button>{" "}<button type="button" style={button} disabled={busy} onClick={() => { void prepare(file.id) }}>{file.preparation === "failed" ? "Retry preparation" : "Prepare this file"}</button></>}
-        <details><summary>Page records and source identity</summary><p>File {file.id} · SHA-256 {file.sha256}</p>{file.pages.map(item => <div key={item.pageNumber}><strong>Page {item.pageNumber} · extraction {item.extraction} · review {item.review}</strong>{item.issue && <p>{item.issue}</p>}<pre style={{ whiteSpace: "pre-wrap" }}>{item.text}</pre>{item.extraction === "failed" && <button type="button" style={button} disabled={busy} onClick={() => { void prepare(file.id, item.pageNumber) }}>Retry page {item.pageNumber}</button>}</div>)}</details>
+        <details><summary>Page records and source identity</summary><p>File {file.id} · SHA-256 {file.sha256}</p><button type="button" style={button} disabled={busy} onClick={() => { void loadPages(file) }}>Load page records</button><p>Page text is loaded on demand. Preparation is separate from the recorded AI review in Prepare a Bid.</p>{(pageRecords[file.id]?.pages ?? file.pages).map(item => <div key={item.pageNumber}><strong>Page {item.pageNumber} · extraction {item.extraction} · library review {item.review}</strong>{item.issue && <p>{item.issue}</p>}<button type="button" style={button} disabled={busy} onClick={() => { void loadText(file, item.pageNumber) }}>Read retained page {item.pageNumber} text</button><pre style={{ whiteSpace: "pre-wrap" }}>{pageText[`${file.id}:${file.sourceVersion}:${item.pageNumber}`]?.text ?? "Text not loaded in this view."}</pre>{item.extraction === "failed" && <button type="button" style={button} disabled={busy} onClick={() => { void prepare(file.id, item.pageNumber) }}>Retry page {item.pageNumber}</button>}</div>)}</details>
       </td></tr>)}</tbody></table></div>
     {files.length > 50 && <p><button type="button" style={button} disabled={page === 0} onClick={() => setPage(value => value - 1)}>Previous 50</button> Records {page * 50 + 1}–{Math.min(files.length, page * 50 + 50)} of {files.length} <button type="button" style={button} disabled={(page + 1) * 50 >= files.length} onClick={() => setPage(value => value + 1)}>Next 50</button></p>}
     </details>

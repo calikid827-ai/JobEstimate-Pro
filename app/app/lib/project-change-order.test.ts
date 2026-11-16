@@ -137,10 +137,12 @@ test("same project files are retained by exact version and source replacement in
 test("fresh server source checks reject replacement without relying on a stale loaded library", async () => {
   const linked = { ...record(), sourceFiles: selectChangeFiles(inventory, owner, job.id, ["synthetic-plan"]) }
   const calls: Array<{ url: string; cache: RequestCache | undefined }> = []
-  const good = (async (input: RequestInfo | URL, init?: RequestInit) => { calls.push({ url: String(input), cache: init?.cache }); return Response.json({ inventory }) }) as typeof fetch
+  // Version-only checks use the paginated metadata contract, never prepared text.
+  const metadata = { ...inventory, files: inventory.files.map(file => ({ ...file, pages: [] })) }
+  const good = (async (input: RequestInfo | URL, init?: RequestInit) => { calls.push({ url: String(input), cache: init?.cache }); return Response.json({ inventory: metadata, totalFiles: metadata.files.length, nextCursor: null }) }) as typeof fetch
   assert.equal((await verifyCurrentChangeSources(linked, good, () => true))!.revision, 1)
   assert.deepEqual(calls, [{ url: "/api/projects/synthetic-job/files", cache: "no-store" }])
-  const replaced = (async () => Response.json({ inventory: { ...inventory, revision: 2, files: [{ ...inventory.files[0], active: false }] } })) as typeof fetch
+  const replaced = (async () => Response.json({ inventory: { ...metadata, revision: 2, files: [{ ...metadata.files[0], active: false }] }, totalFiles: metadata.files.length, nextCursor: null })) as typeof fetch
   assert.deepEqual(changeSourceProblems(linked, inventory), [])
   await assert.rejects(verifyCurrentChangeSources(linked, replaced, () => true), /replaced/)
   await assert.rejects(verifyCurrentChangeSources(linked, (async () => Response.json({ error: "unavailable" }, { status: 503 })) as typeof fetch, () => true))

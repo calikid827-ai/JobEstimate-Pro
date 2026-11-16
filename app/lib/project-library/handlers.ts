@@ -1,7 +1,18 @@
 import { requireOwner, withOwnerResponse, type OwnerAuthAdapter } from "../owner-auth"
 import { completeProjectUpload, ownedFile, prepareProjectFile, recordUploadSession, registerProjectFile } from "./service"
-import { ProjectLibraryError, type ProjectLibraryStore } from "./types"
+import { PROJECT_LIMITS, ProjectLibraryError, type ProjectInventory, type ProjectLibraryStore } from "./types"
 import { projectId } from "./validation"
+import { getProjectFile, getProjectPage, getProjectRevision, listProjectFiles, pageLimit, parsePageCursor, projectFileSummary, projectPageMetadata } from "./pagination"
+
+function boundedJson(value: unknown) {
+  const text = JSON.stringify(value)
+  if (new TextEncoder().encode(text).byteLength > PROJECT_LIMITS.maxResponseBytes) throw new ProjectLibraryError(413, "PROJECT_RESPONSE_LIMIT", "Request a smaller page. Source records and content were preserved without truncation.")
+  return new Response(text, { headers: { "Content-Type": "application/json" } })
+}
+function mutation(inventory: ProjectInventory, ids: string[], fileId?: string) {
+  const files = inventory.files.filter(file => ids.includes(file.id)).map(projectFileSummary)
+  return boundedJson({ mutation: true, inventory: { ...inventory, files }, totalFiles: inventory.files.length, ...(fileId ? { file: files.find(file => file.id === fileId) } : {}) })
+}
 
 async function json(req: Request) {
   if (Number(req.headers.get("content-length") || 0) > 16000) throw new ProjectLibraryError(413, "PROJECT_METADATA_LIMIT", "Send file metadata only; transfer originals directly to authorized storage.")
@@ -23,15 +34,33 @@ export function createProjectLibraryHandlers(deps: { store: ProjectLibraryStore;
     try {
       const id = projectId(rawProjectId)
       await deps.store.ready()
-      if (req.method === "GET") return Response.json({ inventory: await deps.store.get(owner.id, id) })
+      if (req.method === "GET") {
+        const query = new URL(req.url).searchParams
+        if (query.get("view") === "content") {
+          const file = await getProjectFile(deps.store, owner.id, id, query.get("fileId") || "")
+          const page = await getProjectPage(deps.store, owner.id, id, file.id, Number(query.get("pageNumber")))
+          const current = await getProjectFile(deps.store, owner.id, id, file.id)
+          return boundedJson({ ownerId: owner.id, projectId: id, fileId: file.id, sourceVersion: file.sourceVersion, sourceSha256: file.sha256, active: current.active, page })
+        }
+        if (query.get("view") === "pages") {
+          const before = await getProjectRevision(deps.store, owner.id, id)
+          const file = await getProjectFile(deps.store, owner.id, id, query.get("fileId") || "")
+          const revision = await getProjectRevision(deps.store, owner.id, id), start = parsePageCursor(query.get("cursor") ?? undefined, revision, PROJECT_LIMITS.maxPagesPerPdf), limit = pageLimit(query.has("limit") ? Number(query.get("limit")) : undefined, PROJECT_LIMITS.pageMetadataPageSize)
+          if (before !== revision) throw new ProjectLibraryError(409, "PROJECT_CHANGED", "Project changed during source-page discovery. Restart that listing.")
+          const pages = [...file.pages].sort((a, b) => a.pageNumber - b.pageNumber).slice(start, start + limit).map(projectPageMetadata)
+          return boundedJson({ file: { ...projectFileSummary(file), pages }, revision, totalPages: file.pages.length, nextCursor: start + pages.length < file.pages.length ? `${revision}:${start + pages.length}` : null })
+        }
+        if (query.has("view")) throw new ProjectLibraryError(400, "PROJECT_VIEW_INVALID", "Choose inventory, source pages or exact page content.")
+        return boundedJson(await listProjectFiles(deps.store, owner.id, id, { cursor: query.get("cursor") ?? undefined, limit: query.has("limit") ? Number(query.get("limit")) : undefined }))
+      }
       const input = await json(req)
-      if (input.action === "register") return Response.json(await registerProjectFile(deps.store, owner.id, id, input.file))
+      if (input.action === "register") { const result = await registerProjectFile(deps.store, owner.id, id, input.file); return mutation(result.inventory, [result.file.id, ...(result.file.replacesId ? [result.file.replacesId] : [])], result.file.id) }
       if (typeof input.fileId !== "string") throw new ProjectLibraryError(400, "PROJECT_FILE_INVALID", "Select an exact project file.")
       const inventory = await deps.store.get(owner.id, id), file = ownedFile(inventory, owner.id, input.fileId)
-      if (input.action === "ticket") return Response.json({ file, ticket: await deps.store.ticket(owner.id, file) })
-      if (input.action === "session") return Response.json({ inventory: await recordUploadSession(deps.store, owner.id, id, file.id, input.uploadUrl) })
-      if (input.action === "complete") return Response.json({ inventory: await completeProjectUpload(deps.store, owner.id, id, file.id) })
-      if (input.action === "prepare") return Response.json({ inventory: await prepareProjectFile(deps.store, owner.id, id, file.id, typeof input.pageNumber === "number" ? input.pageNumber : undefined) })
+      if (input.action === "ticket") return boundedJson({ file: projectFileSummary(file), ticket: await deps.store.ticket(owner.id, file) })
+      if (input.action === "session") return mutation(await recordUploadSession(deps.store, owner.id, id, file.id, input.uploadUrl), [file.id])
+      if (input.action === "complete") return mutation(await completeProjectUpload(deps.store, owner.id, id, file.id), [file.id])
+      if (input.action === "prepare") return mutation(await prepareProjectFile(deps.store, owner.id, id, file.id, typeof input.pageNumber === "number" ? input.pageNumber : undefined), [file.id])
       if (input.action === "download") return Response.json({ url: await deps.store.signedDownload(owner.id, file) })
       throw new ProjectLibraryError(400, "PROJECT_ACTION_INVALID", "Choose a supported project operation.")
     } catch (error) {

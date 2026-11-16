@@ -192,7 +192,7 @@ test("fresh server inventory detects replacement despite unchanged cached worksp
   const cached = inventory(), prepared = await prepare(cached)
   const server = inventory(); server.revision = 2; server.files[0].sourceVersion = 2; server.files[0].sha256 = "b".repeat(64)
   const calls: Array<{ url: string; cache: RequestCache | undefined }> = []
-  const fetcher: typeof fetch = async (input, init) => { calls.push({ url: String(input), cache: init?.cache }); return Response.json({ inventory: server }) }
+  const fetcher: typeof fetch = async (input, init) => { calls.push({ url: String(input), cache: init?.cache }); return Response.json({ inventory: { ...server, files: server.files.map(file => ({ ...file, pages: [], contentStatus: "not_loaded" })) }, totalFiles: 1, nextCursor: null }) }
   const current = await fetchCurrentProjectInventory(fetcher, ownerId, projectId, () => true)
   const source = prepared.candidates[0].item.source
   assert.equal(source.kind, "project")
@@ -212,7 +212,7 @@ test("server freshness lookup rejects unavailable, malformed, foreign and stale-
     await assert.rejects(fetchCurrentProjectInventory(fetcher, ownerId, projectId, () => true), /could not be verified/)
   }
   let current = true
-  const changed: typeof fetch = async () => { current = false; return Response.json({ inventory: inventory() }) }
+  const changed: typeof fetch = async () => { current = false; return Response.json({ inventory: { ...inventory(), files: [] }, totalFiles: 0, nextCursor: null }) }
   await assert.rejects(fetchCurrentProjectInventory(changed, ownerId, projectId, () => current), /changed while checking/)
   await assert.rejects(fetchCurrentProjectInventory(changed, ownerId, projectId, () => false), /changed before checking/)
 })

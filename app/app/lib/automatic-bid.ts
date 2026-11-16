@@ -1,24 +1,31 @@
 import { z } from "zod"
 import type { ProjectFile, ProjectInventory } from "../../lib/project-library/types"
+import { createProjectLibraryClient } from "../../lib/project-library/client"
+import type { ProjectAnalysisRecord } from "../../lib/project-analysis/types"
 import { approveCosts, confirmQuantity, createContractorItem, createDraft, parseDraft, updateDraftItem } from "./source-linked-draft"
-import type { Draft, DraftCommercial, DraftJob, ProjectSelectionSnapshot, SourceFreshness } from "./source-linked-draft-types"
+import type { Draft, DraftCommercial, DraftJob, ProjectAnalysisBinding, ProjectSelectionSnapshot, SourceFreshness } from "./source-linked-draft-types"
 import type { ApprovedPricingProfile, AutomaticBidCandidate, AutomaticBidCoverage, AutomaticBidException, AutomaticBidPreparation, PricingRule, PricingSurface } from "./automatic-bid-types"
+import { analysisInterpretationFingerprint, readAnalysisInputs, type AnalysisFields } from "./automatic-bid-analysis"
+export { verifyAnalysisBindings } from "./automatic-bid-analysis"
 
 const short = z.string().trim().min(1).max(500)
 const amount = z.number().finite().min(0).max(1_000_000)
 const ruleSchema = z.object({ id: short, surface: z.enum(["walls", "ceilings", "doors"]), substrate: short, condition: short, coats: z.number().int().min(1).max(6), unit: z.enum(["sqft", "doors"]), labor: amount, materials: amount, other: amount }).strict().refine((rule) => rule.unit === (rule.surface === "doors" ? "doors" : "sqft"), "Rate unit must match the work surface")
 const profileSchema = z.object({ schemaVersion: z.literal(1), id: short, ownerId: short, name: short, version: z.number().int().positive(), approvedBy: short, approvedAt: z.number().finite().positive(), rules: z.array(ruleSchema).min(1).max(100) }).strict()
-const currentInventorySchema = z.object({
-  schemaVersion: z.literal(1), ownerId: short, projectId: short, revision: z.number().int().min(0),
-  files: z.array(z.object({
+const currentPageSchema = z.object({ pageNumber: z.number().int().min(1).max(1000), text: z.string().max(80000), extraction: z.enum(["complete", "empty", "failed"]), review: z.literal("pending"), issue: z.string().optional(), contentLoaded: z.boolean().optional(), textCharacters: z.number().int().min(0).max(80000).optional() }).strict()
+const currentFileSchema = z.object({
     id: short, ownerId: short, projectId: short, name: z.string().max(500), relativePath: z.string().max(2000), mimeType: short,
     size: z.number().finite().min(0), sha256: z.string().regex(/^[a-f0-9]{64}$/i), sourceVersion: z.number().int().positive(), active: z.boolean(),
     status: z.enum(["selected", "uploading", "uploaded", "failed", "unsupported"]), preparation: z.enum(["pending", "partial", "prepared", "failed", "unsupported"]),
     pageCount: z.number().int().min(0).max(1000).nullable(),
-    pages: z.array(z.object({ pageNumber: z.number().int().min(1).max(1000), text: z.string().max(80000), extraction: z.enum(["complete", "empty", "failed"]), review: z.literal("pending"), issue: z.string().optional() }).strict()).max(1000),
+    pages: z.array(currentPageSchema).max(1000),
     objectKey: z.string(), createdAt: z.string(),
-  }).passthrough()).max(10000),
+}).passthrough()
+const currentInventorySchema = z.object({
+  schemaVersion: z.literal(1), ownerId: short, projectId: short, revision: z.number().int().min(0),
+  files: z.array(currentFileSchema).max(10000),
 }).strict()
+const currentContentSchema = z.object({ ownerId: short, projectId: short, fileId: short, sourceVersion: z.number().int().positive(), sourceSha256: z.string().regex(/^[a-f0-9]{64}$/i), active: z.boolean(), page: currentPageSchema }).strict()
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ")
 function canonical(value: unknown): string {
@@ -54,37 +61,74 @@ export function matchApprovedRate(profile: ApprovedPricingProfile, work: { surfa
 export function checkProjectFreshness(snapshot: ProjectSelectionSnapshot, inventory: ProjectInventory | null): SourceFreshness {
   if (!inventory) return "unavailable"
   if (inventory.ownerId !== snapshot.ownerId || inventory.projectId !== snapshot.projectId) return "changed"
+  for (const dependency of snapshot.analyses?.flatMap(analysis => analysis.sourceVersions) ?? []) {
+    const file = inventory.files.find(value => value.id === dependency.fileId && value.active)
+    if (!file || file.ownerId !== snapshot.ownerId || file.projectId !== snapshot.projectId || file.sourceVersion !== dependency.sourceVersion || file.sha256 !== dependency.sourceSha256) return "changed"
+    if (file.status !== "uploaded") return "unavailable"
+  }
   for (const source of snapshot.sources) {
     const matches = inventory.files.filter((file) => file.id === source.fileId && file.active)
     if (matches.length !== 1) return "changed"
     const file = matches[0]
     if (file.ownerId !== snapshot.ownerId || file.projectId !== snapshot.projectId || file.sourceVersion !== source.sourceVersion || file.sha256 !== source.sourceSha256) return "changed"
-    if (file.status !== "uploaded" || !["prepared", "partial"].includes(file.preparation)) return "unavailable"
+    if (file.status !== "uploaded") return "unavailable"
+    if (source.anchor?.kind === "image") {
+      if (!source.imageSha256 || !Number.isSafeInteger(source.pageNumber) || source.pageNumber < 1 || source.pageNumber > (file.mimeType.startsWith("image/") ? 1 : file.pageCount ?? 1000)) return "unavailable"
+      continue
+    }
+    if (!["prepared", "partial"].includes(file.preparation)) return "unavailable"
     const pages = file.pages.filter((page) => page.pageNumber === source.pageNumber)
-    if (pages.length !== 1 || pages[0].extraction !== "complete") return "unavailable"
+    if (pages.length !== 1 || pages[0].extraction !== "complete" || pages[0].contentLoaded === false) return "unavailable"
     if (!pages[0].text.includes(source.quote)) return "changed"
   }
   return "current"
 }
 
 /** A cached workspace inventory is not authority for another client's replacements. */
-export async function fetchCurrentProjectInventory(fetcher: typeof fetch, ownerId: string, projectId: string, isCurrent: () => boolean): Promise<ProjectInventory> {
+export async function fetchCurrentProjectInventory(fetcher: typeof fetch, ownerId: string, projectId: string, isCurrent: () => boolean, options: { references?: ProjectSelectionSnapshot["sources"]; fileIds?: string[] } = {}): Promise<ProjectInventory> {
   if (!isCurrent()) throw new Error("The owner or project changed before checking source versions.")
-  let response: Response
-  try { response = await fetcher(`/api/projects/${encodeURIComponent(projectId)}/files`, { cache: "no-store" }) }
-  catch { throw new Error("Current project sources could not be verified. Refresh Project Files before saving or exporting.") }
+  const client = createProjectLibraryClient(fetcher, projectId, isCurrent)
+  let raw: unknown
+  try { raw = (await client.list()).inventory }
+  catch {
+    if (!isCurrent()) throw new Error("The owner or project changed while checking source versions.")
+    throw new Error("Current project sources could not be verified. Refresh Project Files before saving or exporting.")
+  }
   if (!isCurrent()) throw new Error("The owner or project changed while checking source versions.")
-  let body: unknown
-  try { body = await response.json() } catch { throw new Error("Current project sources returned an unreadable response. No save or export was authorized.") }
-  const parsed = currentInventorySchema.safeParse(body && typeof body === "object" ? (body as Record<string, unknown>).inventory : null)
-  if (!response.ok || !parsed.success || parsed.data.ownerId !== ownerId || parsed.data.projectId !== projectId || parsed.data.files.some((file) => file.ownerId !== ownerId || file.projectId !== projectId) || new Set(parsed.data.files.map((file) => file.id)).size !== parsed.data.files.length) throw new Error("Current project ownership or source versions could not be verified. Refresh Project Files before saving or exporting.")
+  const parsed = currentInventorySchema.safeParse(raw)
+  if (!parsed.success || parsed.data.ownerId !== ownerId || parsed.data.projectId !== projectId || parsed.data.files.some((file) => file.ownerId !== ownerId || file.projectId !== projectId) || new Set(parsed.data.files.map((file) => file.id)).size !== parsed.data.files.length) throw new Error("Current project ownership or source versions could not be verified. Refresh Project Files before saving or exporting.")
+  const inventory = clone(parsed.data as ProjectInventory)
+  const wanted = new Map<string, Set<number>>()
+  for (const ref of options.references ?? []) if (ref.anchor?.kind !== "image") wanted.set(ref.fileId, new Set([...(wanted.get(ref.fileId) ?? []), ref.pageNumber]))
+  for (const fileId of [...new Set(options.fileIds ?? [])]) {
+    const current = inventory.files.find(file => file.id === fileId)
+    if (!current || !current.active || current.status !== "uploaded") throw new Error("A selected project source changed before its prepared content could be retrieved.")
+    const result = await client.source(fileId)
+    const parsedFile = currentFileSchema.safeParse(result.file)
+    if (!isCurrent() || !parsedFile.success || result.revision !== inventory.revision || parsedFile.data.id !== fileId || parsedFile.data.ownerId !== ownerId || parsedFile.data.projectId !== projectId || parsedFile.data.sha256 !== current.sha256 || parsedFile.data.sourceVersion !== current.sourceVersion || !parsedFile.data.active || new Set(parsedFile.data.pages.map(page => page.pageNumber)).size !== parsedFile.data.pages.length) throw new Error("Project sources changed while retrieving prepared pages. Refresh and retry this bounded selection.")
+    current.pages = parsedFile.data.pages
+    wanted.set(fileId, new Set([...(wanted.get(fileId) ?? []), ...current.pages.filter(page => page.extraction === "complete").map(page => page.pageNumber)]))
+  }
+  let characters = 0
+  for (const [fileId, numbers] of wanted) {
+    const current = inventory.files.find(file => file.id === fileId)
+    if (!current || !current.active || current.status !== "uploaded") continue
+    for (const pageNumber of numbers) {
+      const parsedContent = currentContentSchema.safeParse(await client.content(fileId, pageNumber))
+      if (!isCurrent() || !parsedContent.success || parsedContent.data.ownerId !== ownerId || parsedContent.data.projectId !== projectId || parsedContent.data.fileId !== fileId || parsedContent.data.sourceSha256 !== current.sha256 || parsedContent.data.sourceVersion !== current.sourceVersion || !parsedContent.data.active || parsedContent.data.page.pageNumber !== pageNumber || parsedContent.data.page.contentLoaded === false) throw new Error("Prepared source content changed or could not be verified. Refresh the current source before saving or exporting.")
+      const result = parsedContent.data
+      characters += result.page.text.length
+      if (characters > 16 * 1024 * 1024) throw new Error("This prepared-content selection exceeds 32 MiB of text in memory. Select smaller relevant document/location batches; no source content was truncated.")
+      current.pages = [...current.pages.filter(page => page.pageNumber !== pageNumber), result.page].sort((a, b) => a.pageNumber - b.pageNumber)
+    }
+  }
   if (!isCurrent()) throw new Error("The owner or project changed before source verification finished.")
-  return clone(parsed.data as ProjectInventory)
+  return inventory
 }
 
-type RecordText = { location: string; text: string; source: ProjectSelectionSnapshot["sources"][number] }
+type RecordText = { location: string; text: string; source: ProjectSelectionSnapshot["sources"][number]; surface?: PricingSurface; additionalSources?: ProjectSelectionSnapshot["sources"]; fields?: AnalysisFields; bindings?: ProjectAnalysisBinding[]; limitations?: string[]; workIdentity?: string }
 function roomRecords(file: ProjectFile): RecordText[] {
-  return file.pages.filter((page) => page.extraction === "complete").flatMap((page) => {
+  return file.pages.filter((page) => page.extraction === "complete" && page.contentLoaded !== false).flatMap((page) => {
     const matches = [...page.text.matchAll(/(?:^|[\n;|])\s*(?:Room|Location|Area)\s*:\s*([^\n;|]{1,120})/gi)]
     return matches.map((match, index) => {
       const end = index + 1 < matches.length ? matches[index + 1].index! : page.text.length
@@ -99,8 +143,13 @@ export function discoverAutomaticLocations(inventory: ProjectInventory | null): 
 }
 type Field = { value: string | number | null; conflict: boolean }
 function field(records: RecordText[], label: string, valuePattern: string, numeric = false): Field {
-  const values = records.flatMap((record) => [...record.text.matchAll(new RegExp(`(?:^|[\\n;|])\\s*(?:${label})\\s*:\\s*(${valuePattern})(?=\\s*(?:[\\n;|]|$))`, "gi"))].map((match) => numeric ? Number(match[1]) : normalize(match[1])))
-  const distinct = [...new Set(values)]
+  const keys: Record<string, keyof AnalysisFields> = { "Substrate": "substrate", "Condition|Work condition": "condition", "Coats|Paint coats": "coats", "Walls?|Wall finish|Wall scope": "wall", "Ceilings?|Ceiling finish|Ceiling scope": "ceiling", "Wall extent|Paint extent": "extent", "Length|Room length": "length", "Width|Room width": "width", "Height|Wall height": "height", "Openings area|Opening area|Deduct openings": "openings", "Net wall area|Paintable wall area": "wallArea", "Ceiling area|Paintable ceiling area": "ceilingArea", "Doors to paint|Paint doors": "doors" }
+  const values = records.flatMap((record) => {
+    const proposed = record.fields?.[keys[label]]
+    return proposed !== undefined ? [proposed] : [...record.text.matchAll(new RegExp(`(?:^|[\\n;|])\\s*(?:${label})\\s*:\\s*(${valuePattern})(?=\\s*(?:[\\n;|]|$))`, "gi"))].map((match) => numeric ? Number(match[1]) : normalize(match[1]))
+  })
+  const dimensional = ["length", "width", "height", "openings", "wallArea", "ceilingArea"].includes(keys[label])
+  const distinct = [...new Set(dimensional ? values.map(value => Number(String(value).match(/^[0-9]+(?:\.[0-9]+)?/)?.[0])) : values)]
   return { value: distinct.length === 1 ? distinct[0] : null, conflict: distinct.length > 1 }
 }
 const decimal = "[0-9]+(?:\\.[0-9]+)?"
@@ -126,14 +175,15 @@ function coverageFor(inventory: ProjectInventory, selected: ProjectFile[]): Auto
     limitations: ["This preparation checks explicit printed room/finish schedules for the selected locations. It does not measure arbitrary drawings, inspect photos or establish complete project coverage.", "Photo count is not room count. Unselected, failed, unsupported and pending content remains in the project inventory."] }
 }
 
-export async function prepareAutomaticBid(input: { ownerId: string; job: DraftJob; inventory: ProjectInventory; selectedFileIds: string[]; locations: string[]; profile: ApprovedPricingProfile }, now = Date.now()): Promise<AutomaticBidPreparation> {
+export async function prepareAutomaticBid(input: { ownerId: string; job: DraftJob; inventory: ProjectInventory; selectedFileIds: string[]; locations: string[]; profile: ApprovedPricingProfile; analyses?: ProjectAnalysisRecord[] }, now = Date.now()): Promise<AutomaticBidPreparation> {
   const { ownerId, job, inventory } = input
   const profile = parseApprovedPricingProfile(input.profile)
   if (!profile || profile.ownerId !== ownerId || inventory.ownerId !== ownerId || inventory.projectId !== job.id) throw new Error("Choose an approved own pricing profile and the current project's file inventory.")
   if (inventory.files.some((file) => file.ownerId !== ownerId || file.projectId !== job.id)) throw new Error("The inventory contains a file from another owner or project.")
+  const interpreted = readAnalysisInputs(input.analyses ?? [], ownerId, job.id, inventory)
   const locations = [...new Map(input.locations.map((location): [string, string] => [normalize(location), location.trim()]).filter(([key]) => Boolean(key))).values()]
   if (!locations.length || locations.length > 200 || locations.some((location) => location.length > 120)) throw new Error("Select 1–200 explicit work locations from the project documents.")
-  const ids = [...new Set(input.selectedFileIds)].sort()
+  const ids = [...new Set([...input.selectedFileIds, ...interpreted.analyses.flatMap(analysis => analysis.sourceVersions.map(source => source.fileId))])].sort()
   if (!ids.length || ids.length > 1000) throw new Error("Select relevant uploaded documents for this bid.")
   const files = ids.map((id) => {
     const matches = inventory.files.filter((file) => file.active && file.id === id && file.ownerId === ownerId && file.projectId === job.id)
@@ -142,20 +192,39 @@ export async function prepareAutomaticBid(input: { ownerId: string; job: DraftJo
   })
   const sourceTextBytes = files.reduce((sum, file) => sum + file.pages.reduce((size, page) => size + page.text.length * 2, 0), 0)
   if (sourceTextBytes > 32 * 1024 * 1024) throw new Error("This selection exceeds the 32 MiB prepared-text batch limit. Keep all originals in Project Files and prepare smaller relevant document/location batches.")
-  const id = await digest({ ownerId, projectId: job.id, locations: locations.map(normalize).sort(), files: files.map((file) => ({ id: file.id, sourceVersion: file.sourceVersion, sha256: file.sha256, status: file.status, preparation: file.preparation, pages: file.pages })), profile })
+  const id = await digest({ ownerId, projectId: job.id, locations: locations.map(normalize).sort(), files: files.map((file) => ({ id: file.id, sourceVersion: file.sourceVersion, sha256: file.sha256, status: file.status, preparation: file.preparation, pages: file.pages.map(page => ({ pageNumber: page.pageNumber, text: page.text, extraction: page.extraction, review: page.review, ...(page.issue !== undefined ? { issue: page.issue } : {}) })) })), ...(interpreted.analyses.length ? { analyses: interpreted.analyses.map(({ id, resultIdentity, sourceVersions, result }) => ({ id, resultIdentity, sourceVersions, result })) } : {}), profile })
   const coverage = coverageFor(inventory, files)
-  const records = files.filter((file) => file.status === "uploaded" && ["prepared", "partial"].includes(file.preparation) && file.mimeType === "application/pdf").flatMap(roomRecords)
+  if (interpreted.analyses.length) {
+    coverage.limitations[0] = "Deterministic extraction checks explicit schedule text. Recorded AI interpretations separately propose scope and supported inputs from the supplied target text/images; neither establishes complete project coverage or accurate scale-based drawing measurement."
+    coverage.limitations.push("AI interpretation supplies proposed scope/inputs only. Deterministic equations calculate quantities and the approved profile supplies costs. Target analysis, context presence and contractor approval are separate states.")
+  }
+  const records: RecordText[] = [...files.filter((file) => file.status === "uploaded" && ["prepared", "partial"].includes(file.preparation) && file.mimeType === "application/pdf").flatMap(roomRecords), ...interpreted.records]
   const candidates: AutomaticBidCandidate[] = [], exceptions: AutomaticBidException[] = []
-  const exception = (location: string, surface: PricingSurface | null, message: string, sources: RecordText[], itemId?: string) => exceptions.push({ id: `${id}:exception:${exceptions.length}`, location, surface, message, sourceFileIds: [...new Set(sources.map((record) => record.source.fileId))], ...(itemId ? { itemId } : {}) })
+  const evidenceFor = (room: RecordText[], equation: string, rule: PricingRule | null): ProjectSelectionSnapshot => {
+    const sources = [...new Map(room.flatMap(record => [record.source, ...(record.additionalSources ?? [])]).map(source => [canonical(source), clone(source)])).values()]
+    const byRun = new Map<string, ProjectAnalysisBinding>()
+    for (const bound of room.flatMap(record => record.bindings ?? [])) {
+      const prior = byRun.get(bound.runId)
+      byRun.set(bound.runId, prior ? { ...prior, workIds: [...new Set([...prior.workIds, ...bound.workIds])], findingIds: [...new Set([...prior.findingIds, ...bound.findingIds])], citationIds: [...new Set([...prior.citationIds, ...bound.citationIds])] } : clone(bound))
+    }
+    const limitations = [...new Set([...coverage.limitations, ...room.flatMap(record => record.limitations ?? [])])]
+    if (sources.length > 100 || limitations.length > 100) throw new Error("The selected work exceeds 100 evidence references or limitations per draft item. Prepare smaller relevant batches; no evidence was truncated.")
+    const analyses = [...byRun.values()].map(bound => ({ ...bound, interpretationFingerprint: analysisInterpretationFingerprint(interpreted.analyses.find(record => record.id === bound.runId)!, bound.workIds, bound.findingIds, bound.citationIds) }))
+    return { ownerId, projectId: job.id, preparationId: id, sources, ...(analyses.length ? { analyses } : {}), equation, pricingProfile: { id: profile.id, version: profile.version, approvedBy: profile.approvedBy, approvedAt: profile.approvedAt, rule }, limitations }
+  }
+  const exception = (location: string, surface: PricingSurface | null, message: string, sources: RecordText[], itemId?: string) => exceptions.push({ id: `${id}:exception:${exceptions.length}`, location, surface, message, sourceFileIds: [...new Set(sources.flatMap(record => [record.source, ...(record.additionalSources ?? [])]).map(source => source.fileId))], ...(itemId ? { itemId } : {}), ...(sources.some(source => source.bindings?.length) ? { evidence: evidenceFor(sources, "No supported quantity was approved; a contractor decision is required.", null) } : {}) })
   for (const location of locations) {
     const room = records.filter((record) => normalize(record.location) === normalize(location))
     if (!room.length) { exception(location, null, "No explicit room schedule was found for this location. Open the cited files or add contractor scope; no quantity was inferred.", []); continue }
-    const substrate = field(room, "Substrate", "[^;|\\n]+"), condition = field(room, "Condition|Work condition", "[^;|\\n]+"), coats = field(room, "Coats|Paint coats", "[1-6]", true)
-    const wall = field(room, "Walls?|Wall finish|Wall scope", "[^;|\\n]+"), ceiling = field(room, "Ceilings?|Ceiling finish|Ceiling scope", "[^;|\\n]+")
-    const wallExtent = field(room, "Wall extent|Paint extent", "[^;|\\n]+")
-    const length = numericField(room, "Length|Room length", feet), width = numericField(room, "Width|Room width", feet), height = numericField(room, "Height|Wall height", feet)
-    const openings = numericField(room, "Openings area|Opening area|Deduct openings", area), wallArea = numericField(room, "Net wall area|Paintable wall area", area), ceilingArea = numericField(room, "Ceiling area|Paintable ceiling area", area), doors = field(room, "Doors to paint|Paint doors", decimal, true)
     for (const surface of ["walls", "ceilings", "doors"] as const) {
+      const surfaceRoom = room.filter(record => !record.surface || record.surface === surface)
+      const blocked = interpreted.blockedScopes.some(scope => normalize(scope.location) === normalize(location) && scope.surface === surface)
+      if (blocked) continue
+      const substrate = field(surfaceRoom, "Substrate", "[^;|\\n]+"), condition = field(surfaceRoom, "Condition|Work condition", "[^;|\\n]+"), coats = field(surfaceRoom, "Coats|Paint coats", "[1-6]", true)
+      const wall = field(surfaceRoom, "Walls?|Wall finish|Wall scope", "[^;|\\n]+"), ceiling = field(surfaceRoom, "Ceilings?|Ceiling finish|Ceiling scope", "[^;|\\n]+")
+      const wallExtent = field(surfaceRoom, "Wall extent|Paint extent", "[^;|\\n]+")
+      const length = numericField(surfaceRoom, "Length|Room length", feet), width = numericField(surfaceRoom, "Width|Room width", feet), height = numericField(surfaceRoom, "Height|Wall height", feet)
+      const openings = numericField(surfaceRoom, "Openings area|Opening area|Deduct openings", area), wallArea = numericField(surfaceRoom, "Net wall area|Paintable wall area", area), ceilingArea = numericField(surfaceRoom, "Ceiling area|Paintable ceiling area", area), doors = field(surfaceRoom, "Doors to paint|Paint doors", decimal, true)
       const scope = surface === "walls" ? wall : surface === "ceilings" ? ceiling : doors
       if (scope.value === null && !scope.conflict) {
         if (surface !== "doors") exception(location, surface, `The ${surface} finish or scope is not explicit. Confirm whether it is included; no automatic quantity was added.`, room)
@@ -168,9 +237,10 @@ export async function prepareAutomaticBid(input: { ownerId: string; job: DraftJo
       }
       const dimensions = surface === "walls" ? [wallArea, length, width, height, openings] : surface === "ceilings" ? [ceilingArea, length, width] : [doors]
       if ([substrate, condition, coats, ...dimensions].some((value) => value.conflict)) { exception(location, surface, "Conflicting dimensions, quantities or work conditions require a contractor decision; values were not combined.", room); continue }
+      if (new Set(surfaceRoom.flatMap(record => record.workIdentity ? [record.workIdentity] : [])).size > 1) { exception(location, surface, "Multiple AI work records share this location and surface but use different field evidence. Confirm their separate extents or replace them with one combined scope; quantities were not silently merged or added.", surfaceRoom); continue }
       let quantity: number | null = null, equation = ""
       if (surface === "walls") {
-        const partialExtent = wallExtent.value !== null && !["full height", "full walls", "all walls"].includes(String(wallExtent.value)) || room.some((record) => /chair[ -]?rail|wainscot|upper[ -]walls?|lower[ -]walls?|partial[ -]height/i.test(record.text))
+        const partialExtent = wallExtent.value !== null && !["full height", "full walls", "all walls"].includes(String(wallExtent.value)) || surfaceRoom.some((record) => /chair[ -]?rail|wainscot|upper[ -]walls?|lower[ -]walls?|partial[ -]height/i.test(record.fields ? [record.source, ...(record.additionalSources ?? [])].map(source => source.quote).join("\n") : record.text))
         if (wallExtent.conflict || wallArea.value === null && partialExtent) { exception(location, surface, "Wall extent is partial or unclear. Supply an explicit applicable net paintable wall area or correct the bounded wall scope; full-height painting was not assumed.", room); continue }
         const geometric = [length.value, width.value, height.value, openings.value].every((value) => typeof value === "number") ? 2 * (Number(length.value) + Number(width.value)) * Number(height.value) - Number(openings.value) : null
         if (!partialExtent && wallArea.value !== null && geometric !== null && Math.abs(Number(wallArea.value) - geometric) > .01) { exception(location, surface, "The recorded net wall area does not reconcile with the stated geometry and openings. Confirm the applicable quantity.", room); continue }
@@ -186,11 +256,30 @@ export async function prepareAutomaticBid(input: { ownerId: string; job: DraftJo
       const matched = matchApprovedRate(profile, { surface, substrate: String(substrate.value), condition: String(condition.value), coats: Number(coats.value) }, ownerId)
       const candidateId = `${id}:item:${candidates.length}`
       const rule = matched.rule
-      const source: ProjectSelectionSnapshot = { ownerId, projectId: job.id, preparationId: id, sources: room.map((record) => clone(record.source)), equation, pricingProfile: { id: profile.id, version: profile.version, approvedBy: profile.approvedBy, approvedAt: profile.approvedAt, rule }, limitations: clone(coverage.limitations) }
+      const source = evidenceFor(surfaceRoom, equation, rule)
       const item = { ...createContractorItem({ id: candidateId, trade: "painting", location, description: `Paint ${surface} — ${condition.value} ${substrate.value}, ${coats.value} coats.`, disposition: "unresolved", quantity, unit: surface === "doors" ? "doors" : "sqft", measurementBasis: equation }), source: { kind: "project" as const, snapshot: source, freshness: "current" as const }, costs: { unit: surface === "doors" ? "doors" as const : "sqft" as const, labor: rule?.labor ?? null, materials: rule?.materials ?? null, other: rule?.other ?? null, source: rule ? `Approved pricing profile ${profile.name} · ${profile.id} · version ${profile.version} · rule ${rule.id}` : "No matching approved rate" } }
       candidates.push({ id: candidateId, surface, item, equation, pricingIssue: matched.reason })
       if (matched.reason) exception(location, surface, matched.reason, room, candidateId)
     }
+  }
+  for (const decision of interpreted.decisions) {
+    const evidence = decision.sources.length ? evidenceFor(decision.sources.map((source, index) => ({ location: decision.location, text: "", source, ...(index === 0 ? { bindings: decision.bindings, limitations: decision.limitations } : {}) })), "AI finding requires a contractor decision; no quantity was approved.", null) : undefined
+    exceptions.push({ id: `${id}:exception:${exceptions.length}`, location: decision.location, surface: decision.surface, message: decision.message, sourceFileIds: decision.sourceFileIds, ...(evidence ? { evidence } : {}) })
+  }
+  const analyzed = new Map<string, { source: ProjectAnalysisRecord["sourceVersions"][number]; limited: boolean }>()
+  for (const analysis of interpreted.analyses) for (const source of analysis.sourceVersions.filter(source => source.role === "target")) {
+    const key = `${source.fileId}:${source.pageNumber}`
+    analyzed.set(key, { source, limited: Boolean(analyzed.get(key)?.limited) || analysis.result!.reviewStatus === "limited" || source.issues.length > 0 })
+  }
+  if (analyzed.size) {
+    coverage.records = coverage.records.filter(record => !(record.pageNumber === null && inventory.files.find(file => file.id === record.fileId)?.mimeType.startsWith("image/") && analyzed.has(`${record.fileId}:1`)))
+    for (const { source, limited } of analyzed.values()) {
+      coverage.records = coverage.records.filter(record => record.fileId !== source.fileId || record.pageNumber !== source.pageNumber)
+      coverage.records.push({ fileId: source.fileId, sourceVersion: source.sourceVersion, pageNumber: source.pageNumber, state: limited ? "ai_limited" : "ai_interpreted", reason: limited ? "Recorded AI interpretation has limitations; source coverage or scope decisions remain unresolved." : "Recorded AI interpretation of this supplied target page/photo. Inputs remain proposed until contractor review; context pages are not independently reviewed by their inclusion." })
+    }
+    coverage.aiSourcesAnalyzed = analyzed.size; coverage.aiSourcesLimited = [...analyzed.values()].filter(value => value.limited).length
+    coverage.aiPhotosAnalyzed = [...analyzed.values()].filter(value => value.source.mimeType.startsWith("image/")).length
+    coverage.unreviewedPhotos = inventory.files.filter(file => file.active && file.mimeType.startsWith("image/") && (!analyzed.has(`${file.id}:1`) || analyzed.get(`${file.id}:1`)!.limited)).length
   }
   if (candidates.length + exceptions.length > 1000) throw new Error("This bounded bid exceeds 1,000 work decisions. Prepare a smaller set of locations.")
   return { schemaVersion: 1, id, ownerId, projectId: job.id, createdAt: now, profile: clone(profile), locations, selectedFileIds: ids, candidates, exceptions, coverage }
@@ -202,7 +291,10 @@ export function createAutomaticDraft(preparation: AutomaticBidPreparation, job: 
   const draft = createDraft(preparation.ownerId, job, commercial, `automatic-${preparation.id}`)
   draft.title = `Prepared painting bid · ${job.name}`
   draft.items = preparation.candidates.map((candidate) => clone(candidate.item))
-  for (const issue of preparation.exceptions.filter((entry) => !entry.itemId)) draft.items.push(createContractorItem({ id: issue.id, trade: "painting", location: issue.location, disposition: "unresolved", description: issue.surface ? `Resolve ${issue.surface} scope: ${issue.message}` : issue.message, note: "Unresolved automatic preparation exception. Contractor correction or explicit exclusion is required." }))
+  for (const issue of preparation.exceptions.filter((entry) => !entry.itemId)) {
+    const item = createContractorItem({ id: issue.id, trade: "painting", location: issue.location, disposition: "unresolved", description: issue.surface ? `Resolve ${issue.surface} scope: ${issue.message}` : issue.message, note: "Unresolved automatic preparation exception. Contractor correction or explicit exclusion is required." })
+    draft.items.push(issue.evidence ? { ...item, source: { kind: "project", snapshot: clone(issue.evidence), freshness: "current" } } : item)
+  }
   const valid = parseDraft(draft)
   if (!valid) throw new Error("The automatic draft could not be validated. It has not been saved.")
   return valid
@@ -228,4 +320,11 @@ export function approveAutomaticCosts(draft: Draft, itemIds: string[], reviewedF
 }
 export function refreshAutomaticDraftSources(draft: Draft, inventory: ProjectInventory | null): Draft {
   return { ...clone(draft), items: draft.items.map((item) => item.source.kind === "project" ? updateDraftItem(item, { source: { ...item.source, freshness: checkProjectFreshness(item.source.snapshot, inventory) } }) : clone(item)) }
+}
+
+/** A failed record check is unavailable evidence, not proof that a source changed. */
+export function invalidateAnalysisApprovals(draft: Draft): Draft {
+  return { ...clone(draft), items: draft.items.map(item => item.source.kind === "project" && item.source.snapshot.analyses?.length
+    ? { ...clone(item), source: { ...clone(item.source), freshness: "unavailable" }, quantityConfirmation: null, costApproval: null }
+    : clone(item)) }
 }

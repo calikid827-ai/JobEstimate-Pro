@@ -22,11 +22,12 @@ export type ApprovedPricingProfile = {
   approvedAt: number
   rules: PricingRule[]
 }
-export type AutomaticBidException = { id: string; location: string; surface: PricingSurface | null; message: string; sourceFileIds: string[]; itemId?: string }
+export type AutomaticBidException = { id: string; location: string; surface: PricingSurface | null; message: string; sourceFileIds: string[]; itemId?: string; evidence?: ProjectSelectionSnapshot }
 export type AutomaticBidCandidate = { id: string; surface: PricingSurface; item: DraftItem; equation: string; pricingIssue: string | null }
 export type AutomaticBidCoverage = {
   filesTotal: number; uploadedFiles: number; preparedFiles: number; pagesTotal: number; textPagesChecked: number; pendingFiles: number; unreviewedPhotos: number
-  records: Array<{ fileId: string; sourceVersion: number; pageNumber: number | null; state: "text_checked" | "pending" | "failed" | "unsupported"; reason: string }>
+  records: Array<{ fileId: string; sourceVersion: number; pageNumber: number | null; state: "text_checked" | "pending" | "failed" | "unsupported" | "ai_interpreted" | "ai_limited"; reason: string }>
+  aiSourcesAnalyzed?: number; aiSourcesLimited?: number; aiPhotosAnalyzed?: number
   limitations: string[]
 }
 export type AutomaticBidPreparation = {
